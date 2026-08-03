@@ -12,7 +12,9 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.22.0",
-    "lucide-react": "^0.379.0"
+    "lucide-react": "^0.379.0",
+    "papaparse": "^5.4.1"
+
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.0.0",
