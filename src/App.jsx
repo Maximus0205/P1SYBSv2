@@ -11,7 +11,7 @@ export default function App() {
     <BrowserRouter basename="/P1SYBSv2">
       <Routes>
         {/* Forside – vælg den du vil bruge */}
-        <Route path="/" element={<MontorVaelger />} />
+        <Route path="/" element={<SalgSide />} />
 
         {/* Andre sider */}
         <Route path="/rute" element={<MontorRuteView />} />
