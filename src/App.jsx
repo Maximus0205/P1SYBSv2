@@ -1,10 +1,11 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
-import AdminSide from "./pages/main/AdminSide.jsx";
-import KoerselSide from "./pages/main/KoerselSide.jsx";
-import LagerSide from "./pages/main/LagerSide.jsx";
-import MontorSide from "./pages/main/MontorSide.jsx";
-import SalgSide from "./pages/main/SalgSide.jsx";
+import AdminSide from "./pages/AdminSide.jsx";
+import KoerselSide from "./pages/KoerselSide.jsx";
+import LagerSide from "./pages/LagerSide.jsx";
+import MontorSide from "./pages/MontorSide.jsx";
+import SalgSide from "./pages/SalgSide.jsx";
+
 
 export default function App() {
   return (
