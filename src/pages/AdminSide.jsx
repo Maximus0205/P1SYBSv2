@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Trash2, Plus } from "lucide-react";
 import { MontorRaekke, BilRaekke, NyBrugerForm, VaretypeAdmin, ROLLE_LABEL } from "../components/AdminParts";
 
-function AdminSide({ montorer, biler, sager, brugere, varetyper, aktuelBrugerId, onAddMontor, onUpdateMontor, onDeleteMontor, onAddBil, onUpdateBil, onDeleteBil, onToggleBilLukket, onAddBruger, onDeleteBruger, onAddVaretype, onUpdateVaretype, onDeleteVaretype }) {
+function AdminSide({ montorer, biler, sager, brugere, varetyper, aktuelBrugerId, onAddMontor, onUpdateMontor, onDeleteMontor, onAddBil, onUpdateBil, onDeleteBil, onToggleBilLukket, onAddBruger, onUpdateBruger, onDeleteBruger, onAddVaretype, onUpdateVaretype, onDeleteVaretype }) {
   const [navn, setNavn] = useState("");
   const [bil, setBil] = useState("");
   const [nytBilNavn, setNytBilNavn] = useState("");
@@ -80,19 +80,33 @@ function AdminSide({ montorer, biler, sager, brugere, varetyper, aktuelBrugerId,
         <div>
           <NyBrugerForm montorer={montorer} onAdd={onAddBruger} />
           <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Alle brugere ({brugere.length})</h3>
-          <p className="text-xs text-[#52697E] mb-3">
-            Bemærk: dette er et prototype-login til at styre hvilke faner folk ser — adgangskoder gemmes ikke sikkert, og bør ikke bruges med rigtige, følsomme koder.
-          </p>
           <div className="space-y-2">
             {brugere.map((b) => {
               const montor = montorer.find((m) => m.id === b.montorId);
               return (
-                <div key={b.id} className="bg-white border border-[#D8D0BE] p-3 flex items-center gap-3">
+                <div key={b.id} className="bg-white border border-[#D8D0BE] p-3 flex items-center gap-3 flex-wrap">
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-sm text-[#1C232E] truncate">{b.navn} <span className="font-normal text-[#52697E]">· {b.brugernavn}</span></p>
-                    <p className="text-xs text-[#52697E] truncate">{ROLLE_LABEL[b.rolle]}{montor ? ` · ${montor.navn} (${montor.bil})` : ""}</p>
+                    <p className="font-semibold text-sm text-[#1C232E] truncate">{b.navn}</p>
+                    <p className="text-xs text-[#52697E] truncate">{ROLLE_LABEL[b.rolle] || b.rolle}{montor ? ` · ${montor.navn} (${montor.bil})` : ""}</p>
                   </div>
-                  {b.id !== aktuelBrugerId && <button onClick={() => onDeleteBruger(b.id)} className="p-1.5 text-[#52697E] hover:text-[#B3261E]" title="Slet bruger"><Trash2 size={15} /></button>}
+                  <select
+                    value={b.rolle}
+                    onChange={(e) => onUpdateBruger(b.id, { rolle: e.target.value })}
+                    className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-xs text-[#1C232E]"
+                  >
+                    {Object.entries(ROLLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                  {b.rolle === "montor" && (
+                    <select
+                      value={b.montorId || ""}
+                      onChange={(e) => onUpdateBruger(b.id, { montorId: e.target.value || null })}
+                      className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-xs text-[#1C232E]"
+                    >
+                      <option value="">Vælg montør...</option>
+                      {montorer.map((m) => <option key={m.id} value={m.id}>{m.navn}</option>)}
+                    </select>
+                  )}
+                  {b.id !== aktuelBrugerId && <button onClick={() => onDeleteBruger(b.id)} className="p-1.5 text-[#52697E] hover:text-[#B3261E]" title="Fjern adgang"><Trash2 size={15} /></button>}
                 </div>
               );
             })}
