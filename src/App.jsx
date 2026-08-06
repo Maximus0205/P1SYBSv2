@@ -79,10 +79,17 @@ export default function App() {
     });
 
     // Lyt løbende på login/logout (fra denne eller andre faner).
-    const { data: lytter } = supabase.auth.onAuthStateChange(async (_event, nySession) => {
+    //
+    // VIGTIGT: denne callback må ikke selv "await"'e andre Supabase-kald
+    // (som fx genindlaesProfil -> supabase.from(...)). Supabase-auth-klienten
+    // holder en intern lås mens callbacken kører, så et synkront await her
+    // på et andet Supabase-kald fryser hele klienten (kendt supabase-js-
+    // fælde). setTimeout(..., 0) skubber arbejdet til næste "tick", uden for
+    // låsen, så login rent faktisk kan fuldføre.
+    const { data: lytter } = supabase.auth.onAuthStateChange((_event, nySession) => {
       setSession(nySession);
       if (nySession) {
-        await genindlaesProfil(nySession.user.id);
+        setTimeout(() => { genindlaesProfil(nySession.user.id); }, 0);
       } else {
         setProfil(null);
         setSager([]); setMontorer([]); setBiler([]); setVaretyper([]); setBrugere([]);
