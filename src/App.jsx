@@ -13,7 +13,7 @@ import {
   DEFAULT_VARETYPER, DEFAULT_BILER,
   SIDER_FOR_ROLLE,
 } from "./data/appData";
-//commit
+//commit test igen
 import { TopNav } from "./components/TopNav";
 import { LoginSide } from "./components/LoginSide";
 import { SagView } from "./components/SagView";
