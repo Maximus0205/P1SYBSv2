@@ -67,6 +67,24 @@ export const gemVaretyper = (butikId, varetyper) => gemListe("varetyper", butikI
 // Selve login/adgangskode håndteres af Supabase Auth (se LoginSide.jsx).
 // Denne tabel holder kun butik_id + rolle + navn pr. bruger.
 
+// Admin opretter en helt ny bruger (rigtigt login, ikke bare en profilrække).
+// Kalder en Edge Function, fordi det kræver service_role-rettigheder, som
+// aldrig må ligge i frontend-koden - funktionen tjekker selv at kalderen
+// rent faktisk er admin, før den opretter noget (se
+// supabase/functions/admin-opret-bruger).
+export async function opretBrugerAdmin({ email, adgangskode, navn, rolle, montorId }) {
+  const { data, error } = await supabase.functions.invoke("admin-opret-bruger", {
+    body: { email, adgangskode, navn, rolle, montorId },
+  });
+  if (error) {
+    // Supabase pakker edge-function-fejl lidt akavet ind - prøv at finde den rigtige besked.
+    const besked = data?.fejl || error.message || "Kunne ikke oprette brugeren";
+    return { ok: false, fejl: besked };
+  }
+  if (data?.fejl) return { ok: false, fejl: data.fejl };
+  return { ok: true };
+}
+
 export async function hentEgenProfil(brugerId) {
   const { data, error } = await supabase.from("profiler").select("*").eq("id", brugerId).maybeSingle();
   if (error) {
