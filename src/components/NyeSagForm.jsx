@@ -6,7 +6,7 @@ import { VarelinjeRedigering, NoegleFelter, AdresseForslag } from "../components
 import { AfstandsForslag } from "../components/AfstandsForslag";
 import { AdresseInput } from "../components/AdresseInput";
 
-function NyeSagForm({ montorer, varetyper, sager, valgtDato, onAdd, onClose }) {
+function NyeSagForm({ montorer, varetyper, sager, valgtDato, onAdd, onClose, butikFokus }) {
   const [kundeNavn, setKundeNavn] = useState("");
   const [telefon, setTelefon] = useState("");
   const [email, setEmail] = useState("");
@@ -62,7 +62,7 @@ function NyeSagForm({ montorer, varetyper, sager, valgtDato, onAdd, onClose }) {
         <input value={kundeNavn} onChange={(e) => setKundeNavn(e.target.value)} placeholder="Kundenavn" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
         <input value={telefon} onChange={(e) => setTelefon(e.target.value)} placeholder="Telefon" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
         <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail (valgfri)" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-        <AdresseInput value={adresse} onChange={setAdresse} placeholder="Leveringsadresse" onValideringChange={setAdresseStatus} />
+        <AdresseInput value={adresse} onChange={setAdresse} placeholder="Leveringsadresse" onValideringChange={setAdresseStatus} fokus={butikFokus} />
         <input value={leveringsnote} onChange={(e) => setLeveringsnote(e.target.value)} placeholder="Leveringsnote, fx 'Ring før ankomst'" className="sm:col-span-2 border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
       </div>
 
