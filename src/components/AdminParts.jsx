@@ -1,83 +1,137 @@
 import React, { useState } from "react";
-import { Trash2, X, Plus, Pencil, UserPlus, Clock } from "lucide-react";
-import { STANDARD_YDELSE_MINUTTER, formatVarighed, montorFarve } from "../data/appData";
+import { Trash2, X, Plus, Pencil, UserPlus, Clock, PalmtreeIcon, CalendarOff } from "lucide-react";
+import { STANDARD_YDELSE_MINUTTER, bilLabel, formatVarighed, montorFarve, todayISO } from "../data/appData";
 
-function MontorRaekke({ m, biler, onUpdate, onDelete }) {
-  const [redigerer, setRedigerer] = useState(false);
-  const [navn, setNavn] = useState(m.navn);
-  const [bil, setBil] = useState(m.bil);
+// En "montør" er en bruger med rolle montor — man opretter dem ikke separat
+// (det sker under fanen Brugere). Her kan man kun styre hvilken bil montøren
+// kører i lige nu, og registrere ferieperioder for vedkommende.
+function MontorRaekke({ m, biler, ferier, onUpdateBil, onTilfoejFerie, onSletFerie }) {
+  const [visFerie, setVisFerie] = useState(false);
+  const [ferieStart, setFerieStart] = useState(todayISO());
+  const [ferieSlut, setFerieSlut] = useState(todayISO());
+  const [ferieNote, setFerieNote] = useState("");
+  const tilknyttetBil = biler.find((b) => b.id === m.bilId);
+  const mineFerier = ferier.filter((f) => f.montorId === m.id).sort((a, b) => a.startDato.localeCompare(b.startDato));
 
-  if (redigerer) {
-    return (
-      <div className="bg-white border border-[#D8D0BE] p-3 flex items-center gap-2 flex-wrap">
-        <input value={navn} onChange={(e) => setNavn(e.target.value)} className="flex-1 min-w-[140px] border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-        <select value={bil} onChange={(e) => setBil(e.target.value)} className="flex-1 min-w-[140px] border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]">
+  const opretFerie = () => {
+    if (!ferieStart || !ferieSlut || ferieSlut < ferieStart) return;
+    onTilfoejFerie({ montorId: m.id, startDato: ferieStart, slutDato: ferieSlut, note: ferieNote.trim() });
+    setFerieNote("");
+  };
+
+  return (
+    <div className="bg-white border border-[#D8D0BE]">
+      <div className="p-3 flex items-center gap-3 flex-wrap">
+        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: montorFarve(m.id, [m]) }} />
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-sm text-[#1C232E] truncate">{m.navn}</p>
+          <p className="text-xs text-[#52697E] truncate">{tilknyttetBil ? bilLabel(tilknyttetBil) : "Ingen bil tilknyttet"}</p>
+        </div>
+        <select
+          value={m.bilId || ""}
+          onChange={(e) => onUpdateBil(m.id, e.target.value || null)}
+          className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-xs text-[#1C232E] focus:outline-none focus:border-[#E2621B]"
+        >
           <option value="">Ingen bil</option>
-          {bil && !biler.some((b) => b.navn === bil) && <option value={bil}>{bil} (ikke i listen)</option>}
           {biler.map((b) => (
-            <option key={b.id} value={b.navn} disabled={b.lukket && b.navn !== m.bil}>
-              {b.navn}{b.lukket ? " (lukket for booking)" : ""}
+            <option key={b.id} value={b.id} disabled={b.lukket && b.id !== m.bilId}>
+              {bilLabel(b)}{b.lukket ? " (lukket)" : ""}
             </option>
           ))}
         </select>
-        <button onClick={() => { onUpdate(m.id, { navn: navn.trim() || m.navn, bil }); setRedigerer(false); }} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white bg-[#3D7A5C] hover:bg-[#1C232E] transition-colors">Gem</button>
-        <button onClick={() => { setNavn(m.navn); setBil(m.bil); setRedigerer(false); }} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#52697E] border border-[#D8D0BE]">Fortryd</button>
+        <button onClick={() => setVisFerie((v) => !v)} className="p-1.5 text-[#52697E] hover:text-[#E2621B] flex items-center gap-1 text-xs font-semibold uppercase tracking-wide" title="Ferie">
+          <PalmtreeIcon size={15} /> Ferie{mineFerier.length > 0 ? ` (${mineFerier.length})` : ""}
+        </button>
       </div>
-    );
-  }
 
-  return (
-    <div className="bg-white border border-[#D8D0BE] p-3 flex items-center gap-3">
-      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: montorFarve(m.id, [m]) }} />
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold text-sm text-[#1C232E] truncate">{m.navn}</p>
-        <p className="text-xs text-[#52697E] truncate">{m.bil || "Ingen bil registreret"}</p>
-      </div>
-      <button onClick={() => setRedigerer(true)} className="p-1.5 text-[#52697E] hover:text-[#E2621B]" title="Rediger"><Pencil size={15} /></button>
-      <button onClick={() => onDelete(m.id)} className="p-1.5 text-[#52697E] hover:text-[#B3261E]" title="Slet"><Trash2 size={15} /></button>
+      {visFerie && (
+        <div className="border-t border-[#F0EBDD] p-3 bg-[#FCFAF4]">
+          <div className="flex gap-2 flex-wrap items-end mb-3">
+            <label className="text-[11px] text-[#52697E]">Fra
+              <input type="date" value={ferieStart} onChange={(e) => setFerieStart(e.target.value)} className="block border border-[#D8D0BE] bg-white px-2 py-1 text-xs text-[#1C232E] mt-0.5" />
+            </label>
+            <label className="text-[11px] text-[#52697E]">Til
+              <input type="date" value={ferieSlut} onChange={(e) => setFerieSlut(e.target.value)} className="block border border-[#D8D0BE] bg-white px-2 py-1 text-xs text-[#1C232E] mt-0.5" />
+            </label>
+            <input value={ferieNote} onChange={(e) => setFerieNote(e.target.value)} placeholder="Note (valgfri)" className="flex-1 min-w-[120px] border border-[#D8D0BE] bg-white px-2 py-1.5 text-xs text-[#1C232E]" />
+            <button onClick={opretFerie} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors flex items-center gap-1"><Plus size={13} /> Tilføj</button>
+          </div>
+          {mineFerier.length === 0 ? (
+            <p className="text-xs text-[#52697E] italic">Ingen ferieperioder registreret.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {mineFerier.map((f) => (
+                <div key={f.id} className="flex items-center gap-2 text-xs bg-white border border-[#D8D0BE] px-2 py-1.5">
+                  <CalendarOff size={12} className="text-[#E2621B] shrink-0" />
+                  <span className="text-[#1C232E]">{f.startDato} – {f.slutDato}</span>
+                  {f.note && <span className="text-[#52697E] truncate flex-1">{f.note}</span>}
+                  <button onClick={() => onSletFerie(f.id)} className="ml-auto text-[#52697E] hover:text-[#B3261E]"><X size={13} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+          {tilknyttetBil && <p className="text-[10px] text-[#52697E] mt-2">Bilen ({bilLabel(tilknyttetBil)}) vises automatisk som blokeret i kørselsoverblikket i disse perioder — flytter montøren til en anden bil, følger blokeringen med.</p>}
+        </div>
+      )}
     </div>
   );
 }
 
 function BilRaekke({ b, brugtAf, onUpdate, onDelete, onToggleLukket }) {
   const [redigerer, setRedigerer] = useState(false);
-  const [navn, setNavn] = useState(b.navn);
+  const [nummerplade, setNummerplade] = useState(b.nummerplade);
+  const [visLukAarsag, setVisLukAarsag] = useState(false);
+  const [aarsag, setAarsag] = useState("Værksted");
 
   if (redigerer) {
     return (
       <div className="bg-white border border-[#D8D0BE] p-2.5 flex items-center gap-2">
-        <input autoFocus value={navn} onChange={(e) => setNavn(e.target.value)} className="flex-1 border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-        <button onClick={() => { onUpdate(navn.trim() || b.navn); setRedigerer(false); }} className="text-xs text-[#3D7A5C] font-semibold uppercase">Gem</button>
-        <button onClick={() => { setNavn(b.navn); setRedigerer(false); }} className="text-xs text-[#52697E] font-semibold uppercase">Fortryd</button>
+        <span className="text-[10px] font-mono text-[#52697E] shrink-0">#{b.id}</span>
+        <input autoFocus value={nummerplade} onChange={(e) => setNummerplade(e.target.value)} placeholder="Nummerplade" className="flex-1 border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+        <button onClick={() => { onUpdate(nummerplade.trim() || b.nummerplade); setRedigerer(false); }} className="text-xs text-[#3D7A5C] font-semibold uppercase">Gem</button>
+        <button onClick={() => { setNummerplade(b.nummerplade); setRedigerer(false); }} className="text-xs text-[#52697E] font-semibold uppercase">Fortryd</button>
       </div>
     );
   }
   return (
-    <div className={`bg-white border p-2.5 flex items-center gap-2 ${b.lukket ? "border-[#E2621B] opacity-70" : "border-[#D8D0BE]"}`}>
-      <p className="text-sm text-[#1C232E] flex-1 truncate">{b.navn}</p>
-      {b.lukket && <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 border border-[#E2621B] text-[#E2621B] shrink-0">Lukket</span>}
+    <div className={`bg-white border p-2.5 flex items-center gap-2 flex-wrap ${b.lukket ? "border-[#E2621B] opacity-70" : "border-[#D8D0BE]"}`}>
+      <span className="text-[10px] font-mono text-[#52697E] shrink-0">#{b.id}</span>
+      <p className="text-sm text-[#1C232E] flex-1 truncate min-w-[80px]">{bilLabel(b)}</p>
+      {b.lukket && <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 border border-[#E2621B] text-[#E2621B] shrink-0">Lukket{b.lukketAarsag ? ` · ${b.lukketAarsag}` : ""}</span>}
       {brugtAf && <span className="text-[10px] text-[#52697E] shrink-0">kører af {brugtAf}</span>}
-      <button onClick={() => onToggleLukket(b.id)} className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-1 border shrink-0 ${b.lukket ? "border-[#3D7A5C] text-[#3D7A5C] hover:bg-[#3D7A5C] hover:text-white" : "border-[#E2621B] text-[#E2621B] hover:bg-[#E2621B] hover:text-white"} transition-colors`}>
-        {b.lukket ? "Åbn igen" : "Luk for booking"}
-      </button>
-      <button onClick={() => setRedigerer(true)} className="p-1 text-[#52697E] hover:text-[#E2621B] shrink-0" title="Omdøb"><Pencil size={13} /></button>
+      {visLukAarsag ? (
+        <div className="flex items-center gap-1 shrink-0">
+          <input autoFocus value={aarsag} onChange={(e) => setAarsag(e.target.value)} placeholder="Årsag (fx værksted)" className="w-32 border border-[#D8D0BE] bg-[#F3EFE6] px-1.5 py-1 text-[10px] text-[#1C232E]" />
+          <button onClick={() => { onToggleLukket(b.id, aarsag.trim() || "Værksted"); setVisLukAarsag(false); }} className="text-[10px] font-semibold uppercase text-white bg-[#E2621B] px-2 py-1">Luk</button>
+          <button onClick={() => setVisLukAarsag(false)} className="text-[10px] text-[#52697E]">Fortryd</button>
+        </div>
+      ) : (
+        <button onClick={() => (b.lukket ? onToggleLukket(b.id) : setVisLukAarsag(true))} className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-1 border shrink-0 ${b.lukket ? "border-[#3D7A5C] text-[#3D7A5C] hover:bg-[#3D7A5C] hover:text-white" : "border-[#E2621B] text-[#E2621B] hover:bg-[#E2621B] hover:text-white"} transition-colors`}>
+          {b.lukket ? "Åbn igen" : "Blokér (fx værksted)"}
+        </button>
+      )}
+      <button onClick={() => setRedigerer(true)} className="p-1 text-[#52697E] hover:text-[#E2621B] shrink-0" title="Ret nummerplade"><Pencil size={13} /></button>
       <button onClick={onDelete} className="p-1 text-[#52697E] hover:text-[#B3261E] shrink-0" title="Slet"><Trash2 size={13} /></button>
     </div>
   );
 }
 
-function NyBrugerForm({ montorer, onAdd }) {
+function NyBrugerForm({ onAdd }) {
   const [navn, setNavn] = useState("");
-  const [brugernavn, setBrugernavn] = useState("");
+  const [email, setEmail] = useState("");
   const [adgangskode, setAdgangskode] = useState("");
   const [rolle, setRolle] = useState("saelger");
-  const [montorId, setMontorId] = useState("");
+  const [fejl, setFejl] = useState("");
+  const [travl, setTravl] = useState(false);
 
-  const opret = () => {
-    if (!navn.trim() || !brugernavn.trim() || !adgangskode.trim()) return;
-    if (rolle === "montor" && !montorId) return;
-    onAdd({ navn: navn.trim(), brugernavn: brugernavn.trim(), adgangskode, rolle, montorId: rolle === "montor" ? montorId : null });
-    setNavn(""); setBrugernavn(""); setAdgangskode(""); setRolle("saelger"); setMontorId("");
+  const opret = async () => {
+    setFejl("");
+    if (!navn.trim() || !email.trim() || !adgangskode.trim()) { setFejl("Udfyld navn, e-mail og adgangskode."); return; }
+    setTravl(true);
+    const resultat = await onAdd({ navn: navn.trim(), email: email.trim(), adgangskode, rolle });
+    setTravl(false);
+    if (!resultat.ok) { setFejl(resultat.fejl || "Kunne ikke oprette brugeren."); return; }
+    setNavn(""); setEmail(""); setAdgangskode(""); setRolle("saelger");
   };
 
   return (
@@ -85,22 +139,18 @@ function NyBrugerForm({ montorer, onAdd }) {
       <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Opret ny bruger</h3>
       <div className="grid gap-3 sm:grid-cols-2">
         <input value={navn} onChange={(e) => setNavn(e.target.value)} placeholder="Navn" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-        <input value={brugernavn} onChange={(e) => setBrugernavn(e.target.value)} placeholder="Brugernavn" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-        <input value={adgangskode} onChange={(e) => setAdgangskode(e.target.value)} placeholder="Adgangskode" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+        <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="E-mail" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+        <input value={adgangskode} onChange={(e) => setAdgangskode(e.target.value)} type="password" placeholder="Adgangskode" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
         <select value={rolle} onChange={(e) => setRolle(e.target.value)} className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]">
-          <option value="saelger">Sælger (Salg, Kørsel, Montør, Lager)</option>
+          <option value="saelger">Sælger (Salg, Planlægning, Kørsel, Montør, Lager)</option>
           <option value="montor">Montør (kun sin egen rute)</option>
-          <option value="admin">Administrator (alt)</option>
+          <option value="admin">Administrator (alt, inkl. Opsætning)</option>
         </select>
-        {rolle === "montor" && (
-          <select value={montorId} onChange={(e) => setMontorId(e.target.value)} className="sm:col-span-2 border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]">
-            <option value="">Vælg hvilken montør/bil-profil brugeren logger ind som</option>
-            {montorer.map((m) => <option key={m.id} value={m.id}>{m.navn} — {m.bil}</option>)}
-          </select>
-        )}
       </div>
-      <button onClick={opret} className="mt-3 px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors flex items-center gap-1.5">
-        <UserPlus size={15} /> Opret bruger
+      {rolle === "montor" && <p className="text-[11px] text-[#52697E] mt-2">Bil tilknyttes bagefter under fanen "Montører".</p>}
+      {fejl && <p className="text-xs text-[#B3261E] mt-2">{fejl}</p>}
+      <button onClick={opret} disabled={travl} className="mt-3 px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors flex items-center gap-1.5 disabled:opacity-60">
+        <UserPlus size={15} /> {travl ? "Opretter..." : "Opret bruger"}
       </button>
     </div>
   );
