@@ -4,78 +4,86 @@ import { supabase } from "./lib/supabaseClient";
 import {
   hentSager, gemSager as gemSagerSky,
   hentBiler, gemBiler as gemBilerSky,
-  hentMontorer, gemMontorer as gemMontorerSky,
   hentVaretyper, gemVaretyper as gemVaretyperSky,
   hentEgenProfil, hentButiksBrugere, opdaterProfil, opretBrugerAdmin,
-  hentButik, hentAlleButikker, opretButikSystemadmin,
+  hentFerier, tilfoejFerie as tilfoejFerieSky, sletFerie as sletFerieSky,
 } from "./lib/skyLager";
 import {
   uid, todayISO,
   DEFAULT_VARETYPER, DEFAULT_BILER,
   SIDER_FOR_ROLLE,
 } from "./data/appData";
-
+//commit test igen
 import { TopNav } from "./components/TopNav";
 import { LoginSide } from "./components/LoginSide";
 import { SagView } from "./components/SagView";
 
 import { SalgSide } from "./pages/SalgSide";
+import { PlanlaegningSide } from "./pages/PlanlaegningSide";
 import { KoerselSide } from "./pages/KoerselSide";
 import { MontorVaelger, MontorRuteView } from "./pages/MontorSide";
 import { LagerSide } from "./pages/LagerSide";
 import { AdminSide } from "./pages/AdminSide";
-import { SystemAdminSide } from "./pages/SystemAdminSide";
 
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [session, setSession] = useState(null); // Supabase Auth-session (null = ikke logget ind)
-  const [profil, setProfil] = useState(null); // { id, navn, rolle, montorId, butikId, erSystemadmin }
-  const [butik, setButik] = useState(null); // { id, navn, adresse, lat, lon } - egen butiks koordinater
+  const [profil, setProfil] = useState(null); // { id, navn, rolle, bilId, butikId }
   const [sager, setSager] = useState([]);
-  const [montorer, setMontorer] = useState([]);
   const [biler, setBiler] = useState([]);
   const [brugere, setBrugere] = useState([]);
+  const [ferier, setFerier] = useState([]);
   const [varetyper, setVaretyper] = useState([]);
   const [side, setSide] = useState("salg");
   const [valgtDato, setValgtDato] = useState(todayISO());
   const [valgtMontorId, setValgtMontorId] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
 
+  // "Montører" er ikke længere en selvstændig ting i databasen — det er
+  // brugere/profiler med rolle "montor". Vi udleder listen her, i samme form
+  // som resten af appen altid har forventet ({ id, navn, bil, bilId }), så
+  // KoerselSide/MontorSide/SagFormFields osv. ikke skal ændres for det.
+  const montorer = brugere
+    .filter((b) => b.rolle === "montor")
+    .map((b) => {
+      const tilknyttetBil = biler.find((bil) => bil.id === b.bilId);
+      return { id: b.id, navn: b.navn, bilId: b.bilId || null, bil: tilknyttetBil ? tilknyttetBil.nummerplade : "" };
+    });
+
   // Henter alt for den butik den indloggede bruger hører til.
   const hent = async (butikId) => {
-    if (!butikId) { setSager([]); setMontorer([]); setBiler([]); setVaretyper([]); setBrugere([]); return; }
-    const [s, m, bl, v, b] = await Promise.all([
+    if (!butikId) { setSager([]); setBiler([]); setVaretyper([]); setBrugere([]); setFerier([]); return; }
+    const [s, bl, v, b, f] = await Promise.all([
       hentSager(butikId),
-      hentMontorer(butikId),
       hentBiler(butikId),
       hentVaretyper(butikId),
       hentButiksBrugere(butikId),
+      hentFerier(butikId),
     ]);
     // Første gang butikken bruges, er biler/varetyper tomme - sæt fornuftige standarder.
     const bilerEndelig = bl.length > 0 ? bl : DEFAULT_BILER;
     const varetyperEndelig = v.length > 0 ? v : DEFAULT_VARETYPER;
     if (bl.length === 0) gemBilerSky(butikId, bilerEndelig);
     if (v.length === 0) gemVaretyperSky(butikId, varetyperEndelig);
-    setSager(s); setMontorer(m); setBiler(bilerEndelig); setVaretyper(varetyperEndelig); setBrugere(b);
+    setSager(s); setBiler(bilerEndelig); setVaretyper(varetyperEndelig); setBrugere(b); setFerier(f);
   };
 
   const genindlaesProfil = async (userId) => {
     const p = await hentEgenProfil(userId);
     if (!p) { setProfil(null); return null; }
-    const normaliseret = { id: p.id, navn: p.navn, rolle: p.rolle, montorId: p.montor_id, butikId: p.butik_id, erSystemadmin: !!p.er_systemadmin };
+    const normaliseret = { id: p.id, navn: p.navn, rolle: p.rolle, bilId: p.bil_id, butikId: p.butik_id };
     setProfil(normaliseret);
     if (normaliseret.butikId) {
       setSide((SIDER_FOR_ROLLE[normaliseret.rolle] || ["salg"])[0]);
-      if (normaliseret.rolle === "montor") setValgtMontorId(normaliseret.montorId);
+      if (normaliseret.rolle === "montor") setValgtMontorId(normaliseret.id);
       await hent(normaliseret.butikId);
-      const butikData = await hentButik(normaliseret.butikId);
-      setButik(butikData);
-    } else if (normaliseret.erSystemadmin) {
-      setSide("systemadmin");
     }
     return normaliseret;
   };
+
+  const tilfoejFerie = async (felter) => { if (profil?.butikId) { await tilfoejFerieSky(profil.butikId, felter); await hent(profil.butikId); } };
+  const sletFerie = async (id) => { if (profil?.butikId) { await sletFerieSky(id); await hent(profil.butikId); } };
 
   useEffect(() => {
     // Første indlæsning: tjek om der allerede er en session.
@@ -86,13 +94,20 @@ export default function App() {
     });
 
     // Lyt løbende på login/logout (fra denne eller andre faner).
-    const { data: lytter } = supabase.auth.onAuthStateChange(async (_event, nySession) => {
+    //
+    // VIGTIGT: denne callback må ikke selv "await"'e andre Supabase-kald
+    // (som fx genindlaesProfil -> supabase.from(...)). Supabase-auth-klienten
+    // holder en intern lås mens callbacken kører, så et synkront await her
+    // på et andet Supabase-kald fryser hele klienten (kendt supabase-js-
+    // fælde). setTimeout(..., 0) skubber arbejdet til næste "tick", uden for
+    // låsen, så login rent faktisk kan fuldføre.
+    const { data: lytter } = supabase.auth.onAuthStateChange((_event, nySession) => {
       setSession(nySession);
       if (nySession) {
-        await genindlaesProfil(nySession.user.id);
+        setTimeout(() => { genindlaesProfil(nySession.user.id); }, 0);
       } else {
         setProfil(null);
-        setSager([]); setMontorer([]); setBiler([]); setVaretyper([]); setBrugere([]);
+        setSager([]); setBiler([]); setVaretyper([]); setBrugere([]); setFerier([]);
         setSelectedId(null);
       }
     });
@@ -104,22 +119,21 @@ export default function App() {
   const opdater = async () => { setRefreshing(true); if (profil?.butikId) await hent(profil.butikId); setRefreshing(false); };
 
   const gemSager = (next) => { setSager(next); if (profil?.butikId) gemSagerSky(profil.butikId, next); };
-  const gemMontorer = (next) => { setMontorer(next); if (profil?.butikId) gemMontorerSky(profil.butikId, next); };
   const gemVaretyper = (next) => { setVaretyper(next); if (profil?.butikId) gemVaretyperSky(profil.butikId, next); };
   const gemBiler = (next) => { setBiler(next); if (profil?.butikId) gemBilerSky(profil.butikId, next); };
 
-  const addBil = (navn) => gemBiler([...biler, { id: uid(), navn, lukket: false }]);
-  const updateBil = (id, navn) => {
-    const gammel = biler.find((b) => b.id === id);
-    gemBiler(biler.map((b) => (b.id === id ? { ...b, navn } : b)));
-    if (gammel && gammel.navn !== navn) gemMontorer(montorer.map((m) => (m.bil === gammel.navn ? { ...m, bil: navn } : m)));
-  };
-  const toggleBilLukket = (id) => gemBiler(biler.map((b) => (b.id === id ? { ...b, lukket: !b.lukket } : b)));
+  const addBil = (nummerplade) => gemBiler([...biler, { id: uid(), nummerplade, lukket: false, lukketAarsag: "" }]);
+  const updateBil = (id, nummerplade) => gemBiler(biler.map((b) => (b.id === id ? { ...b, nummerplade } : b)));
+  const toggleBilLukket = (id, aarsag) => gemBiler(biler.map((b) => (b.id === id ? { ...b, lukket: !b.lukket, lukketAarsag: !b.lukket ? (aarsag || "Værksted") : "" } : b)));
   const deleteBil = (id) => {
-    const b = biler.find((x) => x.id === id);
-    if (b && montorer.some((m) => m.bil === b.navn) && !window.confirm("Denne bil er tildelt en montør. Slet alligevel?")) return;
+    if (montorer.some((m) => m.bilId === id) && !window.confirm("Denne bil er tildelt en montør. Slet alligevel?")) return;
     gemBiler(biler.filter((x) => x.id !== id));
   };
+
+  // Skifter hvilken bil en montør (bruger med rolle "montor") er tilknyttet.
+  // Ferier flytter automatisk med, fordi blokeringen beregnes ud fra denne
+  // tilknytning i stedet for at blive gemt fast på selve bilen.
+  const updateMontorBil = (montorId, bilId) => updateBruger(montorId, { bilId: bilId || null });
 
   const logUd = async () => { await supabase.auth.signOut(); };
 
@@ -134,20 +148,8 @@ export default function App() {
 
   const importSager = (nySager) => gemSager([...sager, ...nySager]);
 
-  const addMontor = ({ navn, bil }) => gemMontorer([...montorer, { id: uid(), navn, bil }]);
-  const updateMontor = (id, felter) => gemMontorer(montorer.map((m) => (m.id === id ? { ...m, ...felter } : m)));
-  const deleteMontor = (id, antalSager) => {
-    if (antalSager > 0 && !window.confirm(`${antalSager} sag(er) er tildelt denne montør. De bliver sat til "ikke tildelt". Slet alligevel?`)) return;
-    gemMontorer(montorer.filter((m) => m.id !== id));
-    gemSager(sager.map((s) => (s.montorId === id ? { ...s, montorId: null } : s)));
-    if (valgtMontorId === id) setValgtMontorId(null);
-  };
-
-  // Brugere oprettes ikke længere direkte (kræver egen signup via login-siden,
-  // se README) - en admin kan kun redigere rolle/montør-kobling, eller fjerne
-  // en brugers adgang til butikken igen.
-  // Brugere oprettes nu rigtigt (Supabase Auth) via en edge function, som
-  // selv tjekker at kalderen er admin - se supabase/functions/admin-opret-bruger.
+  // Brugere oprettes rigtigt (Supabase Auth) via en edge function, som selv
+  // tjekker at kalderen er admin - se supabase/functions/admin-opret-bruger.
   const addBruger = async (felter) => {
     const resultat = await opretBrugerAdmin(felter);
     if (resultat.ok && profil?.butikId) await hent(profil.butikId);
@@ -156,7 +158,7 @@ export default function App() {
   const updateBruger = async (id, felter) => {
     const dbFelter = {};
     if ("rolle" in felter) dbFelter.rolle = felter.rolle;
-    if ("montorId" in felter) dbFelter.montor_id = felter.montorId;
+    if ("bilId" in felter) dbFelter.bil_id = felter.bilId;
     if ("navn" in felter) dbFelter.navn = felter.navn;
     const ok = await opdaterProfil(id, dbFelter);
     if (ok && profil?.butikId) await hent(profil.butikId);
@@ -217,19 +219,6 @@ export default function App() {
   }
 
   if (!profil.butikId) {
-    if (profil.erSystemadmin) {
-      return (
-        <div className="min-h-screen w-full" style={{ background: "#F3EFE6" }}>
-          <div className="max-w-2xl mx-auto px-4 py-8">
-            <div className="flex justify-between items-center mb-4">
-              <p className="font-mono text-[11px] tracking-widest uppercase text-[#E2621B]">Systemadministration</p>
-              <button onClick={logUd} className="text-xs text-[#52697E] hover:text-[#E2621B] underline">Log ud</button>
-            </div>
-            <SystemAdminSide />
-          </div>
-        </div>
-      );
-    }
     return (
       <div className="min-h-screen w-full flex items-center justify-center px-4" style={{ background: "#F3EFE6" }}>
         <div className="max-w-sm border border-[#D8D0BE] bg-white p-6 text-center">
@@ -268,9 +257,11 @@ export default function App() {
             onRemoveYdelse={(linjeId, yId) => removeYdelse(selected.id, linjeId, yId)}
           />
         ) : side === "salg" ? (
-          <SalgSide sager={sager} montorer={montorer} varetyper={varetyper} valgtDato={valgtDato} onSkiftDato={setValgtDato} onOpen={setSelectedId} onAdd={addSag} onImport={importSager} butikFokus={butik?.lat && butik?.lon ? { lat: butik.lat, lon: butik.lon } : null} />
+          <SalgSide sager={sager} montorer={montorer} varetyper={varetyper} valgtDato={valgtDato} onSkiftDato={setValgtDato} onOpen={setSelectedId} onAdd={addSag} onImport={importSager} />
+        ) : side === "planlaegning" ? (
+          <PlanlaegningSide sager={sager} montorer={montorer} onOpen={setSelectedId} onCycleStatus={cycleStatus} />
         ) : side === "koersel" ? (
-          <KoerselSide sager={sager} montorer={montorer} biler={biler} valgtDato={valgtDato} onSkiftDato={setValgtDato} onOpen={setSelectedId} onCycleStatus={cycleStatus} onAssign={assignMontor} onUpdateTidsrum={updateTidsrum} onUpdateMontor={updateMontor} onRefresh={opdater} refreshing={refreshing} />
+          <KoerselSide sager={sager} montorer={montorer} biler={biler} ferier={ferier} valgtDato={valgtDato} onSkiftDato={setValgtDato} onOpen={setSelectedId} onCycleStatus={cycleStatus} onAssign={assignMontor} onUpdateTidsrum={updateTidsrum} onUpdateMontor={(montorId, felter) => updateMontorBil(montorId, felter.bilId)} onRefresh={opdater} refreshing={refreshing} />
         ) : side === "montor" ? (
           profil.rolle === "montor" ? (
             montor ? <MontorRuteView sager={sager} montor={montor} valgtDato={valgtDato} onSkiftDato={setValgtDato} onOpen={setSelectedId} onCycleStatus={cycleStatus} onRefresh={opdater} refreshing={refreshing} /> : <p className="text-sm text-[#52697E]">Din bruger er ikke koblet til en montør/bil-profil endnu — kontakt en administrator.</p>
@@ -281,10 +272,8 @@ export default function App() {
           )
         ) : side === "lager" ? (
           <LagerSide sager={sager} montorer={montorer} valgtDato={valgtDato} onSkiftDato={setValgtDato} onTogglePluk={togglePluk} onOpen={setSelectedId} />
-        ) : side === "systemadmin" ? (
-          <SystemAdminSide />
         ) : (
-          <AdminSide montorer={montorer} biler={biler} sager={sager} brugere={brugere} varetyper={varetyper} aktuelBrugerId={profil.id} onAddMontor={addMontor} onUpdateMontor={updateMontor} onDeleteMontor={deleteMontor} onAddBil={addBil} onUpdateBil={updateBil} onDeleteBil={deleteBil} onToggleBilLukket={toggleBilLukket} onAddBruger={addBruger} onUpdateBruger={updateBruger} onDeleteBruger={deleteBruger} onAddVaretype={addVaretype} onUpdateVaretype={updateVaretype} onDeleteVaretype={deleteVaretype} />
+          <AdminSide montorer={montorer} biler={biler} sager={sager} brugere={brugere} varetyper={varetyper} ferier={ferier} aktuelBrugerId={profil.id} onUpdateMontorBil={updateMontorBil} onAddBil={addBil} onUpdateBil={updateBil} onDeleteBil={deleteBil} onToggleBilLukket={toggleBilLukket} onAddBruger={addBruger} onUpdateBruger={updateBruger} onDeleteBruger={deleteBruger} onAddVaretype={addVaretype} onUpdateVaretype={updateVaretype} onDeleteVaretype={deleteVaretype} onTilfoejFerie={tilfoejFerie} onSletFerie={sletFerie} />
         )}
       </div>
     </div>
