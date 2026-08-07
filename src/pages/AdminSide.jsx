@@ -1,11 +1,10 @@
 import React, { useState } from "react";
 import { Trash2, Plus } from "lucide-react";
 import { MontorRaekke, BilRaekke, NyBrugerForm, VaretypeAdmin, ROLLE_LABEL } from "../components/AdminParts";
+import { bilLabel } from "../data/appData";
 
-function AdminSide({ montorer, biler, sager, brugere, varetyper, aktuelBrugerId, onAddMontor, onUpdateMontor, onDeleteMontor, onAddBil, onUpdateBil, onDeleteBil, onToggleBilLukket, onAddBruger, onUpdateBruger, onDeleteBruger, onAddVaretype, onUpdateVaretype, onDeleteVaretype }) {
-  const [navn, setNavn] = useState("");
-  const [bil, setBil] = useState("");
-  const [nytBilNavn, setNytBilNavn] = useState("");
+function AdminSide({ montorer, biler, sager, brugere, varetyper, ferier, aktuelBrugerId, onUpdateMontorBil, onAddBil, onUpdateBil, onDeleteBil, onToggleBilLukket, onAddBruger, onUpdateBruger, onDeleteBruger, onAddVaretype, onUpdateVaretype, onDeleteVaretype, onTilfoejFerie, onSletFerie }) {
+  const [nyNummerplade, setNyNummerplade] = useState("");
   const [fane, setFane] = useState("montorer");
 
   return (
@@ -21,30 +20,25 @@ function AdminSide({ montorer, biler, sager, brugere, varetyper, aktuelBrugerId,
 
       {fane === "montorer" && (
         <div>
-          <div className="border border-[#D8D0BE] bg-white p-5 mb-6">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Opret ny montør</h3>
-            <div className="flex gap-2 flex-wrap">
-              <input value={navn} onChange={(e) => setNavn(e.target.value)} placeholder="Montørens navn" className="flex-1 min-w-[160px] border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-              <select value={bil} onChange={(e) => setBil(e.target.value)} className="flex-1 min-w-[160px] border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]">
-                <option value="">Ingen bil endnu</option>
-                {biler.map((b) => (
-                  <option key={b.id} value={b.navn} disabled={b.lukket}>{b.navn}{b.lukket ? " (lukket for booking)" : ""}</option>
-                ))}
-              </select>
-              <button onClick={() => { if (!navn.trim()) return; onAddMontor({ navn: navn.trim(), bil: bil.trim() }); setNavn(""); setBil(""); }} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors flex items-center gap-1.5">
-                <Plus size={15} /> Opret
-              </button>
-            </div>
-          </div>
+          <p className="text-xs text-[#52697E] mb-4">
+            En montør er ikke noget man opretter her — det er en bruger med rollen "Montør" (se fanen "Brugere"). Her styrer du hvilken bil hver montør kører i lige nu, og registrerer ferieperioder. Den bil en montør er tilknyttet, vises automatisk som blokeret i kørselsoverblikket i de perioder montøren holder ferie.
+          </p>
           <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Alle montører ({montorer.length})</h3>
           {montorer.length === 0 ? (
-            <p className="text-sm text-[#52697E] italic">Ingen montører oprettet endnu.</p>
+            <p className="text-sm text-[#52697E] italic">Ingen brugere med rollen "Montør" endnu — opret en under fanen "Brugere".</p>
           ) : (
             <div className="space-y-2">
-              {montorer.map((m) => {
-                const antalSager = sager.filter((s) => s.montorId === m.id).length;
-                return <MontorRaekke key={m.id} m={m} biler={biler} onUpdate={onUpdateMontor} onDelete={() => onDeleteMontor(m.id, antalSager)} />;
-              })}
+              {montorer.map((m) => (
+                <MontorRaekke
+                  key={m.id}
+                  m={m}
+                  biler={biler}
+                  ferier={ferier}
+                  onUpdateBil={onUpdateMontorBil}
+                  onTilfoejFerie={onTilfoejFerie}
+                  onSletFerie={onSletFerie}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -55,21 +49,21 @@ function AdminSide({ montorer, biler, sager, brugere, varetyper, aktuelBrugerId,
           <div className="border border-[#D8D0BE] bg-white p-5 mb-6">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Opret ny bil</h3>
             <div className="flex gap-2 flex-wrap">
-              <input value={nytBilNavn} onChange={(e) => setNytBilNavn(e.target.value)} placeholder="Fx 'Bil 4 · GH 33 444'" className="flex-1 min-w-[200px] border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-              <button onClick={() => { if (!nytBilNavn.trim()) return; onAddBil(nytBilNavn.trim()); setNytBilNavn(""); }} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors flex items-center gap-1.5">
+              <input value={nyNummerplade} onChange={(e) => setNyNummerplade(e.target.value)} placeholder="Nummerplade, fx 'AB 12 345'" className="flex-1 min-w-[200px] border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+              <button onClick={() => { if (!nyNummerplade.trim()) return; onAddBil(nyNummerplade.trim()); setNyNummerplade(""); }} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors flex items-center gap-1.5">
                 <Plus size={15} /> Opret
               </button>
             </div>
           </div>
-          <p className="text-xs text-[#52697E] mb-3">"Luk for booking" bruges fx ved ferieafvikling eller andre perioder hvor bilen ikke skal bruges — bilen kan stadig ses, men kan ikke vælges som ny tilknytning for en montør, før den åbnes igen.</p>
+          <p className="text-xs text-[#52697E] mb-3">"Blokér" bruges fx når en bil er på værksted. Bilen kan stadig ses, men kan ikke vælges som ny tilknytning for en montør, før den åbnes igen. Bliver bilens montør sendt på ferie, blokeres bilen automatisk i den periode — det kræver ikke noget manuelt her.</p>
           <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Alle biler ({biler.length})</h3>
           {biler.length === 0 ? (
             <p className="text-sm text-[#52697E] italic">Ingen biler oprettet endnu.</p>
           ) : (
             <div className="space-y-2">
               {biler.map((b) => {
-                const brugtAf = montorer.find((m) => m.bil === b.navn)?.navn;
-                return <BilRaekke key={b.id} b={b} brugtAf={brugtAf} onUpdate={(navn) => onUpdateBil(b.id, navn)} onDelete={() => onDeleteBil(b.id)} onToggleLukket={onToggleBilLukket} />;
+                const brugtAf = montorer.find((m) => m.bilId === b.id)?.navn;
+                return <BilRaekke key={b.id} b={b} brugtAf={brugtAf} onUpdate={(nummerplade) => onUpdateBil(b.id, nummerplade)} onDelete={() => onDeleteBil(b.id)} onToggleLukket={onToggleBilLukket} />;
               })}
             </div>
           )}
@@ -78,16 +72,16 @@ function AdminSide({ montorer, biler, sager, brugere, varetyper, aktuelBrugerId,
 
       {fane === "brugere" && (
         <div>
-          <NyBrugerForm montorer={montorer} onAdd={onAddBruger} />
+          <NyBrugerForm onAdd={onAddBruger} />
           <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Alle brugere ({brugere.length})</h3>
           <div className="space-y-2">
             {brugere.map((b) => {
-              const montor = montorer.find((m) => m.id === b.montorId);
+              const tilknyttetBil = biler.find((bil) => bil.id === b.bilId);
               return (
                 <div key={b.id} className="bg-white border border-[#D8D0BE] p-3 flex items-center gap-3 flex-wrap">
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-sm text-[#1C232E] truncate">{b.navn}</p>
-                    <p className="text-xs text-[#52697E] truncate">{ROLLE_LABEL[b.rolle] || b.rolle}{montor ? ` · ${montor.navn} (${montor.bil})` : ""}</p>
+                    <p className="text-xs text-[#52697E] truncate">{ROLLE_LABEL[b.rolle] || b.rolle}{b.rolle === "montor" ? ` · ${tilknyttetBil ? bilLabel(tilknyttetBil) : "ingen bil endnu"}` : ""}</p>
                   </div>
                   <select
                     value={b.rolle}
@@ -96,21 +90,12 @@ function AdminSide({ montorer, biler, sager, brugere, varetyper, aktuelBrugerId,
                   >
                     {Object.entries(ROLLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                   </select>
-                  {b.rolle === "montor" && (
-                    <select
-                      value={b.montorId || ""}
-                      onChange={(e) => onUpdateBruger(b.id, { montorId: e.target.value || null })}
-                      className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-xs text-[#1C232E]"
-                    >
-                      <option value="">Vælg montør...</option>
-                      {montorer.map((m) => <option key={m.id} value={m.id}>{m.navn}</option>)}
-                    </select>
-                  )}
                   {b.id !== aktuelBrugerId && <button onClick={() => onDeleteBruger(b.id)} className="p-1.5 text-[#52697E] hover:text-[#B3261E]" title="Fjern adgang"><Trash2 size={15} /></button>}
                 </div>
               );
             })}
           </div>
+          <p className="text-[11px] text-[#52697E] mt-3">Sætter du en bruger til rollen "Montør", skal du huske at give vedkommende en bil under fanen "Montører".</p>
         </div>
       )}
 
