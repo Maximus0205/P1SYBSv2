@@ -1,4 +1,4 @@
-import { RotateCw, Trash2, Cable, Wifi, Wrench, Tag, ShoppingCart, Route, Truck, Package, Settings2 } from "lucide-react";
+import { RotateCw, Trash2, Cable, Wifi, Wrench, Tag, ShoppingCart, Route, Truck, Package, Settings2, Building2 } from "lucide-react";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -286,8 +286,9 @@ const SIDER = [
   { key: "montor", label: "Montør", icon: Truck },
   { key: "lager", label: "Lager", icon: Package },
   { key: "admin", label: "Admin", icon: Settings2 },
+  { key: "systemadmin", label: "System", icon: Building2 },
 ];
-const SIDER_FOR_ROLLE = { admin: ["salg", "koersel", "montor", "lager", "admin"], saelger: ["salg", "koersel", "montor", "lager"], montor: ["montor"] };
+const SIDER_FOR_ROLLE = { admin: ["salg", "koersel", "montor", "lager", "admin"], saelger: ["salg", "koersel", "montor", "lager"], montor: ["montor"], lager: ["lager"] };
 
 export {
   uid, now, todayISO, flytDato, formatDatoLang, erIDag, formatVarighed, formatKlokken, totalMinutter, ydelseIkon,
