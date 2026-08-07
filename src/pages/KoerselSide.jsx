@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { RefreshCw, Pencil, AlertCircle, KeyRound, Clock } from "lucide-react";
-import { dannTitel, erIDag, formatDatoLang, formatVarighed, montorFarve, omraadeNoegle, sagForventetMinutter, statusMeta, tidsrumTekst, ugeDage } from "../data/appData";
+import { bilBlokeretAfFerie, bilLabel, dannTitel, erIDag, formatDatoLang, formatVarighed, montorFarve, omraadeNoegle, sagForventetMinutter, statusMeta, tidsrumTekst, ugeDage } from "../data/appData";
 import { DatoVaelger } from "../components/common";
 import { SagKortKompakt } from "../components/SagKortKompakt";
 
@@ -10,16 +10,17 @@ const tilMin = (hhmm) => {
   return h * 60 + m;
 };
 
-function KoerselRaekkeHeader({ r, belastningMin, biler, onUpdateMontor }) {
+function KoerselRaekkeHeader({ r, belastningMin, biler, montorer, ferier, valgtDato, onUpdateMontor }) {
   const [redigerer, setRedigerer] = useState(false);
-  const [bil, setBil] = useState(r.bil);
-  const tilknyttetBil = biler.find((b) => b.navn === r.bil);
+  const [bilId, setBilId] = useState(r.bilId || "");
+  const tilknyttetBil = biler.find((b) => b.id === r.bilId);
+  const ferieBlokering = bilBlokeretAfFerie(r.bilId, valgtDato, montorer, ferier);
 
   if (!r.id) {
     return <div className="min-w-0"><p className="text-xs font-semibold text-[#1C232E] truncate">{r.navn}</p></div>;
   }
 
-  const gem = (nyBil) => { onUpdateMontor(r.id, { bil: nyBil }); setRedigerer(false); };
+  const gem = (nytBilId) => { onUpdateMontor(r.id, { bilId: nytBilId || null }); setRedigerer(false); };
 
   return (
     <div className="min-w-0 flex-1">
@@ -27,26 +28,27 @@ function KoerselRaekkeHeader({ r, belastningMin, biler, onUpdateMontor }) {
       {redigerer ? (
         <select
           autoFocus
-          value={bil}
-          onChange={(e) => { setBil(e.target.value); gem(e.target.value); }}
+          value={bilId}
+          onChange={(e) => { setBilId(e.target.value); gem(e.target.value); }}
           onBlur={() => setRedigerer(false)}
           className="w-full min-w-0 border border-[#D8D0BE] bg-white px-1 py-0.5 text-[10px] text-[#1C232E] focus:outline-none focus:border-[#E2621B] mt-0.5"
         >
-          {r.bil && !biler.some((b) => b.navn === r.bil) && <option value={r.bil}>{r.bil} (ikke i listen)</option>}
+          <option value="">Ingen bil</option>
           {biler.map((b) => (
-            <option key={b.id} value={b.navn} disabled={b.lukket && b.navn !== r.bil}>
-              {b.navn}{b.lukket ? " (lukket)" : ""}
+            <option key={b.id} value={b.id} disabled={b.lukket && b.id !== r.bilId}>
+              {bilLabel(b)}{b.lukket ? " (lukket)" : ""}
             </option>
           ))}
         </select>
       ) : (
-        <button onClick={() => { setBil(r.bil); setRedigerer(true); }} className="flex items-center gap-1 text-[10px] text-[#52697E] hover:text-[#E2621B] border-b border-dashed border-[#B8AF9A] hover:border-[#E2621B] w-fit" title="Klik for at skifte bil">
-          <span className="truncate">{r.bil || "Ingen bil"}</span>
+        <button onClick={() => { setBilId(r.bilId || ""); setRedigerer(true); }} className="flex items-center gap-1 text-[10px] text-[#52697E] hover:text-[#E2621B] border-b border-dashed border-[#B8AF9A] hover:border-[#E2621B] w-fit" title="Klik for at skifte bil">
+          <span className="truncate">{tilknyttetBil ? bilLabel(tilknyttetBil) : "Ingen bil"}</span>
           <Pencil size={9} className="shrink-0" />
         </button>
       )}
       {belastningMin > 0 && <p className="text-[10px] text-[#E2621B] font-semibold flex items-center gap-1"><Clock size={9} /> {formatVarighed(belastningMin)} planlagt</p>}
-      {tilknyttetBil?.lukket && <p className="text-[10px] text-[#B3261E] font-semibold flex items-center gap-1"><AlertCircle size={9} /> Bil lukket for booking</p>}
+      {tilknyttetBil?.lukket && <p className="text-[10px] text-[#B3261E] font-semibold flex items-center gap-1"><AlertCircle size={9} /> Bil lukket ({tilknyttetBil.lukketAarsag || "værksted"})</p>}
+      {!tilknyttetBil?.lukket && ferieBlokering && <p className="text-[10px] text-[#B3261E] font-semibold flex items-center gap-1"><AlertCircle size={9} /> {ferieBlokering.montor.navn} holder ferie</p>}
     </div>
   );
 }
@@ -174,7 +176,7 @@ Analysér adresserne (brug dit kendskab til danske postnumre/byområder) og find
   );
 }
 
-function KoerselSide({ sager, montorer, biler, valgtDato, onSkiftDato, onOpen, onCycleStatus, onAssign, onUpdateTidsrum, onUpdateMontor, onRefresh, refreshing }) {
+function KoerselSide({ sager, montorer, biler, ferier, valgtDato, onSkiftDato, onOpen, onCycleStatus, onAssign, onUpdateTidsrum, onUpdateMontor, onRefresh, refreshing }) {
   const dagStart = 7 * 60 + 30;
   const dagSlut = 16 * 60 + 30;
   const PX_PER_MIN = 3.6;
@@ -194,7 +196,7 @@ function KoerselSide({ sager, montorer, biler, valgtDato, onSkiftDato, onOpen, o
           <p className="font-mono text-[11px] tracking-widest uppercase text-[#E2621B] mb-1">{formatDatoLang(valgtDato)}</p>
           <h1 className="font-['Barlow_Condensed'] text-4xl uppercase tracking-tight text-[#1C232E]">Kørselsoverblik</h1>
           <div className="flex items-center gap-3 mt-1">
-            <p className="text-sm text-[#52697E]">{montorer.length} biler · faste tidsrum</p>
+            <p className="text-sm text-[#52697E]">{montorer.length} montører · faste tidsrum</p>
             <DatoVaelger dato={valgtDato} onSkift={onSkiftDato} />
           </div>
         </div>
@@ -227,7 +229,7 @@ function KoerselSide({ sager, montorer, biler, valgtDato, onSkiftDato, onOpen, o
                   ) : (
                     <span className="w-2 h-2 rounded-full shrink-0 border border-[#E2621B]" />
                   )}
-                  <KoerselRaekkeHeader r={r} belastningMin={belastningMin} biler={biler} onUpdateMontor={onUpdateMontor} />
+                  <KoerselRaekkeHeader r={r} belastningMin={belastningMin} biler={biler} montorer={montorer} ferier={ferier} valgtDato={valgtDato} onUpdateMontor={onUpdateMontor} />
                 </div>
                 <div className="relative" style={{ width: bredde, height: 72 }}>
                   {timeMarkoerer.map((t) => (
