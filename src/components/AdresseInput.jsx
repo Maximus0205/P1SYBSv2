@@ -11,7 +11,7 @@ const DEBOUNCE_MS = 350;
 //
 // Uden en ORS-nøgle opfører feltet sig som et helt almindeligt tekstfelt —
 // ingen dropdown, ingen valideringsikon, ingen fejl.
-function AdresseInput({ value, onChange, placeholder, onValideringChange }) {
+function AdresseInput({ value, onChange, placeholder, onValideringChange, fokus }) {
   const [forslag, setForslag] = useState([]);
   const [visForslag, setVisForslag] = useState(false);
   const [status, setStatus] = useState("tom"); // tom | tjekker | gyldig | usikker
@@ -35,7 +35,7 @@ function AdresseInput({ value, onChange, placeholder, onValideringChange }) {
     setStatus("tjekker");
 
     const timer = setTimeout(async () => {
-      const [liste, validering] = await Promise.all([soegAdresseForslag(value), validerAdresse(value)]);
+      const [liste, validering] = await Promise.all([soegAdresseForslag(value, fokus), validerAdresse(value, fokus)]);
       if (annulleret) return;
       setForslag(liste);
       const nyStatus = validering.gyldig ? "gyldig" : "usikker";
@@ -98,17 +98,20 @@ function AdresseInput({ value, onChange, placeholder, onValideringChange }) {
       )}
 
       {visForslag && forslag.length > 0 && (
-        <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-[#D8D0BE] shadow-md max-h-52 overflow-auto">
+        <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-[#D8D0BE] shadow-lg max-h-64 overflow-auto">
           {forslag.map((f, i) => (
             <button
               key={i}
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => vaelgForslag(f)}
-              className="w-full text-left px-3 py-2 text-sm text-[#1C232E] hover:bg-[#F3EFE6] flex items-center gap-2 border-b border-[#D8D0BE] last:border-b-0"
+              className="w-full text-left px-3 py-2.5 hover:bg-[#F3EFE6] flex items-start gap-2.5 border-b border-[#D8D0BE] last:border-b-0"
             >
-              <MapPin size={12} className="text-[#52697E] shrink-0" />
-              {f.label}
+              <MapPin size={15} className="text-[#52697E] shrink-0 mt-0.5" />
+              <span className="min-w-0">
+                <span className="block text-sm text-[#1C232E] font-medium truncate">{f.hovedtekst || f.label}</span>
+                {f.undertekst && <span className="block text-xs text-[#52697E] truncate">{f.undertekst}</span>}
+              </span>
             </button>
           ))}
         </div>
