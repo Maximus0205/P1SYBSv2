@@ -7,13 +7,14 @@ import {
   hentMontorer, gemMontorer as gemMontorerSky,
   hentVaretyper, gemVaretyper as gemVaretyperSky,
   hentEgenProfil, hentButiksBrugere, opdaterProfil, opretBrugerAdmin,
+  hentButik, hentAlleButikker, opretButikSystemadmin,
 } from "./lib/skyLager";
 import {
   uid, todayISO,
   DEFAULT_VARETYPER, DEFAULT_BILER,
   SIDER_FOR_ROLLE,
 } from "./data/appData";
-//commit test igen
+
 import { TopNav } from "./components/TopNav";
 import { LoginSide } from "./components/LoginSide";
 import { SagView } from "./components/SagView";
@@ -23,12 +24,14 @@ import { KoerselSide } from "./pages/KoerselSide";
 import { MontorVaelger, MontorRuteView } from "./pages/MontorSide";
 import { LagerSide } from "./pages/LagerSide";
 import { AdminSide } from "./pages/AdminSide";
+import { SystemAdminSide } from "./pages/SystemAdminSide";
 
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [session, setSession] = useState(null); // Supabase Auth-session (null = ikke logget ind)
-  const [profil, setProfil] = useState(null); // { id, navn, rolle, montorId, butikId }
+  const [profil, setProfil] = useState(null); // { id, navn, rolle, montorId, butikId, erSystemadmin }
+  const [butik, setButik] = useState(null); // { id, navn, adresse, lat, lon } - egen butiks koordinater
   const [sager, setSager] = useState([]);
   const [montorer, setMontorer] = useState([]);
   const [biler, setBiler] = useState([]);
@@ -60,12 +63,16 @@ export default function App() {
   const genindlaesProfil = async (userId) => {
     const p = await hentEgenProfil(userId);
     if (!p) { setProfil(null); return null; }
-    const normaliseret = { id: p.id, navn: p.navn, rolle: p.rolle, montorId: p.montor_id, butikId: p.butik_id };
+    const normaliseret = { id: p.id, navn: p.navn, rolle: p.rolle, montorId: p.montor_id, butikId: p.butik_id, erSystemadmin: !!p.er_systemadmin };
     setProfil(normaliseret);
     if (normaliseret.butikId) {
       setSide((SIDER_FOR_ROLLE[normaliseret.rolle] || ["salg"])[0]);
       if (normaliseret.rolle === "montor") setValgtMontorId(normaliseret.montorId);
       await hent(normaliseret.butikId);
+      const butikData = await hentButik(normaliseret.butikId);
+      setButik(butikData);
+    } else if (normaliseret.erSystemadmin) {
+      setSide("systemadmin");
     }
     return normaliseret;
   };
@@ -79,17 +86,10 @@ export default function App() {
     });
 
     // Lyt løbende på login/logout (fra denne eller andre faner).
-    //
-    // VIGTIGT: denne callback må ikke selv "await"'e andre Supabase-kald
-    // (som fx genindlaesProfil -> supabase.from(...)). Supabase-auth-klienten
-    // holder en intern lås mens callbacken kører, så et synkront await her
-    // på et andet Supabase-kald fryser hele klienten (kendt supabase-js-
-    // fælde). setTimeout(..., 0) skubber arbejdet til næste "tick", uden for
-    // låsen, så login rent faktisk kan fuldføre.
-    const { data: lytter } = supabase.auth.onAuthStateChange((_event, nySession) => {
+    const { data: lytter } = supabase.auth.onAuthStateChange(async (_event, nySession) => {
       setSession(nySession);
       if (nySession) {
-        setTimeout(() => { genindlaesProfil(nySession.user.id); }, 0);
+        await genindlaesProfil(nySession.user.id);
       } else {
         setProfil(null);
         setSager([]); setMontorer([]); setBiler([]); setVaretyper([]); setBrugere([]);
@@ -217,6 +217,19 @@ export default function App() {
   }
 
   if (!profil.butikId) {
+    if (profil.erSystemadmin) {
+      return (
+        <div className="min-h-screen w-full" style={{ background: "#F3EFE6" }}>
+          <div className="max-w-2xl mx-auto px-4 py-8">
+            <div className="flex justify-between items-center mb-4">
+              <p className="font-mono text-[11px] tracking-widest uppercase text-[#E2621B]">Systemadministration</p>
+              <button onClick={logUd} className="text-xs text-[#52697E] hover:text-[#E2621B] underline">Log ud</button>
+            </div>
+            <SystemAdminSide />
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen w-full flex items-center justify-center px-4" style={{ background: "#F3EFE6" }}>
         <div className="max-w-sm border border-[#D8D0BE] bg-white p-6 text-center">
@@ -255,7 +268,7 @@ export default function App() {
             onRemoveYdelse={(linjeId, yId) => removeYdelse(selected.id, linjeId, yId)}
           />
         ) : side === "salg" ? (
-          <SalgSide sager={sager} montorer={montorer} varetyper={varetyper} valgtDato={valgtDato} onSkiftDato={setValgtDato} onOpen={setSelectedId} onAdd={addSag} onImport={importSager} />
+          <SalgSide sager={sager} montorer={montorer} varetyper={varetyper} valgtDato={valgtDato} onSkiftDato={setValgtDato} onOpen={setSelectedId} onAdd={addSag} onImport={importSager} butikFokus={butik?.lat && butik?.lon ? { lat: butik.lat, lon: butik.lon } : null} />
         ) : side === "koersel" ? (
           <KoerselSide sager={sager} montorer={montorer} biler={biler} valgtDato={valgtDato} onSkiftDato={setValgtDato} onOpen={setSelectedId} onCycleStatus={cycleStatus} onAssign={assignMontor} onUpdateTidsrum={updateTidsrum} onUpdateMontor={updateMontor} onRefresh={opdater} refreshing={refreshing} />
         ) : side === "montor" ? (
@@ -268,6 +281,8 @@ export default function App() {
           )
         ) : side === "lager" ? (
           <LagerSide sager={sager} montorer={montorer} valgtDato={valgtDato} onSkiftDato={setValgtDato} onTogglePluk={togglePluk} onOpen={setSelectedId} />
+        ) : side === "systemadmin" ? (
+          <SystemAdminSide />
         ) : (
           <AdminSide montorer={montorer} biler={biler} sager={sager} brugere={brugere} varetyper={varetyper} aktuelBrugerId={profil.id} onAddMontor={addMontor} onUpdateMontor={updateMontor} onDeleteMontor={deleteMontor} onAddBil={addBil} onUpdateBil={updateBil} onDeleteBil={deleteBil} onToggleBilLukket={toggleBilLukket} onAddBruger={addBruger} onUpdateBruger={updateBruger} onDeleteBruger={deleteBruger} onAddVaretype={addVaretype} onUpdateVaretype={updateVaretype} onDeleteVaretype={deleteVaretype} />
         )}
