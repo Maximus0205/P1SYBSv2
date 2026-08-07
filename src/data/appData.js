@@ -1,4 +1,4 @@
-import { RotateCw, Trash2, Cable, Wifi, Wrench, Tag, ShoppingCart, Route, Truck, Package, Settings2, Building2 } from "lucide-react";
+import { RotateCw, Trash2, Cable, Wifi, Wrench, Tag, ShoppingCart, Route, Truck, Package, Settings2 } from "lucide-react";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -151,24 +151,40 @@ const montorFarve = (id, montorer) => {
 
 // ---------------- Seed-data ----------------
 
-// Bilflåden — en fast liste over de køretøjer, der findes i virksomheden. Montører vælger
-// (og kan skifte) hvilken bil fra denne liste de kører, i stedet for at skrive frit.
+// Bilflåden — en fast liste over de køretøjer, der findes i virksomheden.
+// En bil har kun to rigtige felter: id og nummerplade. Montører er ikke
+// længere en selvstændig ting — det er logins med rolle "montor", der hver
+// har en bilId (se profiler.bil_id / brugere i skyLager.js).
 const DEFAULT_BILER = [
-  { id: "b1", navn: "Bil 1 · AB 12 345", lukket: false },
-  { id: "b2", navn: "Bil 2 · CD 67 890", lukket: false },
-  { id: "b3", navn: "Bil 3 · EF 22 111", lukket: false },
+  { id: "b1", nummerplade: "AB 12 345", lukket: false, lukketAarsag: "" },
+  { id: "b2", nummerplade: "CD 67 890", lukket: false, lukketAarsag: "" },
+  { id: "b3", nummerplade: "EF 22 111", lukket: false, lukketAarsag: "" },
 ];
 
-const seedMontorer = [
-  { id: "m1", navn: "Lars Pedersen", bil: "Bil 1 · AB 12 345" },
-  { id: "m2", navn: "Mikkel Sørensen", bil: "Bil 2 · CD 67 890" },
-];
+const bilLabel = (bil) => (bil ? bil.nummerplade || "(ingen nummerplade)" : "Ingen bil");
+
+// En montør er en bruger med rolle "montor" — se brugere/profiler. Denne liste
+// findes derfor ikke længere som seed-data; App.jsx udleder "montorer" direkte
+// fra brugere-listen, så resten af appen (der forventer { id, navn, bil }) kan
+// blive ved med at virke uændret.
 
 const seedBrugere = [
-  { id: "u1", navn: "Admin Andersen", brugernavn: "admin", adgangskode: "admin", rolle: "admin", montorId: null },
-  { id: "u2", navn: "Sanne Sælger", brugernavn: "saelger", adgangskode: "saelger", rolle: "saelger", montorId: null },
-  { id: "u3", navn: "Lars Pedersen", brugernavn: "lars", adgangskode: "lars", rolle: "montor", montorId: "m1" },
+  { id: "u1", navn: "Admin Andersen", brugernavn: "admin", adgangskode: "admin", rolle: "admin", bilId: null },
+  { id: "u2", navn: "Sanne Sælger", brugernavn: "saelger", adgangskode: "saelger", rolle: "saelger", bilId: null },
+  { id: "u3", navn: "Lars Pedersen", brugernavn: "lars", adgangskode: "lars", rolle: "montor", bilId: "b1" },
 ];
+
+// Er en given bil blokeret for booking på en given dato, fordi den montør,
+// der LIGE NU er tilknyttet bilen, holder ferie den dag? "montorer" her er
+// den udledte liste { id, navn, bilId }, "ferier" er { montorId, startDato, slutDato }.
+const bilBlokeretAfFerie = (bilId, dato, montorer, ferier) => {
+  const montoerPaaBil = montorer.filter((m) => m.bilId === bilId);
+  if (montoerPaaBil.length === 0) return null;
+  const ferie = (ferier || []).find((f) => montoerPaaBil.some((m) => m.id === f.montorId) && dato >= f.startDato && dato <= f.slutDato);
+  if (!ferie) return null;
+  const montor = montoerPaaBil.find((m) => m.id === ferie.montorId);
+  return { ferie, montor };
+};
 
 const tomKunde = () => ({ navn: "", telefon: "", email: "", adresse: "", leveringsnote: "" });
 const tomNoegle = () => ({ kraeves: false, type: "", detaljer: "", placering: "" });
@@ -181,7 +197,7 @@ const seedSager = [
     noegle: { kraeves: true, type: "Nøgleboks", detaljer: "Kode 4471", placering: "Ved hoveddøren, bag lampen" },
     dato: todayISO(),
     tidsrumId: "formiddag", start: "08:00", slut: "12:00",
-    montorId: "m1", status: "afsluttet",
+    montorId: "u3", status: "afsluttet",
     plukket: true,
     varelinjer: [
       {
@@ -206,7 +222,7 @@ const seedSager = [
     noegle: tomNoegle(),
     dato: todayISO(),
     tidsrumId: "eftermiddag", start: "12:00", slut: "16:00",
-    montorId: "m2", status: "igang",
+    montorId: null, status: "igang",
     plukket: true,
     varelinjer: [
       {
@@ -282,18 +298,22 @@ const statusMeta = {
 
 const SIDER = [
   { key: "salg", label: "Salg", icon: ShoppingCart },
+  { key: "planlaegning", label: "Planlægning", icon: Route },
   { key: "koersel", label: "Kørsel", icon: Route },
   { key: "montor", label: "Montør", icon: Truck },
   { key: "lager", label: "Lager", icon: Package },
   { key: "admin", label: "Admin", icon: Settings2 },
-  { key: "systemadmin", label: "System", icon: Building2 },
 ];
-const SIDER_FOR_ROLLE = { admin: ["salg", "koersel", "montor", "lager", "admin"], saelger: ["salg", "koersel", "montor", "lager"], montor: ["montor"], lager: ["lager"] };
+const SIDER_FOR_ROLLE = {
+  admin: ["salg", "planlaegning", "koersel", "montor", "lager", "admin"],
+  saelger: ["salg", "planlaegning", "koersel", "montor", "lager"],
+  montor: ["montor"],
+};
 
 export {
   uid, now, todayISO, flytDato, formatDatoLang, erIDag, formatVarighed, formatKlokken, totalMinutter, ydelseIkon,
   STANDARD_YDELSE_MINUTTER, STANDARD_GRUNDMINUTTER, lavYdelse, ANDET_VARETYPE, DEFAULT_VARETYPER, varetypeNavne,
   lavVarelinje, varelinjeLabel, linjeMinutter, sagForventetMinutter, normaliserAdresse, bygningsNoegle, omraadeNoegle,
   ugeDage, dannTitel, noegleTekst, TIDSRUM, tidsrumFraId, tidsrumTekst, NOEGLE_TYPER, MONTOR_FARVER, montorFarve,
-  DEFAULT_BILER, seedMontorer, seedBrugere, tomKunde, tomNoegle, seedSager, statusMeta, SIDER, SIDER_FOR_ROLLE,
+  DEFAULT_BILER, bilLabel, bilBlokeretAfFerie, seedBrugere, tomKunde, tomNoegle, seedSager, statusMeta, SIDER, SIDER_FOR_ROLLE,
 };
