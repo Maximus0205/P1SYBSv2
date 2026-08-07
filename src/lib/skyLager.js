@@ -57,43 +57,11 @@ export const gemSager = (butikId, sager) => gemListe("sager", butikId, sager);
 export const hentBiler = (butikId) => hentListe("biler", butikId);
 export const gemBiler = (butikId, biler) => gemListe("biler", butikId, biler);
 
-export const hentMontorer = (butikId) => hentListe("montorer", butikId);
-export const gemMontorer = (butikId, montorer) => gemListe("montorer", butikId, montorer);
+// Montører findes ikke længere som selvstændig tabel - se hentButiksBrugere
+// nedenfor og profiler.bil_id. hentMontorer/gemMontorer er fjernet.
 
 export const hentVaretyper = (butikId) => hentListe("varetyper", butikId);
 export const gemVaretyper = (butikId, varetyper) => gemListe("varetyper", butikId, varetyper);
-
-// ---------- Butikker ----------
-export async function hentButik(butikId) {
-  if (!butikId) return null;
-  const { data, error } = await supabase.from("butikker").select("id, navn, adresse, lat, lon").eq("id", butikId).maybeSingle();
-  if (error) {
-    console.error("Kunne ikke hente butik:", error.message);
-    return null;
-  }
-  return data;
-}
-
-// Alle butikker (kun synlige for en systemadmin, jf. RLS).
-export async function hentAlleButikker() {
-  const { data, error } = await supabase.from("butikker").select("id, navn, adresse, oprettet").order("oprettet", { ascending: false });
-  if (error) {
-    console.error("Kunne ikke hente butikker:", error.message);
-    return [];
-  }
-  return data || [];
-}
-
-// Systemadmin opretter en helt ny butik + dens første admin-login.
-// Kalder en edge function (kræver service_role for at oprette Auth-brugeren
-// og geokoder adressen server-side) - se
-// supabase/functions/systemadmin-opret-butik.
-export async function opretButikSystemadmin(felter) {
-  const { data, error } = await supabase.functions.invoke("systemadmin-opret-butik", { body: felter });
-  if (error) return { ok: false, fejl: data?.fejl || error.message || "Kunne ikke oprette butikken" };
-  if (data?.fejl) return { ok: false, fejl: data.fejl };
-  return { ok: true };
-}
 
 // ---------- Profiler (erstatter den gamle "brugere"-blob) ----------
 // Selve login/adgangskode håndteres af Supabase Auth (se LoginSide.jsx).
@@ -104,9 +72,9 @@ export async function opretButikSystemadmin(felter) {
 // aldrig må ligge i frontend-koden - funktionen tjekker selv at kalderen
 // rent faktisk er admin, før den opretter noget (se
 // supabase/functions/admin-opret-bruger).
-export async function opretBrugerAdmin({ email, adgangskode, navn, rolle, montorId }) {
+export async function opretBrugerAdmin({ email, adgangskode, navn, rolle, bilId }) {
   const { data, error } = await supabase.functions.invoke("admin-opret-bruger", {
-    body: { email, adgangskode, navn, rolle, montorId },
+    body: { email, adgangskode, navn, rolle, bilId },
   });
   if (error) {
     // Supabase pakker edge-function-fejl lidt akavet ind - prøv at finde den rigtige besked.
@@ -135,7 +103,40 @@ export async function hentButiksBrugere(butikId) {
     return [];
   }
   // Normaliseret til samme feltnavne som resten af appen bruger (camelCase).
-  return (data || []).map((p) => ({ id: p.id, navn: p.navn, rolle: p.rolle, montorId: p.montor_id }));
+  return (data || []).map((p) => ({ id: p.id, navn: p.navn, rolle: p.rolle, bilId: p.bil_id }));
+}
+
+// ---------- Ferier (pr. montør) ----------
+// Bruges til at afgøre om en bil skal vises som blokeret for booking i en
+// periode: en bil er blokeret de dage, hvor den montør, der LIGE NU er
+// tilknyttet bilen (profiler.bil_id), holder ferie.
+
+export async function hentFerier(butikId) {
+  if (!butikId) return [];
+  const { data, error } = await supabase.from("ferier").select("*").eq("butik_id", butikId);
+  if (error) {
+    console.error("Kunne ikke hente ferier:", error.message);
+    return [];
+  }
+  return (data || []).map((f) => ({ id: f.id, montorId: f.montor_id, startDato: f.start_dato, slutDato: f.slut_dato, note: f.note || "" }));
+}
+
+export async function tilfoejFerie(butikId, { montorId, startDato, slutDato, note }) {
+  const { error } = await supabase.from("ferier").insert({ butik_id: butikId, montor_id: montorId, start_dato: startDato, slut_dato: slutDato, note: note || null });
+  if (error) {
+    console.error("Kunne ikke oprette ferie:", error.message);
+    return false;
+  }
+  return true;
+}
+
+export async function sletFerie(ferieId) {
+  const { error } = await supabase.from("ferier").delete().eq("id", ferieId);
+  if (error) {
+    console.error("Kunne ikke slette ferie:", error.message);
+    return false;
+  }
+  return true;
 }
 
 // Admin retter navn/rolle/montør-kobling på en eksisterende bruger.
