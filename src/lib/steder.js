@@ -26,12 +26,14 @@ const normaliser = (adr) => (adr || "").trim().toLowerCase();
 
 // Slår adressen op og returnerer det bedste hit inkl. label og ORS' egen
 // konfidensscore (0-1). Deler cache med geokodAdresse/validerAdresse.
-async function bedsteMatch(adresse) {
-  const noegle = normaliser(adresse);
+// fokus: valgfrit { lat, lon } - typisk butikkens egen adresse, så
+// resultater nær butikken prioriteres.
+async function bedsteMatch(adresse, fokus) {
+  const noegle = normaliser(adresse) + (fokus ? `|${fokus.lat},${fokus.lon}` : "");
   if (!noegle || noegle.length < 5) return null;
   if (geokodeCache.has(noegle)) return geokodeCache.get(noegle);
 
-  const data = await kaldProxy({ handling: "soeg", tekst: adresse });
+  const data = await kaldProxy({ handling: "soeg", tekst: adresse, fokus });
   const feature = data?.features?.[0];
   const koordinater = feature?.geometry?.coordinates; // [lon, lat]
   const resultat = koordinater
@@ -42,16 +44,16 @@ async function bedsteMatch(adresse) {
 }
 
 // Returnerer { lon, lat } eller null (ikke fundet, eller kaldet fejlede).
-export async function geokodAdresse(adresse) {
-  const match = await bedsteMatch(adresse);
+export async function geokodAdresse(adresse, fokus) {
+  const match = await bedsteMatch(adresse, fokus);
   return match ? { lon: match.lon, lat: match.lat } : null;
 }
 
 // Validerer en adresse, så tastefejl/ikke-eksisterende adresser bliver
 // fanget, før en sag oprettes. gyldig = ORS fandt et match med rimelig
 // sikkerhed (confidence >= 0.6).
-export async function validerAdresse(adresse) {
-  const match = await bedsteMatch(adresse);
+export async function validerAdresse(adresse, fokus) {
+  const match = await bedsteMatch(adresse, fokus);
   if (!match) return { gyldig: false, label: null, koordinater: null, confidence: 0 };
   return {
     gyldig: match.confidence >= 0.6,
@@ -61,18 +63,28 @@ export async function validerAdresse(adresse) {
   };
 }
 
-// Op til 5 adresseforslag mens brugeren skriver (dropdown under adressefeltet).
-export async function soegAdresseForslag(delvisAdresse) {
-  const noegle = normaliser(delvisAdresse);
+// Op til 8 adresseforslag mens brugeren skriver (dropdown under adressefeltet).
+// Bygger selv en pæn to-linjers visning (vej+nr / postnr+by) i stedet for
+// ORS' rå label, som mangler postnummer og bruger engelske region-navne.
+export async function soegAdresseForslag(delvisAdresse, fokus) {
+  const noegle = normaliser(delvisAdresse) + (fokus ? `|${fokus.lat},${fokus.lon}` : "");
   if (!noegle || noegle.length < 3) return [];
   if (forslagCache.has(noegle)) return forslagCache.get(noegle);
 
-  const data = await kaldProxy({ handling: "autocomplete", tekst: delvisAdresse });
-  const forslag = (data?.features || []).map((f) => ({
-    label: f.properties?.label || "",
-    lon: f.geometry.coordinates[0],
-    lat: f.geometry.coordinates[1],
-  }));
+  const data = await kaldProxy({ handling: "autocomplete", tekst: delvisAdresse, fokus });
+  const forslag = (data?.features || []).map((f) => {
+    const p = f.properties || {};
+    const hovedtekst = p.name || [p.street, p.housenumber].filter(Boolean).join(" ") || p.label || "";
+    const undertekst = [p.postalcode, p.locality || p.county].filter(Boolean).join(" ");
+    return {
+      // Bruges når forslaget vælges - selve adressen der lægges i feltet.
+      label: undertekst ? `${hovedtekst}, ${undertekst}` : (p.label || hovedtekst),
+      hovedtekst,
+      undertekst,
+      lon: f.geometry.coordinates[0],
+      lat: f.geometry.coordinates[1],
+    };
+  });
   forslagCache.set(noegle, forslag);
   return forslag;
 }
