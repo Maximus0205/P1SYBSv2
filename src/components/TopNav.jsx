@@ -3,7 +3,7 @@ import { LogOut } from "lucide-react";
 import { SIDER, SIDER_FOR_ROLLE } from "../data/appData";
 
 function TopNav({ side, onSkift, bruger, onLogUd }) {
-  const tilladte = SIDER.filter((s) => (SIDER_FOR_ROLLE[bruger.rolle] || []).includes(s.key));
+  const tilladte = SIDER.filter((s) => (SIDER_FOR_ROLLE[bruger.rolle] || []).includes(s.key) || (s.key === "systemadmin" && bruger.erSystemadmin));
   return (
     <div className="sticky top-0 z-20 bg-[#1C232E] mb-6">
       <div className="max-w-6xl mx-auto flex items-center justify-between">
