@@ -5,12 +5,15 @@ import {
   hentSager, gemSager as gemSagerSky,
   hentBiler, gemBiler as gemBilerSky,
   hentVaretyper, gemVaretyper as gemVaretyperSky,
+  hentVarekategorier, gemVarekategorier as gemVarekategorierSky,
+  hentPrimaerydelser, gemPrimaerydelser as gemPrimaerydelserSky,
+  hentTillaegsydelser, gemTillaegsydelser as gemTillaegsydelserSky,
   hentEgenProfil, hentButiksBrugere, opdaterProfil, opretBrugerAdmin,
   hentFerier, tilfoejFerie as tilfoejFerieSky, sletFerie as sletFerieSky,
 } from "./lib/skyLager";
 import {
   uid, todayISO,
-  DEFAULT_VARETYPER, DEFAULT_BILER,
+  DEFAULT_VARETYPER, DEFAULT_VAREKATEGORIER, DEFAULT_PRIMAERYDELSER, DEFAULT_TILLAEGSYDELSER, DEFAULT_BILER,
   SIDER_FOR_ROLLE,
 } from "./data/appData";
 //commit test igen
@@ -35,6 +38,9 @@ export default function App() {
   const [brugere, setBrugere] = useState([]);
   const [ferier, setFerier] = useState([]);
   const [varetyper, setVaretyper] = useState([]);
+  const [varekategorier, setVarekategorier] = useState([]);
+  const [primaerydelser, setPrimaerydelser] = useState([]);
+  const [tillaegsydelser, setTillaegsydelser] = useState([]);
   const [side, setSide] = useState("salg");
   const [valgtDato, setValgtDato] = useState(todayISO());
   const [valgtMontorId, setValgtMontorId] = useState(null);
@@ -53,20 +59,30 @@ export default function App() {
 
   // Henter alt for den butik den indloggede bruger hører til.
   const hent = async (butikId) => {
-    if (!butikId) { setSager([]); setBiler([]); setVaretyper([]); setBrugere([]); setFerier([]); return; }
-    const [s, bl, v, b, f] = await Promise.all([
+    if (!butikId) { setSager([]); setBiler([]); setVaretyper([]); setVarekategorier([]); setPrimaerydelser([]); setTillaegsydelser([]); setBrugere([]); setFerier([]); return; }
+    const [s, bl, v, vk, py, ty, b, f] = await Promise.all([
       hentSager(butikId),
       hentBiler(butikId),
       hentVaretyper(butikId),
+      hentVarekategorier(butikId),
+      hentPrimaerydelser(butikId),
+      hentTillaegsydelser(butikId),
       hentButiksBrugere(butikId),
       hentFerier(butikId),
     ]);
-    // Første gang butikken bruges, er biler/varetyper tomme - sæt fornuftige standarder.
+    // Første gang butikken bruges, er listerne tomme - sæt fornuftige standarder.
     const bilerEndelig = bl.length > 0 ? bl : DEFAULT_BILER;
+    const kategorierEndelig = vk.length > 0 ? vk : DEFAULT_VAREKATEGORIER;
     const varetyperEndelig = v.length > 0 ? v : DEFAULT_VARETYPER;
+    const primaerydelserEndelig = py.length > 0 ? py : DEFAULT_PRIMAERYDELSER;
+    const tillaegsydelserEndelig = ty.length > 0 ? ty : DEFAULT_TILLAEGSYDELSER;
     if (bl.length === 0) gemBilerSky(butikId, bilerEndelig);
+    if (vk.length === 0) gemVarekategorierSky(butikId, kategorierEndelig);
     if (v.length === 0) gemVaretyperSky(butikId, varetyperEndelig);
-    setSager(s); setBiler(bilerEndelig); setVaretyper(varetyperEndelig); setBrugere(b); setFerier(f);
+    if (py.length === 0) gemPrimaerydelserSky(butikId, primaerydelserEndelig);
+    if (ty.length === 0) gemTillaegsydelserSky(butikId, tillaegsydelserEndelig);
+    setSager(s); setBiler(bilerEndelig); setVarekategorier(kategorierEndelig); setVaretyper(varetyperEndelig);
+    setPrimaerydelser(primaerydelserEndelig); setTillaegsydelser(tillaegsydelserEndelig); setBrugere(b); setFerier(f);
   };
 
   const genindlaesProfil = async (userId) => {
@@ -107,7 +123,7 @@ export default function App() {
         setTimeout(() => { genindlaesProfil(nySession.user.id); }, 0);
       } else {
         setProfil(null);
-        setSager([]); setBiler([]); setVaretyper([]); setBrugere([]); setFerier([]);
+        setSager([]); setBiler([]); setVaretyper([]); setVarekategorier([]); setPrimaerydelser([]); setTillaegsydelser([]); setBrugere([]); setFerier([]);
         setSelectedId(null);
       }
     });
@@ -120,6 +136,9 @@ export default function App() {
 
   const gemSager = (next) => { setSager(next); if (profil?.butikId) gemSagerSky(profil.butikId, next); };
   const gemVaretyper = (next) => { setVaretyper(next); if (profil?.butikId) gemVaretyperSky(profil.butikId, next); };
+  const gemVarekategorier = (next) => { setVarekategorier(next); if (profil?.butikId) gemVarekategorierSky(profil.butikId, next); };
+  const gemPrimaerydelser = (next) => { setPrimaerydelser(next); if (profil?.butikId) gemPrimaerydelserSky(profil.butikId, next); };
+  const gemTillaegsydelser = (next) => { setTillaegsydelser(next); if (profil?.butikId) gemTillaegsydelserSky(profil.butikId, next); };
   const gemBiler = (next) => { setBiler(next); if (profil?.butikId) gemBilerSky(profil.butikId, next); };
 
   const addBil = (navn, nummerplade) => gemBiler([...biler, { id: uid(), navn, nummerplade, lukket: false, lukketAarsag: "" }]);
@@ -169,11 +188,36 @@ export default function App() {
     if (profil?.butikId) await hent(profil.butikId);
   };
 
-  const addVaretype = (navn) => gemVaretyper([...varetyper, { id: uid(), navn, grundMinutter: 30, ydelser: [] }]);
-  const updateVaretype = (ny) => gemVaretyper(varetyper.map((v) => (v.id === ny.id ? ny : v)));
+  // ---------- Varer & ydelser ----------
+  const addVarekategori = (navn) => gemVarekategorier([...varekategorier, { id: uid(), navn }]);
+  const updateVarekategori = (id, navn) => gemVarekategorier(varekategorier.map((k) => (k.id === id ? { ...k, navn } : k)));
+  const deleteVarekategori = (id) => {
+    const iBrug = varetyper.filter((v) => v.kategoriId === id).length;
+    if (iBrug > 0 && !window.confirm(`${iBrug} varetype(r) hører til denne kategori. Slet alligevel? (Varetyperne beholdes, men mister kategori-tilknytningen.)`)) return;
+    gemVarekategorier(varekategorier.filter((k) => k.id !== id));
+  };
+
+  const addVaretype = (navn, kategoriId) => gemVaretyper([...varetyper, { id: uid(), navn, kategoriId: kategoriId || null, tillaeg: [] }]);
+  const updateVaretype = (id, felter) => gemVaretyper(varetyper.map((v) => (v.id === id ? { ...v, ...felter } : v)));
   const deleteVaretype = (id) => {
-    if (!window.confirm("Slet denne varetype? Allerede bookede sager beholder deres tjekliste uændret.")) return;
+    if (!window.confirm("Slet denne varetype? Allerede bookede sager beholder deres oplysninger uændret.")) return;
     gemVaretyper(varetyper.filter((v) => v.id !== id));
+  };
+
+  const addPrimaerydelse = (navn, minutter) => gemPrimaerydelser([...primaerydelser, { id: uid(), navn, minutter: Number(minutter) || 0, tillaeg: [] }]);
+  const updatePrimaerydelse = (id, felter) => gemPrimaerydelser(primaerydelser.map((p) => (p.id === id ? { ...p, ...felter } : p)));
+  const deletePrimaerydelse = (id) => {
+    if (!window.confirm("Slet denne primære ydelse? Allerede bookede sager beholder deres oplysninger uændret.")) return;
+    gemPrimaerydelser(primaerydelser.filter((p) => p.id !== id));
+  };
+
+  const addTillaegsydelse = (navn, minutter) => gemTillaegsydelser([...tillaegsydelser, { id: uid(), navn, minutter: Number(minutter) || 0 }]);
+  const updateTillaegsydelse = (id, felter) => gemTillaegsydelser(tillaegsydelser.map((t) => (t.id === id ? { ...t, ...felter } : t)));
+  const deleteTillaegsydelse = (id) => {
+    if (!window.confirm("Slet denne tillægsydelse? Den fjernes samtidig fra alle varetyper og primære ydelser, den er koblet til. Allerede bookede sager beholder deres oplysninger uændret.")) return;
+    gemTillaegsydelser(tillaegsydelser.filter((t) => t.id !== id));
+    gemVaretyper(varetyper.map((v) => ({ ...v, tillaeg: (v.tillaeg || []).filter((tid) => tid !== id) })));
+    gemPrimaerydelser(primaerydelser.map((p) => ({ ...p, tillaeg: (p.tillaeg || []).filter((tid) => tid !== id) })));
   };
 
   const assignMontor = (sagId, montorId) => gemSager(sager.map((s) => (s.id === sagId ? { ...s, montorId } : s)));
@@ -199,9 +243,9 @@ export default function App() {
     return { ...s, stemplerInd: null, logs: [...s.logs, { id: uid(), ind, ud, minutter }] };
   }));
 
-  const toggleYdelse = (sagId, linjeId, yId) => gemSager(sager.map((s) => (s.id === sagId ? { ...s, varelinjer: s.varelinjer.map((v) => (v.id === linjeId ? { ...v, ydelser: v.ydelser.map((y) => (y.id === yId ? { ...y, udfoert: !y.udfoert } : y)) } : v)) } : s)));
-  const addYdelse = (sagId, linjeId, navn) => gemSager(sager.map((s) => (s.id === sagId ? { ...s, varelinjer: s.varelinjer.map((v) => (v.id === linjeId ? { ...v, ydelser: [...v.ydelser, { id: uid(), navn: navn.trim(), minutter: 15, udfoert: false }] } : v)) } : s)));
-  const removeYdelse = (sagId, linjeId, yId) => gemSager(sager.map((s) => (s.id === sagId ? { ...s, varelinjer: s.varelinjer.map((v) => (v.id === linjeId ? { ...v, ydelser: v.ydelser.filter((y) => y.id !== yId) } : v)) } : s)));
+  const toggleYdelse = (sagId, linjeId, yId) => gemSager(sager.map((s) => (s.id === sagId ? { ...s, varelinjer: s.varelinjer.map((v) => (v.id === linjeId ? { ...v, tillaeg: v.tillaeg.map((y) => (y.id === yId ? { ...y, udfoert: !y.udfoert } : y)) } : v)) } : s)));
+  const addYdelse = (sagId, linjeId, navn) => gemSager(sager.map((s) => (s.id === sagId ? { ...s, varelinjer: s.varelinjer.map((v) => (v.id === linjeId ? { ...v, tillaeg: [...v.tillaeg, { id: uid(), navn: navn.trim(), minutter: 15, udfoert: false }] } : v)) } : s)));
+  const removeYdelse = (sagId, linjeId, yId) => gemSager(sager.map((s) => (s.id === sagId ? { ...s, varelinjer: s.varelinjer.map((v) => (v.id === linjeId ? { ...v, tillaeg: v.tillaeg.filter((y) => y.id !== yId) } : v)) } : s)));
 
   const montor = montorer.find((m) => m.id === valgtMontorId);
   const smalSide = side === "montor" || !!selected;
@@ -257,7 +301,7 @@ export default function App() {
             onRemoveYdelse={(linjeId, yId) => removeYdelse(selected.id, linjeId, yId)}
           />
         ) : side === "salg" ? (
-          <SalgSide sager={sager} montorer={montorer} varetyper={varetyper} valgtDato={valgtDato} onSkiftDato={setValgtDato} onOpen={setSelectedId} onAdd={addSag} onImport={importSager} />
+          <SalgSide sager={sager} montorer={montorer} varetyper={varetyper} varekategorier={varekategorier} primaerydelser={primaerydelser} tillaegsydelser={tillaegsydelser} valgtDato={valgtDato} onSkiftDato={setValgtDato} onOpen={setSelectedId} onAdd={addSag} onImport={importSager} />
         ) : side === "planlaegning" ? (
           <PlanlaegningSide sager={sager} montorer={montorer} onOpen={setSelectedId} onCycleStatus={cycleStatus} />
         ) : side === "koersel" ? (
@@ -273,7 +317,17 @@ export default function App() {
         ) : side === "lager" ? (
           <LagerSide sager={sager} montorer={montorer} valgtDato={valgtDato} onSkiftDato={setValgtDato} onTogglePluk={togglePluk} onOpen={setSelectedId} />
         ) : (
-          <AdminSide montorer={montorer} biler={biler} sager={sager} brugere={brugere} varetyper={varetyper} ferier={ferier} aktuelBrugerId={profil.id} onUpdateMontorBil={updateMontorBil} onAddBil={addBil} onUpdateBil={updateBil} onDeleteBil={deleteBil} onToggleBilLukket={toggleBilLukket} onAddBruger={addBruger} onUpdateBruger={updateBruger} onDeleteBruger={deleteBruger} onAddVaretype={addVaretype} onUpdateVaretype={updateVaretype} onDeleteVaretype={deleteVaretype} onTilfoejFerie={tilfoejFerie} onSletFerie={sletFerie} />
+          <AdminSide
+            montorer={montorer} biler={biler} sager={sager} brugere={brugere} ferier={ferier} aktuelBrugerId={profil.id}
+            varetyper={varetyper} varekategorier={varekategorier} primaerydelser={primaerydelser} tillaegsydelser={tillaegsydelser}
+            onUpdateMontorBil={updateMontorBil} onAddBil={addBil} onUpdateBil={updateBil} onDeleteBil={deleteBil} onToggleBilLukket={toggleBilLukket}
+            onAddBruger={addBruger} onUpdateBruger={updateBruger} onDeleteBruger={deleteBruger}
+            onAddVarekategori={addVarekategori} onUpdateVarekategori={updateVarekategori} onDeleteVarekategori={deleteVarekategori}
+            onAddVaretype={addVaretype} onUpdateVaretype={updateVaretype} onDeleteVaretype={deleteVaretype}
+            onAddPrimaerydelse={addPrimaerydelse} onUpdatePrimaerydelse={updatePrimaerydelse} onDeletePrimaerydelse={deletePrimaerydelse}
+            onAddTillaegsydelse={addTillaegsydelse} onUpdateTillaegsydelse={updateTillaegsydelse} onDeleteTillaegsydelse={deleteTillaegsydelse}
+            onTilfoejFerie={tilfoejFerie} onSletFerie={sletFerie}
+          />
         )}
       </div>
     </div>
