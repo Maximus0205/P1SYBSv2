@@ -5,7 +5,7 @@ import { NyeSagForm } from "../components/NyeSagForm";
 import { CsvImport } from "../components/CsvImport";
 import { SagKortKompakt } from "../components/SagKortKompakt";
 
-function SalgSide({ sager, montorer, varetyper, valgtDato, onSkiftDato, onOpen, onAdd, onImport, butikFokus }) {
+function SalgSide({ sager, montorer, varetyper, varekategorier, primaerydelser, tillaegsydelser, valgtDato, onSkiftDato, onOpen, onAdd, onImport }) {
   const [panel, setPanel] = useState("ny");
   const sorter = (a, b) => (a.start || "").localeCompare(b.start || "");
   const dagensSager = sager.filter((s) => s.dato === valgtDato).sort(sorter);
@@ -31,8 +31,8 @@ function SalgSide({ sager, montorer, varetyper, valgtDato, onSkiftDato, onOpen, 
         </div>
       </div>
 
-      {panel === "ny" && <div className="mb-6"><NyeSagForm montorer={montorer} varetyper={varetyper} sager={sager} valgtDato={valgtDato} onAdd={onAdd} onClose={() => setPanel(null)} butikFokus={butikFokus} /></div>}
-      {panel === "import" && <div className="mb-6"><CsvImport montorer={montorer} varetyper={varetyper} onImport={onImport} onClose={() => setPanel(null)} /></div>}
+      {panel === "ny" && <div className="mb-6"><NyeSagForm montorer={montorer} varetyper={varetyper} varekategorier={varekategorier} primaerydelser={primaerydelser} tillaegsydelser={tillaegsydelser} sager={sager} valgtDato={valgtDato} onAdd={onAdd} onClose={() => setPanel(null)} /></div>}
+      {panel === "import" && <div className="mb-6"><CsvImport montorer={montorer} varetyper={varetyper} primaerydelser={primaerydelser} onImport={onImport} onClose={() => setPanel(null)} /></div>}
 
       <h2 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Sager {erIDag(valgtDato) ? "i dag" : `d. ${valgtDato}`}</h2>
       {dagensSager.length === 0 ? (
