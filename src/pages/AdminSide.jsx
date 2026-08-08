@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { Trash2, Plus } from "lucide-react";
-import { MontorRaekke, BilRaekke, NyBrugerForm, VaretypeAdmin, ROLLE_LABEL } from "../components/AdminParts";
-import { bilLabel } from "../data/appData";
+import { MontorRaekke, BilRaekke, BrugerRaekke, NyBrugerForm, VaretypeAdmin } from "../components/AdminParts";
 
 function AdminSide({ montorer, biler, sager, brugere, varetyper, ferier, aktuelBrugerId, onUpdateMontorBil, onAddBil, onUpdateBil, onDeleteBil, onToggleBilLukket, onAddBruger, onUpdateBruger, onDeleteBruger, onAddVaretype, onUpdateVaretype, onDeleteVaretype, onTilfoejFerie, onSletFerie }) {
+  const [nytNavn, setNytNavn] = useState("");
   const [nyNummerplade, setNyNummerplade] = useState("");
   const [fane, setFane] = useState("montorer");
 
@@ -49,8 +49,9 @@ function AdminSide({ montorer, biler, sager, brugere, varetyper, ferier, aktuelB
           <div className="border border-[#D8D0BE] bg-white p-5 mb-6">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Opret ny bil</h3>
             <div className="flex gap-2 flex-wrap">
-              <input value={nyNummerplade} onChange={(e) => setNyNummerplade(e.target.value)} placeholder="Nummerplade, fx 'AB 12 345'" className="flex-1 min-w-[200px] border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-              <button onClick={() => { if (!nyNummerplade.trim()) return; onAddBil(nyNummerplade.trim()); setNyNummerplade(""); }} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors flex items-center gap-1.5">
+              <input value={nytNavn} onChange={(e) => setNytNavn(e.target.value)} placeholder="Navn/tag, fx 'Bil 1'" className="flex-1 min-w-[160px] border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+              <input value={nyNummerplade} onChange={(e) => setNyNummerplade(e.target.value)} placeholder="Nummerplade, fx 'AB 12 345'" className="flex-1 min-w-[160px] border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+              <button onClick={() => { if (!nytNavn.trim() || !nyNummerplade.trim()) return; onAddBil(nytNavn.trim(), nyNummerplade.trim()); setNytNavn(""); setNyNummerplade(""); }} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors flex items-center gap-1.5">
                 <Plus size={15} /> Opret
               </button>
             </div>
@@ -63,7 +64,7 @@ function AdminSide({ montorer, biler, sager, brugere, varetyper, ferier, aktuelB
             <div className="space-y-2">
               {biler.map((b) => {
                 const brugtAf = montorer.find((m) => m.bilId === b.id)?.navn;
-                return <BilRaekke key={b.id} b={b} brugtAf={brugtAf} onUpdate={(nummerplade) => onUpdateBil(b.id, nummerplade)} onDelete={() => onDeleteBil(b.id)} onToggleLukket={onToggleBilLukket} />;
+                return <BilRaekke key={b.id} b={b} brugtAf={brugtAf} onUpdate={(felter) => onUpdateBil(b.id, felter)} onDelete={() => onDeleteBil(b.id)} onToggleLukket={onToggleBilLukket} />;
               })}
             </div>
           )}
@@ -77,22 +78,7 @@ function AdminSide({ montorer, biler, sager, brugere, varetyper, ferier, aktuelB
           <div className="space-y-2">
             {brugere.map((b) => {
               const tilknyttetBil = biler.find((bil) => bil.id === b.bilId);
-              return (
-                <div key={b.id} className="bg-white border border-[#D8D0BE] p-3 flex items-center gap-3 flex-wrap">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-sm text-[#1C232E] truncate">{b.navn}</p>
-                    <p className="text-xs text-[#52697E] truncate">{ROLLE_LABEL[b.rolle] || b.rolle}{b.rolle === "montor" ? ` · ${tilknyttetBil ? bilLabel(tilknyttetBil) : "ingen bil endnu"}` : ""}</p>
-                  </div>
-                  <select
-                    value={b.rolle}
-                    onChange={(e) => onUpdateBruger(b.id, { rolle: e.target.value })}
-                    className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-xs text-[#1C232E]"
-                  >
-                    {Object.entries(ROLLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
-                  {b.id !== aktuelBrugerId && <button onClick={() => onDeleteBruger(b.id)} className="p-1.5 text-[#52697E] hover:text-[#B3261E]" title="Fjern adgang"><Trash2 size={15} /></button>}
-                </div>
-              );
+              return <BrugerRaekke key={b.id} b={b} tilknyttetBil={tilknyttetBil} aktuelBrugerId={aktuelBrugerId} onUpdate={onUpdateBruger} onDelete={onDeleteBruger} />;
             })}
           </div>
           <p className="text-[11px] text-[#52697E] mt-3">Sætter du en bruger til rollen "Montør", skal du huske at give vedkommende en bil under fanen "Montører".</p>
