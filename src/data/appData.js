@@ -152,16 +152,17 @@ const montorFarve = (id, montorer) => {
 // ---------------- Seed-data ----------------
 
 // Bilflåden — en fast liste over de køretøjer, der findes i virksomheden.
-// En bil har kun to rigtige felter: id og nummerplade. Montører er ikke
-// længere en selvstændig ting — det er logins med rolle "montor", der hver
-// har en bilId (se profiler.bil_id / brugere i skyLager.js).
+// En bil har et navn/tag I selv sætter (fx "Servicevogn 1"), som bruges til
+// at kende bilen fra hinanden i det daglige, samt selve nummerpladen.
+// Montører er ikke længere en selvstændig ting — det er logins med rolle
+// "montor", der hver har en bilId (se profiler.bil_id / brugere i skyLager.js).
 const DEFAULT_BILER = [
-  { id: "b1", nummerplade: "AB 12 345", lukket: false, lukketAarsag: "" },
-  { id: "b2", nummerplade: "CD 67 890", lukket: false, lukketAarsag: "" },
-  { id: "b3", nummerplade: "EF 22 111", lukket: false, lukketAarsag: "" },
+  { id: "b1", navn: "Bil 1", nummerplade: "AB 12 345", lukket: false, lukketAarsag: "" },
+  { id: "b2", navn: "Bil 2", nummerplade: "CD 67 890", lukket: false, lukketAarsag: "" },
+  { id: "b3", navn: "Bil 3", nummerplade: "EF 22 111", lukket: false, lukketAarsag: "" },
 ];
 
-const bilLabel = (bil) => (bil ? bil.nummerplade || "(ingen nummerplade)" : "Ingen bil");
+const bilLabel = (bil) => (bil ? `${bil.navn || "(uden navn)"} · ${bil.nummerplade || "ingen nummerplade"}` : "Ingen bil");
 
 // En montør er en bruger med rolle "montor" — se brugere/profiler. Denne liste
 // findes derfor ikke længere som seed-data; App.jsx udleder "montorer" direkte
