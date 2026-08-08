@@ -40,48 +40,99 @@ const ydelseIkon = (navn) => {
 };
 
 const STANDARD_YDELSE_MINUTTER = 15;
-const STANDARD_GRUNDMINUTTER = 30;
 
 const lavYdelse = (navn, minutter = STANDARD_YDELSE_MINUTTER) => ({ id: uid(), navn: navn.trim(), minutter: Number(minutter) || 0, udfoert: false });
 
-const ANDET_VARETYPE = "Andet (skriv selv)";
+const ANDET_VARETYPE_ID = "andet";
+const ANDET_VARETYPE = "Andet (skriv selv)"; // Bruges kun som label i "Andet"-valget, ikke som id.
 
-// Standard-opsætning af varetyper og deres tilhørende ydelser — kan redigeres under Admin.
-// grundMinutter = forventet tid til selve grundopgaven (fx montering/levering af varen),
-// hver ydelse kan lægge ekstra tid oveni. Bruges til at beregne forventet tidsforbrug pr. sag.
-// "Nøgler" indgår IKKE her, da nøgleinfo nu er et separat felt på selve ordren.
-const DEFAULT_VARETYPER = [
-  { id: "v1", navn: "Køleskab", grundMinutter: 30, ydelser: [{ navn: "Dørvending", minutter: 20 }, { navn: "Bortskaffelse af gammelt apparat", minutter: 15 }, { navn: "Vandtilslutning", minutter: 15 }] },
-  { id: "v2", navn: "Fryser", grundMinutter: 25, ydelser: [{ navn: "Dørvending", minutter: 20 }, { navn: "Bortskaffelse af gammelt apparat", minutter: 15 }] },
-  { id: "v3", navn: "Køle-/fryseskab", grundMinutter: 35, ydelser: [{ navn: "Dørvending", minutter: 20 }, { navn: "Bortskaffelse af gammelt apparat", minutter: 15 }, { navn: "Vandtilslutning", minutter: 15 }] },
-  { id: "v4", navn: "Vaskemaskine", grundMinutter: 30, ydelser: [{ navn: "Afløbsslange", minutter: 10 }, { navn: "Vandtilslutning", minutter: 15 }, { navn: "Bortskaffelse af gammel maskine", minutter: 15 }] },
-  { id: "v5", navn: "Tørretumbler", grundMinutter: 25, ydelser: [{ navn: "Aftræk/kondensbakke", minutter: 15 }, { navn: "Stabling på vaskemaskine", minutter: 10 }] },
-  { id: "v6", navn: "Opvaskemaskine", grundMinutter: 30, ydelser: [{ navn: "Indbygning/panel", minutter: 25 }, { navn: "Vandtilslutning", minutter: 15 }, { navn: "Bortskaffelse af gammel maskine", minutter: 15 }] },
-  { id: "v7", navn: "Komfur/ovn", grundMinutter: 30, ydelser: [{ navn: "Elinstallation", minutter: 25 }, { navn: "Indbygning", minutter: 20 }] },
-  { id: "v8", navn: "Emhætte", grundMinutter: 25, ydelser: [{ navn: "Aftræk/kanal", minutter: 30 }, { navn: "Indbygning", minutter: 20 }] },
-  { id: "v9", navn: "Mikroovn", grundMinutter: 20, ydelser: [{ navn: "Indbygning", minutter: 20 }] },
-  { id: "v10", navn: "TV", grundMinutter: 20, ydelser: [{ navn: "Ophæng på væg", minutter: 30 }, { navn: "Kanalsøgning", minutter: 10 }] },
-  { id: "v11", navn: "Netværk/data", grundMinutter: 20, ydelser: [{ navn: "Netværksopsætning", minutter: 20 }, { navn: "Wi-Fi test", minutter: 10 }] },
+// ---------------- Varer & ydelser ----------------
+// Struktur: Varekategori (fx "Hvidevare") → Varetype (fx "Køleskab") → hører
+// til én kategori. En sag vælger for hver varelinje: varetype, mærke/model,
+// én PRIMÆR ydelse (fx "Montering" - definerer grundtiden), og valgfrit en
+// eller flere TILLÆGSYDELSER (fx "Dørvending"). Hvilke tillægsydelser der er
+// relevante for en given varelinje afhænger af BÅDE varetypen (fx dørvending
+// er ikke relevant for et TV) OG den valgte primære ydelse (fx udpakning
+// giver kun mening ved montering/indbæring, ikke ved kantstenslevering).
+// Alt dette kan redigeres under Admin → Varer & ydelser.
+
+const DEFAULT_VAREKATEGORIER = [
+  { id: "vk1", navn: "Hvidevare" },
+  { id: "vk2", navn: "Brunvare" },
 ];
 
-const varetypeNavne = (varetyper) => [...varetyper.map((v) => v.navn), ANDET_VARETYPE];
+const DEFAULT_TILLAEGSYDELSER = [
+  { id: "t1", navn: "Udpakning", minutter: 10 },
+  { id: "t2", navn: "Dørvending", minutter: 20 },
+  { id: "t3", navn: "Bortskaffelse af gammelt produkt", minutter: 15 },
+];
 
-const lavVarelinje = (varetyper, navn, tekst = "") => {
-  const valgtNavn = navn || (varetyper[0] ? varetyper[0].navn : ANDET_VARETYPE);
-  const def = varetyper.find((v) => v.navn === valgtNavn);
+// tillaeg = id'er fra DEFAULT_TILLAEGSYDELSER, der giver mening ved denne primære ydelse.
+const DEFAULT_PRIMAERYDELSER = [
+  { id: "p1", navn: "Kantstenslevering", minutter: 10, tillaeg: [] },
+  { id: "p2", navn: "Levering med indbæring", minutter: 20, tillaeg: ["t1", "t3"] },
+  { id: "p3", navn: "Montering", minutter: 40, tillaeg: ["t1", "t2", "t3"] },
+];
+
+const DOER = ["Køleskab", "Fryseskab", "Kølefryseskab", "Amerikanerskab", "Vinkøleskab"];
+// tillaeg = id'er fra DEFAULT_TILLAEGSYDELSER, der er relevante for denne varetype.
+const DEFAULT_VARETYPER = [
+  { id: "vt1", navn: "Køleskab", kategoriId: "vk1" },
+  { id: "vt2", navn: "Fryseskab", kategoriId: "vk1" },
+  { id: "vt3", navn: "Kølefryseskab", kategoriId: "vk1" },
+  { id: "vt4", navn: "Amerikanerskab", kategoriId: "vk1" },
+  { id: "vt5", navn: "Vinkøleskab", kategoriId: "vk1" },
+  { id: "vt6", navn: "Kummefryser", kategoriId: "vk1" },
+  { id: "vt7", navn: "Vaskemaskine", kategoriId: "vk1" },
+  { id: "vt8", navn: "Tørretumbler", kategoriId: "vk1" },
+  { id: "vt9", navn: "Vaske-tørremaskine", kategoriId: "vk1" },
+  { id: "vt10", navn: "Opvaskemaskine", kategoriId: "vk1" },
+  { id: "vt11", navn: "Ovn", kategoriId: "vk1" },
+  { id: "vt12", navn: "Kompakt ovn", kategoriId: "vk1" },
+  { id: "vt13", navn: "Kogeplade", kategoriId: "vk1" },
+  { id: "vt14", navn: "Komfur", kategoriId: "vk1" },
+  { id: "vt15", navn: "Emhætte", kategoriId: "vk1" },
+  { id: "vt16", navn: "TV", kategoriId: "vk2" },
+  { id: "vt17", navn: "Lydanlæg", kategoriId: "vk2" },
+].map((v) => ({ ...v, tillaeg: DOER.includes(v.navn) ? ["t1", "t2", "t3"] : ["t1", "t3"] }));
+
+// De tillægsydelser der reelt kan vælges for en given kombination af varetype
+// + primær ydelse: skal være relevant for BEGGE for at blive vist.
+const tilgaengeligeTillaeg = (varetypeId, primaerYdelseId, varetyper, primaerydelser, tillaegsydelser) => {
+  const vt = varetypeId === ANDET_VARETYPE_ID ? null : varetyper.find((v) => v.id === varetypeId);
+  const py = primaerydelser.find((p) => p.id === primaerYdelseId);
+  const vtSaet = vt ? new Set(vt.tillaeg || []) : null; // "Andet" har ingen varetype-begrænsning
+  const pySaet = new Set(py ? py.tillaeg || [] : []);
+  return tillaegsydelser.filter((t) => (vtSaet ? vtSaet.has(t.id) : true) && pySaet.has(t.id));
+};
+
+const lavVarelinje = (varetyper, primaerydelser, varetypeId, tekst = "") => {
+  const foersteVaretype = varetyper[0];
+  const vId = varetypeId || (foersteVaretype ? foersteVaretype.id : ANDET_VARETYPE_ID);
+  const vt = varetyper.find((v) => v.id === vId);
+  const py = primaerydelser[0];
   return {
     id: uid(),
-    varetype: valgtNavn,
+    varetypeId: vId,
+    varetypeNavn: vt ? vt.navn : ANDET_VARETYPE, // snapshot - upåvirket af senere omdøbning
     varetypeTekst: tekst,
-    grundMinutter: def ? (Number(def.grundMinutter) || 0) : STANDARD_GRUNDMINUTTER,
-    ydelser: (def ? def.ydelser : []).map((y) => lavYdelse(y.navn, y.minutter)),
+    maerke: "",
+    model: "",
+    primaerYdelse: py ? { id: py.id, navn: py.navn, minutter: Number(py.minutter) || 0 } : null,
+    tillaeg: [], // valgte tillægsydelser for netop denne booking - se tilgaengeligeTillaeg for hvad der kan vælges
   };
 };
 
-const varelinjeLabel = (v) => (v.varetype === ANDET_VARETYPE ? (v.varetypeTekst || "Speciel opgave") : v.varetype);
+const varelinjeLabel = (v) => {
+  const grund = v.varetypeId === ANDET_VARETYPE_ID ? (v.varetypeTekst || "Speciel opgave") : (v.varetypeNavn || "Ukendt vare");
+  const detalje = [v.maerke, v.model].filter(Boolean).join(" ");
+  return detalje ? `${grund} – ${detalje}` : grund;
+};
 
-// Forventet tidsforbrug: grundtid for varelinjen + tid pr. valgt/tilføjet ydelse.
-const linjeMinutter = (linje) => (Number(linje.grundMinutter) || 0) + (linje.ydelser || []).reduce((sum, y) => sum + (Number(y.minutter) || STANDARD_YDELSE_MINUTTER), 0);
+// Forventet tidsforbrug: primær ydelses grundtid + tid pr. valgt tillægsydelse.
+// (Minuttallene er snapshottet på selve varelinjen ved booking, så senere
+// ændringer i Admin ikke ændrer tiden på allerede bookede sager.)
+const linjeMinutter = (linje) => (Number(linje.primaerYdelse?.minutter) || 0) + (linje.tillaeg || []).reduce((sum, y) => sum + (Number(y.minutter) || 0), 0);
 const sagForventetMinutter = (sag) => (sag.varelinjer || []).reduce((sum, l) => sum + linjeMinutter(l), 0);
 
 // Adresse-match: normaliserer og udtrækker "gade + husnummer" så vi kan opdage at to
@@ -202,11 +253,11 @@ const seedSager = [
     plukket: true,
     varelinjer: [
       {
-        id: uid(), varetype: "Køle-/fryseskab", varetypeTekst: "", grundMinutter: 35,
-        ydelser: [
+        id: uid(), varetypeId: "vt3", varetypeNavn: "Kølefryseskab", varetypeTekst: "", maerke: "Bosch", model: "KGN39VLEB",
+        primaerYdelse: { id: "p3", navn: "Montering", minutter: 40 },
+        tillaeg: [
           { id: uid(), navn: "Dørvending", minutter: 20, udfoert: true },
-          { id: uid(), navn: "Bortskaffelse af gammelt apparat", minutter: 15, udfoert: true },
-          { id: uid(), navn: "Vandtilslutning", minutter: 15, udfoert: false },
+          { id: uid(), navn: "Bortskaffelse af gammelt produkt", minutter: 15, udfoert: true },
         ],
       },
     ],
@@ -227,19 +278,14 @@ const seedSager = [
     plukket: true,
     varelinjer: [
       {
-        id: uid(), varetype: "Vaskemaskine", varetypeTekst: "", grundMinutter: 30,
-        ydelser: [
-          { id: uid(), navn: "Afløbsslange", minutter: 10, udfoert: false },
-          { id: uid(), navn: "Vandtilslutning", minutter: 15, udfoert: false },
-          { id: uid(), navn: "Bortskaffelse af gammel maskine", minutter: 15, udfoert: false },
-        ],
+        id: uid(), varetypeId: "vt7", varetypeNavn: "Vaskemaskine", varetypeTekst: "", maerke: "Electrolux", model: "EW6F428S",
+        primaerYdelse: { id: "p3", navn: "Montering", minutter: 40 },
+        tillaeg: [{ id: uid(), navn: "Bortskaffelse af gammelt produkt", minutter: 15, udfoert: false }],
       },
       {
-        id: uid(), varetype: "Tørretumbler", varetypeTekst: "", grundMinutter: 25,
-        ydelser: [
-          { id: uid(), navn: "Aftræk/kondensbakke", minutter: 15, udfoert: false },
-          { id: uid(), navn: "Stabling på vaskemaskine", minutter: 10, udfoert: true },
-        ],
+        id: uid(), varetypeId: "vt8", varetypeNavn: "Tørretumbler", varetypeTekst: "", maerke: "Electrolux", model: "EW8H358S",
+        primaerYdelse: { id: "p2", navn: "Levering med indbæring", minutter: 20 },
+        tillaeg: [{ id: uid(), navn: "Udpakning", minutter: 10, udfoert: true }],
       },
     ],
     noter: [], billeder: [], rapporter: [],
@@ -256,11 +302,9 @@ const seedSager = [
     plukket: false,
     varelinjer: [
       {
-        id: uid(), varetype: "Opvaskemaskine", varetypeTekst: "", grundMinutter: 30,
-        ydelser: [
-          { id: uid(), navn: "Indbygning/panel", minutter: 25, udfoert: false },
-          { id: uid(), navn: "Vandtilslutning", minutter: 15, udfoert: false },
-        ],
+        id: uid(), varetypeId: "vt10", varetypeNavn: "Opvaskemaskine", varetypeTekst: "", maerke: "Miele", model: "G7100",
+        primaerYdelse: { id: "p3", navn: "Montering", minutter: 40 },
+        tillaeg: [{ id: uid(), navn: "Udpakning", minutter: 10, udfoert: false }],
       },
     ],
     noter: [], billeder: [], rapporter: [],
@@ -277,11 +321,9 @@ const seedSager = [
     plukket: false,
     varelinjer: [
       {
-        id: uid(), varetype: "TV", varetypeTekst: "", grundMinutter: 20,
-        ydelser: [
-          { id: uid(), navn: "Ophæng på væg", minutter: 30, udfoert: false },
-          { id: uid(), navn: "Kanalsøgning", minutter: 10, udfoert: false },
-        ],
+        id: uid(), varetypeId: "vt16", varetypeNavn: "TV", varetypeTekst: "", maerke: "LG", model: "OLED55C3",
+        primaerYdelse: { id: "p2", navn: "Levering med indbæring", minutter: 20 },
+        tillaeg: [{ id: uid(), navn: "Udpakning", minutter: 10, udfoert: false }],
       },
     ],
     noter: [], billeder: [], rapporter: [],
@@ -313,7 +355,8 @@ const SIDER_FOR_ROLLE = {
 
 export {
   uid, now, todayISO, flytDato, formatDatoLang, erIDag, formatVarighed, formatKlokken, totalMinutter, ydelseIkon,
-  STANDARD_YDELSE_MINUTTER, STANDARD_GRUNDMINUTTER, lavYdelse, ANDET_VARETYPE, DEFAULT_VARETYPER, varetypeNavne,
+  STANDARD_YDELSE_MINUTTER, lavYdelse, ANDET_VARETYPE, ANDET_VARETYPE_ID,
+  DEFAULT_VAREKATEGORIER, DEFAULT_VARETYPER, DEFAULT_PRIMAERYDELSER, DEFAULT_TILLAEGSYDELSER, tilgaengeligeTillaeg,
   lavVarelinje, varelinjeLabel, linjeMinutter, sagForventetMinutter, normaliserAdresse, bygningsNoegle, omraadeNoegle,
   ugeDage, dannTitel, noegleTekst, TIDSRUM, tidsrumFraId, tidsrumTekst, NOEGLE_TYPER, MONTOR_FARVER, montorFarve,
   DEFAULT_BILER, bilLabel, bilBlokeretAfFerie, seedBrugere, tomKunde, tomNoegle, seedSager, statusMeta, SIDER, SIDER_FOR_ROLLE,
