@@ -79,23 +79,23 @@ function MontorRaekke({ m, biler, ferier, onUpdateBil, onTilfoejFerie, onSletFer
 
 function BilRaekke({ b, brugtAf, onUpdate, onDelete, onToggleLukket }) {
   const [redigerer, setRedigerer] = useState(false);
+  const [navn, setNavn] = useState(b.navn);
   const [nummerplade, setNummerplade] = useState(b.nummerplade);
   const [visLukAarsag, setVisLukAarsag] = useState(false);
   const [aarsag, setAarsag] = useState("Værksted");
 
   if (redigerer) {
     return (
-      <div className="bg-white border border-[#D8D0BE] p-2.5 flex items-center gap-2">
-        <span className="text-[10px] font-mono text-[#52697E] shrink-0">#{b.id}</span>
-        <input autoFocus value={nummerplade} onChange={(e) => setNummerplade(e.target.value)} placeholder="Nummerplade" className="flex-1 border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-        <button onClick={() => { onUpdate(nummerplade.trim() || b.nummerplade); setRedigerer(false); }} className="text-xs text-[#3D7A5C] font-semibold uppercase">Gem</button>
-        <button onClick={() => { setNummerplade(b.nummerplade); setRedigerer(false); }} className="text-xs text-[#52697E] font-semibold uppercase">Fortryd</button>
+      <div className="bg-white border border-[#D8D0BE] p-2.5 flex items-center gap-2 flex-wrap">
+        <input autoFocus value={navn} onChange={(e) => setNavn(e.target.value)} placeholder="Navn/tag, fx 'Bil 1'" className="flex-1 min-w-[120px] border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+        <input value={nummerplade} onChange={(e) => setNummerplade(e.target.value)} placeholder="Nummerplade" className="flex-1 min-w-[120px] border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+        <button onClick={() => { onUpdate({ navn: navn.trim() || b.navn, nummerplade: nummerplade.trim() || b.nummerplade }); setRedigerer(false); }} className="text-xs text-[#3D7A5C] font-semibold uppercase">Gem</button>
+        <button onClick={() => { setNavn(b.navn); setNummerplade(b.nummerplade); setRedigerer(false); }} className="text-xs text-[#52697E] font-semibold uppercase">Fortryd</button>
       </div>
     );
   }
   return (
     <div className={`bg-white border p-2.5 flex items-center gap-2 flex-wrap ${b.lukket ? "border-[#E2621B] opacity-70" : "border-[#D8D0BE]"}`}>
-      <span className="text-[10px] font-mono text-[#52697E] shrink-0">#{b.id}</span>
       <p className="text-sm text-[#1C232E] flex-1 truncate min-w-[80px]">{bilLabel(b)}</p>
       {b.lukket && <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 border border-[#E2621B] text-[#E2621B] shrink-0">Lukket{b.lukketAarsag ? ` · ${b.lukketAarsag}` : ""}</span>}
       {brugtAf && <span className="text-[10px] text-[#52697E] shrink-0">kører af {brugtAf}</span>}
@@ -110,8 +110,35 @@ function BilRaekke({ b, brugtAf, onUpdate, onDelete, onToggleLukket }) {
           {b.lukket ? "Åbn igen" : "Blokér (fx værksted)"}
         </button>
       )}
-      <button onClick={() => setRedigerer(true)} className="p-1 text-[#52697E] hover:text-[#E2621B] shrink-0" title="Ret nummerplade"><Pencil size={13} /></button>
+      <button onClick={() => setRedigerer(true)} className="p-1 text-[#52697E] hover:text-[#E2621B] shrink-0" title="Ret navn/nummerplade"><Pencil size={13} /></button>
       <button onClick={onDelete} className="p-1 text-[#52697E] hover:text-[#B3261E] shrink-0" title="Slet"><Trash2 size={13} /></button>
+    </div>
+  );
+}
+
+function BrugerRaekke({ b, tilknyttetBil, aktuelBrugerId, onUpdate, onDelete }) {
+  const [redigerer, setRedigerer] = useState(false);
+  const [navn, setNavn] = useState(b.navn);
+
+  return (
+    <div className="bg-white border border-[#D8D0BE] p-3 flex items-center gap-3 flex-wrap">
+      <div className="min-w-0 flex-1">
+        {redigerer ? (
+          <div className="flex items-center gap-1.5">
+            <input autoFocus value={navn} onChange={(e) => setNavn(e.target.value)} className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+            <button onClick={() => { onUpdate(b.id, { navn: navn.trim() || b.navn }); setRedigerer(false); }} className="text-xs text-[#3D7A5C] font-semibold uppercase">Gem</button>
+            <button onClick={() => { setNavn(b.navn); setRedigerer(false); }} className="text-xs text-[#52697E] font-semibold uppercase">Fortryd</button>
+          </div>
+        ) : (
+          <p className="font-semibold text-sm text-[#1C232E] truncate">{b.navn}</p>
+        )}
+        <p className="text-xs text-[#52697E] truncate">{ROLLE_LABEL[b.rolle] || b.rolle}{b.rolle === "montor" ? ` · ${tilknyttetBil ? bilLabel(tilknyttetBil) : "ingen bil endnu"}` : ""}</p>
+      </div>
+      <select value={b.rolle} onChange={(e) => onUpdate(b.id, { rolle: e.target.value })} className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-xs text-[#1C232E]">
+        {Object.entries(ROLLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+      {!redigerer && <button onClick={() => { setNavn(b.navn); setRedigerer(true); }} className="p-1.5 text-[#52697E] hover:text-[#E2621B]" title="Ret navn"><Pencil size={15} /></button>}
+      {b.id !== aktuelBrugerId && <button onClick={() => onDelete(b.id)} className="p-1.5 text-[#52697E] hover:text-[#B3261E]" title="Fjern adgang"><Trash2 size={15} /></button>}
     </div>
   );
 }
@@ -239,4 +266,4 @@ function VaretypeAdmin({ varetyper, onAdd, onUpdate, onDelete }) {
 
 
 
-export { MontorRaekke, BilRaekke, NyBrugerForm, VaretypeRaekke, VaretypeAdmin, ROLLE_LABEL };
+export { MontorRaekke, BilRaekke, BrugerRaekke, NyBrugerForm, VaretypeRaekke, VaretypeAdmin, ROLLE_LABEL };
