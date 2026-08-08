@@ -122,8 +122,8 @@ export default function App() {
   const gemVaretyper = (next) => { setVaretyper(next); if (profil?.butikId) gemVaretyperSky(profil.butikId, next); };
   const gemBiler = (next) => { setBiler(next); if (profil?.butikId) gemBilerSky(profil.butikId, next); };
 
-  const addBil = (nummerplade) => gemBiler([...biler, { id: uid(), nummerplade, lukket: false, lukketAarsag: "" }]);
-  const updateBil = (id, nummerplade) => gemBiler(biler.map((b) => (b.id === id ? { ...b, nummerplade } : b)));
+  const addBil = (navn, nummerplade) => gemBiler([...biler, { id: uid(), navn, nummerplade, lukket: false, lukketAarsag: "" }]);
+  const updateBil = (id, felter) => gemBiler(biler.map((b) => (b.id === id ? { ...b, ...felter } : b)));
   const toggleBilLukket = (id, aarsag) => gemBiler(biler.map((b) => (b.id === id ? { ...b, lukket: !b.lukket, lukketAarsag: !b.lukket ? (aarsag || "Værksted") : "" } : b)));
   const deleteBil = (id) => {
     if (montorer.some((m) => m.bilId === id) && !window.confirm("Denne bil er tildelt en montør. Slet alligevel?")) return;
