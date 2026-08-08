@@ -1,37 +1,68 @@
 import React, { useState } from "react";
 import { Trash2, X, Plus, AlertCircle, KeyRound, Clock } from "lucide-react";
-import { ANDET_VARETYPE, NOEGLE_TYPER, STANDARD_GRUNDMINUTTER, STANDARD_YDELSE_MINUTTER, bygningsNoegle, formatDatoLang, formatVarighed, lavYdelse, linjeMinutter, varetypeNavne, ydelseIkon } from "../data/appData";
+import { ANDET_VARETYPE, ANDET_VARETYPE_ID, NOEGLE_TYPER, bygningsNoegle, formatDatoLang, formatVarighed, linjeMinutter, tilgaengeligeTillaeg, ydelseIkon } from "../data/appData";
 
-function VarelinjeRedigering({ linje, varetyper, onChange, onFjern, kanFjerne }) {
-  const erAndet = linje.varetype === ANDET_VARETYPE;
+function VarelinjeRedigering({ linje, varetyper, varekategorier, primaerydelser, tillaegsydelser, onChange, onFjern, kanFjerne }) {
+  const erAndet = linje.varetypeId === ANDET_VARETYPE_ID;
+  const valgtVaretype = varetyper.find((v) => v.id === linje.varetypeId);
+  const [kategoriFilter, setKategoriFilter] = useState(valgtVaretype?.kategoriId || "");
 
-  const skiftVaretype = (nyType) => {
-    if (nyType === linje.varetype) return;
-    const def = varetyper.find((v) => v.navn === nyType);
-    onChange({ ...linje, varetype: nyType, varetypeTekst: "", grundMinutter: def ? (Number(def.grundMinutter) || 0) : STANDARD_GRUNDMINUTTER, ydelser: (def ? def.ydelser : []).map((y) => lavYdelse(y.navn, y.minutter)) });
+  const synligeVaretyper = kategoriFilter ? varetyper.filter((v) => v.kategoriId === kategoriFilter) : varetyper;
+  const tilgaengelig = tilgaengeligeTillaeg(linje.varetypeId, linje.primaerYdelse?.id, varetyper, primaerydelser, tillaegsydelser);
+
+  const skiftVaretype = (nyId) => {
+    if (nyId === linje.varetypeId) return;
+    const vt = nyId === ANDET_VARETYPE_ID ? null : varetyper.find((v) => v.id === nyId);
+    const nyTilgaengelig = tilgaengeligeTillaeg(nyId, linje.primaerYdelse?.id, varetyper, primaerydelser, tillaegsydelser);
+    onChange({
+      ...linje,
+      varetypeId: nyId,
+      varetypeNavn: vt ? vt.navn : ANDET_VARETYPE,
+      varetypeTekst: "",
+      tillaeg: linje.tillaeg.filter((t) => nyTilgaengelig.some((n) => n.navn === t.navn)),
+    });
   };
-  const toggleYdelse = (yId) => onChange({ ...linje, ydelser: linje.ydelser.map((y) => (y.id === yId ? { ...y, udfoert: !y.udfoert } : y)) });
-  const setYdelseMin = (yId, min) => onChange({ ...linje, ydelser: linje.ydelser.map((y) => (y.id === yId ? { ...y, minutter: Number(min) || 0 } : y)) });
-  const [nyPunkt, setNyPunkt] = useState("");
-  const tilfoejPunkt = () => {
-    if (!nyPunkt.trim()) return;
-    onChange({ ...linje, ydelser: [...linje.ydelser, lavYdelse(nyPunkt.trim())] });
-    setNyPunkt("");
+
+  const skiftPrimaerYdelse = (nyId) => {
+    const py = primaerydelser.find((p) => p.id === nyId);
+    if (!py) return;
+    const nyTilgaengelig = tilgaengeligeTillaeg(linje.varetypeId, nyId, varetyper, primaerydelser, tillaegsydelser);
+    onChange({
+      ...linje,
+      primaerYdelse: { id: py.id, navn: py.navn, minutter: Number(py.minutter) || 0 },
+      tillaeg: linje.tillaeg.filter((t) => nyTilgaengelig.some((n) => n.navn === t.navn)),
+    });
   };
-  const fjernPunkt = (yId) => onChange({ ...linje, ydelser: linje.ydelser.filter((y) => y.id !== yId) });
+
+  const toggleTillaeg = (t) => {
+    const findes = linje.tillaeg.some((x) => x.id === t.id || x.navn === t.navn);
+    if (findes) {
+      onChange({ ...linje, tillaeg: linje.tillaeg.filter((x) => x.id !== t.id && x.navn !== t.navn) });
+    } else {
+      onChange({ ...linje, tillaeg: [...linje.tillaeg, { id: t.id, navn: t.navn, minutter: Number(t.minutter) || 0, udfoert: false }] });
+    }
+  };
+  const toggleUdfoert = (id) => onChange({ ...linje, tillaeg: linje.tillaeg.map((y) => (y.id === id ? { ...y, udfoert: !y.udfoert } : y)) });
 
   return (
     <div className="border border-[#D8D0BE] bg-[#FCFAF4] p-3">
-      <div className="flex items-center gap-2 mb-2">
-        <select value={linje.varetype} onChange={(e) => skiftVaretype(e.target.value)} className="flex-1 border border-[#D8D0BE] bg-white px-2 py-1.5 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]">
-          {varetypeNavne(varetyper).map((v) => <option key={v} value={v}>{v}</option>)}
+      <div className="grid gap-2 sm:grid-cols-3 mb-2">
+        <select value={kategoriFilter} onChange={(e) => setKategoriFilter(e.target.value)} className="border border-[#D8D0BE] bg-white px-2 py-1.5 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]">
+          <option value="">Alle kategorier</option>
+          {varekategorier.map((k) => <option key={k.id} value={k.id}>{k.navn}</option>)}
         </select>
-        <div className="flex items-center gap-1 shrink-0" title="Grundtid for selve varen/opgaven">
-          <input type="number" min="0" value={linje.grundMinutter ?? 0} onChange={(e) => onChange({ ...linje, grundMinutter: Number(e.target.value) || 0 })} className="w-14 border border-[#D8D0BE] bg-white px-1.5 py-1.5 text-xs text-right text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-          <span className="text-[10px] text-[#52697E] whitespace-nowrap">min grundtid</span>
+        <select value={linje.varetypeId} onChange={(e) => skiftVaretype(e.target.value)} className="border border-[#D8D0BE] bg-white px-2 py-1.5 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]">
+          {synligeVaretyper.map((v) => <option key={v.id} value={v.id}>{v.navn}</option>)}
+          <option value={ANDET_VARETYPE_ID}>{ANDET_VARETYPE}</option>
+        </select>
+        <div className="flex items-center gap-1.5">
+          <select value={linje.primaerYdelse?.id || ""} onChange={(e) => skiftPrimaerYdelse(e.target.value)} className="flex-1 border border-[#D8D0BE] bg-white px-2 py-1.5 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]">
+            {primaerydelser.map((p) => <option key={p.id} value={p.id}>{p.navn}</option>)}
+          </select>
+          {kanFjerne && <button onClick={onFjern} className="p-1.5 text-[#52697E] hover:text-[#B3261E] shrink-0" title="Fjern varelinje"><Trash2 size={15} /></button>}
         </div>
-        {kanFjerne && <button onClick={onFjern} className="p-1.5 text-[#52697E] hover:text-[#B3261E]" title="Fjern varelinje"><Trash2 size={15} /></button>}
       </div>
+
       {erAndet && (
         <input
           value={linje.varetypeTekst}
@@ -40,29 +71,51 @@ function VarelinjeRedigering({ linje, varetyper, onChange, onFjern, kanFjerne })
           className="w-full border border-[#D8D0BE] bg-white px-2 py-1.5 text-sm text-[#1C232E] mb-2 focus:outline-none focus:border-[#E2621B]"
         />
       )}
-      {linje.ydelser.length > 0 && (
-        <div className="space-y-1 mb-2">
-          {linje.ydelser.map((y) => {
+
+      <div className="grid gap-2 sm:grid-cols-2 mb-2">
+        <input value={linje.maerke} onChange={(e) => onChange({ ...linje, maerke: e.target.value })} placeholder="Mærke, fx 'Bosch'" className="border border-[#D8D0BE] bg-white px-2 py-1.5 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+        <input value={linje.model} onChange={(e) => onChange({ ...linje, model: e.target.value })} placeholder="Modelnummer" className="border border-[#D8D0BE] bg-white px-2 py-1.5 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+      </div>
+
+      {tilgaengelig.length > 0 && (
+        <div className="mb-2">
+          <p className="text-[10px] uppercase tracking-wide text-[#52697E] mb-1">Tillægsydelser</p>
+          <div className="flex flex-wrap gap-1.5">
+            {tilgaengelig.map((t) => {
+              const valgt = linje.tillaeg.find((x) => x.id === t.id || x.navn === t.navn);
+              const Icon = ydelseIkon(t.navn);
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => toggleTillaeg(t)}
+                  className={`inline-flex items-center gap-1.5 text-xs px-2 py-1 border transition-colors ${valgt ? "border-[#3D7A5C] bg-[#3D7A5C10] text-[#3D7A5C]" : "border-[#D8D0BE] text-[#52697E] hover:border-[#E2621B] hover:text-[#E2621B]"}`}
+                >
+                  <Icon size={12} strokeWidth={2.5} />
+                  {t.navn}
+                  <span className="text-[10px] opacity-70">{t.minutter}m</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {linje.tillaeg.length > 0 && (
+        <div className="space-y-1 mb-2 border-t border-[#F0EBDD] pt-2">
+          {linje.tillaeg.map((y) => {
             const Icon = ydelseIkon(y.navn);
             return (
-              <div key={y.id} className="flex items-center gap-2 px-1.5 py-1 hover:bg-white group">
-                <label className="flex items-center gap-2 flex-1 cursor-pointer min-w-0">
-                  <input type="checkbox" checked={y.udfoert} onChange={() => toggleYdelse(y.id)} className="w-4 h-4 accent-[#3D7A5C] shrink-0" />
-                  <Icon size={13} className="text-[#52697E] shrink-0" strokeWidth={2.5} />
-                  <span className="text-sm text-[#1C232E] flex-1 truncate">{y.navn}</span>
-                </label>
-                <input type="number" min="0" value={y.minutter ?? STANDARD_YDELSE_MINUTTER} onChange={(e) => setYdelseMin(y.id, e.target.value)} className="w-12 border border-[#D8D0BE] bg-white px-1 py-0.5 text-xs text-right text-[#52697E] focus:outline-none focus:border-[#E2621B]" />
-                <span className="text-[10px] text-[#52697E]">min</span>
-                <button onClick={(e) => { e.preventDefault(); fjernPunkt(y.id); }} className="opacity-0 group-hover:opacity-100 text-[#52697E] hover:text-[#E2621B]"><X size={13} /></button>
-              </div>
+              <label key={y.id} className="flex items-center gap-2 px-1.5 py-1 hover:bg-white cursor-pointer group">
+                <input type="checkbox" checked={y.udfoert} onChange={() => toggleUdfoert(y.id)} className="w-4 h-4 accent-[#3D7A5C] shrink-0" title="Udført" />
+                <Icon size={13} className="text-[#52697E] shrink-0" strokeWidth={2.5} />
+                <span className="text-sm text-[#1C232E] flex-1 truncate">{y.navn}</span>
+                <span className="text-[10px] text-[#52697E]">{y.minutter} min</span>
+              </label>
             );
           })}
         </div>
       )}
-      <div className="flex gap-1.5 mb-1.5">
-        <input value={nyPunkt} onChange={(e) => setNyPunkt(e.target.value)} onKeyDown={(e) => e.key === "Enter" && tilfoejPunkt()} placeholder="Tilføj punkt til denne varelinje..." className="flex-1 border border-[#D8D0BE] bg-white px-2 py-1 text-xs text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-        <button onClick={tilfoejPunkt} className="px-2 text-[#1C232E] border border-[#D8D0BE] hover:border-[#E2621B] hover:text-[#E2621B]"><Plus size={13} /></button>
-      </div>
+
       <p className="text-[10px] text-[#52697E] flex items-center gap-1"><Clock size={10} /> I alt for denne linje: {formatVarighed(linjeMinutter(linje))}</p>
     </div>
   );
