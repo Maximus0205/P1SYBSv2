@@ -185,85 +185,226 @@ function NyBrugerForm({ onAdd }) {
 
 const ROLLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montør" };
 
-function VaretypeRaekke({ v, onUpdate, onDelete }) {
-  const [nyYdelse, setNyYdelse] = useState("");
-  const [nyYdelseMin, setNyYdelseMin] = useState(STANDARD_YDELSE_MINUTTER);
-  const [redigererNavn, setRedigererNavn] = useState(false);
-  const [navn, setNavn] = useState(v.navn);
+// ---------- Varekategorier ----------
 
-  const tilfoejYdelse = () => {
-    if (!nyYdelse.trim()) return;
-    onUpdate({ ...v, ydelser: [...v.ydelser, { navn: nyYdelse.trim(), minutter: Number(nyYdelseMin) || 0 }] });
-    setNyYdelse(""); setNyYdelseMin(STANDARD_YDELSE_MINUTTER);
-  };
-  const fjernYdelse = (i) => onUpdate({ ...v, ydelser: v.ydelser.filter((_, idx) => idx !== i) });
-  const opdaterYdelseMin = (i, min) => onUpdate({ ...v, ydelser: v.ydelser.map((y, idx) => (idx === i ? { ...y, minutter: Number(min) || 0 } : y)) });
-
-  const samletMin = (Number(v.grundMinutter) || 0) + v.ydelser.reduce((s, y) => s + (Number(y.minutter) || 0), 0);
-
-  return (
-    <div className="border border-[#D8D0BE] bg-white p-4">
-      <div className="flex items-center justify-between mb-2 gap-2">
-        {redigererNavn ? (
-          <div className="flex items-center gap-2 flex-1">
-            <input value={navn} onChange={(e) => setNavn(e.target.value)} className="flex-1 border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-            <button onClick={() => { onUpdate({ ...v, navn: navn.trim() || v.navn }); setRedigererNavn(false); }} className="text-xs text-[#3D7A5C] font-semibold uppercase">Gem</button>
-          </div>
-        ) : (
-          <p className="font-semibold text-sm text-[#1C232E]">{v.navn}</p>
-        )}
-        <div className="flex items-center gap-1 shrink-0">
-          {!redigererNavn && <button onClick={() => setRedigererNavn(true)} className="p-1 text-[#52697E] hover:text-[#E2621B]"><Pencil size={14} /></button>}
-          <button onClick={() => onDelete(v.id)} className="p-1 text-[#52697E] hover:text-[#B3261E]"><Trash2 size={14} /></button>
-        </div>
-      </div>
-
-      <label className="flex items-center gap-2 mb-3 text-xs text-[#52697E]">
-        <Clock size={12} /> Grundtid (selve montering/levering)
-        <input type="number" min="0" value={v.grundMinutter ?? 0} onChange={(e) => onUpdate({ ...v, grundMinutter: Number(e.target.value) || 0 })} className="w-16 border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1 text-xs text-right text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-        min
-      </label>
-
-      <div className="flex flex-col gap-1 mb-2">
-        {v.ydelser.length === 0 ? <p className="text-xs text-[#52697E] italic">Ingen standardydelser endnu.</p> : v.ydelser.map((y, i) => (
-          <div key={i} className="flex items-center gap-2 text-[11px] px-2 py-1 border border-[#D8D0BE] text-[#52697E]">
-            <span className="flex-1 truncate">{y.navn}</span>
-            <input type="number" min="0" value={y.minutter ?? STANDARD_YDELSE_MINUTTER} onChange={(e) => opdaterYdelseMin(i, e.target.value)} className="w-12 border border-[#D8D0BE] bg-[#F3EFE6] px-1 py-0.5 text-right text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-            <span>min</span>
-            <button onClick={() => fjernYdelse(i)} className="hover:text-[#B3261E]"><X size={11} /></button>
-          </div>
-        ))}
-      </div>
-      <div className="flex gap-1.5 mb-2">
-        <input value={nyYdelse} onChange={(e) => setNyYdelse(e.target.value)} onKeyDown={(e) => e.key === "Enter" && tilfoejYdelse()} placeholder="Tilføj standardydelse..." className="flex-1 border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1 text-xs text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-        <input type="number" min="0" value={nyYdelseMin} onChange={(e) => setNyYdelseMin(e.target.value)} title="Minutter" className="w-14 border border-[#D8D0BE] bg-[#F3EFE6] px-1 py-1 text-xs text-right text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-        <button onClick={tilfoejYdelse} className="px-2 text-[#1C232E] border border-[#D8D0BE] hover:border-[#E2621B]"><Plus size={13} /></button>
-      </div>
-      <p className="text-[10px] text-[#52697E] flex items-center gap-1 border-t border-[#F0EBDD] pt-1.5"><Clock size={10} /> Samlet ved fuld tjekliste: {formatVarighed(samletMin)}</p>
-    </div>
-  );
-}
-
-function VaretypeAdmin({ varetyper, onAdd, onUpdate, onDelete }) {
+function VarekategoriAdmin({ varekategorier, onAdd, onUpdate, onDelete }) {
   const [nytNavn, setNytNavn] = useState("");
   return (
     <div>
       <div className="border border-[#D8D0BE] bg-white p-5 mb-4">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Opret ny varetype</h3>
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Opret ny varekategori</h3>
         <div className="flex gap-2">
-          <input value={nytNavn} onChange={(e) => setNytNavn(e.target.value)} placeholder="Fx 'Kaffemaskine' eller 'Router'" className="flex-1 border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+          <input value={nytNavn} onChange={(e) => setNytNavn(e.target.value)} placeholder="Fx 'Hvidevare'" className="flex-1 border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
           <button onClick={() => { if (!nytNavn.trim()) return; onAdd(nytNavn.trim()); setNytNavn(""); }} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors flex items-center gap-1.5"><Plus size={15} /> Opret</button>
+        </div>
+      </div>
+      <div className="space-y-2">
+        {varekategorier.map((k) => <RedigerbarNavnRaekke key={k.id} item={k} onUpdate={(navn) => onUpdate(k.id, navn)} onDelete={() => onDelete(k.id)} />)}
+      </div>
+    </div>
+  );
+}
+
+function RedigerbarNavnRaekke({ item, onUpdate, onDelete, ekstra }) {
+  const [redigerer, setRedigerer] = useState(false);
+  const [navn, setNavn] = useState(item.navn);
+  return (
+    <div className="bg-white border border-[#D8D0BE] p-3 flex items-center gap-2 flex-wrap">
+      {redigerer ? (
+        <>
+          <input autoFocus value={navn} onChange={(e) => setNavn(e.target.value)} className="flex-1 min-w-[140px] border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+          <button onClick={() => { onUpdate(navn.trim() || item.navn); setRedigerer(false); }} className="text-xs text-[#3D7A5C] font-semibold uppercase">Gem</button>
+          <button onClick={() => { setNavn(item.navn); setRedigerer(false); }} className="text-xs text-[#52697E] font-semibold uppercase">Fortryd</button>
+        </>
+      ) : (
+        <>
+          <p className="font-semibold text-sm text-[#1C232E] flex-1">{item.navn}</p>
+          {ekstra}
+          <button onClick={() => setRedigerer(true)} className="p-1.5 text-[#52697E] hover:text-[#E2621B]"><Pencil size={14} /></button>
+          <button onClick={onDelete} className="p-1.5 text-[#52697E] hover:text-[#B3261E]"><Trash2 size={14} /></button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------- Varetyper ----------
+
+function VaretypeRaekke({ v, varekategorier, tillaegsydelser, onUpdate, onDelete }) {
+  const [redigererNavn, setRedigererNavn] = useState(false);
+  const [navn, setNavn] = useState(v.navn);
+  const toggleTillaeg = (tId) => {
+    const har = (v.tillaeg || []).includes(tId);
+    onUpdate(v.id, { tillaeg: har ? v.tillaeg.filter((x) => x !== tId) : [...(v.tillaeg || []), tId] });
+  };
+
+  return (
+    <div className="border border-[#D8D0BE] bg-white p-4">
+      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+        {redigererNavn ? (
+          <div className="flex items-center gap-2 flex-1 min-w-[160px]">
+            <input value={navn} onChange={(e) => setNavn(e.target.value)} className="flex-1 border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+            <button onClick={() => { onUpdate(v.id, { navn: navn.trim() || v.navn }); setRedigererNavn(false); }} className="text-xs text-[#3D7A5C] font-semibold uppercase">Gem</button>
+          </div>
+        ) : (
+          <p className="font-semibold text-sm text-[#1C232E]">{v.navn}</p>
+        )}
+        <div className="flex items-center gap-2 shrink-0">
+          <select value={v.kategoriId || ""} onChange={(e) => onUpdate(v.id, { kategoriId: e.target.value || null })} className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1 text-xs text-[#1C232E]">
+            <option value="">Ingen kategori</option>
+            {varekategorier.map((k) => <option key={k.id} value={k.id}>{k.navn}</option>)}
+          </select>
+          {!redigererNavn && <button onClick={() => setRedigererNavn(true)} className="p-1 text-[#52697E] hover:text-[#E2621B]"><Pencil size={14} /></button>}
+          <button onClick={() => onDelete(v.id)} className="p-1 text-[#52697E] hover:text-[#B3261E]"><Trash2 size={14} /></button>
+        </div>
+      </div>
+      <p className="text-[10px] uppercase tracking-wide text-[#52697E] mb-1.5">Tillægsydelser der er relevante for denne vare</p>
+      <div className="flex flex-wrap gap-1.5">
+        {tillaegsydelser.length === 0 ? (
+          <p className="text-xs text-[#52697E] italic">Ingen tillægsydelser oprettet endnu.</p>
+        ) : (
+          tillaegsydelser.map((t) => {
+            const valgt = (v.tillaeg || []).includes(t.id);
+            return (
+              <button key={t.id} onClick={() => toggleTillaeg(t.id)} className={`text-xs px-2 py-1 border transition-colors ${valgt ? "border-[#3D7A5C] bg-[#3D7A5C10] text-[#3D7A5C]" : "border-[#D8D0BE] text-[#52697E] hover:border-[#E2621B] hover:text-[#E2621B]"}`}>
+                {t.navn}
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+function VaretypeAdmin({ varetyper, varekategorier, tillaegsydelser, onAdd, onUpdate, onDelete }) {
+  const [nytNavn, setNytNavn] = useState("");
+  const [nyKategoriId, setNyKategoriId] = useState("");
+  return (
+    <div>
+      <div className="border border-[#D8D0BE] bg-white p-5 mb-4">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Opret ny varetype</h3>
+        <div className="flex gap-2 flex-wrap">
+          <input value={nytNavn} onChange={(e) => setNytNavn(e.target.value)} placeholder="Fx 'Kaffemaskine'" className="flex-1 min-w-[160px] border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+          <select value={nyKategoriId} onChange={(e) => setNyKategoriId(e.target.value)} className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E]">
+            <option value="">Ingen kategori</option>
+            {varekategorier.map((k) => <option key={k.id} value={k.id}>{k.navn}</option>)}
+          </select>
+          <button onClick={() => { if (!nytNavn.trim()) return; onAdd(nytNavn.trim(), nyKategoriId || null); setNytNavn(""); setNyKategoriId(""); }} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors flex items-center gap-1.5"><Plus size={15} /> Opret</button>
         </div>
       </div>
       <div className="grid sm:grid-cols-2 gap-3">
         {varetyper.map((v) => (
-          <VaretypeRaekke key={v.id} v={v} onUpdate={onUpdate} onDelete={onDelete} />
+          <VaretypeRaekke key={v.id} v={v} varekategorier={varekategorier} tillaegsydelser={tillaegsydelser} onUpdate={onUpdate} onDelete={onDelete} />
         ))}
       </div>
     </div>
   );
 }
 
+// ---------- Primære ydelser ----------
 
+function PrimaerydelseRaekke({ p, tillaegsydelser, onUpdate, onDelete }) {
+  const [redigererNavn, setRedigererNavn] = useState(false);
+  const [navn, setNavn] = useState(p.navn);
+  const toggleTillaeg = (tId) => {
+    const har = (p.tillaeg || []).includes(tId);
+    onUpdate(p.id, { tillaeg: har ? p.tillaeg.filter((x) => x !== tId) : [...(p.tillaeg || []), tId] });
+  };
+  return (
+    <div className="border border-[#D8D0BE] bg-white p-4">
+      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+        {redigererNavn ? (
+          <div className="flex items-center gap-2 flex-1 min-w-[160px]">
+            <input value={navn} onChange={(e) => setNavn(e.target.value)} className="flex-1 border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+            <button onClick={() => { onUpdate(p.id, { navn: navn.trim() || p.navn }); setRedigererNavn(false); }} className="text-xs text-[#3D7A5C] font-semibold uppercase">Gem</button>
+          </div>
+        ) : (
+          <p className="font-semibold text-sm text-[#1C232E]">{p.navn}</p>
+        )}
+        <div className="flex items-center gap-2 shrink-0">
+          <label className="flex items-center gap-1.5 text-xs text-[#52697E]">
+            <Clock size={12} />
+            <input type="number" min="0" value={p.minutter ?? 0} onChange={(e) => onUpdate(p.id, { minutter: Number(e.target.value) || 0 })} className="w-14 border border-[#D8D0BE] bg-[#F3EFE6] px-1.5 py-1 text-right text-[#1C232E]" /> min
+          </label>
+          {!redigererNavn && <button onClick={() => setRedigererNavn(true)} className="p-1 text-[#52697E] hover:text-[#E2621B]"><Pencil size={14} /></button>}
+          <button onClick={() => onDelete(p.id)} className="p-1 text-[#52697E] hover:text-[#B3261E]"><Trash2 size={14} /></button>
+        </div>
+      </div>
+      <p className="text-[10px] uppercase tracking-wide text-[#52697E] mb-1.5">Tillægsydelser der kan vælges, når denne primære ydelse er valgt</p>
+      <div className="flex flex-wrap gap-1.5">
+        {tillaegsydelser.length === 0 ? (
+          <p className="text-xs text-[#52697E] italic">Ingen tillægsydelser oprettet endnu.</p>
+        ) : (
+          tillaegsydelser.map((t) => {
+            const valgt = (p.tillaeg || []).includes(t.id);
+            return (
+              <button key={t.id} onClick={() => toggleTillaeg(t.id)} className={`text-xs px-2 py-1 border transition-colors ${valgt ? "border-[#3D7A5C] bg-[#3D7A5C10] text-[#3D7A5C]" : "border-[#D8D0BE] text-[#52697E] hover:border-[#E2621B] hover:text-[#E2621B]"}`}>
+                {t.navn}
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
 
-export { MontorRaekke, BilRaekke, BrugerRaekke, NyBrugerForm, VaretypeRaekke, VaretypeAdmin, ROLLE_LABEL };
+function PrimaerydelseAdmin({ primaerydelser, tillaegsydelser, onAdd, onUpdate, onDelete }) {
+  const [nytNavn, setNytNavn] = useState("");
+  const [nyMin, setNyMin] = useState(20);
+  return (
+    <div>
+      <div className="border border-[#D8D0BE] bg-white p-5 mb-4">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Opret ny primær ydelse</h3>
+        <div className="flex gap-2 flex-wrap">
+          <input value={nytNavn} onChange={(e) => setNytNavn(e.target.value)} placeholder="Fx 'Montering'" className="flex-1 min-w-[160px] border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+          <input type="number" min="0" value={nyMin} onChange={(e) => setNyMin(e.target.value)} title="Minutter" className="w-20 border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-2 text-sm text-right text-[#1C232E]" />
+          <button onClick={() => { if (!nytNavn.trim()) return; onAdd(nytNavn.trim(), nyMin); setNytNavn(""); setNyMin(20); }} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors flex items-center gap-1.5"><Plus size={15} /> Opret</button>
+        </div>
+      </div>
+      <div className="space-y-3">
+        {primaerydelser.map((p) => (
+          <PrimaerydelseRaekke key={p.id} p={p} tillaegsydelser={tillaegsydelser} onUpdate={onUpdate} onDelete={onDelete} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------- Tillægsydelser ----------
+
+function TillaegsydelseAdmin({ tillaegsydelser, onAdd, onUpdate, onDelete }) {
+  const [nytNavn, setNytNavn] = useState("");
+  const [nyMin, setNyMin] = useState(STANDARD_YDELSE_MINUTTER);
+  return (
+    <div>
+      <div className="border border-[#D8D0BE] bg-white p-5 mb-4">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Opret ny tillægsydelse</h3>
+        <div className="flex gap-2 flex-wrap">
+          <input value={nytNavn} onChange={(e) => setNytNavn(e.target.value)} placeholder="Fx 'Dørvending'" className="flex-1 min-w-[160px] border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+          <input type="number" min="0" value={nyMin} onChange={(e) => setNyMin(e.target.value)} title="Minutter" className="w-20 border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-2 text-sm text-right text-[#1C232E]" />
+          <button onClick={() => { if (!nytNavn.trim()) return; onAdd(nytNavn.trim(), nyMin); setNytNavn(""); setNyMin(STANDARD_YDELSE_MINUTTER); }} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors flex items-center gap-1.5"><Plus size={15} /> Opret</button>
+        </div>
+      </div>
+      <div className="space-y-2">
+        {tillaegsydelser.map((t) => (
+          <RedigerbarNavnRaekke
+            key={t.id}
+            item={t}
+            onUpdate={(navn) => onUpdate(t.id, { navn })}
+            onDelete={() => onDelete(t.id)}
+            ekstra={
+              <label className="flex items-center gap-1.5 text-xs text-[#52697E] shrink-0">
+                <Clock size={12} />
+                <input type="number" min="0" value={t.minutter ?? 0} onChange={(e) => onUpdate(t.id, { minutter: Number(e.target.value) || 0 })} className="w-14 border border-[#D8D0BE] bg-[#F3EFE6] px-1.5 py-1 text-right text-[#1C232E]" /> min
+              </label>
+            }
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export { MontorRaekke, BilRaekke, BrugerRaekke, NyBrugerForm, ROLLE_LABEL, VarekategoriAdmin, VaretypeAdmin, PrimaerydelseAdmin, TillaegsydelseAdmin };
