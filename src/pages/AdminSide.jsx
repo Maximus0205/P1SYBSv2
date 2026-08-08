@@ -1,11 +1,22 @@
 import React, { useState } from "react";
 import { Trash2, Plus } from "lucide-react";
-import { MontorRaekke, BilRaekke, BrugerRaekke, NyBrugerForm, VaretypeAdmin } from "../components/AdminParts";
+import { MontorRaekke, BilRaekke, BrugerRaekke, NyBrugerForm, VarekategoriAdmin, VaretypeAdmin, PrimaerydelseAdmin, TillaegsydelseAdmin } from "../components/AdminParts";
 
-function AdminSide({ montorer, biler, sager, brugere, varetyper, ferier, aktuelBrugerId, onUpdateMontorBil, onAddBil, onUpdateBil, onDeleteBil, onToggleBilLukket, onAddBruger, onUpdateBruger, onDeleteBruger, onAddVaretype, onUpdateVaretype, onDeleteVaretype, onTilfoejFerie, onSletFerie }) {
+function AdminSide({
+  montorer, biler, sager, brugere, ferier, aktuelBrugerId,
+  varetyper, varekategorier, primaerydelser, tillaegsydelser,
+  onUpdateMontorBil, onAddBil, onUpdateBil, onDeleteBil, onToggleBilLukket,
+  onAddBruger, onUpdateBruger, onDeleteBruger,
+  onAddVarekategori, onUpdateVarekategori, onDeleteVarekategori,
+  onAddVaretype, onUpdateVaretype, onDeleteVaretype,
+  onAddPrimaerydelse, onUpdatePrimaerydelse, onDeletePrimaerydelse,
+  onAddTillaegsydelse, onUpdateTillaegsydelse, onDeleteTillaegsydelse,
+  onTilfoejFerie, onSletFerie,
+}) {
   const [nytNavn, setNytNavn] = useState("");
   const [nyNummerplade, setNyNummerplade] = useState("");
   const [fane, setFane] = useState("montorer");
+  const [vareFane, setVareFane] = useState("kategorier");
 
   return (
     <div>
@@ -13,7 +24,7 @@ function AdminSide({ montorer, biler, sager, brugere, varetyper, ferier, aktuelB
       <h1 className="font-['Barlow_Condensed'] text-4xl uppercase tracking-tight text-[#1C232E] mb-6">Opsætning</h1>
 
       <div className="flex border-b border-[#D8D0BE] mb-6 flex-wrap">
-        {[{ k: "montorer", l: "Montører" }, { k: "biler", l: "Biler" }, { k: "brugere", l: "Brugere" }, { k: "varetyper", l: "Varetyper & ydelser" }].map((f) => (
+        {[{ k: "montorer", l: "Montører" }, { k: "biler", l: "Biler" }, { k: "brugere", l: "Brugere" }, { k: "varer", l: "Varer & ydelser" }].map((f) => (
           <button key={f.k} onClick={() => setFane(f.k)} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors ${fane === f.k ? "text-[#1C232E] border-b-2 border-[#E2621B]" : "text-[#52697E] hover:text-[#1C232E]"}`}>{f.l}</button>
         ))}
       </div>
@@ -85,10 +96,20 @@ function AdminSide({ montorer, biler, sager, brugere, varetyper, ferier, aktuelB
         </div>
       )}
 
-      {fane === "varetyper" && (
+      {fane === "varer" && (
         <div>
-          <p className="text-xs text-[#52697E] mb-4">Definér de varetyper sælgerne kan vælge, hvilke standardydelser der automatisk foreslås pr. varetype, og hvor lang tid hver del forventes at tage. Tiden bruges til at beregne forventet tidsforbrug pr. sag og planlægge bilerne. Ændringer påvirker kun nye bookinger — allerede bookede sager beholder deres egen tjekliste og tid.</p>
-          <VaretypeAdmin varetyper={varetyper} onAdd={onAddVaretype} onUpdate={onUpdateVaretype} onDelete={onDeleteVaretype} />
+          <p className="text-xs text-[#52697E] mb-4">
+            En sag vælger for hver varelinje: en varetype, mærke/model, én primær ydelse (fx "Montering" — bestemmer grundtiden) og valgfrit tillægsydelser. Hvilke tillægsydelser der kan vælges afhænger af BÅDE varetypen og den valgte primære ydelse — sæt dem op under hver af de to faner nedenfor. Ændringer her påvirker kun nye bookinger; allerede bookede sager beholder deres egne tal.
+          </p>
+          <div className="flex gap-1 mb-4 flex-wrap">
+            {[{ k: "kategorier", l: "Kategorier" }, { k: "varetyper", l: "Varetyper" }, { k: "primaer", l: "Primære ydelser" }, { k: "tillaeg", l: "Tillægsydelser" }].map((f) => (
+              <button key={f.k} onClick={() => setVareFane(f.k)} className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wide border transition-colors ${vareFane === f.k ? "bg-[#1C232E] text-white border-[#1C232E]" : "text-[#52697E] border-[#D8D0BE] hover:border-[#E2621B] hover:text-[#E2621B]"}`}>{f.l}</button>
+            ))}
+          </div>
+          {vareFane === "kategorier" && <VarekategoriAdmin varekategorier={varekategorier} onAdd={onAddVarekategori} onUpdate={onUpdateVarekategori} onDelete={onDeleteVarekategori} />}
+          {vareFane === "varetyper" && <VaretypeAdmin varetyper={varetyper} varekategorier={varekategorier} tillaegsydelser={tillaegsydelser} onAdd={onAddVaretype} onUpdate={onUpdateVaretype} onDelete={onDeleteVaretype} />}
+          {vareFane === "primaer" && <PrimaerydelseAdmin primaerydelser={primaerydelser} tillaegsydelser={tillaegsydelser} onAdd={onAddPrimaerydelse} onUpdate={onUpdatePrimaerydelse} onDelete={onDeletePrimaerydelse} />}
+          {vareFane === "tillaeg" && <TillaegsydelseAdmin tillaegsydelser={tillaegsydelser} onAdd={onAddTillaegsydelse} onUpdate={onUpdateTillaegsydelse} onDelete={onDeleteTillaegsydelse} />}
         </div>
       )}
     </div>
