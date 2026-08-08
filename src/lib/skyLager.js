@@ -63,6 +63,15 @@ export const gemBiler = (butikId, biler) => gemListe("biler", butikId, biler);
 export const hentVaretyper = (butikId) => hentListe("varetyper", butikId);
 export const gemVaretyper = (butikId, varetyper) => gemListe("varetyper", butikId, varetyper);
 
+export const hentVarekategorier = (butikId) => hentListe("varekategorier", butikId);
+export const gemVarekategorier = (butikId, kategorier) => gemListe("varekategorier", butikId, kategorier);
+
+export const hentPrimaerydelser = (butikId) => hentListe("primaerydelser", butikId);
+export const gemPrimaerydelser = (butikId, primaerydelser) => gemListe("primaerydelser", butikId, primaerydelser);
+
+export const hentTillaegsydelser = (butikId) => hentListe("tillaegsydelser", butikId);
+export const gemTillaegsydelser = (butikId, tillaegsydelser) => gemListe("tillaegsydelser", butikId, tillaegsydelser);
+
 // ---------- Profiler (erstatter den gamle "brugere"-blob) ----------
 // Selve login/adgangskode håndteres af Supabase Auth (se LoginSide.jsx).
 // Denne tabel holder kun butik_id + rolle + navn pr. bruger.
