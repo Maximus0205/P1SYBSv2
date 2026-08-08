@@ -1,8 +1,8 @@
 import React, { useState, useRef } from "react";
 import Papa from "papaparse";
-import { ANDET_VARETYPE, lavVarelinje, lavYdelse, tidsrumFraId, todayISO, uid } from "../data/appData";
+import { ANDET_VARETYPE_ID, lavVarelinje, lavYdelse, tidsrumFraId, todayISO, uid } from "../data/appData";
 
-function CsvImport({ montorer, varetyper, onImport, onClose }) {
+function CsvImport({ montorer, varetyper, primaerydelser, onImport, onClose }) {
   const inputRef = useRef(null);
   const [status, setStatus] = useState(null);
 
@@ -41,9 +41,9 @@ function CsvImport({ montorer, varetyper, onImport, onClose }) {
               const tidsrumId = matchTidsrum(pick(row, ["tidsrum", "tid", "periode"]));
               const t = tidsrumFraId(tidsrumId);
               const dato = matchDato(pick(row, ["dato", "date"]));
-              const linje = lavVarelinje(varetyper, matchedVaretype ? matchedVaretype.navn : ANDET_VARETYPE, matchedVaretype ? "" : varetypeRaa);
+              const linje = lavVarelinje(varetyper, primaerydelser, matchedVaretype ? matchedVaretype.id : ANDET_VARETYPE_ID, matchedVaretype ? "" : varetypeRaa);
               const ydelserRaa = pick(row, ["ydelser", "opgaver", "opmærksomhedspunkter"]);
-              if (ydelserRaa) linje.ydelser = [...linje.ydelser, ...ydelserRaa.split(/[;,]/).map((y) => y.trim()).filter(Boolean).map(lavYdelse)];
+              if (ydelserRaa) linje.tillaeg = [...linje.tillaeg, ...ydelserRaa.split(/[;,]/).map((y) => y.trim()).filter(Boolean).map((navn) => lavYdelse(navn))];
               const koeberNavn = pick(row, ["køber", "koeber", "buyer"]);
               return {
                 id: uid(),
