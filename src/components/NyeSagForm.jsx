@@ -4,14 +4,12 @@ import { TIDSRUM, dannTitel, formatVarighed, lavVarelinje, linjeMinutter, tidsru
 import { KvitteringUpload } from "../components/KvitteringUpload";
 import { VarelinjeRedigering, NoegleFelter, AdresseForslag } from "../components/SagFormFields";
 import { AfstandsForslag } from "../components/AfstandsForslag";
-import { AdresseInput } from "../components/AdresseInput";
 
-function NyeSagForm({ montorer, varetyper, sager, valgtDato, onAdd, onClose, butikFokus }) {
+function NyeSagForm({ montorer, varetyper, varekategorier, primaerydelser, tillaegsydelser, sager, valgtDato, onAdd, onClose }) {
   const [kundeNavn, setKundeNavn] = useState("");
   const [telefon, setTelefon] = useState("");
   const [email, setEmail] = useState("");
   const [adresse, setAdresse] = useState("");
-  const [adresseStatus, setAdresseStatus] = useState("tom");
   const [leveringsnote, setLeveringsnote] = useState("");
   const [harKoeber, setHarKoeber] = useState(false);
   const [koeberNavn, setKoeberNavn] = useState("");
@@ -22,21 +20,26 @@ function NyeSagForm({ montorer, varetyper, sager, valgtDato, onAdd, onClose, but
   const [dato, setDato] = useState(valgtDato || todayISO());
   const [tidsrumId, setTidsrumId] = useState("heldag");
   const [montorId, setMontorId] = useState("");
-  const [varelinjer, setVarelinjer] = useState([lavVarelinje(varetyper)]);
+  const [varelinjer, setVarelinjer] = useState([lavVarelinje(varetyper, primaerydelser)]);
 
   const titelPreview = dannTitel(varelinjer);
   const forventetMin = varelinjer.reduce((sum, l) => sum + linjeMinutter(l), 0);
 
   const opdaterLinje = (idx, ny) => setVarelinjer((prev) => prev.map((l, i) => (i === idx ? ny : l)));
   const fjernLinje = (idx) => setVarelinjer((prev) => prev.filter((_, i) => i !== idx));
-  const tilfoejLinje = () => setVarelinjer((prev) => [...prev, lavVarelinje(varetyper)]);
+  const tilfoejLinje = () => setVarelinjer((prev) => [...prev, lavVarelinje(varetyper, primaerydelser)]);
 
   const udfyldFraPdf = (felter) => {
     if (felter.navn) setKundeNavn(felter.navn);
     if (felter.telefon) setTelefon(felter.telefon);
     if (felter.email) setEmail(felter.email);
     if (felter.adresse) setAdresse(felter.adresse);
-    if (felter.varetyper?.length) setVarelinjer(felter.varetyper.map((v) => lavVarelinje(varetyper, v)));
+    if (felter.varetyper?.length) {
+      setVarelinjer(felter.varetyper.map((navn) => {
+        const vt = varetyper.find((v) => v.navn === navn);
+        return lavVarelinje(varetyper, primaerydelser, vt ? vt.id : undefined, vt ? "" : navn);
+      }));
+    }
   };
 
   return (
@@ -62,7 +65,7 @@ function NyeSagForm({ montorer, varetyper, sager, valgtDato, onAdd, onClose, but
         <input value={kundeNavn} onChange={(e) => setKundeNavn(e.target.value)} placeholder="Kundenavn" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
         <input value={telefon} onChange={(e) => setTelefon(e.target.value)} placeholder="Telefon" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
         <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail (valgfri)" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-        <AdresseInput value={adresse} onChange={setAdresse} placeholder="Leveringsadresse" onValideringChange={setAdresseStatus} fokus={butikFokus} />
+        <input value={adresse} onChange={(e) => setAdresse(e.target.value)} placeholder="Leveringsadresse" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
         <input value={leveringsnote} onChange={(e) => setLeveringsnote(e.target.value)} placeholder="Leveringsnote, fx 'Ring før ankomst'" className="sm:col-span-2 border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
       </div>
 
@@ -113,13 +116,9 @@ function NyeSagForm({ montorer, varetyper, sager, valgtDato, onAdd, onClose, but
       </div>
       <div className="space-y-2 mb-4">
         {varelinjer.map((l, idx) => (
-          <VarelinjeRedigering key={l.id} linje={l} varetyper={varetyper} onChange={(ny) => opdaterLinje(idx, ny)} onFjern={() => fjernLinje(idx)} kanFjerne={varelinjer.length > 1} />
+          <VarelinjeRedigering key={l.id} linje={l} varetyper={varetyper} varekategorier={varekategorier} primaerydelser={primaerydelser} tillaegsydelser={tillaegsydelser} onChange={(ny) => opdaterLinje(idx, ny)} onFjern={() => fjernLinje(idx)} kanFjerne={varelinjer.length > 1} />
         ))}
       </div>
-
-      {adresseStatus === "usikker" && (
-        <p className="text-xs text-[#B3261E] mb-2">Bemærk: leveringsadressen kunne ikke bekræftes af korttjenesten — dobbelttjek den, inden du booker.</p>
-      )}
 
       <div className="flex gap-2">
         <button
