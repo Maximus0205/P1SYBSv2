@@ -9,18 +9,21 @@ function VarelinjerDetalje({ sag, onToggleYdelse, onAddYdelse, onRemoveYdelse })
       <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Varelinjer, ydelser & opmærksomhedspunkter</h3>
       <div className="space-y-4">
         {sag.varelinjer.map((v) => {
-          const mangler = v.ydelser.filter((y) => !y.udfoert).length;
+          const mangler = v.tillaeg.filter((y) => !y.udfoert).length;
           return (
             <div key={v.id}>
               <div className="flex items-center justify-between mb-1.5">
-                <p className="text-sm font-semibold text-[#1C232E]">{varelinjeLabel(v)}</p>
+                <div>
+                  <p className="text-sm font-semibold text-[#1C232E]">{varelinjeLabel(v)}</p>
+                  {v.primaerYdelse && <p className="text-[11px] text-[#52697E]">{v.primaerYdelse.navn}</p>}
+                </div>
                 {mangler > 0 && <span className="font-mono text-[11px] text-[#E2621B]">{mangler} mangler</span>}
               </div>
-              {v.ydelser.length === 0 ? (
-                <p className="text-xs text-[#52697E] italic mb-1">Ingen punkter for denne varelinje.</p>
+              {v.tillaeg.length === 0 ? (
+                <p className="text-xs text-[#52697E] italic mb-1">Ingen tillægsydelser/punkter for denne varelinje.</p>
               ) : (
                 <div className="space-y-1 mb-1">
-                  {v.ydelser.map((y) => {
+                  {v.tillaeg.map((y) => {
                     const Icon = ydelseIkon(y.navn);
                     return (
                       <label key={y.id} className="flex items-center gap-2.5 px-2 py-1.5 hover:bg-[#F3EFE6] cursor-pointer group">
