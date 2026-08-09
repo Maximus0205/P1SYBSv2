@@ -10,6 +10,7 @@ import {
   hentTillaegsydelser, gemTillaegsydelser as gemTillaegsydelserSky,
   hentEgenProfil, hentButiksBrugere, opdaterProfil, opretBrugerAdmin,
   hentFerier, tilfoejFerie as tilfoejFerieSky, sletFerie as sletFerieSky,
+  hentButik,
 } from "./lib/skyLager";
 import {
   uid, todayISO,
@@ -27,12 +28,14 @@ import { KoerselSide } from "./pages/KoerselSide";
 import { MontorVaelger, MontorRuteView } from "./pages/MontorSide";
 import { LagerSide } from "./pages/LagerSide";
 import { AdminSide } from "./pages/AdminSide";
+import { SystemAdminSide } from "./pages/SystemAdminSide";
 
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [session, setSession] = useState(null); // Supabase Auth-session (null = ikke logget ind)
-  const [profil, setProfil] = useState(null); // { id, navn, rolle, bilId, butikId }
+  const [profil, setProfil] = useState(null); // { id, navn, rolle, bilId, butikId, erSystemadmin }
+  const [butik, setButik] = useState(null); // { id, navn, adresse, lat, lon } - egen butiks koordinater
   const [sager, setSager] = useState([]);
   const [biler, setBiler] = useState([]);
   const [brugere, setBrugere] = useState([]);
@@ -88,12 +91,16 @@ export default function App() {
   const genindlaesProfil = async (userId) => {
     const p = await hentEgenProfil(userId);
     if (!p) { setProfil(null); return null; }
-    const normaliseret = { id: p.id, navn: p.navn, rolle: p.rolle, bilId: p.bil_id, butikId: p.butik_id };
+    const normaliseret = { id: p.id, navn: p.navn, rolle: p.rolle, bilId: p.bil_id, butikId: p.butik_id, erSystemadmin: !!p.er_systemadmin };
     setProfil(normaliseret);
     if (normaliseret.butikId) {
       setSide((SIDER_FOR_ROLLE[normaliseret.rolle] || ["salg"])[0]);
       if (normaliseret.rolle === "montor") setValgtMontorId(normaliseret.id);
       await hent(normaliseret.butikId);
+      const butikData = await hentButik(normaliseret.butikId);
+      setButik(butikData);
+    } else if (normaliseret.erSystemadmin) {
+      setSide("systemadmin");
     }
     return normaliseret;
   };
@@ -123,6 +130,7 @@ export default function App() {
         setTimeout(() => { genindlaesProfil(nySession.user.id); }, 0);
       } else {
         setProfil(null);
+        setButik(null);
         setSager([]); setBiler([]); setVaretyper([]); setVarekategorier([]); setPrimaerydelser([]); setTillaegsydelser([]); setBrugere([]); setFerier([]);
         setSelectedId(null);
       }
@@ -269,6 +277,19 @@ export default function App() {
   }
 
   if (!profil.butikId) {
+    if (profil.erSystemadmin) {
+      return (
+        <div className="min-h-screen w-full" style={{ background: "#F3EFE6" }}>
+          <div className="max-w-2xl mx-auto px-4 py-8">
+            <div className="flex justify-between items-center mb-4">
+              <p className="font-mono text-[11px] tracking-widest uppercase text-[#E2621B]">Systemadministration</p>
+              <button onClick={logUd} className="text-xs text-[#52697E] hover:text-[#E2621B] underline">Log ud</button>
+            </div>
+            <SystemAdminSide />
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen w-full flex items-center justify-center px-4" style={{ background: "#F3EFE6" }}>
         <div className="max-w-sm border border-[#D8D0BE] bg-white p-6 text-center">
@@ -307,7 +328,7 @@ export default function App() {
             onRemoveYdelse={(linjeId, yId) => removeYdelse(selected.id, linjeId, yId)}
           />
         ) : side === "salg" ? (
-          <SalgSide sager={sager} montorer={montorer} varetyper={varetyper} varekategorier={varekategorier} primaerydelser={primaerydelser} tillaegsydelser={tillaegsydelser} valgtDato={valgtDato} onSkiftDato={setValgtDato} onOpen={setSelectedId} onAdd={addSag} onImport={importSager} />
+          <SalgSide sager={sager} montorer={montorer} varetyper={varetyper} varekategorier={varekategorier} primaerydelser={primaerydelser} tillaegsydelser={tillaegsydelser} valgtDato={valgtDato} onSkiftDato={setValgtDato} onOpen={setSelectedId} onAdd={addSag} onImport={importSager} butikFokus={butik?.lat && butik?.lon ? { lat: butik.lat, lon: butik.lon } : null} />
         ) : side === "planlaegning" ? (
           <PlanlaegningSide sager={sager} montorer={montorer} onOpen={setSelectedId} onCycleStatus={cycleStatus} />
         ) : side === "koersel" ? (
@@ -322,6 +343,8 @@ export default function App() {
           )
         ) : side === "lager" ? (
           <LagerSide sager={sager} montorer={montorer} valgtDato={valgtDato} onSkiftDato={setValgtDato} onTogglePluk={togglePluk} onOpen={setSelectedId} />
+        ) : side === "systemadmin" ? (
+          <SystemAdminSide />
         ) : (
           <AdminSide
             montorer={montorer} biler={biler} sager={sager} brugere={brugere} ferier={ferier} aktuelBrugerId={profil.id}
