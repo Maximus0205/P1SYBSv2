@@ -5,7 +5,7 @@ import {
   hentSager, gemSager as gemSagerSky,
   hentBiler, gemBil as gemBilerSky,
   hentVaretyper, gemVaretyper as gemVaretyperSky,
-  hentVarekategorier, gemVarekategorier as gemVarekategorierSky,
+  hentVarekategorier, gemVarekategori as gemVarekategorierSky,
   hentPrimaerydelser, gemPrimaerydelser as gemPrimaerydelserSky,
   hentTillaegsydelser, gemTillaegsydelser as gemTillaegsydelserSky,
   hentEgenProfil, hentButiksBrugere, opdaterProfil, opretBrugerAdmin, nulstilAdgangskodeAdmin,
