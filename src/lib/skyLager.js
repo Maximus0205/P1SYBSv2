@@ -139,18 +139,30 @@ export async function opdaterButikSystemadmin(butikId, felter) {
 
 // ---------- Profiler (erstatter den gamle "brugere"-blob) ----------
 // Selve login/adgangskode håndteres af Supabase Auth (se LoginSide.jsx).
-// Denne tabel holder kun butik_id + rolle + navn pr. bruger.
+// Denne tabel holder kun butik_id + rolle + navn/brugernavn pr. bruger.
 
 // Admin opretter en helt ny bruger (rigtigt login, ikke bare en profilrække).
 // Kalder en Edge Function, fordi det kræver service_role-rettigheder, som
 // aldrig må ligge i frontend-koden - funktionen tjekker selv at kalderen
 // rent faktisk er admin, før den opretter noget (se
-// supabase/functions/admin-opret-bruger).
-export async function opretBrugerAdmin({ email, adgangskode, navn, rolle, bilId }) {
+// supabase/functions/admin-opret-bruger). loginType er "email" eller
+// "brugernavn" - se src/lib/brugernavn.js.
+export async function opretBrugerAdmin({ loginType, email, brugernavn, adgangskode, navn, rolle, bilId }) {
   const { data, error } = await supabase.functions.invoke("admin-opret-bruger", {
-    body: { email, adgangskode, navn, rolle, bilId },
+    body: { loginType, email, brugernavn, adgangskode, navn, rolle, bilId },
   });
   if (error || data?.fejl) return { ok: false, fejl: await laesEdgeFejl(data, error, "Kunne ikke oprette brugeren") };
+  return { ok: true };
+}
+
+// Nulstiller en brugers adgangskode direkte (ingen e-mail nødvendig) - kan
+// kaldes af en admin (for sin egen butiks brugere) eller en systemadmin
+// (for hvem som helst). Se supabase/functions/admin-nulstil-adgangskode.
+export async function nulstilAdgangskodeAdmin(brugerId, nyAdgangskode) {
+  const { data, error } = await supabase.functions.invoke("admin-nulstil-adgangskode", {
+    body: { brugerId, nyAdgangskode },
+  });
+  if (error || data?.fejl) return { ok: false, fejl: await laesEdgeFejl(data, error, "Kunne ikke nulstille adgangskoden") };
   return { ok: true };
 }
 
@@ -166,28 +178,28 @@ export async function hentEgenProfil(brugerId) {
 // Alle brugere i samme butik (til admin-siden, "Brugere"-fanen).
 export async function hentButiksBrugere(butikId) {
   if (!butikId) return [];
-  const { data, error } = await supabase.from("profiler").select("*").eq("butik_id", butikId);
+  const { data, error } = await supabase.from("profiler").select("id, navn, rolle, bil_id, brugernavn").eq("butik_id", butikId);
   if (error) {
     console.error("Kunne ikke hente butikkens brugere:", error.message);
     return [];
   }
   // Normaliseret til samme feltnavne som resten af appen bruger (camelCase).
-  return (data || []).map((p) => ({ id: p.id, navn: p.navn, rolle: p.rolle, bilId: p.bil_id }));
+  return (data || []).map((p) => ({ id: p.id, navn: p.navn, rolle: p.rolle, bilId: p.bil_id, brugernavn: p.brugernavn }));
 }
 
 // Systemadmin: søger på tværs af ALLE butikker (til "Kobl bruger til
 // butik"). Uden søgetekst vises kun brugere der endnu ikke hører til nogen
 // butik (de mest relevante at koble op). Med søgetekst søges der i navn
-// (som pr. default er sat til brugerens e-mail ved oprettelse).
+// eller brugernavn.
 export async function hentAlleBrugereSystemadmin(soegning) {
-  let query = supabase.from("profiler").select("id, navn, rolle, butik_id").order("oprettet", { ascending: false });
-  query = soegning?.trim() ? query.ilike("navn", `%${soegning.trim()}%`) : query.is("butik_id", null);
+  let query = supabase.from("profiler").select("id, navn, rolle, butik_id, brugernavn").order("oprettet", { ascending: false });
+  query = soegning?.trim() ? query.or(`navn.ilike.%${soegning.trim()}%,brugernavn.ilike.%${soegning.trim()}%`) : query.is("butik_id", null);
   const { data, error } = await query;
   if (error) {
     console.error("Kunne ikke hente brugere (systemadmin):", error.message);
     return [];
   }
-  return (data || []).map((p) => ({ id: p.id, navn: p.navn, rolle: p.rolle, butikId: p.butik_id }));
+  return (data || []).map((p) => ({ id: p.id, navn: p.navn, rolle: p.rolle, butikId: p.butik_id, brugernavn: p.brugernavn }));
 }
 
 // ---------- Ferier (pr. montør) ----------
