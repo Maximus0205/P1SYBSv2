@@ -50,7 +50,7 @@ function VarelinjePiller({ sag }) {
       {sag.varelinjer.map((v) => (
         <div key={v.id} className="flex flex-wrap items-center gap-1.5">
           <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 border border-[#52697E] text-[#52697E]">{varelinjeLabel(v)}</span>
-          {v.tillaeg.map((y) => <YdelsePille key={y.id} ydelse={y} />)}
+          {(v.tillaeg || []).map((y) => <YdelsePille key={y.id} ydelse={y} />)}
         </div>
       ))}
     </div>
