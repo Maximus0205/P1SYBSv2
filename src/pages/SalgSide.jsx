@@ -5,7 +5,7 @@ import { NyeSagForm } from "../components/NyeSagForm";
 import { CsvImport } from "../components/CsvImport";
 import { SagKortKompakt } from "../components/SagKortKompakt";
 
-function SalgSide({ sager, montorer, varetyper, varekategorier, primaerydelser, tillaegsydelser, valgtDato, onSkiftDato, onOpen, onAdd, onImport }) {
+function SalgSide({ sager, montorer, varetyper, varekategorier, primaerydelser, tillaegsydelser, valgtDato, onSkiftDato, onOpen, onAdd, onImport, butikFokus }) {
   const [panel, setPanel] = useState("ny");
   const sorter = (a, b) => (a.start || "").localeCompare(b.start || "");
   const dagensSager = sager.filter((s) => s.dato === valgtDato).sort(sorter);
@@ -15,7 +15,7 @@ function SalgSide({ sager, montorer, varetyper, varekategorier, primaerydelser, 
       <div className="flex items-end justify-between mb-6 flex-wrap gap-3">
         <div>
           <p className="font-mono text-[11px] tracking-widest uppercase text-[#E2621B] mb-1">{formatDatoLang(valgtDato)}</p>
-          <h1 className="font-['Barlow_Condensed'] text-4xl uppercase tracking-tight text-[#1C232E]">Salg & ordrebooking</h1>
+          <h1 className="font-['Barlow_Condensed'] text-4xl uppercase tracking-tight text-[#1C232E]">Salg &amp; ordrebooking</h1>
           <div className="flex items-center gap-3 mt-1">
             <p className="text-sm text-[#52697E]">{dagensSager.length} sager</p>
             <DatoVaelger dato={valgtDato} onSkift={onSkiftDato} />
@@ -31,7 +31,7 @@ function SalgSide({ sager, montorer, varetyper, varekategorier, primaerydelser, 
         </div>
       </div>
 
-      {panel === "ny" && <div className="mb-6"><NyeSagForm montorer={montorer} varetyper={varetyper} varekategorier={varekategorier} primaerydelser={primaerydelser} tillaegsydelser={tillaegsydelser} sager={sager} valgtDato={valgtDato} onAdd={onAdd} onClose={() => setPanel(null)} /></div>}
+      {panel === "ny" && <div className="mb-6"><NyeSagForm montorer={montorer} varetyper={varetyper} varekategorier={varekategorier} primaerydelser={primaerydelser} tillaegsydelser={tillaegsydelser} sager={sager} valgtDato={valgtDato} onAdd={onAdd} onClose={() => setPanel(null)} butikFokus={butikFokus} /></div>}
       {panel === "import" && <div className="mb-6"><CsvImport montorer={montorer} varetyper={varetyper} primaerydelser={primaerydelser} onImport={onImport} onClose={() => setPanel(null)} /></div>}
 
       <h2 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Sager {erIDag(valgtDato) ? "i dag" : `d. ${valgtDato}`}</h2>
@@ -47,9 +47,5 @@ function SalgSide({ sager, montorer, varetyper, varekategorier, primaerydelser, 
     </div>
   );
 }
-
-// ---------------- Side: Kørsel / Tidslinje ----------------
-
-
 
 export { SalgSide };
