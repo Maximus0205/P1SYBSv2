@@ -72,6 +72,41 @@ export const gemPrimaerydelser = (butikId, primaerydelser) => gemListe("primaery
 export const hentTillaegsydelser = (butikId) => hentListe("tillaegsydelser", butikId);
 export const gemTillaegsydelser = (butikId, tillaegsydelser) => gemListe("tillaegsydelser", butikId, tillaegsydelser);
 
+// ---------- Butikker ----------
+// Bruges bl.a. til at hente egen butiks koordinater (adresse-fokuspunkt for
+// adresseforslag), og af systemadmin til at oprette/liste butikker.
+
+export async function hentButik(butikId) {
+  if (!butikId) return null;
+  const { data, error } = await supabase.from("butikker").select("id, navn, adresse, lat, lon").eq("id", butikId).maybeSingle();
+  if (error) {
+    console.error("Kunne ikke hente butik:", error.message);
+    return null;
+  }
+  return data;
+}
+
+// Alle butikker (kun synlige for en systemadmin, jf. RLS).
+export async function hentAlleButikker() {
+  const { data, error } = await supabase.from("butikker").select("id, navn, adresse, oprettet").order("oprettet", { ascending: false });
+  if (error) {
+    console.error("Kunne ikke hente butikker:", error.message);
+    return [];
+  }
+  return data || [];
+}
+
+// Systemadmin opretter en helt ny butik + dens første admin-login.
+// Kalder en edge function (kræver service_role for at oprette Auth-brugeren
+// og geokoder adressen server-side) - se
+// supabase/functions/systemadmin-opret-butik.
+export async function opretButikSystemadmin(felter) {
+  const { data, error } = await supabase.functions.invoke("systemadmin-opret-butik", { body: felter });
+  if (error) return { ok: false, fejl: data?.fejl || error.message || "Kunne ikke oprette butikken" };
+  if (data?.fejl) return { ok: false, fejl: data.fejl };
+  return { ok: true };
+}
+
 // ---------- Profiler (erstatter den gamle "brugere"-blob) ----------
 // Selve login/adgangskode håndteres af Supabase Auth (se LoginSide.jsx).
 // Denne tabel holder kun butik_id + rolle + navn pr. bruger.
