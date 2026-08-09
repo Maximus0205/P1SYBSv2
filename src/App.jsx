@@ -2,12 +2,12 @@ import React, { useState, useEffect } from "react";
 
 import { supabase } from "./lib/supabaseClient";
 import {
-  hentSager, gemSag as gemSagerSky,
-  hentBiler, gemBil as gemBilerSky,
-  hentVaretyper, gemVaretype as gemVaretyperSky,
-  hentVarekategorier, gemVarekategori as gemVarekategorierSky,
-  hentPrimaerydelser, gemPrimaerydelse as gemPrimaerydelserSky,
-  hentTillaegsydelser, gemTillaegsydelse as gemTillaegsydelserSky,
+  hentSager, gemSag, sletSag, hentFriskSag,
+  hentBiler, gemBil, sletBil, opsaetStandardBiler,
+  hentVaretyper, gemVaretype, sletVaretype, opsaetStandardVaretyper,
+  hentVarekategorier, gemVarekategori, sletVarekategori, opsaetStandardVarekategorier,
+  hentPrimaerydelser, gemPrimaerydelse, sletPrimaerydelse, opsaetStandardPrimaerydelser,
+  hentTillaegsydelser, gemTillaegsydelse, sletTillaegsydelse, opsaetStandardTillaegsydelser,
   hentEgenProfil, hentButiksBrugere, opdaterProfil, opretBrugerAdmin, nulstilAdgangskodeAdmin,
   hentFerier, tilfoejFerie as tilfoejFerieSky, sletFerie as sletFerieSky,
   hentButik,
@@ -79,11 +79,11 @@ export default function App() {
     const varetyperEndelig = v.length > 0 ? v : DEFAULT_VARETYPER;
     const primaerydelserEndelig = py.length > 0 ? py : DEFAULT_PRIMAERYDELSER;
     const tillaegsydelserEndelig = ty.length > 0 ? ty : DEFAULT_TILLAEGSYDELSER;
-    if (bl.length === 0) gemBilerSky(butikId, bilerEndelig);
-    if (vk.length === 0) gemVarekategorierSky(butikId, kategorierEndelig);
-    if (v.length === 0) gemVaretyperSky(butikId, varetyperEndelig);
-    if (py.length === 0) gemPrimaerydelserSky(butikId, primaerydelserEndelig);
-    if (ty.length === 0) gemTillaegsydelserSky(butikId, tillaegsydelserEndelig);
+    if (bl.length === 0) opsaetStandardBiler(butikId, bilerEndelig);
+    if (vk.length === 0) opsaetStandardVarekategorier(butikId, kategorierEndelig);
+    if (v.length === 0) opsaetStandardVaretyper(butikId, varetyperEndelig);
+    if (py.length === 0) opsaetStandardPrimaerydelser(butikId, primaerydelserEndelig);
+    if (ty.length === 0) opsaetStandardTillaegsydelser(butikId, tillaegsydelserEndelig);
     setSager(s); setBiler(bilerEndelig); setVarekategorier(kategorierEndelig); setVaretyper(varetyperEndelig);
     setPrimaerydelser(primaerydelserEndelig); setTillaegsydelser(tillaegsydelserEndelig); setBrugere(b); setFerier(f);
   };
@@ -142,19 +142,37 @@ export default function App() {
 
   const opdater = async () => { setRefreshing(true); if (profil?.butikId) await hent(profil.butikId); setRefreshing(false); };
 
-  const gemSager = (next) => { setSager(next); if (profil?.butikId) gemSagerSky(profil.butikId, next); };
-  const gemVaretyper = (next) => { setVaretyper(next); if (profil?.butikId) gemVaretyperSky(profil.butikId, next); };
-  const gemVarekategorier = (next) => { setVarekategorier(next); if (profil?.butikId) gemVarekategorierSky(profil.butikId, next); };
-  const gemPrimaerydelser = (next) => { setPrimaerydelser(next); if (profil?.butikId) gemPrimaerydelserSky(profil.butikId, next); };
-  const gemTillaegsydelser = (next) => { setTillaegsydelser(next); if (profil?.butikId) gemTillaegsydelserSky(profil.butikId, next); };
-  const gemBiler = (next) => { setBiler(next); if (profil?.butikId) gemBilerSky(profil.butikId, next); };
+  // ---------- Generiske hjælpere: gem/slet ÉT element lokalt + i databasen ----------
+  // (Hver liste har sin egen sky-funktion, men mønsteret er ens: opdatér
+  // React-state for præcis dét element, og send KUN det element videre til
+  // databasen - se den vigtige note øverst i skyLager.js om hvorfor.)
+  const gemEtSager = (sag) => { setSager((prev) => (prev.some((s) => s.id === sag.id) ? prev.map((s) => (s.id === sag.id ? sag : s)) : [...prev, sag])); if (profil?.butikId) gemSag(profil.butikId, sag); };
+  const fjernEtSager = (id) => { setSager((prev) => prev.filter((s) => s.id !== id)); if (profil?.butikId) sletSag(profil.butikId, id); };
 
-  const addBil = (navn, nummerplade) => gemBiler([...biler, { id: uid(), navn, nummerplade, lukket: false, lukketAarsag: "" }]);
-  const updateBil = (id, felter) => gemBiler(biler.map((b) => (b.id === id ? { ...b, ...felter } : b)));
-  const toggleBilLukket = (id, aarsag) => gemBiler(biler.map((b) => (b.id === id ? { ...b, lukket: !b.lukket, lukketAarsag: !b.lukket ? (aarsag || "Værksted") : "" } : b)));
+  const gemEnBil = (bil) => { setBiler((prev) => (prev.some((b) => b.id === bil.id) ? prev.map((b) => (b.id === bil.id ? bil : b)) : [...prev, bil])); if (profil?.butikId) gemBil(profil.butikId, bil); };
+  const fjernEnBil = (id) => { setBiler((prev) => prev.filter((b) => b.id !== id)); if (profil?.butikId) sletBil(profil.butikId, id); };
+
+  const gemEnVarekategori = (k) => { setVarekategorier((prev) => (prev.some((x) => x.id === k.id) ? prev.map((x) => (x.id === k.id ? k : x)) : [...prev, k])); if (profil?.butikId) gemVarekategori(profil.butikId, k); };
+  const fjernEnVarekategori = (id) => { setVarekategorier((prev) => prev.filter((x) => x.id !== id)); if (profil?.butikId) sletVarekategori(profil.butikId, id); };
+
+  const gemEnVaretype = (v) => { setVaretyper((prev) => (prev.some((x) => x.id === v.id) ? prev.map((x) => (x.id === v.id ? v : x)) : [...prev, v])); if (profil?.butikId) gemVaretype(profil.butikId, v); };
+  const fjernEnVaretype = (id) => { setVaretyper((prev) => prev.filter((x) => x.id !== id)); if (profil?.butikId) sletVaretype(profil.butikId, id); };
+
+  const gemEnPrimaerydelse = (p) => { setPrimaerydelser((prev) => (prev.some((x) => x.id === p.id) ? prev.map((x) => (x.id === p.id ? p : x)) : [...prev, p])); if (profil?.butikId) gemPrimaerydelse(profil.butikId, p); };
+  const fjernEnPrimaerydelse = (id) => { setPrimaerydelser((prev) => prev.filter((x) => x.id !== id)); if (profil?.butikId) sletPrimaerydelse(profil.butikId, id); };
+
+  const gemEnTillaegsydelse = (t) => { setTillaegsydelser((prev) => (prev.some((x) => x.id === t.id) ? prev.map((x) => (x.id === t.id ? t : x)) : [...prev, t])); if (profil?.butikId) gemTillaegsydelse(profil.butikId, t); };
+  const fjernEnTillaegsydelse = (id) => { setTillaegsydelser((prev) => prev.filter((x) => x.id !== id)); if (profil?.butikId) sletTillaegsydelse(profil.butikId, id); };
+
+  const addBil = (navn, nummerplade) => gemEnBil({ id: uid(), navn, nummerplade, lukket: false, lukketAarsag: "" });
+  const updateBil = (id, felter) => { const b = biler.find((x) => x.id === id); if (b) gemEnBil({ ...b, ...felter }); };
+  const toggleBilLukket = (id, aarsag) => {
+    const b = biler.find((x) => x.id === id);
+    if (b) gemEnBil({ ...b, lukket: !b.lukket, lukketAarsag: !b.lukket ? (aarsag || "Værksted") : "" });
+  };
   const deleteBil = (id) => {
     if (montorer.some((m) => m.bilId === id) && !window.confirm("Denne bil er tildelt en montør. Slet alligevel?")) return;
-    gemBiler(biler.filter((x) => x.id !== id));
+    fjernEnBil(id);
   };
 
   // Skifter hvilken bil en montør (bruger med rolle "montor") er tilknyttet.
@@ -166,17 +184,28 @@ export default function App() {
 
   const selected = sager.find((s) => s.id === selectedId);
 
-  const addSag = ({ kunde, koeber, noegle, dato, tidsrumId, start, slut, montorId, varelinjer }) => {
-    gemSager([
-      ...sager,
-      { id: uid(), nr: `24-${120 + sager.length + 1}`, kunde, koeber: koeber || null, noegle: noegle || {}, dato: dato || todayISO(), tidsrumId, start, slut, montorId, status: "planlagt", plukket: false, varelinjer, noter: [], billeder: [], rapporter: [], stemplerInd: null, logs: [] },
-    ]);
+  // Opretter en ny sag med et midlertidigt sagsnummer (vises med det samme),
+  // og henter den friske, database-tildelte version bagefter (se
+  // tildel_sagsnummer-triggeren) - så det ENDELIGE, garanteret unikke
+  // sagsnummer altid vises korrekt, uden gæt fra browseren.
+  const addSag = async ({ kunde, koeber, noegle, dato, tidsrumId, start, slut, montorId, varelinjer, ordrenummer }) => {
+    if (!profil?.butikId) return;
+    const nySag = {
+      id: uid(), nr: "...", ordrenummer: ordrenummer?.trim() || "",
+      kunde, koeber: koeber || null, noegle: noegle || {}, dato: dato || todayISO(), tidsrumId, start, slut, montorId,
+      status: "planlagt", plukket: false, varelinjer, noter: [], billeder: [], rapporter: [], stemplerInd: null, logs: [],
+    };
+    setSager((prev) => [...prev, nySag]);
+    await gemSag(profil.butikId, nySag);
+    const frisk = await hentFriskSag(profil.butikId, nySag.id);
+    if (frisk) setSager((prev) => prev.map((s) => (s.id === frisk.id ? frisk : s)));
   };
 
-  const importSager = (nySager) => gemSager([...sager, ...nySager]);
+  const importSager = (nySager) => nySager.forEach((s) => gemEtSager(s));
 
   // Brugere oprettes rigtigt (Supabase Auth) via en edge function, som selv
-  // tjekker at kalderen er admin - se supabase/functions/admin-opret-bruger.
+  // tjekker at kalderen er admin (eller systemadmin, som skal angive
+  // butikId eksplicit) - se admin-opret-bruger.
   const addBruger = async (felter) => {
     const resultat = await opretBrugerAdmin(felter);
     if (resultat.ok && profil?.butikId) await hent(profil.butikId);
@@ -204,63 +233,73 @@ export default function App() {
   // eller primær ydelse slettes, så der ikke bliver hængende referencer til
   // noget der ikke findes mere. Der sættes IKKE noget tidsestimat her - det
   // tastes udelukkende manuelt for den enkelte booking i sælgerens flow.
-  const addVarekategori = (navn) => gemVarekategorier([...varekategorier, { id: uid(), navn }]);
-  const updateVarekategori = (id, navn) => gemVarekategorier(varekategorier.map((k) => (k.id === id ? { ...k, navn } : k)));
+  const addVarekategori = (navn) => gemEnVarekategori({ id: uid(), navn });
+  const updateVarekategori = (id, navn) => { const k = varekategorier.find((x) => x.id === id); if (k) gemEnVarekategori({ ...k, navn }); };
   const deleteVarekategori = (id) => {
     const iBrug = varetyper.filter((v) => v.kategoriId === id).length;
     if (iBrug > 0 && !window.confirm(`${iBrug} varetype(r) hører til denne kategori. Slet alligevel? (Varetyperne beholdes, men mister kategori-tilknytningen.)`)) return;
-    gemVarekategorier(varekategorier.filter((k) => k.id !== id));
+    fjernEnVarekategori(id);
   };
 
-  const addVaretype = (navn, kategoriId) => gemVaretyper([...varetyper, { id: uid(), navn, kategoriId: kategoriId || null }]);
-  const updateVaretype = (id, felter) => gemVaretyper(varetyper.map((v) => (v.id === id ? { ...v, ...felter } : v)));
+  const addVaretype = (navn, kategoriId) => gemEnVaretype({ id: uid(), navn, kategoriId: kategoriId || null });
+  const updateVaretype = (id, felter) => { const v = varetyper.find((x) => x.id === id); if (v) gemEnVaretype({ ...v, ...felter }); };
   const deleteVaretype = (id) => {
     if (!window.confirm("Slet denne varetype? Allerede bookede sager beholder deres oplysninger uændret.")) return;
-    gemVaretyper(varetyper.filter((v) => v.id !== id));
-    gemTillaegsydelser(tillaegsydelser.map((t) => ({ ...t, varetyper: (t.varetyper || []).filter((vid) => vid !== id) })));
+    fjernEnVaretype(id);
+    tillaegsydelser.filter((t) => (t.varetyper || []).includes(id)).forEach((t) => gemEnTillaegsydelse({ ...t, varetyper: t.varetyper.filter((vid) => vid !== id) }));
   };
 
-  const addPrimaerydelse = (navn) => gemPrimaerydelser([...primaerydelser, { id: uid(), navn }]);
-  const updatePrimaerydelse = (id, felter) => gemPrimaerydelser(primaerydelser.map((p) => (p.id === id ? { ...p, ...felter } : p)));
+  const addPrimaerydelse = (navn) => gemEnPrimaerydelse({ id: uid(), navn });
+  const updatePrimaerydelse = (id, felter) => { const p = primaerydelser.find((x) => x.id === id); if (p) gemEnPrimaerydelse({ ...p, ...felter }); };
   const deletePrimaerydelse = (id) => {
     if (!window.confirm("Slet denne primære ydelse? Allerede bookede sager beholder deres oplysninger uændret.")) return;
-    gemPrimaerydelser(primaerydelser.filter((p) => p.id !== id));
-    gemTillaegsydelser(tillaegsydelser.map((t) => ({ ...t, primaerYdelser: (t.primaerYdelser || []).filter((pid) => pid !== id) })));
+    fjernEnPrimaerydelse(id);
+    tillaegsydelser.filter((t) => (t.primaerYdelser || []).includes(id)).forEach((t) => gemEnTillaegsydelse({ ...t, primaerYdelser: t.primaerYdelser.filter((pid) => pid !== id) }));
   };
 
-  const addTillaegsydelse = (navn) => gemTillaegsydelser([...tillaegsydelser, { id: uid(), navn, primaerYdelser: [], varetyper: [] }]);
-  const updateTillaegsydelse = (id, felter) => gemTillaegsydelser(tillaegsydelser.map((t) => (t.id === id ? { ...t, ...felter } : t)));
+  const addTillaegsydelse = (navn) => gemEnTillaegsydelse({ id: uid(), navn, primaerYdelser: [], varetyper: [] });
+  const updateTillaegsydelse = (id, felter) => { const t = tillaegsydelser.find((x) => x.id === id); if (t) gemEnTillaegsydelse({ ...t, ...felter }); };
   const deleteTillaegsydelse = (id) => {
     if (!window.confirm("Slet denne tillægsydelse? Allerede bookede sager beholder deres oplysninger uændret.")) return;
-    gemTillaegsydelser(tillaegsydelser.filter((t) => t.id !== id));
+    fjernEnTillaegsydelse(id);
   };
 
-  const assignMontor = (sagId, montorId) => gemSager(sager.map((s) => (s.id === sagId ? { ...s, montorId } : s)));
-  const updateTidsrum = (sagId, tidsrumId) => {
-    gemSager(sager.map((s) => (s.id === sagId ? { ...s, tidsrumId } : s)));
-  };
-  const togglePluk = (sagId) => gemSager(sager.map((s) => (s.id === sagId ? { ...s, plukket: !s.plukket } : s)));
+  const assignMontor = (sagId, montorId) => { const s = sager.find((x) => x.id === sagId); if (s) gemEtSager({ ...s, montorId }); };
+  const updateTidsrum = (sagId, tidsrumId) => { const s = sager.find((x) => x.id === sagId); if (s) gemEtSager({ ...s, tidsrumId }); };
+  const togglePluk = (sagId) => { const s = sager.find((x) => x.id === sagId); if (s) gemEtSager({ ...s, plukket: !s.plukket }); };
 
   const cycleStatus = (id) => {
+    const s = sager.find((x) => x.id === id);
+    if (!s) return;
     const order = ["planlagt", "igang", "afsluttet"];
-    gemSager(sager.map((s) => (s.id === id ? { ...s, status: order[(order.indexOf(s.status) + 1) % order.length] } : s)));
+    gemEtSager({ ...s, status: order[(order.indexOf(s.status) + 1) % order.length] });
   };
 
-  const addNote = (id, tekst) => gemSager(sager.map((s) => (s.id === id ? { ...s, noter: [...s.noter, { id: uid(), tekst, tid: new Date().toLocaleString("da-DK") }] } : s)));
-  const addPhoto = (id, { src, navn }) => gemSager(sager.map((s) => (s.id === id ? { ...s, billeder: [...s.billeder, { id: uid(), src, navn }] } : s)));
-  const addReport = (id, titel, tekst) => gemSager(sager.map((s) => (s.id === id ? { ...s, rapporter: [...s.rapporter, { id: uid(), titel, tekst, tid: new Date().toLocaleString("da-DK") }] } : s)));
+  const addNote = (id, tekst) => { const s = sager.find((x) => x.id === id); if (s) gemEtSager({ ...s, noter: [...s.noter, { id: uid(), tekst, tid: new Date().toLocaleString("da-DK") }] }); };
+  const addPhoto = (id, { src, navn }) => { const s = sager.find((x) => x.id === id); if (s) gemEtSager({ ...s, billeder: [...s.billeder, { id: uid(), src, navn }] }); };
+  const addReport = (id, titel, tekst) => { const s = sager.find((x) => x.id === id); if (s) gemEtSager({ ...s, rapporter: [...s.rapporter, { id: uid(), titel, tekst, tid: new Date().toLocaleString("da-DK") }] }); };
 
-  const stempleInd = (id) => gemSager(sager.map((s) => (s.id === id ? { ...s, stemplerInd: new Date().toISOString(), status: s.status === "planlagt" ? "igang" : s.status } : s)));
-  const stempleUd = (id) => gemSager(sager.map((s) => {
-    if (s.id !== id || !s.stemplerInd) return s;
+  const stempleInd = (id) => { const s = sager.find((x) => x.id === id); if (s) gemEtSager({ ...s, stemplerInd: new Date().toISOString(), status: s.status === "planlagt" ? "igang" : s.status }); };
+  const stempleUd = (id) => {
+    const s = sager.find((x) => x.id === id);
+    if (!s || !s.stemplerInd) return;
     const ind = s.stemplerInd, ud = new Date().toISOString();
     const minutter = Math.max(1, Math.round((new Date(ud) - new Date(ind)) / 60000));
-    return { ...s, stemplerInd: null, logs: [...s.logs, { id: uid(), ind, ud, minutter }] };
-  }));
+    gemEtSager({ ...s, stemplerInd: null, logs: [...s.logs, { id: uid(), ind, ud, minutter }] });
+  };
 
-  const toggleYdelse = (sagId, linjeId, yId) => gemSager(sager.map((s) => (s.id === sagId ? { ...s, varelinjer: s.varelinjer.map((v) => (v.id === linjeId ? { ...v, tillaeg: v.tillaeg.map((y) => (y.id === yId ? { ...y, udfoert: !y.udfoert } : y)) } : v)) } : s)));
-  const addYdelse = (sagId, linjeId, navn) => gemSager(sager.map((s) => (s.id === sagId ? { ...s, varelinjer: s.varelinjer.map((v) => (v.id === linjeId ? { ...v, tillaeg: [...v.tillaeg, { id: uid(), navn: navn.trim(), minutter: 15, udfoert: false }] } : v)) } : s)));
-  const removeYdelse = (sagId, linjeId, yId) => gemSager(sager.map((s) => (s.id === sagId ? { ...s, varelinjer: s.varelinjer.map((v) => (v.id === linjeId ? { ...v, tillaeg: v.tillaeg.filter((y) => y.id !== yId) } : v)) } : s)));
+  const toggleYdelse = (sagId, linjeId, yId) => {
+    const s = sager.find((x) => x.id === sagId);
+    if (s) gemEtSager({ ...s, varelinjer: s.varelinjer.map((v) => (v.id === linjeId ? { ...v, tillaeg: v.tillaeg.map((y) => (y.id === yId ? { ...y, udfoert: !y.udfoert } : y)) } : v)) });
+  };
+  const addYdelse = (sagId, linjeId, navn) => {
+    const s = sager.find((x) => x.id === sagId);
+    if (s) gemEtSager({ ...s, varelinjer: s.varelinjer.map((v) => (v.id === linjeId ? { ...v, tillaeg: [...v.tillaeg, { id: uid(), navn: navn.trim(), minutter: 15, udfoert: false }] } : v)) });
+  };
+  const removeYdelse = (sagId, linjeId, yId) => {
+    const s = sager.find((x) => x.id === sagId);
+    if (s) gemEtSager({ ...s, varelinjer: s.varelinjer.map((v) => (v.id === linjeId ? { ...v, tillaeg: v.tillaeg.filter((y) => y.id !== yId) } : v)) });
+  };
 
   const montor = montorer.find((m) => m.id === valgtMontorId);
   const smalSide = side === "montor" || !!selected;
