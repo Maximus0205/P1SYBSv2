@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { Trash2, X, Plus, Pencil, UserPlus, Clock, PalmtreeIcon, CalendarOff } from "lucide-react";
-import { STANDARD_YDELSE_MINUTTER, bilLabel, formatVarighed, montorFarve, todayISO } from "../data/appData";
+import { Trash2, X, Plus, Pencil, UserPlus, PalmtreeIcon, CalendarOff } from "lucide-react";
+import { bilLabel, montorFarve, todayISO } from "../data/appData";
 
 // En "montør" er en bruger med rolle montor — man opretter dem ikke separat
 // (det sker under fanen Brugere). Her kan man kun styre hvilken bil montøren
@@ -285,6 +285,10 @@ function VaretypeAdmin({ varetyper, varekategorier, onAdd, onUpdate, onDelete })
 }
 
 // ---------- Primære ydelser ----------
+// Bevidst uden tidsestimat her - tidsforbrug tastes udelukkende manuelt for
+// den enkelte booking i sælgerens flow (se SagFormFields.jsx), da det varierer
+// for meget fra opgave til opgave til at et fast tal pr. ydelsestype giver
+// mening. Det ændrer sig når der er nok historik til automatiske estimater.
 
 function PrimaerydelseRaekke({ p, onUpdate, onDelete }) {
   const [redigererNavn, setRedigererNavn] = useState(false);
@@ -300,10 +304,6 @@ function PrimaerydelseRaekke({ p, onUpdate, onDelete }) {
       ) : (
         <p className="font-semibold text-sm text-[#1C232E] flex-1">{p.navn}</p>
       )}
-      <label className="flex items-center gap-1.5 text-xs text-[#52697E] shrink-0">
-        <Clock size={12} />
-        <input type="number" min="0" value={p.minutter ?? 0} onChange={(e) => onUpdate(p.id, { minutter: Number(e.target.value) || 0 })} className="w-14 border border-[#D8D0BE] bg-[#F3EFE6] px-1.5 py-1 text-right text-[#1C232E]" /> min (udgangspunkt - kan rettes pr. booking)
-      </label>
       {!redigererNavn && <button onClick={() => setRedigererNavn(true)} className="p-1.5 text-[#52697E] hover:text-[#E2621B] shrink-0"><Pencil size={14} /></button>}
       <button onClick={() => onDelete(p.id)} className="p-1.5 text-[#52697E] hover:text-[#B3261E] shrink-0"><Trash2 size={14} /></button>
     </div>
@@ -312,18 +312,16 @@ function PrimaerydelseRaekke({ p, onUpdate, onDelete }) {
 
 function PrimaerydelseAdmin({ primaerydelser, onAdd, onUpdate, onDelete }) {
   const [nytNavn, setNytNavn] = useState("");
-  const [nyMin, setNyMin] = useState(20);
   return (
     <div>
       <div className="border border-[#D8D0BE] bg-white p-5 mb-4">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Opret ny primær ydelse</h3>
         <div className="flex gap-2 flex-wrap">
           <input value={nytNavn} onChange={(e) => setNytNavn(e.target.value)} placeholder="Fx 'Montering'" className="flex-1 min-w-[160px] border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-          <input type="number" min="0" value={nyMin} onChange={(e) => setNyMin(e.target.value)} title="Minutter" className="w-20 border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-2 text-sm text-right text-[#1C232E]" />
-          <button onClick={() => { if (!nytNavn.trim()) return; onAdd(nytNavn.trim(), nyMin); setNytNavn(""); setNyMin(20); }} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors flex items-center gap-1.5"><Plus size={15} /> Opret</button>
+          <button onClick={() => { if (!nytNavn.trim()) return; onAdd(nytNavn.trim()); setNytNavn(""); }} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors flex items-center gap-1.5"><Plus size={15} /> Opret</button>
         </div>
       </div>
-      <p className="text-[11px] text-[#52697E] mb-2">Hvilke tillægsydelser der er tilgængelige under en given primær ydelse styres under fanen "Tillægsydelser".</p>
+      <p className="text-[11px] text-[#52697E] mb-2">Hvilke tillægsydelser der er tilgængelige under en given primær ydelse styres under fanen "Tillægsydelser". Tidsforbrug sættes ikke her — det tastes manuelt af sælgeren for hver enkelt booking.</p>
       <div className="space-y-2">
         {primaerydelser.map((p) => (
           <PrimaerydelseRaekke key={p.id} p={p} onUpdate={onUpdate} onDelete={onDelete} />
@@ -336,7 +334,8 @@ function PrimaerydelseAdmin({ primaerydelser, onAdd, onUpdate, onDelete }) {
 // ---------- Tillægsydelser ----------
 // Her styres relationerne ét sted: hvilke primære ydelser en tillægsydelse
 // gælder under (påkrævet), og valgfrit hvilke specifikke varetyper den er
-// begrænset til (tomt = gælder for alle varetyper).
+// begrænset til (tomt = gælder for alle varetyper). Heller ikke her sættes
+// et tidsestimat - det tastes manuelt pr. booking, se note ovenfor.
 
 function TillaegsydelseRaekke({ t, varetyper, primaerydelser, onUpdate, onDelete }) {
   const togglePrimaer = (pId) => {
@@ -354,12 +353,6 @@ function TillaegsydelseRaekke({ t, varetyper, primaerydelser, onUpdate, onDelete
       item={t}
       onUpdate={(navn) => onUpdate(t.id, { navn })}
       onDelete={() => onDelete(t.id)}
-      ekstra={
-        <label className="flex items-center gap-1.5 text-xs text-[#52697E] shrink-0">
-          <Clock size={12} />
-          <input type="number" min="0" value={t.minutter ?? 0} onChange={(e) => onUpdate(t.id, { minutter: Number(e.target.value) || 0 })} className="w-14 border border-[#D8D0BE] bg-[#F3EFE6] px-1.5 py-1 text-right text-[#1C232E]" /> min
-        </label>
-      }
       ekstraIndhold={
         <div className="mt-3 pt-3 border-t border-[#F0EBDD] space-y-3">
           <div>
@@ -402,15 +395,13 @@ function TillaegsydelseRaekke({ t, varetyper, primaerydelser, onUpdate, onDelete
 
 function TillaegsydelseAdmin({ tillaegsydelser, varetyper, primaerydelser, onAdd, onUpdate, onDelete }) {
   const [nytNavn, setNytNavn] = useState("");
-  const [nyMin, setNyMin] = useState(STANDARD_YDELSE_MINUTTER);
   return (
     <div>
       <div className="border border-[#D8D0BE] bg-white p-5 mb-4">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Opret ny tillægsydelse</h3>
         <div className="flex gap-2 flex-wrap">
           <input value={nytNavn} onChange={(e) => setNytNavn(e.target.value)} placeholder="Fx 'Dørvending'" className="flex-1 min-w-[160px] border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-          <input type="number" min="0" value={nyMin} onChange={(e) => setNyMin(e.target.value)} title="Minutter" className="w-20 border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-2 text-sm text-right text-[#1C232E]" />
-          <button onClick={() => { if (!nytNavn.trim()) return; onAdd(nytNavn.trim(), nyMin); setNytNavn(""); setNyMin(STANDARD_YDELSE_MINUTTER); }} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors flex items-center gap-1.5"><Plus size={15} /> Opret</button>
+          <button onClick={() => { if (!nytNavn.trim()) return; onAdd(nytNavn.trim()); setNytNavn(""); }} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors flex items-center gap-1.5"><Plus size={15} /> Opret</button>
         </div>
         <p className="text-[11px] text-[#52697E] mt-2">Efter oprettelse skal du sætte hvilke primære ydelser den gælder under (nedenfor på hver række) — ellers vises den aldrig i booking-flowet.</p>
       </div>
