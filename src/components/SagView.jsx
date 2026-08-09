@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { KeyRound, Building2 } from "lucide-react";
+import { KeyRound, Building2, Hash } from "lucide-react";
 import { dannTitel, noegleTekst } from "../data/appData";
 import { StatusBadge } from "../components/common";
 import { VarelinjerDetalje, Noter, Billeder, Rapporter, Tidsregistrering, StempelUr } from "../components/SagDele";
@@ -20,7 +20,10 @@ function SagView({ sag, montorer, onBack, addNote, addPhoto, addReport, onCycleS
       <div className="bg-white border border-[#D8D0BE] p-5 mb-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <p className="font-mono text-xs text-[#52697E] mb-1">#{sag.nr} · {sag.start}–{sag.slut}{montor ? ` · ${montor.navn}` : " · ikke tildelt"}</p>
+            <p className="font-mono text-xs text-[#52697E] mb-1">
+              #{sag.nr} · {sag.start}–{sag.slut}{montor ? ` · ${montor.navn}` : " · ikke tildelt"}
+              {sag.ordrenummer && <span className="ml-2 inline-flex items-center gap-0.5"><Hash size={10} /> {sag.ordrenummer}</span>}
+            </p>
             <h1 className="font-['Barlow_Condensed'] text-3xl uppercase tracking-tight text-[#1C232E] leading-none">{dannTitel(sag.varelinjer)}</h1>
             <p className="text-sm text-[#52697E] mt-2 font-semibold">Kunde (modtager)</p>
             <p className="text-sm text-[#52697E]">{sag.kunde.navn}{sag.kunde.telefon ? ` · ${sag.kunde.telefon}` : ""}{sag.kunde.email ? ` · ${sag.kunde.email}` : ""}</p>
@@ -56,9 +59,5 @@ function SagView({ sag, montorer, onBack, addNote, addPhoto, addReport, onCycleS
     </div>
   );
 }
-
-// ---------------- App ----------------
-
-
 
 export { SagView };
