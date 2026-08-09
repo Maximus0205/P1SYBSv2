@@ -40,27 +40,31 @@ const ydelseIkon = (navn) => {
 };
 
 const STANDARD_YDELSE_MINUTTER = 15;
-
 const lavYdelse = (navn, minutter = STANDARD_YDELSE_MINUTTER) => ({ id: uid(), navn: navn.trim(), minutter: Number(minutter) || 0, udfoert: false });
 
 const ANDET_VARETYPE_ID = "andet";
 const ANDET_VARETYPE = "Andet (skriv selv)";
+
+// ---------------- Varer & ydelser ----------------
+// Struktur: Varekategori -> Varetype (hører til én kategori) -> en sag
+// vælger for hver varelinje: varetype, mærke/model, én PRIMÆR ydelse, og
+// valgfrit TILLÆGSYDELSER. Relationerne (hvilke tillægsydelser der gælder
+// for hvilke primære ydelser/varetyper) ligger udelukkende på selve
+// tillægsydelsen (primaerYdelser: [id...], varetyper: [id...], tom liste =
+// gælder alle varetyper). Der sættes bevidst INTET tidsestimat på
+// varetyper/primære ydelser/tillægsydelser i Admin - al tid tastes manuelt
+// pr. booking i sælgerens flow (se SagFormFields.jsx), da det varierer for
+// meget til at et fast tal pr. type giver mening.
 
 const DEFAULT_VAREKATEGORIER = [
   { id: "vk1", navn: "Hvidevare" },
   { id: "vk2", navn: "Brunvare" },
 ];
 
-const DEFAULT_TILLAEGSYDELSER = [
-  { id: "t1", navn: "Udpakning", minutter: 10 },
-  { id: "t2", navn: "Dørvending", minutter: 20 },
-  { id: "t3", navn: "Bortskaffelse af gammelt produkt", minutter: 15 },
-];
-
 const DEFAULT_PRIMAERYDELSER = [
-  { id: "p1", navn: "Kantstenslevering", minutter: 10, tillaeg: [] },
-  { id: "p2", navn: "Levering med indbæring", minutter: 20, tillaeg: ["t1", "t3"] },
-  { id: "p3", navn: "Montering", minutter: 40, tillaeg: ["t1", "t2", "t3"] },
+  { id: "p1", navn: "Kantstenslevering" },
+  { id: "p2", navn: "Levering med indbæring" },
+  { id: "p3", navn: "Montering" },
 ];
 
 const DOER = ["Køleskab", "Fryseskab", "Kølefryseskab", "Amerikanerskab", "Vinkøleskab"];
@@ -82,14 +86,27 @@ const DEFAULT_VARETYPER = [
   { id: "vt15", navn: "Emhætte", kategoriId: "vk1" },
   { id: "vt16", navn: "TV", kategoriId: "vk2" },
   { id: "vt17", navn: "Lydanlæg", kategoriId: "vk2" },
-].map((v) => ({ ...v, tillaeg: DOER.includes(v.navn) ? ["t1", "t2", "t3"] : ["t1", "t3"] }));
+];
 
-const tilgaengeligeTillaeg = (varetypeId, primaerYdelseId, varetyper, primaerydelser, tillaegsydelser) => {
-  const vt = varetypeId === ANDET_VARETYPE_ID ? null : varetyper.find((v) => v.id === varetypeId);
-  const py = primaerydelser.find((p) => p.id === primaerYdelseId);
-  const vtSaet = vt ? new Set(vt.tillaeg || []) : null;
-  const pySaet = new Set(py ? py.tillaeg || [] : []);
-  return tillaegsydelser.filter((t) => (vtSaet ? vtSaet.has(t.id) : true) && pySaet.has(t.id));
+const DOER_IDS = DEFAULT_VARETYPER.filter((v) => DOER.includes(v.navn)).map((v) => v.id);
+
+const DEFAULT_TILLAEGSYDELSER = [
+  { id: "t1", navn: "Udpakning", primaerYdelser: ["p2", "p3"], varetyper: [] },
+  { id: "t2", navn: "Dørvending", primaerYdelser: ["p3"], varetyper: DOER_IDS },
+  { id: "t3", navn: "Bortskaffelse af gammelt produkt", primaerYdelser: ["p2", "p3"], varetyper: [] },
+];
+
+// De tillægsydelser der reelt kan vælges for en given varetype + primær
+// ydelse: skal gælde for den valgte primære ydelse, og enten gælde for alle
+// varetyper (tom varetyper-liste), for "Andet", eller specifikt for netop
+// denne varetype.
+const tilgaengeligeTillaeg = (varetypeId, primaerYdelseId, tillaegsydelser) => {
+  return (tillaegsydelser || []).filter((t) => {
+    const gaelderPrimaer = (t.primaerYdelser || []).includes(primaerYdelseId);
+    const ingenVaretypeBegraensning = !t.varetyper || t.varetyper.length === 0;
+    const gaelderVaretype = varetypeId === ANDET_VARETYPE_ID ? ingenVaretypeBegraensning : (ingenVaretypeBegraensning || t.varetyper.includes(varetypeId));
+    return gaelderPrimaer && gaelderVaretype;
+  });
 };
 
 const lavVarelinje = (varetyper, primaerydelser, varetypeId, tekst = "") => {
@@ -104,7 +121,7 @@ const lavVarelinje = (varetyper, primaerydelser, varetypeId, tekst = "") => {
     varetypeTekst: tekst,
     maerke: "",
     model: "",
-    primaerYdelse: py ? { id: py.id, navn: py.navn, minutter: Number(py.minutter) || 0 } : null,
+    primaerYdelse: py ? { id: py.id, navn: py.navn, minutter: 0 } : null,
     tillaeg: [],
   };
 };
@@ -204,95 +221,7 @@ const bilBlokeretAfFerie = (bilId, dato, montorer, ferier) => {
 const tomKunde = () => ({ navn: "", telefon: "", email: "", adresse: "", leveringsnote: "" });
 const tomNoegle = () => ({ kraeves: false, type: "", detaljer: "", placering: "" });
 
-const seedSager = [
-  {
-    id: uid(), nr: "24-118",
-    kunde: { navn: "Familien Holm", telefon: "20 30 40 50", email: "", adresse: "Skovvej 12, 8000 Aarhus C", leveringsnote: "" },
-    koeber: null,
-    noegle: { kraeves: true, type: "Nøgleboks", detaljer: "Kode 4471", placering: "Ved hoveddøren, bag lampen" },
-    dato: todayISO(),
-    tidsrumId: "formiddag", start: "08:00", slut: "12:00",
-    montorId: "u3", status: "afsluttet",
-    plukket: true,
-    varelinjer: [
-      {
-        id: uid(), varetypeId: "vt3", varetypeNavn: "Kølefryseskab", varetypeTekst: "", maerke: "Bosch", model: "KGN39VLEB",
-        primaerYdelse: { id: "p3", navn: "Montering", minutter: 40 },
-        tillaeg: [
-          { id: uid(), navn: "Dørvending", minutter: 20, udfoert: true },
-          { id: uid(), navn: "Bortskaffelse af gammelt produkt", minutter: 15, udfoert: true },
-        ],
-      },
-    ],
-    noter: [{ id: uid(), tekst: "Gammelt køleskab stod i kælder, ekstra bæretur.", tid: "08:41" }],
-    billeder: [],
-    rapporter: [{ id: uid(), titel: "Afleveringsrapport", tekst: "Nyt køle-/fryseskab installeret og dørvendt. Gammelt apparat bortkørt.", tid: "09:02" }],
-    stemplerInd: null,
-    logs: [{ id: uid(), ind: "2024-07-14T08:03:00", ud: "2024-07-14T08:52:00", minutter: 49 }],
-  },
-  {
-    id: uid(), nr: "24-119",
-    kunde: { navn: "Lejemål – Havnegade 22, 2. th", telefon: "70 11 22 33", email: "", adresse: "Havnegade 22, 2. th, 8200 Aarhus N", leveringsnote: "Aflever hos lejer, ring ved ankomst." },
-    koeber: { navn: "Nygaard Byg ApS", telefon: "70 11 22 00", email: "kontakt@nygaardbyg.dk", adresse: "Industriparken 4, 8200 Aarhus N" },
-    noegle: tomNoegle(),
-    dato: todayISO(),
-    tidsrumId: "eftermiddag", start: "12:00", slut: "16:00",
-    montorId: null, status: "igang",
-    plukket: true,
-    varelinjer: [
-      {
-        id: uid(), varetypeId: "vt7", varetypeNavn: "Vaskemaskine", varetypeTekst: "", maerke: "Electrolux", model: "EW6F428S",
-        primaerYdelse: { id: "p3", navn: "Montering", minutter: 40 },
-        tillaeg: [{ id: uid(), navn: "Bortskaffelse af gammelt produkt", minutter: 15, udfoert: false }],
-      },
-      {
-        id: uid(), varetypeId: "vt8", varetypeNavn: "Tørretumbler", varetypeTekst: "", maerke: "Electrolux", model: "EW8H358S",
-        primaerYdelse: { id: "p2", navn: "Levering med indbæring", minutter: 20 },
-        tillaeg: [{ id: uid(), navn: "Udpakning", minutter: 10, udfoert: true }],
-      },
-    ],
-    noter: [], billeder: [], rapporter: [],
-    stemplerInd: null, logs: [],
-  },
-  {
-    id: uid(), nr: "24-120",
-    kunde: { navn: "Mette & Jonas Krogh", telefon: "30 40 50 60", email: "", adresse: "Rosenvænget 7, 8210 Aarhus V", leveringsnote: "" },
-    koeber: null,
-    noegle: tomNoegle(),
-    dato: flytDato(todayISO(), 1),
-    tidsrumId: "heldag", start: "08:00", slut: "16:00",
-    montorId: null, status: "planlagt",
-    plukket: false,
-    varelinjer: [
-      {
-        id: uid(), varetypeId: "vt10", varetypeNavn: "Opvaskemaskine", varetypeTekst: "", maerke: "Miele", model: "G7100",
-        primaerYdelse: { id: "p3", navn: "Montering", minutter: 40 },
-        tillaeg: [{ id: uid(), navn: "Udpakning", minutter: 10, udfoert: false }],
-      },
-    ],
-    noter: [], billeder: [], rapporter: [],
-    stemplerInd: null, logs: [],
-  },
-  {
-    id: uid(), nr: "24-121",
-    kunde: { navn: "Lejemål – Havnegade 22, 4. tv", telefon: "70 11 22 33", email: "", adresse: "Havnegade 22, 4. tv, 8200 Aarhus N", leveringsnote: "Aflever hos lejer." },
-    koeber: { navn: "Nygaard Byg ApS", telefon: "70 11 22 00", email: "kontakt@nygaardbyg.dk", adresse: "Industriparken 4, 8200 Aarhus N" },
-    noegle: tomNoegle(),
-    dato: flytDato(todayISO(), 3),
-    tidsrumId: "heldag", start: "08:00", slut: "16:00",
-    montorId: null, status: "planlagt",
-    plukket: false,
-    varelinjer: [
-      {
-        id: uid(), varetypeId: "vt16", varetypeNavn: "TV", varetypeTekst: "", maerke: "LG", model: "OLED55C3",
-        primaerYdelse: { id: "p2", navn: "Levering med indbæring", minutter: 20 },
-        tillaeg: [{ id: uid(), navn: "Udpakning", minutter: 10, udfoert: false }],
-      },
-    ],
-    noter: [], billeder: [], rapporter: [],
-    stemplerInd: null, logs: [],
-  },
-];
+const seedSager = [];
 
 const statusMeta = {
   planlagt: { label: "Planlagt", color: "#52697E" },
