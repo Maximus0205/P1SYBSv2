@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound } from "lucide-react";
-import { hentAlleButikker, opretButikSystemadmin, opdaterButikSystemadmin, hentAlleBrugereSystemadmin, opdaterProfil, nulstilAdgangskodeAdmin } from "../lib/skyLager";
+import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus } from "lucide-react";
+import { hentAlleButikker, opretButikSystemadmin, opdaterButikSystemadmin, sletButikSystemadmin, hentAlleBrugereSystemadmin, opdaterProfil, nulstilAdgangskodeAdmin, opretBrugerAdmin } from "../lib/skyLager";
 import { geokodAdresse } from "../lib/steder";
 import { foreslaaBrugernavn, erGyldigtBrugernavn } from "../lib/brugernavn";
 import { AdresseInput } from "../components/AdresseInput";
@@ -8,13 +8,16 @@ import { AdresseInput } from "../components/AdresseInput";
 const ROLLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montør" };
 
 // Kun synlig for brugere med profiler.er_systemadmin = true. Bruges til at
-// oprette/redigere butikker og koble brugere til dem, når systemet
-// udbredes til flere i kæden - hver butik får sin egen adresse/koordinater,
-// som resten af butikkens system (adresseforslag) tager udgangspunkt i.
+// oprette/redigere/slette butikker, oprette brugere direkte til en
+// vilkårlig butik, og koble eksisterende brugere til butikker.
 function SystemAdminSide() {
   const [butikker, setButikker] = useState([]);
   const [indlaeser, setIndlaeser] = useState(true);
   const [redigererId, setRedigererId] = useState(null);
+  const [sletterId, setSletterId] = useState(null);
+  const [sletBekraeft, setSletBekraeft] = useState("");
+  const [sletFejl, setSletFejl] = useState("");
+  const [sletTravl, setSletTravl] = useState(false);
 
   const [butiksNavn, setButiksNavn] = useState("");
   const [butiksnummer, setButiksnummer] = useState("");
@@ -68,6 +71,17 @@ function SystemAdminSide() {
     genindlaes();
   };
 
+  const startSlet = (id) => { setSletterId(id); setSletBekraeft(""); setSletFejl(""); };
+  const bekraeftSlet = async (butik) => {
+    if (sletBekraeft.trim() !== butik.navn) { setSletFejl(`Skriv butikkens navn ("${butik.navn}") for at bekræfte.`); return; }
+    setSletTravl(true);
+    const resultat = await sletButikSystemadmin(butik.id);
+    setSletTravl(false);
+    if (!resultat.ok) { setSletFejl(resultat.fejl || "Kunne ikke slette butikken."); return; }
+    setSletterId(null);
+    genindlaes();
+  };
+
   return (
     <div>
       <div className="border border-[#D8D0BE] bg-white p-5 mb-6">
@@ -110,6 +124,19 @@ function SystemAdminSide() {
           {butikker.map((b) =>
             redigererId === b.id ? (
               <ButikRedigering key={b.id} butik={b} onFaerdig={() => { setRedigererId(null); genindlaes(); }} onAnnuller={() => setRedigererId(null)} />
+            ) : sletterId === b.id ? (
+              <div key={b.id} className="bg-white border border-[#B3261E] p-3">
+                <p className="text-sm text-[#B3261E] font-semibold flex items-center gap-1.5 mb-1"><AlertCircle size={14} /> Slet "{b.navn}" permanent?</p>
+                <p className="text-xs text-[#52697E] mb-2">Alle butikkens sager, biler, varetyper m.m. slettes for altid. Brugernes login bevares, de mister blot adgangen til denne butik. Skriv butikkens navn for at bekræfte.</p>
+                <div className="flex gap-2 flex-wrap items-center">
+                  <input autoFocus value={sletBekraeft} onChange={(e) => setSletBekraeft(e.target.value)} placeholder={b.navn} className="flex-1 min-w-[160px] border border-[#B3261E] bg-[#F3EFE6] px-2 py-1.5 text-sm text-[#1C232E]" />
+                  <button onClick={() => bekraeftSlet(b)} disabled={sletTravl} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white bg-[#B3261E] hover:bg-[#1C232E] transition-colors disabled:opacity-60 flex items-center gap-1.5">
+                    {sletTravl && <Loader2 size={12} className="animate-spin" />} Slet permanent
+                  </button>
+                  <button onClick={() => setSletterId(null)} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#52697E] border border-[#D8D0BE]">Fortryd</button>
+                </div>
+                {sletFejl && <p className="text-xs text-[#B3261E] mt-2">{sletFejl}</p>}
+              </div>
             ) : (
               <div key={b.id} className="bg-white border border-[#D8D0BE] p-3 flex items-center gap-3 flex-wrap">
                 <div className="min-w-0 flex-1">
@@ -120,12 +147,14 @@ function SystemAdminSide() {
                   <p className="text-xs text-[#52697E] truncate">{b.adresse}</p>
                 </div>
                 <button onClick={() => setRedigererId(b.id)} className="p-1.5 text-[#52697E] hover:text-[#E2621B] shrink-0" title="Redigér"><Pencil size={15} /></button>
+                <button onClick={() => startSlet(b.id)} className="p-1.5 text-[#52697E] hover:text-[#B3261E] shrink-0" title="Slet butik"><Trash2 size={15} /></button>
               </div>
             )
           )}
         </div>
       )}
 
+      <OpretBrugerDirekte butikker={butikker} />
       <BrugerKobling butikker={butikker} />
     </div>
   );
@@ -178,6 +207,75 @@ function ButikRedigering({ butik, onFaerdig, onAnnuller }) {
         </button>
         <button onClick={onAnnuller} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#52697E] border border-[#D8D0BE]">Fortryd</button>
       </div>
+    </div>
+  );
+}
+
+// Systemadmin opretter en bruger direkte til en VALGFRI butik, uden om
+// "opret ny butik"-flowet - fx til en butik der allerede findes.
+function OpretBrugerDirekte({ butikker }) {
+  const [butikId, setButikId] = useState("");
+  const [loginType, setLoginType] = useState("brugernavn");
+  const [navn, setNavn] = useState("");
+  const [brugernavn, setBrugernavn] = useState("");
+  const [brugernavnRedigeret, setBrugernavnRedigeret] = useState(false);
+  const [email, setEmail] = useState("");
+  const [rolle, setRolle] = useState("saelger");
+  const [adgangskode, setAdgangskode] = useState("");
+  const [travl, setTravl] = useState(false);
+  const [fejl, setFejl] = useState("");
+  const [besked, setBesked] = useState("");
+
+  const skiftNavn = (val) => {
+    setNavn(val);
+    if (!brugernavnRedigeret) setBrugernavn(foreslaaBrugernavn(val));
+  };
+
+  const opret = async () => {
+    setFejl(""); setBesked("");
+    if (!butikId) { setFejl("Vælg hvilken butik brugeren skal høre til."); return; }
+    if (!navn.trim() || !adgangskode.trim()) { setFejl("Udfyld navn og adgangskode."); return; }
+    if (loginType === "brugernavn" && !erGyldigtBrugernavn(brugernavn)) { setFejl("Brugernavn skal være 2-40 tegn (a-z, tal, punktum eller bindestreg)."); return; }
+    if (loginType === "email" && !email.trim()) { setFejl("Udfyld e-mail."); return; }
+    setTravl(true);
+    const resultat = await opretBrugerAdmin({ navn: navn.trim(), loginType, email: email.trim(), brugernavn: brugernavn.trim().toLowerCase(), adgangskode, rolle, butikId });
+    setTravl(false);
+    if (!resultat.ok) { setFejl(resultat.fejl || "Kunne ikke oprette brugeren."); return; }
+    setBesked(`Bruger oprettet i valgt butik.`);
+    setNavn(""); setBrugernavn(""); setBrugernavnRedigeret(false); setEmail(""); setAdgangskode(""); setRolle("saelger");
+  };
+
+  return (
+    <div className="border border-[#D8D0BE] bg-white p-5 mb-8">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-1 flex items-center gap-2"><UserPlus size={16} /> Opret bruger direkte til en butik</h3>
+      <p className="text-xs text-[#52697E] mb-3">Til at oprette en ekstra bruger i en butik, der allerede findes — uden at skulle oprette en ny butik.</p>
+      <div className="flex border border-[#D8D0BE] mb-3 text-xs font-semibold uppercase tracking-wide w-fit">
+        <button onClick={() => setLoginType("brugernavn")} className={`px-3 py-1.5 transition-colors ${loginType === "brugernavn" ? "bg-[#1C232E] text-white" : "text-[#52697E] hover:text-[#1C232E]"}`}>Brugernavn</button>
+        <button onClick={() => setLoginType("email")} className={`px-3 py-1.5 transition-colors ${loginType === "email" ? "bg-[#1C232E] text-white" : "text-[#52697E] hover:text-[#1C232E]"}`}>E-mail</button>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <select value={butikId} onChange={(e) => setButikId(e.target.value)} className="sm:col-span-2 border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]">
+          <option value="">Vælg butik...</option>
+          {butikker.map((b) => <option key={b.id} value={b.id}>{b.navn}{b.butiksnummer ? ` #${b.butiksnummer}` : ""}</option>)}
+        </select>
+        <input value={navn} onChange={(e) => skiftNavn(e.target.value)} placeholder="Navn" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+        {loginType === "brugernavn" ? (
+          <input value={brugernavn} onChange={(e) => { setBrugernavn(e.target.value); setBrugernavnRedigeret(true); }} placeholder="Brugernavn (foreslået, kan rettes)" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] font-mono focus:outline-none focus:border-[#E2621B]" />
+        ) : (
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+        )}
+        <select value={rolle} onChange={(e) => setRolle(e.target.value)} className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E]">
+          <option value="saelger">Sælger</option>
+          <option value="montor">Montør</option>
+          <option value="admin">Administrator</option>
+        </select>
+        <input value={adgangskode} onChange={(e) => setAdgangskode(e.target.value)} placeholder="Adgangskode (mindst 6 tegn)" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+      </div>
+      {fejl && <p className="text-xs text-[#B3261E] mt-2 flex items-center gap-1.5"><AlertCircle size={13} /> {fejl}</p>}
+      {besked && <p className="text-xs text-[#3D7A5C] mt-2 flex items-center gap-1.5"><Check size={13} /> {besked}</p>}
+      <button onClick={opret} disabled={travl} className="mt-3 px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors flex items-center gap-1.5 disabled:opacity-60">
+        {travl && <Loader2 size={14} className="animate-spin" />} {travl ? "Opretter..." : "Opret bruger"}
+      </button>
     </div>
   );
 }
