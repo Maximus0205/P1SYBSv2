@@ -4,12 +4,14 @@ import { TIDSRUM, dannTitel, formatVarighed, lavVarelinje, linjeMinutter, tidsru
 import { KvitteringUpload } from "../components/KvitteringUpload";
 import { VarelinjeRedigering, NoegleFelter, AdresseForslag } from "../components/SagFormFields";
 import { AfstandsForslag } from "../components/AfstandsForslag";
+import { AdresseInput } from "../components/AdresseInput";
 
-function NyeSagForm({ montorer, varetyper, varekategorier, primaerydelser, tillaegsydelser, sager, valgtDato, onAdd, onClose }) {
+function NyeSagForm({ montorer, varetyper, varekategorier, primaerydelser, tillaegsydelser, sager, valgtDato, onAdd, onClose, butikFokus }) {
   const [kundeNavn, setKundeNavn] = useState("");
   const [telefon, setTelefon] = useState("");
   const [email, setEmail] = useState("");
   const [adresse, setAdresse] = useState("");
+  const [adresseStatus, setAdresseStatus] = useState("tom");
   const [leveringsnote, setLeveringsnote] = useState("");
   const [harKoeber, setHarKoeber] = useState(false);
   const [koeberNavn, setKoeberNavn] = useState("");
@@ -65,7 +67,7 @@ function NyeSagForm({ montorer, varetyper, varekategorier, primaerydelser, tilla
         <input value={kundeNavn} onChange={(e) => setKundeNavn(e.target.value)} placeholder="Kundenavn" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
         <input value={telefon} onChange={(e) => setTelefon(e.target.value)} placeholder="Telefon" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
         <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail (valgfri)" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-        <input value={adresse} onChange={(e) => setAdresse(e.target.value)} placeholder="Leveringsadresse" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+        <AdresseInput value={adresse} onChange={setAdresse} placeholder="Leveringsadresse" onValideringChange={setAdresseStatus} fokus={butikFokus} />
         <input value={leveringsnote} onChange={(e) => setLeveringsnote(e.target.value)} placeholder="Leveringsnote, fx 'Ring før ankomst'" className="sm:col-span-2 border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
       </div>
 
@@ -119,6 +121,10 @@ function NyeSagForm({ montorer, varetyper, varekategorier, primaerydelser, tilla
           <VarelinjeRedigering key={l.id} linje={l} varetyper={varetyper} varekategorier={varekategorier} primaerydelser={primaerydelser} tillaegsydelser={tillaegsydelser} onChange={(ny) => opdaterLinje(idx, ny)} onFjern={() => fjernLinje(idx)} kanFjerne={varelinjer.length > 1} />
         ))}
       </div>
+
+      {adresseStatus === "usikker" && (
+        <p className="text-xs text-[#B3261E] mb-2">Bemærk: leveringsadressen kunne ikke bekræftes af korttjenesten — dobbelttjek den, inden du booker.</p>
+      )}
 
       <div className="flex gap-2">
         <button
