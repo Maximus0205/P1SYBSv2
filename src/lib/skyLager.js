@@ -58,7 +58,7 @@ export const hentBiler = (butikId) => hentListe("biler", butikId);
 export const gemBiler = (butikId, biler) => gemListe("biler", butikId, biler);
 
 // Montører findes ikke længere som selvstændig tabel - se hentButiksBrugere
-// nedenfor og profiler.bil_id. hentMontorer/gemMontorer er fjernet.
+// nedenfor og profiler.bil_id.
 
 export const hentVaretyper = (butikId) => hentListe("varetyper", butikId);
 export const gemVaretyper = (butikId, varetyper) => gemListe("varetyper", butikId, varetyper);
@@ -224,4 +224,17 @@ export async function opdaterProfil(brugerId, felter) {
     return false;
   }
   return true;
+}
+
+// ---------- AI-ruteforslag ----------
+// Kalder en Edge Function i stedet for Claude API'et direkte, så
+// API-nøglen aldrig ligger i frontend-koden - se
+// supabase/functions/ai-ruteforslag.
+export async function hentAiRuteforslag({ grundlag, montorTekst, valgtDato }) {
+  const { data, error } = await supabase.functions.invoke("ai-ruteforslag", {
+    body: { grundlag, montorTekst, valgtDato },
+  });
+  if (error) return { ok: false, fejl: data?.fejl || error.message || "Kunne ikke hente AI-forslag" };
+  if (data?.fejl) return { ok: false, fejl: data.fejl };
+  return { ok: true, tekst: data.tekst };
 }
