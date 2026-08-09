@@ -72,6 +72,23 @@ export const gemPrimaerydelser = (butikId, primaerydelser) => gemListe("primaery
 export const hentTillaegsydelser = (butikId) => hentListe("tillaegsydelser", butikId);
 export const gemTillaegsydelser = (butikId, tillaegsydelser) => gemListe("tillaegsydelser", butikId, tillaegsydelser);
 
+// Henter den rigtige fejlbesked fra en Edge Function-fejl. Uden dette viser
+// supabase-js kun en generisk "non-2xx status code"-tekst - den rigtige
+// besked (som vores funktioner selv sender som { fejl: "..." }) ligger i
+// error.context (selve HTTP-svaret), og skal læses eksplicit.
+async function laesEdgeFejl(data, error, standardBesked) {
+  if (data?.fejl) return data.fejl;
+  if (error?.context && typeof error.context.json === "function") {
+    try {
+      const krop = await error.context.clone().json();
+      if (krop?.fejl) return krop.fejl;
+    } catch (_) {
+      // Kroppen var ikke JSON - falder tilbage til standardbeskeden herunder.
+    }
+  }
+  return error?.message || standardBesked;
+}
+
 // ---------- Butikker ----------
 // Bruges bl.a. til at hente egen butiks koordinater (adresse-fokuspunkt for
 // adresseforslag), og af systemadmin til at oprette/liste/redigere butikker.
@@ -102,8 +119,7 @@ export async function hentAlleButikker() {
 // supabase/functions/systemadmin-opret-butik.
 export async function opretButikSystemadmin(felter) {
   const { data, error } = await supabase.functions.invoke("systemadmin-opret-butik", { body: felter });
-  if (error) return { ok: false, fejl: data?.fejl || error.message || "Kunne ikke oprette butikken" };
-  if (data?.fejl) return { ok: false, fejl: data.fejl };
+  if (error || data?.fejl) return { ok: false, fejl: await laesEdgeFejl(data, error, "Kunne ikke oprette butikken") };
   return { ok: true };
 }
 
@@ -134,12 +150,7 @@ export async function opretBrugerAdmin({ email, adgangskode, navn, rolle, bilId 
   const { data, error } = await supabase.functions.invoke("admin-opret-bruger", {
     body: { email, adgangskode, navn, rolle, bilId },
   });
-  if (error) {
-    // Supabase pakker edge-function-fejl lidt akavet ind - prøv at finde den rigtige besked.
-    const besked = data?.fejl || error.message || "Kunne ikke oprette brugeren";
-    return { ok: false, fejl: besked };
-  }
-  if (data?.fejl) return { ok: false, fejl: data.fejl };
+  if (error || data?.fejl) return { ok: false, fejl: await laesEdgeFejl(data, error, "Kunne ikke oprette brugeren") };
   return { ok: true };
 }
 
@@ -234,7 +245,6 @@ export async function hentAiRuteforslag({ grundlag, montorTekst, valgtDato }) {
   const { data, error } = await supabase.functions.invoke("ai-ruteforslag", {
     body: { grundlag, montorTekst, valgtDato },
   });
-  if (error) return { ok: false, fejl: data?.fejl || error.message || "Kunne ikke hente AI-forslag" };
-  if (data?.fejl) return { ok: false, fejl: data.fejl };
+  if (error || data?.fejl) return { ok: false, fejl: await laesEdgeFejl(data, error, "Kunne ikke hente AI-forslag") };
   return { ok: true, tekst: data.tekst };
 }
