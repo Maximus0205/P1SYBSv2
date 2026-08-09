@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search } from "lucide-react";
-import { hentAlleButikker, opretButikSystemadmin, opdaterButikSystemadmin, hentAlleBrugereSystemadmin, opdaterProfil } from "../lib/skyLager";
+import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound } from "lucide-react";
+import { hentAlleButikker, opretButikSystemadmin, opdaterButikSystemadmin, hentAlleBrugereSystemadmin, opdaterProfil, nulstilAdgangskodeAdmin } from "../lib/skyLager";
 import { geokodAdresse } from "../lib/steder";
+import { foreslaaBrugernavn, erGyldigtBrugernavn } from "../lib/brugernavn";
 import { AdresseInput } from "../components/AdresseInput";
 
 const ROLLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montør" };
@@ -19,7 +20,10 @@ function SystemAdminSide() {
   const [butiksnummer, setButiksnummer] = useState("");
   const [adresse, setAdresse] = useState("");
   const [adresseStatus, setAdresseStatus] = useState("tom");
+  const [adminLoginType, setAdminLoginType] = useState("brugernavn");
   const [adminNavn, setAdminNavn] = useState("");
+  const [adminBrugernavn, setAdminBrugernavn] = useState("");
+  const [adminBrugernavnRedigeret, setAdminBrugernavnRedigeret] = useState(false);
   const [adminEmail, setAdminEmail] = useState("");
   const [adminAdgangskode, setAdminAdgangskode] = useState("");
   const [travl, setTravl] = useState(false);
@@ -29,22 +33,38 @@ function SystemAdminSide() {
   const genindlaes = () => { setIndlaeser(true); hentAlleButikker().then((b) => { setButikker(b); setIndlaeser(false); }); };
   useEffect(() => { genindlaes(); }, []);
 
+  const skiftAdminNavn = (val) => {
+    setAdminNavn(val);
+    if (!adminBrugernavnRedigeret) setAdminBrugernavn(foreslaaBrugernavn(val));
+  };
+
   const opret = async () => {
     setFejl(""); setBesked("");
-    if (!butiksNavn.trim() || !adresse.trim() || !adminEmail.trim() || adminAdgangskode.length < 6) {
-      setFejl("Udfyld butiksnavn, adresse, admin-e-mail og en adgangskode på mindst 6 tegn.");
+    if (!butiksNavn.trim() || !adresse.trim() || adminAdgangskode.length < 6) {
+      setFejl("Udfyld butiksnavn, adresse og en adgangskode på mindst 6 tegn.");
       return;
     }
     if (butiksnummer.trim() && !/^\d{4}$/.test(butiksnummer.trim())) {
       setFejl("Butiksnummer skal være præcis 4 cifre.");
       return;
     }
+    if (adminLoginType === "brugernavn" && !erGyldigtBrugernavn(adminBrugernavn)) {
+      setFejl("Brugernavn skal være 2-40 tegn (a-z, tal, punktum eller bindestreg).");
+      return;
+    }
+    if (adminLoginType === "email" && !adminEmail.trim()) {
+      setFejl("Udfyld admin e-mail.");
+      return;
+    }
     setTravl(true);
-    const resultat = await opretButikSystemadmin({ butiksNavn: butiksNavn.trim(), adresse: adresse.trim(), butiksnummer: butiksnummer.trim() || null, adminNavn: adminNavn.trim(), adminEmail: adminEmail.trim(), adminAdgangskode });
+    const resultat = await opretButikSystemadmin({
+      butiksNavn: butiksNavn.trim(), adresse: adresse.trim(), butiksnummer: butiksnummer.trim() || null,
+      adminNavn: adminNavn.trim(), adminLoginType, adminEmail: adminEmail.trim(), adminBrugernavn: adminBrugernavn.trim().toLowerCase(), adminAdgangskode,
+    });
     setTravl(false);
     if (!resultat.ok) { setFejl(resultat.fejl); return; }
-    setBesked(`Butikken "${butiksNavn}" er oprettet, med ${adminEmail} som admin.`);
-    setButiksNavn(""); setButiksnummer(""); setAdresse(""); setAdminNavn(""); setAdminEmail(""); setAdminAdgangskode("");
+    setBesked(`Butikken "${butiksNavn}" er oprettet, med ${adminLoginType === "brugernavn" ? `brugernavnet "${adminBrugernavn}"` : adminEmail} som admin.`);
+    setButiksNavn(""); setButiksnummer(""); setAdresse(""); setAdminNavn(""); setAdminBrugernavn(""); setAdminBrugernavnRedigeret(false); setAdminEmail(""); setAdminAdgangskode("");
     genindlaes();
   };
 
@@ -59,8 +79,20 @@ function SystemAdminSide() {
           <div className="sm:col-span-2">
             <AdresseInput value={adresse} onChange={setAdresse} placeholder="Butikkens adresse" onValideringChange={setAdresseStatus} />
           </div>
-          <input value={adminNavn} onChange={(e) => setAdminNavn(e.target.value)} placeholder="Navn på butikkens første admin" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-          <input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="Admin e-mail" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+        </div>
+
+        <p className="text-xs font-semibold uppercase tracking-wide text-[#52697E] mt-4 mb-2">Butikkens første admin</p>
+        <div className="flex border border-[#D8D0BE] mb-3 text-xs font-semibold uppercase tracking-wide w-fit">
+          <button onClick={() => setAdminLoginType("brugernavn")} className={`px-3 py-1.5 transition-colors ${adminLoginType === "brugernavn" ? "bg-[#1C232E] text-white" : "text-[#52697E] hover:text-[#1C232E]"}`}>Brugernavn</button>
+          <button onClick={() => setAdminLoginType("email")} className={`px-3 py-1.5 transition-colors ${adminLoginType === "email" ? "bg-[#1C232E] text-white" : "text-[#52697E] hover:text-[#1C232E]"}`}>E-mail</button>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <input value={adminNavn} onChange={(e) => skiftAdminNavn(e.target.value)} placeholder="Navn på butikkens første admin" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+          {adminLoginType === "brugernavn" ? (
+            <input value={adminBrugernavn} onChange={(e) => { setAdminBrugernavn(e.target.value); setAdminBrugernavnRedigeret(true); }} placeholder="Brugernavn (foreslået, kan rettes)" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] font-mono focus:outline-none focus:border-[#E2621B]" />
+          ) : (
+            <input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="Admin e-mail" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+          )}
           <input value={adminAdgangskode} onChange={(e) => setAdminAdgangskode(e.target.value)} placeholder="Admin adgangskode (mindst 6 tegn)" className="sm:col-span-2 border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
         </div>
         {fejl && <p className="text-xs text-[#B3261E] mt-2 flex items-center gap-1.5"><AlertCircle size={13} /> {fejl}</p>}
@@ -150,14 +182,18 @@ function ButikRedigering({ butik, onFaerdig, onAnnuller }) {
   );
 }
 
-// Kobler eksisterende brugere til en butik (+ sætter rolle). Uden søgning
-// vises kun brugere der endnu ikke hører til nogen butik - de mest
-// relevante at handle på. Søgning finder på tværs af hele kæden.
+// Kobler eksisterende brugere til en butik (+ sætter rolle, + kan nulstille
+// adgangskode). Uden søgning vises kun brugere der endnu ikke hører til
+// nogen butik - de mest relevante at handle på. Søgning finder på tværs af
+// hele kæden, i navn eller brugernavn.
 function BrugerKobling({ butikker }) {
   const [soegning, setSoegning] = useState("");
   const [brugere, setBrugere] = useState([]);
   const [indlaeser, setIndlaeser] = useState(true);
   const [gemmerId, setGemmerId] = useState(null);
+  const [nulstilId, setNulstilId] = useState(null);
+  const [nyKode, setNyKode] = useState("");
+  const [nulstilBesked, setNulstilBesked] = useState("");
 
   const genindlaes = (tekst) => {
     setIndlaeser(true);
@@ -172,10 +208,21 @@ function BrugerKobling({ butikker }) {
     genindlaes(soegning);
   };
 
+  const nulstil = async (brugerId) => {
+    if (nyKode.length < 6) { setNulstilBesked("Mindst 6 tegn."); return; }
+    setGemmerId(brugerId);
+    const resultat = await nulstilAdgangskodeAdmin(brugerId, nyKode);
+    setGemmerId(null);
+    if (!resultat.ok) { setNulstilBesked(resultat.fejl || "Kunne ikke nulstille."); return; }
+    setNulstilBesked("Nulstillet.");
+    setNyKode("");
+    setTimeout(() => { setNulstilId(null); setNulstilBesked(""); }, 1200);
+  };
+
   return (
     <div>
       <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-1 flex items-center gap-2"><Users size={16} /> Kobl brugere til butik</h3>
-      <p className="text-xs text-[#52697E] mb-3">Uden søgning vises kun brugere, der endnu ikke er koblet til nogen butik. Søg for at finde og flytte en bruger fra en anden butik.</p>
+      <p className="text-xs text-[#52697E] mb-3">Uden søgning vises kun brugere, der endnu ikke er koblet til nogen butik. Søg for at finde og flytte en bruger fra en anden butik, eller nulstille en adgangskode.</p>
 
       <div className="relative mb-3">
         <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#52697E]" />
@@ -183,7 +230,7 @@ function BrugerKobling({ butikker }) {
           value={soegning}
           onChange={(e) => setSoegning(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && genindlaes(soegning)}
-          placeholder="Søg på e-mail/navn, eller lad stå tomt for ukoblede brugere"
+          placeholder="Søg på navn eller brugernavn, eller lad stå tomt for ukoblede brugere"
           className="w-full border border-[#D8D0BE] bg-[#F3EFE6] pl-8 pr-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]"
         />
       </div>
@@ -195,25 +242,46 @@ function BrugerKobling({ butikker }) {
       ) : (
         <div className="space-y-2">
           {brugere.map((b) => (
-            <div key={b.id} className="bg-white border border-[#D8D0BE] p-3 flex items-center gap-2 flex-wrap">
-              <p className="text-sm text-[#1C232E] flex-1 min-w-[160px] truncate">{b.navn}</p>
-              <select
-                value={b.rolle}
-                onChange={(e) => opdater(b.id, { rolle: e.target.value, butikId: b.butikId })}
-                className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-xs text-[#1C232E]"
-              >
-                {Object.entries(ROLLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-              <select
-                value={b.butikId || ""}
-                onChange={(e) => opdater(b.id, { rolle: b.rolle, butikId: e.target.value || null })}
-                disabled={gemmerId === b.id}
-                className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-xs text-[#1C232E] min-w-[160px]"
-              >
-                <option value="">Ingen butik</option>
-                {butikker.map((bu) => <option key={bu.id} value={bu.id}>{bu.navn}{bu.butiksnummer ? ` #${bu.butiksnummer}` : ""}</option>)}
-              </select>
-              {gemmerId === b.id && <Loader2 size={14} className="animate-spin text-[#52697E]" />}
+            <div key={b.id} className="bg-white border border-[#D8D0BE] p-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex-1 min-w-[160px]">
+                  <p className="text-sm text-[#1C232E] truncate">{b.navn}</p>
+                  {b.brugernavn && <p className="text-[11px] text-[#52697E]">brugernavn: {b.brugernavn}</p>}
+                </div>
+                <select
+                  value={b.rolle}
+                  onChange={(e) => opdater(b.id, { rolle: e.target.value, butikId: b.butikId })}
+                  className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-xs text-[#1C232E]"
+                >
+                  {Object.entries(ROLLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+                <select
+                  value={b.butikId || ""}
+                  onChange={(e) => opdater(b.id, { rolle: b.rolle, butikId: e.target.value || null })}
+                  disabled={gemmerId === b.id}
+                  className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-xs text-[#1C232E] min-w-[160px]"
+                >
+                  <option value="">Ingen butik</option>
+                  {butikker.map((bu) => <option key={bu.id} value={bu.id}>{bu.navn}{bu.butiksnummer ? ` #${bu.butiksnummer}` : ""}</option>)}
+                </select>
+                <button onClick={() => { setNulstilId(nulstilId === b.id ? null : b.id); setNulstilBesked(""); setNyKode(""); }} className="p-1.5 text-[#52697E] hover:text-[#E2621B]" title="Nulstil adgangskode"><KeyRound size={15} /></button>
+                {gemmerId === b.id && <Loader2 size={14} className="animate-spin text-[#52697E]" />}
+              </div>
+              {nulstilId === b.id && (
+                <div className="mt-2.5 pt-2.5 border-t border-[#F0EBDD] flex items-center gap-2 flex-wrap">
+                  <input
+                    type="password"
+                    value={nyKode}
+                    onChange={(e) => setNyKode(e.target.value)}
+                    placeholder="Ny adgangskode (mindst 6 tegn)"
+                    className="flex-1 min-w-[160px] border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-xs text-[#1C232E] focus:outline-none focus:border-[#E2621B]"
+                  />
+                  <button onClick={() => nulstil(b.id)} disabled={gemmerId === b.id} className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors disabled:opacity-60">
+                    Sæt ny adgangskode
+                  </button>
+                  {nulstilBesked && <span className={`text-[11px] ${nulstilBesked === "Nulstillet." ? "text-[#3D7A5C]" : "text-[#B3261E]"}`}>{nulstilBesked}</span>}
+                </div>
+              )}
             </div>
           ))}
         </div>
