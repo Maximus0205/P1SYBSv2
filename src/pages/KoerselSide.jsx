@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { RefreshCw, Pencil, AlertCircle, KeyRound, Clock } from "lucide-react";
 import { bilBlokeretAfFerie, bilLabel, dannTitel, erIDag, formatDatoLang, formatVarighed, montorFarve, omraadeNoegle, sagForventetMinutter, statusMeta, tidsrumTekst, ugeDage } from "../data/appData";
+import { hentAiRuteforslag } from "../lib/skyLager";
 import { DatoVaelger } from "../components/common";
 import { SagKortKompakt } from "../components/SagKortKompakt";
 
@@ -82,30 +83,15 @@ function UgensOmraader({ sager, montorer, valgtDato }) {
 
   const spoergAI = async () => {
     setAiLoading(true); setAiFejl(null); setAiSvar(null);
-    try {
-      const grundlag = ugensSager.map((s) => ({
-        sag: s.nr, dato: s.dato, tidsrum: tidsrumTekst(s.tidsrumId), adresse: s.kunde.adresse,
-        bil: montorNavn(s.montorId) || "ikke tildelt", forventetVarighed: formatVarighed(sagForventetMinutter(s)),
-      }));
-      const prompt = `Du er logistik-planlægger for et danskbaseret levering-/monteringsfirma (hvidevarer m.m.). Her er ugens bookede sager (ugen der indeholder ${valgtDato}) som JSON:
-${JSON.stringify(grundlag, null, 2)}
-
-Vi har disse biler til rådighed: ${montorer.map((m) => `${m.navn} (${m.bil})`).join(", ") || "ingen biler oprettet endnu"}.
-
-Analysér adresserne (brug dit kendskab til danske postnumre/byområder) og find konkret ineffektiv kørsel: fx flere forskellige biler der kører ind i samme område samme dag, eller et område der besøges spredt over flere forskellige dage i stedet for samlet. Foreslå maks. 6 konkrete, handlingsorienterede ændringer (hvilket sagsnr. bør flytte til hvilken dato og/eller bil). Skriv kort på dansk, ingen indledning, ingen generel snak om ruteoptimering — kun de konkrete forslag som en punktliste.`;
-
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
-      });
-      const data = await response.json();
-      const tekst = (data.content || []).map((c) => c.text || "").filter(Boolean).join("\n");
-      setAiSvar(tekst || "Fik intet brugbart svar — prøv igen.");
-    } catch (e) {
-      setAiFejl("Kunne ikke hente AI-forslag lige nu. Prøv igen om lidt.");
-    }
+    const grundlag = ugensSager.map((s) => ({
+      sag: s.nr, dato: s.dato, tidsrum: tidsrumTekst(s.tidsrumId), adresse: s.kunde.adresse,
+      bil: montorNavn(s.montorId) || "ikke tildelt", forventetVarighed: formatVarighed(sagForventetMinutter(s)),
+    }));
+    const montorTekst = montorer.map((m) => `${m.navn} (${m.bil})`).join(", ");
+    const resultat = await hentAiRuteforslag({ grundlag, montorTekst, valgtDato });
     setAiLoading(false);
+    if (!resultat.ok) { setAiFejl(resultat.fejl || "Kunne ikke hente AI-forslag lige nu. Prøv igen om lidt."); return; }
+    setAiSvar(resultat.tekst);
   };
 
   if (omraadeNavne.length === 0) return null;
