@@ -74,11 +74,11 @@ export const gemTillaegsydelser = (butikId, tillaegsydelser) => gemListe("tillae
 
 // ---------- Butikker ----------
 // Bruges bl.a. til at hente egen butiks koordinater (adresse-fokuspunkt for
-// adresseforslag), og af systemadmin til at oprette/liste butikker.
+// adresseforslag), og af systemadmin til at oprette/liste/redigere butikker.
 
 export async function hentButik(butikId) {
   if (!butikId) return null;
-  const { data, error } = await supabase.from("butikker").select("id, navn, adresse, lat, lon").eq("id", butikId).maybeSingle();
+  const { data, error } = await supabase.from("butikker").select("id, navn, adresse, lat, lon, butiksnummer").eq("id", butikId).maybeSingle();
   if (error) {
     console.error("Kunne ikke hente butik:", error.message);
     return null;
@@ -88,7 +88,7 @@ export async function hentButik(butikId) {
 
 // Alle butikker (kun synlige for en systemadmin, jf. RLS).
 export async function hentAlleButikker() {
-  const { data, error } = await supabase.from("butikker").select("id, navn, adresse, oprettet").order("oprettet", { ascending: false });
+  const { data, error } = await supabase.from("butikker").select("id, navn, adresse, lat, lon, butiksnummer, oprettet").order("oprettet", { ascending: false });
   if (error) {
     console.error("Kunne ikke hente butikker:", error.message);
     return [];
@@ -104,6 +104,20 @@ export async function opretButikSystemadmin(felter) {
   const { data, error } = await supabase.functions.invoke("systemadmin-opret-butik", { body: felter });
   if (error) return { ok: false, fejl: data?.fejl || error.message || "Kunne ikke oprette butikken" };
   if (data?.fejl) return { ok: false, fejl: data.fejl };
+  return { ok: true };
+}
+
+// Systemadmin retter navn/butiksnummer/koordinater på en eksisterende
+// butik. Almindelig klient-opdatering (ingen edge function nødvendig) -
+// RLS-policyen "systemadmin opdaterer butikker" tillader det allerede.
+// Hvis adressen ændres, skal kaldet inkludere nye lat/lon (geokod med
+// geokodAdresse fra steder.js, inden dette kaldes).
+export async function opdaterButikSystemadmin(butikId, felter) {
+  const { error } = await supabase.from("butikker").update(felter).eq("id", butikId);
+  if (error) {
+    console.error("Kunne ikke opdatere butik:", error.message);
+    return { ok: false, fejl: error.message };
+  }
   return { ok: true };
 }
 
@@ -150,6 +164,21 @@ export async function hentButiksBrugere(butikId) {
   return (data || []).map((p) => ({ id: p.id, navn: p.navn, rolle: p.rolle, bilId: p.bil_id }));
 }
 
+// Systemadmin: søger på tværs af ALLE butikker (til "Kobl bruger til
+// butik"). Uden søgetekst vises kun brugere der endnu ikke hører til nogen
+// butik (de mest relevante at koble op). Med søgetekst søges der i navn
+// (som pr. default er sat til brugerens e-mail ved oprettelse).
+export async function hentAlleBrugereSystemadmin(soegning) {
+  let query = supabase.from("profiler").select("id, navn, rolle, butik_id").order("oprettet", { ascending: false });
+  query = soegning?.trim() ? query.ilike("navn", `%${soegning.trim()}%`) : query.is("butik_id", null);
+  const { data, error } = await query;
+  if (error) {
+    console.error("Kunne ikke hente brugere (systemadmin):", error.message);
+    return [];
+  }
+  return (data || []).map((p) => ({ id: p.id, navn: p.navn, rolle: p.rolle, butikId: p.butik_id }));
+}
+
 // ---------- Ferier (pr. montør) ----------
 // Bruges til at afgøre om en bil skal vises som blokeret for booking i en
 // periode: en bil er blokeret de dage, hvor den montør, der LIGE NU er
@@ -183,10 +212,11 @@ export async function sletFerie(ferieId) {
   return true;
 }
 
-// Admin retter navn/rolle/montør-kobling på en eksisterende bruger.
+// Admin (eller systemadmin) retter navn/rolle/montør-kobling/butik på en
+// eksisterende bruger.
 // NB: kan IKKE oprette nye Auth-brugere herfra (kræver service_role-nøgle,
 // som aldrig må ligge i frontend) - nye brugere skal selv oprette login via
-// signup, hvorefter en admin sætter butik_id + rolle (se migration.sql).
+// signup, hvorefter en admin/systemadmin sætter butik_id + rolle.
 export async function opdaterProfil(brugerId, felter) {
   const { error } = await supabase.from("profiler").update(felter).eq("id", brugerId);
   if (error) {
