@@ -3,9 +3,14 @@
 // sin egen række i Supabase - med butik_id, så data er delt mellem alle i
 // butikken (i modsætning til før, hvor det kun lå i den enkelte browser).
 //
-// De eksporterede funktioner har bevidst samme "form" (hent + gem en hel
-// liste ad gangen) som appen allerede brugte, så App.jsx kun skal ændres et
-// minimum af steder.
+// VIGTIGT (rettet): vi gemmer og sletter altid ÉN specifik række ad gangen,
+// aldrig "gem hele listen og slet alt andet". Det sidste lyder ufarligt,
+// men er det ikke: hvis to brugere har appen åben samtidig, og bruger A's
+// lokale liste er en anelse forældet (fx fordi bruger B lige har oprettet
+// en ny sag), ville et "gem hele listen"-kald fra A slette B's nye sag i
+// databasen, fordi den ikke var med i A's (forældede) lokale liste. Med
+// målrettede insert/update/delete-kald rammer hver handling kun præcis den
+// række, den faktisk vedrører.
 
 import { supabase } from "./supabaseClient";
 
@@ -19,58 +24,76 @@ async function hentListe(tabel, butikId) {
   return (data || []).map((r) => r.data);
 }
 
-// Gemmer HELE listen: opdaterer/indsætter alt i den, og sletter rækker der
-// ikke længere er med (samme "erstat det hele"-opførsel som før).
-async function gemListe(tabel, butikId, liste) {
-  if (!butikId) return false;
-
-  const raekker = liste.map((item) => ({
-    id: String(item.id),
-    butik_id: butikId,
-    data: item,
-    opdateret: new Date().toISOString(),
-  }));
-
-  if (raekker.length > 0) {
-    const { error } = await supabase.from(tabel).upsert(raekker);
-    if (error) {
-      console.error(`Kunne ikke gemme ${tabel}:`, error.message);
-      return false;
-    }
+// Opretter eller opdaterer ÉN specifik række.
+async function gemRaekke(tabel, butikId, item) {
+  if (!butikId || !item) return false;
+  const raekke = { id: String(item.id), butik_id: butikId, data: item, opdateret: new Date().toISOString() };
+  const { error } = await supabase.from(tabel).upsert(raekke);
+  if (error) {
+    console.error(`Kunne ikke gemme i ${tabel}:`, error.message);
+    return false;
   }
+  return true;
+}
 
-  const idsAtBeholde = liste.map((item) => String(item.id));
-  let sletQuery = supabase.from(tabel).delete().eq("butik_id", butikId);
-  sletQuery = idsAtBeholde.length > 0 ? sletQuery.not("id", "in", `(${idsAtBeholde.join(",")})`) : sletQuery;
-  const { error: sletFejl } = await sletQuery;
-  if (sletFejl) {
-    console.error(`Kunne ikke oprydde i ${tabel}:`, sletFejl.message);
-    // Ikke fatalt - selve gemningen af det nye/ændrede lykkedes stadig.
+// Sletter ÉN specifik række. Afgrænset til egen butik som ekstra sikkerhed i
+// selve kaldet (RLS dækker det allerede, men det gør intentionen tydelig og
+// forhindrer et forkert butikId i at ramme forkert række).
+async function sletRaekke(tabel, butikId, id) {
+  if (!butikId || !id) return false;
+  const { error } = await supabase.from(tabel).delete().eq("butik_id", butikId).eq("id", String(id));
+  if (error) {
+    console.error(`Kunne ikke slette fra ${tabel}:`, error.message);
+    return false;
   }
+  return true;
+}
 
+// Sætter standardværdier op FØRSTE gang en butik bruger en liste (listen er
+// tom i forvejen). Kun insert/upsert - aldrig sletning - så det er ufarligt
+// selv hvis to faner/enheder skulle starte op på samme butik samtidig.
+async function opsaetStandarder(tabel, butikId, liste) {
+  if (!butikId || !liste || liste.length === 0) return false;
+  const raekker = liste.map((item) => ({ id: String(item.id), butik_id: butikId, data: item, opdateret: new Date().toISOString() }));
+  const { error } = await supabase.from(tabel).upsert(raekker);
+  if (error) {
+    console.error(`Kunne ikke oprette standardværdier i ${tabel}:`, error.message);
+    return false;
+  }
   return true;
 }
 
 export const hentSager = (butikId) => hentListe("sager", butikId);
-export const gemSager = (butikId, sager) => gemListe("sager", butikId, sager);
+export const gemSag = (butikId, sag) => gemRaekke("sager", butikId, sag);
+export const sletSag = (butikId, id) => sletRaekke("sager", butikId, id);
 
 export const hentBiler = (butikId) => hentListe("biler", butikId);
-export const gemBiler = (butikId, biler) => gemListe("biler", butikId, biler);
+export const gemBil = (butikId, bil) => gemRaekke("biler", butikId, bil);
+export const sletBil = (butikId, id) => sletRaekke("biler", butikId, id);
+export const opsaetStandardBiler = (butikId, biler) => opsaetStandarder("biler", butikId, biler);
 
 // Montører findes ikke længere som selvstændig tabel - se hentButiksBrugere
 // nedenfor og profiler.bil_id.
 
 export const hentVaretyper = (butikId) => hentListe("varetyper", butikId);
-export const gemVaretyper = (butikId, varetyper) => gemListe("varetyper", butikId, varetyper);
+export const gemVaretype = (butikId, varetype) => gemRaekke("varetyper", butikId, varetype);
+export const sletVaretype = (butikId, id) => sletRaekke("varetyper", butikId, id);
+export const opsaetStandardVaretyper = (butikId, varetyper) => opsaetStandarder("varetyper", butikId, varetyper);
 
 export const hentVarekategorier = (butikId) => hentListe("varekategorier", butikId);
-export const gemVarekategorier = (butikId, kategorier) => gemListe("varekategorier", butikId, kategorier);
+export const gemVarekategori = (butikId, kategori) => gemRaekke("varekategorier", butikId, kategori);
+export const sletVarekategori = (butikId, id) => sletRaekke("varekategorier", butikId, id);
+export const opsaetStandardVarekategorier = (butikId, kategorier) => opsaetStandarder("varekategorier", butikId, kategorier);
 
 export const hentPrimaerydelser = (butikId) => hentListe("primaerydelser", butikId);
-export const gemPrimaerydelser = (butikId, primaerydelser) => gemListe("primaerydelser", butikId, primaerydelser);
+export const gemPrimaerydelse = (butikId, ydelse) => gemRaekke("primaerydelser", butikId, ydelse);
+export const sletPrimaerydelse = (butikId, id) => sletRaekke("primaerydelser", butikId, id);
+export const opsaetStandardPrimaerydelser = (butikId, primaerydelser) => opsaetStandarder("primaerydelser", butikId, primaerydelser);
 
 export const hentTillaegsydelser = (butikId) => hentListe("tillaegsydelser", butikId);
-export const gemTillaegsydelser = (butikId, tillaegsydelser) => gemListe("tillaegsydelser", butikId, tillaegsydelser);
+export const gemTillaegsydelse = (butikId, ydelse) => gemRaekke("tillaegsydelser", butikId, ydelse);
+export const sletTillaegsydelse = (butikId, id) => sletRaekke("tillaegsydelser", butikId, id);
+export const opsaetStandardTillaegsydelser = (butikId, tillaegsydelser) => opsaetStandarder("tillaegsydelser", butikId, tillaegsydelser);
 
 // Henter den rigtige fejlbesked fra en Edge Function-fejl. Uden dette viser
 // supabase-js kun en generisk "non-2xx status code"-tekst - den rigtige
@@ -115,8 +138,10 @@ export async function hentAlleButikker() {
 
 // Systemadmin opretter en helt ny butik + dens første admin-login.
 // Kalder en edge function (kræver service_role for at oprette Auth-brugeren
-// og geokoder adressen server-side) - se
-// supabase/functions/systemadmin-opret-butik.
+// og geokoder adressen server-side). Kildekoden til denne og de øvrige
+// edge functions (admin-opret-bruger, admin-nulstil-adgangskode,
+// ai-ruteforslag, ors-proxy) ligger og vedligeholdes inde i selve
+// Supabase-projektet (Edge Functions-fanen), ikke i dette repo.
 export async function opretButikSystemadmin(felter) {
   const { data, error } = await supabase.functions.invoke("systemadmin-opret-butik", { body: felter });
   if (error || data?.fejl) return { ok: false, fejl: await laesEdgeFejl(data, error, "Kunne ikke oprette butikken") };
@@ -144,8 +169,7 @@ export async function opdaterButikSystemadmin(butikId, felter) {
 // Admin opretter en helt ny bruger (rigtigt login, ikke bare en profilrække).
 // Kalder en Edge Function, fordi det kræver service_role-rettigheder, som
 // aldrig må ligge i frontend-koden - funktionen tjekker selv at kalderen
-// rent faktisk er admin, før den opretter noget (se
-// supabase/functions/admin-opret-bruger). loginType er "email" eller
+// rent faktisk er admin, før den opretter noget. loginType er "email" eller
 // "brugernavn" - se src/lib/brugernavn.js.
 export async function opretBrugerAdmin({ loginType, email, brugernavn, adgangskode, navn, rolle, bilId }) {
   const { data, error } = await supabase.functions.invoke("admin-opret-bruger", {
@@ -157,7 +181,7 @@ export async function opretBrugerAdmin({ loginType, email, brugernavn, adgangsko
 
 // Nulstiller en brugers adgangskode direkte (ingen e-mail nødvendig) - kan
 // kaldes af en admin (for sin egen butiks brugere) eller en systemadmin
-// (for hvem som helst). Se supabase/functions/admin-nulstil-adgangskode.
+// (for hvem som helst).
 export async function nulstilAdgangskodeAdmin(brugerId, nyAdgangskode) {
   const { data, error } = await supabase.functions.invoke("admin-nulstil-adgangskode", {
     body: { brugerId, nyAdgangskode },
@@ -251,8 +275,7 @@ export async function opdaterProfil(brugerId, felter) {
 
 // ---------- AI-ruteforslag ----------
 // Kalder en Edge Function i stedet for Claude API'et direkte, så
-// API-nøglen aldrig ligger i frontend-koden - se
-// supabase/functions/ai-ruteforslag.
+// API-nøglen aldrig ligger i frontend-koden.
 export async function hentAiRuteforslag({ grundlag, montorTekst, valgtDato }) {
   const { data, error } = await supabase.functions.invoke("ai-ruteforslag", {
     body: { grundlag, montorTekst, valgtDato },
