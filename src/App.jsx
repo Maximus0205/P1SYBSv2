@@ -4,10 +4,10 @@ import { supabase } from "./lib/supabaseClient";
 import {
   hentSager, gemSager as gemSagerSky,
   hentBiler, gemBil as gemBilerSky,
-  hentVaretyper, gemVaretyper as gemVaretyperSky,
+  hentVaretyper, gemVaretype as gemVaretyperSky,
   hentVarekategorier, gemVarekategori as gemVarekategorierSky,
-  hentPrimaerydelser, gemPrimaerydelser as gemPrimaerydelserSky,
-  hentTillaegsydelser, gemTillaegsydelser as gemTillaegsydelserSky,
+  hentPrimaerydelser, gemPrimaerydelse as gemPrimaerydelserSky,
+  hentTillaegsydelser, gemTillaegsydelse as gemTillaegsydelserSky,
   hentEgenProfil, hentButiksBrugere, opdaterProfil, opretBrugerAdmin, nulstilAdgangskodeAdmin,
   hentFerier, tilfoejFerie as tilfoejFerieSky, sletFerie as sletFerieSky,
   hentButik,
