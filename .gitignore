@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-ssr
+*.local
+
+# Miljøvariabler - kopiér .env.example til .env lokalt og udfyld selv.
+# Skal ALDRIG committes (heller ikke selvom Supabase anon-key/URL i sig selv
+# ikke er hemmelige - RLS er den reelle adgangskontrol, se README).
+.env
+.env.*
+!.env.example
+
+.DS_Store
+*.log
