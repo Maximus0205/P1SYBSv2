@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import { supabase } from "./lib/supabaseClient";
 import {
   hentSager, gemSager as gemSagerSky,
-  hentBiler, gemBiler as gemBilerSky,
+  hentBiler, gemBil as gemBilerSky,
   hentVaretyper, gemVaretyper as gemVaretyperSky,
   hentVarekategorier, gemVarekategorier as gemVarekategorierSky,
   hentPrimaerydelser, gemPrimaerydelser as gemPrimaerydelserSky,
