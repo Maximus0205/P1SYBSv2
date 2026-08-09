@@ -193,7 +193,8 @@ export default function App() {
   // primære ydelser) ligger udelukkende på tillaegsydelser selv (se
   // appData.js) - derfor rydder vi op i tillaegsydelser, når en varetype
   // eller primær ydelse slettes, så der ikke bliver hængende referencer til
-  // noget der ikke findes mere.
+  // noget der ikke findes mere. Der sættes IKKE noget tidsestimat her - det
+  // tastes udelukkende manuelt for den enkelte booking i sælgerens flow.
   const addVarekategori = (navn) => gemVarekategorier([...varekategorier, { id: uid(), navn }]);
   const updateVarekategori = (id, navn) => gemVarekategorier(varekategorier.map((k) => (k.id === id ? { ...k, navn } : k)));
   const deleteVarekategori = (id) => {
@@ -210,7 +211,7 @@ export default function App() {
     gemTillaegsydelser(tillaegsydelser.map((t) => ({ ...t, varetyper: (t.varetyper || []).filter((vid) => vid !== id) })));
   };
 
-  const addPrimaerydelse = (navn, minutter) => gemPrimaerydelser([...primaerydelser, { id: uid(), navn, minutter: Number(minutter) || 0 }]);
+  const addPrimaerydelse = (navn) => gemPrimaerydelser([...primaerydelser, { id: uid(), navn }]);
   const updatePrimaerydelse = (id, felter) => gemPrimaerydelser(primaerydelser.map((p) => (p.id === id ? { ...p, ...felter } : p)));
   const deletePrimaerydelse = (id) => {
     if (!window.confirm("Slet denne primære ydelse? Allerede bookede sager beholder deres oplysninger uændret.")) return;
@@ -218,7 +219,7 @@ export default function App() {
     gemTillaegsydelser(tillaegsydelser.map((t) => ({ ...t, primaerYdelser: (t.primaerYdelser || []).filter((pid) => pid !== id) })));
   };
 
-  const addTillaegsydelse = (navn, minutter) => gemTillaegsydelser([...tillaegsydelser, { id: uid(), navn, minutter: Number(minutter) || 0, primaerYdelser: [], varetyper: [] }]);
+  const addTillaegsydelse = (navn) => gemTillaegsydelser([...tillaegsydelser, { id: uid(), navn, primaerYdelser: [], varetyper: [] }]);
   const updateTillaegsydelse = (id, felter) => gemTillaegsydelser(tillaegsydelser.map((t) => (t.id === id ? { ...t, ...felter } : t)));
   const deleteTillaegsydelse = (id) => {
     if (!window.confirm("Slet denne tillægsydelse? Allerede bookede sager beholder deres oplysninger uændret.")) return;
