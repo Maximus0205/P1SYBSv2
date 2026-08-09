@@ -6,7 +6,7 @@ function AdminSide({
   montorer, biler, sager, brugere, ferier, aktuelBrugerId,
   varetyper, varekategorier, primaerydelser, tillaegsydelser,
   onUpdateMontorBil, onAddBil, onUpdateBil, onDeleteBil, onToggleBilLukket,
-  onAddBruger, onUpdateBruger, onDeleteBruger,
+  onAddBruger, onUpdateBruger, onDeleteBruger, onNulstilAdgangskode,
   onAddVarekategori, onUpdateVarekategori, onDeleteVarekategori,
   onAddVaretype, onUpdateVaretype, onDeleteVaretype,
   onAddPrimaerydelse, onUpdatePrimaerydelse, onDeletePrimaerydelse,
@@ -89,7 +89,7 @@ function AdminSide({
           <div className="space-y-2">
             {brugere.map((b) => {
               const tilknyttetBil = biler.find((bil) => bil.id === b.bilId);
-              return <BrugerRaekke key={b.id} b={b} tilknyttetBil={tilknyttetBil} aktuelBrugerId={aktuelBrugerId} onUpdate={onUpdateBruger} onDelete={onDeleteBruger} />;
+              return <BrugerRaekke key={b.id} b={b} tilknyttetBil={tilknyttetBil} aktuelBrugerId={aktuelBrugerId} onUpdate={onUpdateBruger} onDelete={onDeleteBruger} onNulstilAdgangskode={onNulstilAdgangskode} />;
             })}
           </div>
           <p className="text-[11px] text-[#52697E] mt-3">Sætter du en bruger til rollen "Montør", skal du huske at give vedkommende en bil under fanen "Montører".</p>
