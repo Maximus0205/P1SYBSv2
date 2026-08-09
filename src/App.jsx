@@ -8,7 +8,7 @@ import {
   hentVarekategorier, gemVarekategorier as gemVarekategorierSky,
   hentPrimaerydelser, gemPrimaerydelser as gemPrimaerydelserSky,
   hentTillaegsydelser, gemTillaegsydelser as gemTillaegsydelserSky,
-  hentEgenProfil, hentButiksBrugere, opdaterProfil, opretBrugerAdmin,
+  hentEgenProfil, hentButiksBrugere, opdaterProfil, opretBrugerAdmin, nulstilAdgangskodeAdmin,
   hentFerier, tilfoejFerie as tilfoejFerieSky, sletFerie as sletFerieSky,
   hentButik,
 } from "./lib/skyLager";
@@ -195,6 +195,7 @@ export default function App() {
     await opdaterProfil(id, { butik_id: null, rolle: "saelger" });
     if (profil?.butikId) await hent(profil.butikId);
   };
+  const nulstilAdgangskode = (brugerId, nyAdgangskode) => nulstilAdgangskodeAdmin(brugerId, nyAdgangskode);
 
   // ---------- Varer & ydelser ----------
   // Relationerne (hvilke tillægsydelser der gælder for hvilke varetyper/
@@ -350,7 +351,7 @@ export default function App() {
             montorer={montorer} biler={biler} sager={sager} brugere={brugere} ferier={ferier} aktuelBrugerId={profil.id}
             varetyper={varetyper} varekategorier={varekategorier} primaerydelser={primaerydelser} tillaegsydelser={tillaegsydelser}
             onUpdateMontorBil={updateMontorBil} onAddBil={addBil} onUpdateBil={updateBil} onDeleteBil={deleteBil} onToggleBilLukket={toggleBilLukket}
-            onAddBruger={addBruger} onUpdateBruger={updateBruger} onDeleteBruger={deleteBruger}
+            onAddBruger={addBruger} onUpdateBruger={updateBruger} onDeleteBruger={deleteBruger} onNulstilAdgangskode={nulstilAdgangskode}
             onAddVarekategori={addVarekategori} onUpdateVarekategori={updateVarekategori} onDeleteVarekategori={deleteVarekategori}
             onAddVaretype={addVaretype} onUpdateVaretype={updateVaretype} onDeleteVaretype={deleteVaretype}
             onAddPrimaerydelse={addPrimaerydelse} onUpdatePrimaerydelse={updatePrimaerydelse} onDeletePrimaerydelse={deletePrimaerydelse}
