@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Plus, Building2, Clock } from "lucide-react";
+import { Plus, Building2, Clock, Hash } from "lucide-react";
 import { TIDSRUM, dannTitel, formatVarighed, lavVarelinje, linjeMinutter, tidsrumFraId, tidsrumTekst, todayISO, tomNoegle } from "../data/appData";
 import { KvitteringUpload } from "../components/KvitteringUpload";
 import { VarelinjeRedigering, NoegleFelter, AdresseForslag } from "../components/SagFormFields";
@@ -13,6 +13,7 @@ function NyeSagForm({ montorer, varetyper, varekategorier, primaerydelser, tilla
   const [adresse, setAdresse] = useState("");
   const [adresseStatus, setAdresseStatus] = useState("tom");
   const [leveringsnote, setLeveringsnote] = useState("");
+  const [ordrenummer, setOrdrenummer] = useState("");
   const [harKoeber, setHarKoeber] = useState(false);
   const [koeberNavn, setKoeberNavn] = useState("");
   const [koeberTelefon, setKoeberTelefon] = useState("");
@@ -23,6 +24,7 @@ function NyeSagForm({ montorer, varetyper, varekategorier, primaerydelser, tilla
   const [tidsrumId, setTidsrumId] = useState("heldag");
   const [montorId, setMontorId] = useState("");
   const [varelinjer, setVarelinjer] = useState([lavVarelinje(varetyper, primaerydelser)]);
+  const [gemmer, setGemmer] = useState(false);
 
   const titelPreview = dannTitel(varelinjer);
   const forventetMin = varelinjer.reduce((sum, l) => sum + linjeMinutter(l), 0);
@@ -68,6 +70,10 @@ function NyeSagForm({ montorer, varetyper, varekategorier, primaerydelser, tilla
         <input value={telefon} onChange={(e) => setTelefon(e.target.value)} placeholder="Telefon" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
         <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail (valgfri)" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
         <AdresseInput value={adresse} onChange={setAdresse} placeholder="Leveringsadresse" onValideringChange={setAdresseStatus} fokus={butikFokus} />
+        <div className="relative sm:col-span-2">
+          <Hash size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#52697E]" />
+          <input value={ordrenummer} onChange={(e) => setOrdrenummer(e.target.value)} placeholder="Ordre-/fakturanummer (valgfrit, til sporbarhed)" className="w-full border border-[#D8D0BE] bg-[#F3EFE6] pl-8 pr-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+        </div>
         <input value={leveringsnote} onChange={(e) => setLeveringsnote(e.target.value)} placeholder="Leveringsnote, fx 'Ring før ankomst'" className="sm:col-span-2 border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
       </div>
 
@@ -128,22 +134,26 @@ function NyeSagForm({ montorer, varetyper, varekategorier, primaerydelser, tilla
 
       <div className="flex gap-2">
         <button
-          onClick={() => {
+          disabled={gemmer}
+          onClick={async () => {
             if (!kundeNavn.trim() || !dato) return;
             const t = tidsrumFraId(tidsrumId);
-            onAdd({
+            setGemmer(true);
+            await onAdd({
               kunde: { navn: kundeNavn.trim(), telefon: telefon.trim(), email: email.trim(), adresse: adresse.trim(), leveringsnote: leveringsnote.trim() },
               koeber: harKoeber ? { navn: koeberNavn.trim(), telefon: koeberTelefon.trim(), email: koeberEmail.trim(), adresse: koeberAdresse.trim() } : null,
               noegle,
               dato, tidsrumId, start: t.start, slut: t.slut,
               montorId: montorId || null,
               varelinjer,
+              ordrenummer: ordrenummer.trim(),
             });
+            setGemmer(false);
             onClose();
           }}
-          className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors"
+          className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors disabled:opacity-60"
         >
-          Book sag
+          {gemmer ? "Booker..." : "Book sag"}
         </button>
         <button onClick={onClose} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-[#52697E] border border-[#D8D0BE] hover:border-[#52697E] transition-colors">
           Annuller
