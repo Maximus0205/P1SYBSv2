@@ -3,11 +3,11 @@
 // sin egen række i Supabase - med butik_id, så data er delt mellem alle i
 // butikken (i modsætning til før, hvor det kun lå i den enkelte browser).
 //
-// VIGTIGT (rettet): vi gemmer og sletter altid ÉN specifik række ad gangen,
-// aldrig "gem hele listen og slet alt andet". Det sidste lyder ufarligt,
-// men er det ikke: hvis to brugere har appen åben samtidig, og bruger A's
-// lokale liste er en anelse forældet (fx fordi bruger B lige har oprettet
-// en ny sag), ville et "gem hele listen"-kald fra A slette B's nye sag i
+// VIGTIGT: vi gemmer og sletter altid ÉN specifik række ad gangen, aldrig
+// "gem hele listen og slet alt andet". Det sidste lyder ufarligt, men er
+// det ikke: hvis to brugere har appen åben samtidig, og bruger A's lokale
+// liste er en anelse forældet (fx fordi bruger B lige har oprettet en ny
+// sag), ville et "gem hele listen"-kald fra A slette B's nye sag i
 // databasen, fordi den ikke var med i A's (forældede) lokale liste. Med
 // målrettede insert/update/delete-kald rammer hver handling kun præcis den
 // række, den faktisk vedrører.
@@ -63,6 +63,20 @@ async function opsaetStandarder(tabel, butikId, liste) {
   return true;
 }
 
+// Henter én enkelt (frisk) sag fra databasen - bruges lige efter oprettelse,
+// så vi får det RIGTIGE, databasetildelte sagsnummer med det samme (se
+// tildel_sagsnummer-triggeren i migrationen), i stedet for det midlertidige
+// nummer der blev gættet i browseren.
+export async function hentFriskSag(butikId, id) {
+  if (!butikId || !id) return null;
+  const { data, error } = await supabase.from("sager").select("data").eq("butik_id", butikId).eq("id", String(id)).maybeSingle();
+  if (error) {
+    console.error("Kunne ikke hente sagen igen:", error.message);
+    return null;
+  }
+  return data?.data || null;
+}
+
 export const hentSager = (butikId) => hentListe("sager", butikId);
 export const gemSag = (butikId, sag) => gemRaekke("sager", butikId, sag);
 export const sletSag = (butikId, id) => sletRaekke("sager", butikId, id);
@@ -114,7 +128,8 @@ async function laesEdgeFejl(data, error, standardBesked) {
 
 // ---------- Butikker ----------
 // Bruges bl.a. til at hente egen butiks koordinater (adresse-fokuspunkt for
-// adresseforslag), og af systemadmin til at oprette/liste/redigere butikker.
+// adresseforslag), og af systemadmin til at oprette/liste/redigere/slette
+// butikker.
 
 export async function hentButik(butikId) {
   if (!butikId) return null;
@@ -139,9 +154,8 @@ export async function hentAlleButikker() {
 // Systemadmin opretter en helt ny butik + dens første admin-login.
 // Kalder en edge function (kræver service_role for at oprette Auth-brugeren
 // og geokoder adressen server-side). Kildekoden til denne og de øvrige
-// edge functions (admin-opret-bruger, admin-nulstil-adgangskode,
-// ai-ruteforslag, ors-proxy) ligger og vedligeholdes inde i selve
-// Supabase-projektet (Edge Functions-fanen), ikke i dette repo.
+// edge functions ligger og vedligeholdes inde i selve Supabase-projektet
+// (Edge Functions-fanen), ikke i dette repo.
 export async function opretButikSystemadmin(felter) {
   const { data, error } = await supabase.functions.invoke("systemadmin-opret-butik", { body: felter });
   if (error || data?.fejl) return { ok: false, fejl: await laesEdgeFejl(data, error, "Kunne ikke oprette butikken") };
@@ -151,8 +165,6 @@ export async function opretButikSystemadmin(felter) {
 // Systemadmin retter navn/butiksnummer/koordinater på en eksisterende
 // butik. Almindelig klient-opdatering (ingen edge function nødvendig) -
 // RLS-policyen "systemadmin opdaterer butikker" tillader det allerede.
-// Hvis adressen ændres, skal kaldet inkludere nye lat/lon (geokod med
-// geokodAdresse fra steder.js, inden dette kaldes).
 export async function opdaterButikSystemadmin(butikId, felter) {
   const { error } = await supabase.from("butikker").update(felter).eq("id", butikId);
   if (error) {
@@ -162,18 +174,32 @@ export async function opdaterButikSystemadmin(butikId, felter) {
   return { ok: true };
 }
 
+// Systemadmin sletter en butik. Alt tilhørende data (sager, biler,
+// varetyper osv.) slettes automatisk med (CASCADE i databasen) - brugernes
+// LOGIN bevares, de mister blot koblingen til butikken (SET NULL), så en
+// admin ikke ved et uheld sletter folks adgang til systemet, kun selve
+// butiksdataen.
+export async function sletButikSystemadmin(butikId) {
+  const { error } = await supabase.from("butikker").delete().eq("id", butikId);
+  if (error) {
+    console.error("Kunne ikke slette butik:", error.message);
+    return { ok: false, fejl: error.message };
+  }
+  return { ok: true };
+}
+
 // ---------- Profiler (erstatter den gamle "brugere"-blob) ----------
 // Selve login/adgangskode håndteres af Supabase Auth (se LoginSide.jsx).
 // Denne tabel holder kun butik_id + rolle + navn/brugernavn pr. bruger.
 
-// Admin opretter en helt ny bruger (rigtigt login, ikke bare en profilrække).
-// Kalder en Edge Function, fordi det kræver service_role-rettigheder, som
-// aldrig må ligge i frontend-koden - funktionen tjekker selv at kalderen
-// rent faktisk er admin, før den opretter noget. loginType er "email" eller
-// "brugernavn" - se src/lib/brugernavn.js.
-export async function opretBrugerAdmin({ loginType, email, brugernavn, adgangskode, navn, rolle, bilId }) {
+// Opretter en helt ny bruger (rigtigt login, ikke bare en profilrække).
+// Kaldes af en almindelig admin (opretter altid i egen butik), ELLER af en
+// systemadmin, som kan angive butikId eksplicit for at oprette en bruger
+// direkte til en hvilken som helst butik, uden om "opret ny butik"-flowet.
+// loginType er "email" eller "brugernavn" - se src/lib/brugernavn.js.
+export async function opretBrugerAdmin({ loginType, email, brugernavn, adgangskode, navn, rolle, bilId, butikId }) {
   const { data, error } = await supabase.functions.invoke("admin-opret-bruger", {
-    body: { loginType, email, brugernavn, adgangskode, navn, rolle, bilId },
+    body: { loginType, email, brugernavn, adgangskode, navn, rolle, bilId, butikId },
   });
   if (error || data?.fejl) return { ok: false, fejl: await laesEdgeFejl(data, error, "Kunne ikke oprette brugeren") };
   return { ok: true };
