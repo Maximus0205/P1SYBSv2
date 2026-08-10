@@ -1,6 +1,6 @@
 import React from "react";
 import { ChevronLeft, ChevronRight, Calendar, KeyRound } from "lucide-react";
-import { erIDag, flytDato, noegleTekst, statusMeta, todayISO, varelinjeLabel, ydelseIkon } from "../data/appData";
+import { isToday as erIDag, addDays as flytDato, keyAccessText as noegleTekst, STATUS_META as statusMeta, todayISO, lineItemLabel as varelinjeLabel, serviceIcon as ydelseIkon } from "../data/domain";
 
 function StatusBadge({ status }) {
   const m = statusMeta[status];
