@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Plus, Building2, Clock, Hash } from "lucide-react";
 import { TIDSRUM, dannTitel, formatVarighed, lavVarelinje, linjeMinutter, tidsrumFraId, tidsrumTekst, todayISO, tomNoegle } from "../data/appData";
 import { KvitteringUpload } from "../components/KvitteringUpload";
-import { VarelinjeRedigering, NoegleFelter, AdresseForslag } from "../components/SagFormFields";
+import { VarelinjeRedigering, NoegleFelter, AdresseForslag, DagensRuteoverblik } from "../components/SagFormFields";
 import { AfstandsForslag } from "../components/AfstandsForslag";
 import { AdresseInput } from "../components/AdresseInput";
 
@@ -117,6 +117,8 @@ function NyeSagForm({ montorer, varetyper, varekategorier, primaerydelser, tilla
           </select>
         </label>
       </div>
+
+      <DagensRuteoverblik sager={sager} montorer={montorer} dato={dato} />
 
       <div className="flex items-center justify-between mb-2">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-[#52697E]">Varelinjer & ydelser</h4>
