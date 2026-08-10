@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { X, Plus } from "lucide-react";
-import { formatKlokken, formatVarighed, now, totalMinutter, varelinjeLabel, ydelseIkon } from "../data/appData";
+import { formatTime as formatKlokken, formatDuration as formatVarighed, now, totalMinutes as totalMinutter, lineItemLabel as varelinjeLabel, serviceIcon as ydelseIkon } from "../data/domain";
 
 function VarelinjerDetalje({ sag, onToggleYdelse, onAddYdelse, onRemoveYdelse }) {
   const [nyPunkt, setNyPunkt] = useState({});
