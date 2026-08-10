@@ -1,6 +1,6 @@
 import React from "react";
 import { LogOut } from "lucide-react";
-import { SIDER, SIDER_FOR_ROLLE } from "../data/appData";
+import { PAGES as SIDER, PAGES_FOR_ROLE as SIDER_FOR_ROLLE } from "../data/domain";
 
 function TopNav({ side, onSkift, bruger, onLogUd }) {
   const tilladte = SIDER.filter((s) => (SIDER_FOR_ROLLE[bruger.rolle] || []).includes(s.key) || (s.key === "systemadmin" && bruger.erSystemadmin));
