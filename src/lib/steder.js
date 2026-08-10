@@ -146,6 +146,27 @@ export async function koereafstande(kilde, destinationer) {
   return data?.distances?.[0] || [];
 }
 
+// Samlet forventet køretid (minutter) for at besøge en liste af punkter I
+// DEN RÆKKEFØLGE de gives i - bruges af Kørselsoverblikket til at vise
+// "opgavetid + køretid" pr. bil, så man kan se om en dag er ved at være
+// overbooket. Ikke en ægte ruteoptimering (punkterne besøges i den
+// rækkefølge de kommer ind, typisk kronologisk efter tidsrum/starttid) -
+// kun et realistisk estimat af den samlede kørsel gennem dagens stop.
+export async function koeretidForRute(punkterOrdnet) {
+  const gyldige = (punkterOrdnet || []).filter((p) => p && p.lat != null && p.lon != null);
+  if (gyldige.length < 2) return 0;
+  const data = await kaldProxy({ handling: "matrix", punkter: gyldige });
+  const varigheder = data?.durations;
+  if (!varigheder) return null; // kaldet fejlede - lad kalderen vise "kunne ikke beregne" i stedet for 0
+  let sekunderIAlt = 0;
+  for (let i = 0; i < gyldige.length - 1; i++) {
+    const leg = varigheder[i]?.[i + 1];
+    if (leg == null) return null;
+    sekunderIAlt += leg;
+  }
+  return Math.round(sekunderIAlt / 60);
+}
+
 // Findes stadig af bagudkompatibilitetshensyn - er nu altid "true" for
 // indloggede brugere, fordi nøglen ikke længere afhænger af en lokal .env.
 // Behold kaldene i komponenterne (AdresseInput.jsx, AfstandsForslag.jsx) -
