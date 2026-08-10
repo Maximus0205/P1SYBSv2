@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { AlertCircle, CalendarClock, CheckCircle2, Circle, PlayCircle, Search, X } from "lucide-react";
-import { todayISO } from "../data/appData";
+import { todayISO } from "../data/domain";
 import { SagKortKompakt } from "../components/SagKortKompakt";
 
 // Grupperer sager i faste lister, så det er nemt at se på ét blik hvad der
