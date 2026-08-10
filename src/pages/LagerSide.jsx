@@ -1,6 +1,6 @@
 import React from "react";
 import { Check, KeyRound } from "lucide-react";
-import { dannTitel, formatDatoLang } from "../data/appData";
+import { buildTitle as dannTitel, formatLongDate as formatDatoLang } from "../data/domain";
 import { DatoVaelger } from "../components/common";
 
 function LagerSide({ sager, montorer, valgtDato, onSkiftDato, onTogglePluk, onOpen }) {
