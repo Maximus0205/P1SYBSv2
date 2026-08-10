@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import Papa from "papaparse";
-import { ANDET_VARETYPE_ID, lavVarelinje, lavYdelse, tidsrumFraId, todayISO, uid } from "../data/appData";
+import { OTHER_PRODUCT_TYPE_ID as ANDET_VARETYPE_ID, createLineItem as lavVarelinje, createAddOn as lavYdelse, timeSlotById as tidsrumFraId, todayISO, uid } from "../data/domain";
 
 function CsvImport({ montorer, varetyper, primaerydelser, onImport, onClose }) {
   const inputRef = useRef(null);
