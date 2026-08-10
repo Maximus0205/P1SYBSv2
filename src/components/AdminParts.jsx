@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Trash2, X, Plus, Pencil, UserPlus, PalmtreeIcon, CalendarOff, KeyRound } from "lucide-react";
-import { bilLabel, montorFarve, todayISO } from "../data/appData";
+import { vehicleLabel as bilLabel, technicianColor as montorFarve, todayISO } from "../data/domain";
 import { suggestUsername as foreslaaBrugernavn, isValidUsername as erGyldigtBrugernavn } from "../lib/username";
 
 // En "montør" er en bruger med rolle montor — man opretter dem ikke separat
