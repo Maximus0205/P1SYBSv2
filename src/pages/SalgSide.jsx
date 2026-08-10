@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { erIDag, formatDatoLang } from "../data/appData";
+import { isToday as erIDag, formatLongDate as formatDatoLang } from "../data/domain";
 import { DatoVaelger } from "../components/common";
 import { NyeSagForm } from "../components/NyeSagForm";
 import { CsvImport } from "../components/CsvImport";
