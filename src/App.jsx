@@ -17,11 +17,15 @@ import {
   getTimeOff as hentFerier, addTimeOff as tilfoejFerieSky, deleteTimeOff as sletFerieSky,
   getStore as hentButik,
 } from "./lib/dataStore";
+// Importerer fra det nye, engelsk-navngivne domain.js (erstatter appData.js)
+// - samme aliasering-mønster som ovenfor.
 import {
   uid, todayISO,
-  DEFAULT_VARETYPER, DEFAULT_VAREKATEGORIER, DEFAULT_PRIMAERYDELSER, DEFAULT_TILLAEGSYDELSER, DEFAULT_BILER,
-  SIDER_FOR_ROLLE,
-} from "./data/appData";
+  DEFAULT_PRODUCT_TYPES as DEFAULT_VARETYPER, DEFAULT_PRODUCT_CATEGORIES as DEFAULT_VAREKATEGORIER,
+  DEFAULT_PRIMARY_SERVICES as DEFAULT_PRIMAERYDELSER, DEFAULT_ADD_ON_SERVICES as DEFAULT_TILLAEGSYDELSER,
+  DEFAULT_VEHICLES as DEFAULT_BILER, PAGES_FOR_ROLLE as SIDER_FOR_ROLLE_TYPO,
+  PAGES_FOR_ROLE as SIDER_FOR_ROLLE,
+} from "./data/domain";
 
 import { TopNav } from "./components/TopNav";
 import { LoginSide } from "./components/LoginSide";
@@ -238,7 +242,7 @@ export default function App() {
   // ---------- Varer & ydelser ----------
   // Relationerne (hvilke tillægsydelser der gælder for hvilke varetyper/
   // primære ydelser) ligger udelukkende på tillaegsydelser selv (se
-  // appData.js) - derfor rydder vi op i tillaegsydelser, når en varetype
+  // domain.js) - derfor rydder vi op i tillaegsydelser, når en varetype
   // eller primær ydelse slettes, så der ikke bliver hængende referencer til
   // noget der ikke findes mere. Der sættes IKKE noget tidsestimat her - det
   // tastes udelukkende manuelt for den enkelte booking i sælgerens flow.
