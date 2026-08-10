@@ -237,13 +237,18 @@ export async function hentButiksBrugere(butikId) {
   return (data || []).map((p) => ({ id: p.id, navn: p.navn, rolle: p.rolle, bilId: p.bil_id, brugernavn: p.brugernavn }));
 }
 
-// Systemadmin: søger på tværs af ALLE butikker (til "Kobl bruger til
-// butik"). Uden søgetekst vises kun brugere der endnu ikke hører til nogen
-// butik (de mest relevante at koble op). Med søgetekst søges der i navn
-// eller brugernavn.
-export async function hentAlleBrugereSystemadmin(soegning) {
+// Systemadmin: søger/browser på tværs af ALLE butikker (til "Alle
+// brugere"-listen og "Kobl bruger til butik"). Med visAlle=true vises ALLE
+// brugere i hele kæden (evt. filtreret af søgetekst). Med visAlle=false:
+// søgetekst søger på tværs af alt, ellers vises kun brugere der endnu ikke
+// hører til nogen butik (de mest relevante at koble op).
+export async function hentAlleBrugereSystemadmin(soegning, visAlle) {
   let query = supabase.from("profiler").select("id, navn, rolle, butik_id, brugernavn").order("oprettet", { ascending: false });
-  query = soegning?.trim() ? query.or(`navn.ilike.%${soegning.trim()}%,brugernavn.ilike.%${soegning.trim()}%`) : query.is("butik_id", null);
+  if (visAlle) {
+    if (soegning?.trim()) query = query.or(`navn.ilike.%${soegning.trim()}%,brugernavn.ilike.%${soegning.trim()}%`);
+  } else {
+    query = soegning?.trim() ? query.or(`navn.ilike.%${soegning.trim()}%,brugernavn.ilike.%${soegning.trim()}%`) : query.is("butik_id", null);
+  }
   const { data, error } = await query;
   if (error) {
     console.error("Kunne ikke hente brugere (systemadmin):", error.message);
