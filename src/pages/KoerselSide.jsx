@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { RefreshCw, Pencil, AlertCircle, KeyRound, Clock } from "lucide-react";
 import { bilBlokeretAfFerie, bilLabel, dannTitel, erIDag, formatDatoLang, formatVarighed, montorFarve, omraadeNoegle, sagForventetMinutter, statusMeta, tidsrumTekst, ugeDage } from "../data/appData";
-import { hentAiRuteforslag } from "../lib/skyLager";
+import { getAiRouteSuggestion as hentAiRuteforslag } from "../lib/dataStore";
 import { DatoVaelger } from "../components/common";
 import { SagKortKompakt } from "../components/SagKortKompakt";
 
