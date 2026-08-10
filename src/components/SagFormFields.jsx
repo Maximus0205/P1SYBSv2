@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Trash2, X, Plus, AlertCircle, KeyRound, Clock } from "lucide-react";
+import { Trash2, X, Plus, AlertCircle, KeyRound, Clock, Truck, MapPin } from "lucide-react";
 import { ANDET_VARETYPE, ANDET_VARETYPE_ID, NOEGLE_TYPER, bygningsNoegle, formatDatoLang, formatVarighed, linjeMinutter, tilgaengeligeTillaeg, ydelseIkon } from "../data/appData";
 
 function VarelinjeRedigering({ linje, varetyper, varekategorier, primaerydelser, tillaegsydelser, onChange, onFjern, kanFjerne }) {
@@ -179,9 +179,14 @@ function AdresseForslag({ adresse, dato, sager, onBrugDato }) {
         {datoer.map((d) => {
           const paaDenDag = matches.filter((s) => s.dato === d);
           return (
-            <div key={d} className="flex items-center justify-between gap-2 bg-white border border-[#D8D0BE] px-2 py-1.5 flex-wrap">
-              <span className="text-xs text-[#1C232E]">{formatDatoLang(d)} — {paaDenDag.map((s) => s.kunde.navn).join(", ")}</span>
-              <button onClick={() => onBrugDato(d)} className="text-[10px] font-semibold uppercase tracking-wide text-[#1C232E] border border-[#D8D0BE] hover:border-[#E2621B] hover:text-[#E2621B] px-2 py-1 shrink-0">Brug denne dato</button>
+            <div key={d} className="bg-white border border-[#D8D0BE] px-2 py-1.5">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs font-semibold text-[#1C232E]">{formatDatoLang(d)}</span>
+                <button onClick={() => onBrugDato(d)} className="text-[10px] font-semibold uppercase tracking-wide text-[#1C232E] border border-[#D8D0BE] hover:border-[#E2621B] hover:text-[#E2621B] px-2 py-1 shrink-0">Brug denne dato</button>
+              </div>
+              {paaDenDag.map((s) => (
+                <p key={s.id} className="text-[11px] text-[#52697E] flex items-center gap-1 mt-0.5"><MapPin size={10} className="shrink-0" /> {s.kunde.navn} — {s.kunde.adresse}</p>
+              ))}
             </div>
           );
         })}
@@ -190,6 +195,44 @@ function AdresseForslag({ adresse, dato, sager, onBrugDato }) {
   );
 }
 
+// Overblik over dagens allerede planlagte kørsler, grupperet pr. bil/montør
+// - så sælgeren kan se med det samme hvem der kører hvor den valgte dag, og
+// booke mere effektivt (fx lægge en ny sag hos en bil der alligevel er i
+// området). Viser sig kun når der rent faktisk er noget booket den dag.
+function DagensRuteoverblik({ sager, montorer, dato }) {
+  if (!dato) return null;
+  const dagensSager = (sager || []).filter((s) => s.dato === dato).sort((a, b) => (a.start || "").localeCompare(b.start || ""));
+  if (dagensSager.length === 0) return null;
 
+  const raekker = [{ id: null, navn: "Ikke tildelt endnu", bil: "" }, ...montorer]
+    .map((m) => ({ ...m, sager: dagensSager.filter((s) => s.montorId === m.id) }))
+    .filter((g) => g.sager.length > 0);
 
-export { VarelinjeRedigering, NoegleFelter, AdresseForslag };
+  return (
+    <div className="mb-4 border border-[#D8D0BE] bg-[#FCFAF4] p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[#1C232E] mb-2.5 flex items-center gap-1.5">
+        <Truck size={13} /> Dagens ruter — {formatDatoLang(dato)} <span className="font-mono text-[#52697E]">({dagensSager.length} sager)</span>
+      </p>
+      <div className="space-y-3">
+        {raekker.map((g) => (
+          <div key={g.id || "utildelt"}>
+            <p className="text-[11px] font-semibold text-[#52697E] mb-1">
+              {g.navn}{g.bil ? ` — ${g.bil}` : ""} <span className="font-mono">({g.sager.length})</span>
+            </p>
+            <div className="space-y-1">
+              {g.sager.map((s) => (
+                <div key={s.id} className="flex items-start gap-2 text-xs bg-white border border-[#D8D0BE] px-2 py-1.5">
+                  <span className="font-mono text-[#52697E] shrink-0">{s.start}</span>
+                  <span className="text-[#1C232E] shrink-0 font-medium">{s.kunde?.navn}</span>
+                  <span className="text-[#52697E] truncate flex items-center gap-1"><MapPin size={10} className="shrink-0" /> {s.kunde?.adresse}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export { VarelinjeRedigering, NoegleFelter, AdresseForslag, DagensRuteoverblik };
