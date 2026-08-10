@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { AlertCircle, MapPin } from "lucide-react";
 import { formatDatoLang, todayISO, flytDato } from "../data/appData";
-import { geokodAdresse, geokodAdresser, koereafstande, harOrsNoegle } from "../lib/steder";
+import { geocodeAddress as geokodAdresse, geocodeAddresses as geokodAdresser, drivingDistances as koereafstande, hasOrsKey as harOrsNoegle } from "../lib/geocoding";
 
 const AFSTANDSGRAENSE_KM = 5; // vis kun forslag inden for denne afstand
 const DAGE_FREM = 21; // kig så mange dage frem i tiden efter kommende bookinger
@@ -12,8 +12,9 @@ const DEBOUNCE_MS = 600; // vent med at slå adressen op til brugeren er holdt o
 // AdresseForslag ovenfor, som kun tjekker om det er præcis samme
 // opgang/ejendom. Denne fanger også "der er 3 sager 2 km herfra på tirsdag".
 //
-// Kræver en gratis ORS-nøgle (se src/lib/steder.js) — hvis den ikke er sat
-// op endnu, vises komponenten slet ikke, så resten af formularen er uberørt.
+// Kræver en gratis ORS-nøgle (se src/lib/geocoding.js) — hvis den ikke er
+// sat op endnu, vises komponenten slet ikke, så resten af formularen er
+// uberørt.
 function AfstandsForslag({ adresse, dato, sager, onBrugDato }) {
   const [status, setStatus] = useState("tom"); // tom | soeger | fundet | ingenTraeffer | fejl
   const [forslag, setForslag] = useState([]); // [{ dato, km, sager: [...] }]
