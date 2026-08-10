@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import { Lock, User, AlertCircle, Loader2 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
-import { erEmailFormat, identifikatorTilEmail, erGyldigtBrugernavn, emailFraBrugernavn } from "../lib/brugernavn";
+import { isEmailFormat, identifierToEmail, isValidUsername, emailFromUsername } from "../lib/username";
 
 // Login foregår via Supabase Auth. Brugeren kan taste ENTEN en rigtig
-// e-mail ELLER et selvvalgt brugernavn i samme felt - se
-// src/lib/brugernavn.js for hvordan det oversættes til det, Supabase Auth
-// reelt kræver internt. App.jsx lytter selv på login-status
-// (supabase.auth.onAuthStateChange) og henter profilen (butik, rolle).
+// e-mail ELLER et selvvalgt brugernavn i samme felt - se src/lib/username.js
+// for hvordan det oversættes til det, Supabase Auth reelt kræver internt.
+// App.jsx lytter selv på login-status (supabase.auth.onAuthStateChange) og
+// henter profilen (butik, rolle).
 function LoginSide() {
   const [visOpret, setVisOpret] = useState(false);
   const [opretMedBrugernavn, setOpretMedBrugernavn] = useState(true);
@@ -23,7 +23,7 @@ function LoginSide() {
     setBesked("");
     if (!identifikator.trim() || !adgangskode) { setFejl("Udfyld begge felter."); return; }
     setTravl(true);
-    const { error } = await supabase.auth.signInWithPassword({ email: identifikatorTilEmail(identifikator), password: adgangskode });
+    const { error } = await supabase.auth.signInWithPassword({ email: identifierToEmail(identifikator), password: adgangskode });
     setTravl(false);
     if (error) setFejl("Forkert e-mail/brugernavn eller adgangskode.");
     // Ved succes opdaterer App.jsx sig selv via onAuthStateChange - intet mere at gøre her.
@@ -33,26 +33,28 @@ function LoginSide() {
     setFejl("");
     setBesked("");
     if (!navn.trim()) { setFejl("Skriv dit navn."); return; }
-    if (opretMedBrugernavn && !erGyldigtBrugernavn(identifikator)) {
+    if (opretMedBrugernavn && !isValidUsername(identifikator)) {
       setFejl("Brugernavn skal være 2-40 tegn (bogstaver, tal, punktum eller bindestreg, ingen mellemrum eller æøå).");
       return;
     }
-    if (!opretMedBrugernavn && !erEmailFormat(identifikator)) {
+    if (!opretMedBrugernavn && !isEmailFormat(identifikator)) {
       setFejl("Skriv en gyldig e-mail, eller skift til brugernavn ovenfor.");
       return;
     }
     setTravl(true);
-    const email = opretMedBrugernavn ? emailFraBrugernavn(identifikator) : identifikator.trim();
+    const email = opretMedBrugernavn ? emailFromUsername(identifikator) : identifikator.trim();
     const { error } = await supabase.auth.signUp({ email, password: adgangskode });
     if (error) { setTravl(false); setFejl(error.message.includes("already") ? "Den e-mail/det brugernavn er allerede i brug." : error.message); return; }
 
     // Selve login-oprettelsen lykkedes - sæt navn (og evt. brugernavn) på
-    // profilen, som databasetriggeren allerede har oprettet tom.
+    // profilen, som databasetriggeren allerede har oprettet tom. NB:
+    // tabellen hedder "profiles" (engelsk) med kolonnerne "name"/"username"
+    // efter omlægningen af databaseskemaet.
     const { data: session } = await supabase.auth.getSession();
     if (session?.session?.user?.id) {
-      await supabase.from("profiler").update({
-        navn: navn.trim(),
-        brugernavn: opretMedBrugernavn ? identifikator.trim().toLowerCase() : null,
+      await supabase.from("profiles").update({
+        name: navn.trim(),
+        username: opretMedBrugernavn ? identifikator.trim().toLowerCase() : null,
       }).eq("id", session.session.user.id);
     }
     setTravl(false);
