@@ -1,6 +1,6 @@
 import React from "react";
 import { Clock } from "lucide-react";
-import { TIDSRUM, dannTitel, formatVarighed, sagForventetMinutter } from "../data/appData";
+import { TIME_SLOTS as TIDSRUM, buildTitle as dannTitel, formatDuration as formatVarighed, orderExpectedMinutes as sagForventetMinutter } from "../data/domain";
 import { StatusBadge, VarelinjePiller } from "../components/common";
 
 function SagKortKompakt({ sag, montorer, onOpen, onCycleStatus, onAssign, onUpdateTidsrum }) {
