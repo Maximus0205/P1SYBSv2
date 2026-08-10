@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Plus, Building2, Clock, Hash } from "lucide-react";
-import { TIDSRUM, dannTitel, formatVarighed, lavVarelinje, linjeMinutter, tidsrumFraId, tidsrumTekst, todayISO, tomNoegle } from "../data/appData";
+import { TIME_SLOTS as TIDSRUM, buildTitle as dannTitel, formatDuration as formatVarighed, createLineItem as lavVarelinje, lineItemMinutes as linjeMinutter, timeSlotById as tidsrumFraId, timeSlotText as tidsrumTekst, todayISO, emptyKeyAccess as tomNoegle } from "../data/domain";
 import { KvitteringUpload } from "../components/KvitteringUpload";
 import { VarelinjeRedigering, NoegleFelter, AdresseForslag, DagensRuteoverblik } from "../components/SagFormFields";
 import { AfstandsForslag } from "../components/AfstandsForslag";
