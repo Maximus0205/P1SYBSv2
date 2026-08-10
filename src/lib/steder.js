@@ -34,7 +34,11 @@ async function bedsteMatch(adresse, fokus) {
   if (geokodeCache.has(noegle)) return geokodeCache.get(noegle);
 
   const data = await kaldProxy({ handling: "soeg", tekst: adresse, fokus });
-  const feature = data?.features?.[0];
+  // Foretræk en feature med husnummer, hvis flere kandidater kommer tilbage
+  // (edge function beder allerede kun om adresse/vej-lag, men rækkefølgen
+  // kan stadig variere).
+  const features = data?.features || [];
+  const feature = features.find((f) => f.properties?.housenumber) || features[0];
   const koordinater = feature?.geometry?.coordinates; // [lon, lat]
   const resultat = koordinater
     ? { lon: koordinater[0], lat: koordinater[1], label: feature.properties?.label || adresse, confidence: feature.properties?.confidence ?? 0 }
@@ -66,25 +70,36 @@ export async function validerAdresse(adresse, fokus) {
 // Op til 8 adresseforslag mens brugeren skriver (dropdown under adressefeltet).
 // Bygger selv en pæn to-linjers visning (vej+nr / postnr+by) i stedet for
 // ORS' rå label, som mangler postnummer og bruger engelske region-navne.
+//
+// Forslag MED husnummer vises altid før forslag UDEN (rene vejnavne uden
+// nummer) - det var hovedårsagen til at husnummeret ofte manglede: uden
+// denne sortering kunne et upræcist "hele vejen"-forslag stå øverst, selvom
+// et præcist adresseforslag med husnummer også fandtes i svaret.
 export async function soegAdresseForslag(delvisAdresse, fokus) {
   const noegle = normaliser(delvisAdresse) + (fokus ? `|${fokus.lat},${fokus.lon}` : "");
   if (!noegle || noegle.length < 3) return [];
   if (forslagCache.has(noegle)) return forslagCache.get(noegle);
 
   const data = await kaldProxy({ handling: "autocomplete", tekst: delvisAdresse, fokus });
-  const forslag = (data?.features || []).map((f) => {
-    const p = f.properties || {};
-    const hovedtekst = p.name || [p.street, p.housenumber].filter(Boolean).join(" ") || p.label || "";
-    const undertekst = [p.postalcode, p.locality || p.county].filter(Boolean).join(" ");
-    return {
-      // Bruges når forslaget vælges - selve adressen der lægges i feltet.
-      label: undertekst ? `${hovedtekst}, ${undertekst}` : (p.label || hovedtekst),
-      hovedtekst,
-      undertekst,
-      lon: f.geometry.coordinates[0],
-      lat: f.geometry.coordinates[1],
-    };
-  });
+  const forslag = (data?.features || [])
+    .map((f) => {
+      const p = f.properties || {};
+      const harHusnummer = !!p.housenumber;
+      const hovedtekst = [p.street, p.housenumber].filter(Boolean).join(" ") || p.name || p.label || "";
+      const undertekst = [p.postalcode, p.locality || p.county].filter(Boolean).join(" ");
+      return {
+        // Bruges når forslaget vælges - selve adressen der lægges i feltet.
+        label: undertekst ? `${hovedtekst}, ${undertekst}` : (p.label || hovedtekst),
+        hovedtekst,
+        undertekst,
+        harHusnummer,
+        lon: f.geometry.coordinates[0],
+        lat: f.geometry.coordinates[1],
+      };
+    })
+    // Adresser med husnummer først, ellers behold ORS' egen relevans-rækkefølge.
+    .sort((a, b) => (b.harHusnummer ? 1 : 0) - (a.harHusnummer ? 1 : 0))
+    .slice(0, 8);
   forslagCache.set(noegle, forslag);
   return forslag;
 }
