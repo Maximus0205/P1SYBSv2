@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Trash2, X, Plus, AlertCircle, KeyRound, Clock, Truck, MapPin } from "lucide-react";
-import { ANDET_VARETYPE, ANDET_VARETYPE_ID, NOEGLE_TYPER, bygningsNoegle, formatDatoLang, formatVarighed, linjeMinutter, tilgaengeligeTillaeg, ydelseIkon } from "../data/appData";
+import { OTHER_PRODUCT_TYPE as ANDET_VARETYPE, OTHER_PRODUCT_TYPE_ID as ANDET_VARETYPE_ID, KEY_ACCESS_TYPES as NOEGLE_TYPER, buildingKey as bygningsNoegle, formatLongDate as formatDatoLang, formatDuration as formatVarighed, lineItemMinutes as linjeMinutter, availableAddOns as tilgaengeligeTillaeg, serviceIcon as ydelseIkon } from "../data/domain";
 
 function VarelinjeRedigering({ linje, varetyper, varekategorier, primaerydelser, tillaegsydelser, onChange, onFjern, kanFjerne }) {
   const erAndet = linje.varetypeId === ANDET_VARETYPE_ID;
