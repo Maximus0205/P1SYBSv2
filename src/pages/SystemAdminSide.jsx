@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus, X } from "lucide-react";
-import { hentAlleButikker, opretButikSystemadmin, opdaterButikSystemadmin, sletButikSystemadmin, hentAlleBrugereSystemadmin, opdaterProfil, nulstilAdgangskodeAdmin, opretBrugerAdmin } from "../lib/skyLager";
+import { getAllStores as hentAlleButikker, createStoreAsSystemAdmin as opretButikSystemadmin, updateStoreAsSystemAdmin as opdaterButikSystemadmin, deleteStoreAsSystemAdmin as sletButikSystemadmin, getAllUsersAsSystemAdmin as hentAlleBrugereSystemadmin, updateProfile as opdaterProfil, resetPasswordAsAdmin as nulstilAdgangskodeAdmin, createUserAsAdmin as opretBrugerAdmin } from "../lib/dataStore";
 import { geokodAdresse } from "../lib/steder";
 import { foreslaaBrugernavn, erGyldigtBrugernavn } from "../lib/brugernavn";
 import { AdresseInput } from "../components/AdresseInput";
 
 const ROLLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montør" };
 
-// Kun synlig for brugere med profiler.er_systemadmin = true. Bruges til at
+// Kun synlig for brugere med profiles.is_system_admin = true. Bruges til at
 // oprette/redigere/slette butikker, oprette brugere direkte til en
 // vilkårlig butik, og se/redigere/koble eksisterende brugere.
 function SystemAdminSide() {
@@ -185,7 +185,7 @@ function ButikRedigering({ butik, onFaerdig, onAnnuller }) {
     const resultat = await opdaterButikSystemadmin(butik.id, felter);
     setTravl(false);
     if (!resultat.ok) {
-      setFejl(resultat.fejl?.includes("butikker_butiksnummer_key") ? "Butiksnummeret er allerede i brug af en anden butik." : resultat.fejl);
+      setFejl(resultat.fejl?.includes("store_number") ? "Butiksnummeret er allerede i brug af en anden butik." : resultat.fejl);
       return;
     }
     onFaerdig();
