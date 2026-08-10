@@ -201,6 +201,10 @@ export default function App() {
     if (frisk) setSager((prev) => prev.map((s) => (s.id === frisk.id ? frisk : s)));
   };
 
+  // Hurtig-redigering af en booket sag (dato/tidsrum/montør/adresse) - se
+  // BookingRedigering i SagView.jsx.
+  const updateBooking = (id, felter) => { const s = sager.find((x) => x.id === id); if (s) gemEtSager({ ...s, ...felter }); };
+
   const importSager = (nySager) => nySager.forEach((s) => gemEtSager(s));
 
   // Brugere oprettes rigtigt (Supabase Auth) via en edge function, som selv
@@ -366,6 +370,7 @@ export default function App() {
             onToggleYdelse={(linjeId, yId) => toggleYdelse(selected.id, linjeId, yId)}
             onAddYdelse={(linjeId, navn) => addYdelse(selected.id, linjeId, navn)}
             onRemoveYdelse={(linjeId, yId) => removeYdelse(selected.id, linjeId, yId)}
+            onUpdateBooking={(felter) => updateBooking(selected.id, felter)}
           />
         ) : side === "salg" ? (
           <SalgSide sager={sager} montorer={montorer} varetyper={varetyper} varekategorier={varekategorier} primaerydelser={primaerydelser} tillaegsydelser={tillaegsydelser} valgtDato={valgtDato} onSkiftDato={setValgtDato} onOpen={setSelectedId} onAdd={addSag} onImport={importSager} butikFokus={butik?.lat && butik?.lon ? { lat: butik.lat, lon: butik.lon } : null} />
