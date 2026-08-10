@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus, X } from "lucide-react";
 import { getAllStores as hentAlleButikker, createStoreAsSystemAdmin as opretButikSystemadmin, updateStoreAsSystemAdmin as opdaterButikSystemadmin, deleteStoreAsSystemAdmin as sletButikSystemadmin, getAllUsersAsSystemAdmin as hentAlleBrugereSystemadmin, updateProfile as opdaterProfil, resetPasswordAsAdmin as nulstilAdgangskodeAdmin, createUserAsAdmin as opretBrugerAdmin } from "../lib/dataStore";
-import { geokodAdresse } from "../lib/steder";
+import { geokodAdresse } from "../lib/geocoding";
 import { suggestUsername as foreslaaBrugernavn, isValidUsername as erGyldigtBrugernavn } from "../lib/username";
 import { AdresseInput } from "../components/AdresseInput";
 
