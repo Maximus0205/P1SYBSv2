@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { KeyRound, Building2, Hash, Pencil, X, Check } from "lucide-react";
-import { TIDSRUM, dannTitel, noegleTekst, tidsrumFraId, tidsrumTekst } from "../data/appData";
+import { TIME_SLOTS as TIDSRUM, buildTitle as dannTitel, keyAccessText as noegleTekst, timeSlotById as tidsrumFraId, timeSlotText as tidsrumTekst } from "../data/domain";
 import { StatusBadge } from "../components/common";
 import { VarelinjerDetalje, Noter, Billeder, Rapporter, Tidsregistrering, StempelUr } from "../components/SagDele";
 import { AdresseInput } from "../components/AdresseInput";
