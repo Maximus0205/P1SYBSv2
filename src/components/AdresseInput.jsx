@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Check, AlertTriangle, Loader2, MapPin } from "lucide-react";
-import { soegAdresseForslag, validerAdresse, harOrsNoegle } from "../lib/steder";
+import { searchAddressSuggestions as soegAdresseForslag, validateAddress as validerAdresse, hasOrsKey as harOrsNoegle } from "../lib/geocoding";
 
 const DEBOUNCE_MS = 350;
 
