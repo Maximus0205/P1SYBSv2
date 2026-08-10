@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus } from "lucide-react";
+import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus, X } from "lucide-react";
 import { hentAlleButikker, opretButikSystemadmin, opdaterButikSystemadmin, sletButikSystemadmin, hentAlleBrugereSystemadmin, opdaterProfil, nulstilAdgangskodeAdmin, opretBrugerAdmin } from "../lib/skyLager";
 import { geokodAdresse } from "../lib/steder";
 import { foreslaaBrugernavn, erGyldigtBrugernavn } from "../lib/brugernavn";
@@ -9,7 +9,7 @@ const ROLLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Mont�
 
 // Kun synlig for brugere med profiler.er_systemadmin = true. Bruges til at
 // oprette/redigere/slette butikker, oprette brugere direkte til en
-// vilkårlig butik, og koble eksisterende brugere til butikker.
+// vilkårlig butik, og se/redigere/koble eksisterende brugere.
 function SystemAdminSide() {
   const [butikker, setButikker] = useState([]);
   const [indlaeser, setIndlaeser] = useState(true);
@@ -155,7 +155,7 @@ function SystemAdminSide() {
       )}
 
       <OpretBrugerDirekte butikker={butikker} />
-      <BrugerKobling butikker={butikker} />
+      <AlleBrugere butikker={butikker} />
     </div>
   );
 }
@@ -280,107 +280,135 @@ function OpretBrugerDirekte({ butikker }) {
   );
 }
 
-// Kobler eksisterende brugere til en butik (+ sætter rolle, + kan nulstille
-// adgangskode). Uden søgning vises kun brugere der endnu ikke hører til
-// nogen butik - de mest relevante at handle på. Søgning finder på tværs af
-// hele kæden, i navn eller brugernavn.
-function BrugerKobling({ butikker }) {
-  const [soegning, setSoegning] = useState("");
-  const [brugere, setBrugere] = useState([]);
-  const [indlaeser, setIndlaeser] = useState(true);
-  const [gemmerId, setGemmerId] = useState(null);
-  const [nulstilId, setNulstilId] = useState(null);
+// Én bruger-række med redigerbart navn, rolle, butik-kobling og
+// adgangskode-nulstilling. Bruges både i "Alle brugere"-visningen.
+function BrugerRaekkeSystemadmin({ b, butikker, onOpdateret }) {
+  const [redigererNavn, setRedigererNavn] = useState(false);
+  const [navn, setNavn] = useState(b.navn);
+  const [nulstilAaben, setNulstilAaben] = useState(false);
   const [nyKode, setNyKode] = useState("");
   const [nulstilBesked, setNulstilBesked] = useState("");
+  const [travl, setTravl] = useState(false);
 
-  const genindlaes = (tekst) => {
-    setIndlaeser(true);
-    hentAlleBrugereSystemadmin(tekst).then((b) => { setBrugere(b); setIndlaeser(false); });
-  };
-  useEffect(() => { genindlaes(""); }, []);
+  const butiksnavn = butikker.find((bu) => bu.id === b.butikId);
 
-  const opdater = async (brugerId, felter) => {
-    setGemmerId(brugerId);
-    await opdaterProfil(brugerId, { rolle: felter.rolle, butik_id: felter.butikId });
-    setGemmerId(null);
-    genindlaes(soegning);
+  const gemNavn = async () => {
+    setTravl(true);
+    await opdaterProfil(b.id, { navn: navn.trim() || b.navn });
+    setTravl(false);
+    setRedigererNavn(false);
+    onOpdateret();
   };
 
-  const nulstil = async (brugerId) => {
+  const opdaterFelt = async (felter) => {
+    setTravl(true);
+    await opdaterProfil(b.id, felter);
+    setTravl(false);
+    onOpdateret();
+  };
+
+  const nulstil = async () => {
     if (nyKode.length < 6) { setNulstilBesked("Mindst 6 tegn."); return; }
-    setGemmerId(brugerId);
-    const resultat = await nulstilAdgangskodeAdmin(brugerId, nyKode);
-    setGemmerId(null);
+    setTravl(true);
+    const resultat = await nulstilAdgangskodeAdmin(b.id, nyKode);
+    setTravl(false);
     if (!resultat.ok) { setNulstilBesked(resultat.fejl || "Kunne ikke nulstille."); return; }
     setNulstilBesked("Nulstillet.");
     setNyKode("");
-    setTimeout(() => { setNulstilId(null); setNulstilBesked(""); }, 1200);
+    setTimeout(() => { setNulstilAaben(false); setNulstilBesked(""); }, 1200);
   };
 
   return (
-    <div>
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-1 flex items-center gap-2"><Users size={16} /> Kobl brugere til butik</h3>
-      <p className="text-xs text-[#52697E] mb-3">Uden søgning vises kun brugere, der endnu ikke er koblet til nogen butik. Søg for at finde og flytte en bruger fra en anden butik, eller nulstille en adgangskode.</p>
+    <div className="bg-white border border-[#D8D0BE] p-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex-1 min-w-[160px]">
+          {redigererNavn ? (
+            <div className="flex items-center gap-1.5">
+              <input autoFocus value={navn} onChange={(e) => setNavn(e.target.value)} className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+              <button onClick={gemNavn} className="text-xs text-[#3D7A5C] font-semibold uppercase">Gem</button>
+              <button onClick={() => { setNavn(b.navn); setRedigererNavn(false); }} className="text-xs text-[#52697E] font-semibold uppercase">Fortryd</button>
+            </div>
+          ) : (
+            <p className="text-sm text-[#1C232E] truncate">{b.navn}</p>
+          )}
+          <p className="text-[11px] text-[#52697E] truncate">
+            {b.brugernavn ? `brugernavn: ${b.brugernavn}` : "login via e-mail"}
+            {butiksnavn ? ` · ${butiksnavn.navn}` : " · ingen butik"}
+          </p>
+        </div>
+        <select value={b.rolle} onChange={(e) => opdaterFelt({ rolle: e.target.value })} disabled={travl} className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-xs text-[#1C232E]">
+          {Object.entries(ROLLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <select value={b.butikId || ""} onChange={(e) => opdaterFelt({ butik_id: e.target.value || null })} disabled={travl} className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-xs text-[#1C232E] min-w-[160px]">
+          <option value="">Ingen butik</option>
+          {butikker.map((bu) => <option key={bu.id} value={bu.id}>{bu.navn}{bu.butiksnummer ? ` #${bu.butiksnummer}` : ""}</option>)}
+        </select>
+        {!redigererNavn && <button onClick={() => setRedigererNavn(true)} className="p-1.5 text-[#52697E] hover:text-[#E2621B]" title="Ret navn"><Pencil size={15} /></button>}
+        <button onClick={() => { setNulstilAaben((v) => !v); setNulstilBesked(""); setNyKode(""); }} className="p-1.5 text-[#52697E] hover:text-[#E2621B]" title="Nulstil adgangskode"><KeyRound size={15} /></button>
+        {travl && <Loader2 size={14} className="animate-spin text-[#52697E]" />}
+      </div>
+      {nulstilAaben && (
+        <div className="mt-2.5 pt-2.5 border-t border-[#F0EBDD] flex items-center gap-2 flex-wrap">
+          <input type="password" value={nyKode} onChange={(e) => setNyKode(e.target.value)} placeholder="Ny adgangskode (mindst 6 tegn)" className="flex-1 min-w-[160px] border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-xs text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+          <button onClick={nulstil} disabled={travl} className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors disabled:opacity-60">Sæt ny adgangskode</button>
+          {nulstilBesked && <span className={`text-[11px] ${nulstilBesked === "Nulstillet." ? "text-[#3D7A5C]" : "text-[#B3261E]"}`}>{nulstilBesked}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
 
-      <div className="relative mb-3">
-        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#52697E]" />
-        <input
-          value={soegning}
-          onChange={(e) => setSoegning(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && genindlaes(soegning)}
-          placeholder="Søg på navn eller brugernavn, eller lad stå tomt for ukoblede brugere"
-          className="w-full border border-[#D8D0BE] bg-[#F3EFE6] pl-8 pr-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]"
-        />
+// Se og redigere ALLE brugere i hele kæden (navn, rolle, butik-kobling,
+// adgangskode) - med en "vis alle"-knap, så man ikke skal søge for at få
+// et fuldt overblik. Uden "vis alle" vises kun ukoblede brugere, med mindre
+// der søges (samme opførsel som før, bevaret for hurtigt at kunne finde
+// nyoprettede/ventende brugere).
+function AlleBrugere({ butikker }) {
+  const [soegning, setSoegning] = useState("");
+  const [visAlle, setVisAlle] = useState(false);
+  const [brugere, setBrugere] = useState([]);
+  const [indlaeser, setIndlaeser] = useState(true);
+
+  const genindlaes = (tekst, alle) => {
+    setIndlaeser(true);
+    hentAlleBrugereSystemadmin(tekst, alle).then((b) => { setBrugere(b); setIndlaeser(false); });
+  };
+  useEffect(() => { genindlaes("", false); }, []);
+
+  const skiftVisAlle = () => { const ny = !visAlle; setVisAlle(ny); genindlaes(soegning, ny); };
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-1 flex items-center gap-2"><Users size={16} /> Alle brugere</h3>
+      <p className="text-xs text-[#52697E] mb-3">Se, redigér og kobl enhver bruger i hele kæden til en butik, eller nulstil deres adgangskode. Uden "Vis alle" vises kun brugere der endnu ikke er koblet til nogen butik.</p>
+
+      <div className="flex gap-2 mb-3 flex-wrap items-center">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#52697E]" />
+          <input
+            value={soegning}
+            onChange={(e) => setSoegning(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && genindlaes(soegning, visAlle)}
+            placeholder="Søg på navn eller brugernavn..."
+            className="w-full border border-[#D8D0BE] bg-[#F3EFE6] pl-8 pr-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]"
+          />
+        </div>
+        <button
+          onClick={skiftVisAlle}
+          className={`px-3 py-2 text-xs font-semibold uppercase tracking-wide border transition-colors ${visAlle ? "bg-[#1C232E] text-white border-[#1C232E]" : "text-[#52697E] border-[#D8D0BE] hover:border-[#E2621B] hover:text-[#E2621B]"}`}
+        >
+          {visAlle ? "Viser alle" : "Vis alle brugere"}
+        </button>
       </div>
 
       {indlaeser ? (
         <p className="text-sm text-[#52697E]">Indlæser...</p>
       ) : brugere.length === 0 ? (
-        <p className="text-sm text-[#52697E] italic">{soegning ? "Ingen brugere matcher søgningen." : "Ingen ukoblede brugere lige nu."}</p>
+        <p className="text-sm text-[#52697E] italic">{soegning ? "Ingen brugere matcher søgningen." : visAlle ? "Ingen brugere i systemet endnu." : "Ingen ukoblede brugere lige nu."}</p>
       ) : (
         <div className="space-y-2">
           {brugere.map((b) => (
-            <div key={b.id} className="bg-white border border-[#D8D0BE] p-3">
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="flex-1 min-w-[160px]">
-                  <p className="text-sm text-[#1C232E] truncate">{b.navn}</p>
-                  {b.brugernavn && <p className="text-[11px] text-[#52697E]">brugernavn: {b.brugernavn}</p>}
-                </div>
-                <select
-                  value={b.rolle}
-                  onChange={(e) => opdater(b.id, { rolle: e.target.value, butikId: b.butikId })}
-                  className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-xs text-[#1C232E]"
-                >
-                  {Object.entries(ROLLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                </select>
-                <select
-                  value={b.butikId || ""}
-                  onChange={(e) => opdater(b.id, { rolle: b.rolle, butikId: e.target.value || null })}
-                  disabled={gemmerId === b.id}
-                  className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-xs text-[#1C232E] min-w-[160px]"
-                >
-                  <option value="">Ingen butik</option>
-                  {butikker.map((bu) => <option key={bu.id} value={bu.id}>{bu.navn}{bu.butiksnummer ? ` #${bu.butiksnummer}` : ""}</option>)}
-                </select>
-                <button onClick={() => { setNulstilId(nulstilId === b.id ? null : b.id); setNulstilBesked(""); setNyKode(""); }} className="p-1.5 text-[#52697E] hover:text-[#E2621B]" title="Nulstil adgangskode"><KeyRound size={15} /></button>
-                {gemmerId === b.id && <Loader2 size={14} className="animate-spin text-[#52697E]" />}
-              </div>
-              {nulstilId === b.id && (
-                <div className="mt-2.5 pt-2.5 border-t border-[#F0EBDD] flex items-center gap-2 flex-wrap">
-                  <input
-                    type="password"
-                    value={nyKode}
-                    onChange={(e) => setNyKode(e.target.value)}
-                    placeholder="Ny adgangskode (mindst 6 tegn)"
-                    className="flex-1 min-w-[160px] border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-xs text-[#1C232E] focus:outline-none focus:border-[#E2621B]"
-                  />
-                  <button onClick={() => nulstil(b.id)} disabled={gemmerId === b.id} className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors disabled:opacity-60">
-                    Sæt ny adgangskode
-                  </button>
-                  {nulstilBesked && <span className={`text-[11px] ${nulstilBesked === "Nulstillet." ? "text-[#3D7A5C]" : "text-[#B3261E]"}`}>{nulstilBesked}</span>}
-                </div>
-              )}
-            </div>
+            <BrugerRaekkeSystemadmin key={b.id} b={b} butikker={butikker} onOpdateret={() => genindlaes(soegning, visAlle)} />
           ))}
         </div>
       )}
