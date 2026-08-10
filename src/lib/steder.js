@@ -12,13 +12,18 @@ async function kaldProxy(krop) {
   const { data, error } = await supabase.functions.invoke("ors-proxy", { body: krop });
   if (error) {
     console.error("ors-proxy fejlede:", error.message);
-    return null;
+    return null; // "null" her betyder "selve kaldet fejlede" (netværk/429/500) - IKKE "ingen resultater".
   }
   return data;
 }
 
 // In-memory caches - undgår at spamme funktionen (og dermed ORS-kvoten)
 // mens brugeren stadig skriver på den samme adresse i samme session.
+//
+// VIGTIGT: kun VELLYKKEDE kald caches. Slår et kald fejl (fx fordi vi ramte
+// ORS' rate-limit), skal det kunne prøves igen senere - ellers sidder en
+// adresse "fast" som fejlet resten af sessionen, selvom tjenesten for
+// længst er tilgængelig igen.
 const geokodeCache = new Map();
 const forslagCache = new Map();
 
@@ -34,6 +39,8 @@ async function bedsteMatch(adresse, fokus) {
   if (geokodeCache.has(noegle)) return geokodeCache.get(noegle);
 
   const data = await kaldProxy({ handling: "soeg", tekst: adresse, fokus });
+  if (data === null) return null; // kaldet fejlede (fx rate-limit) - IKKE cachet, prøv igen senere.
+
   // Foretræk en feature med husnummer, hvis flere kandidater kommer tilbage
   // (edge function beder allerede kun om adresse/vej-lag, men rækkefølgen
   // kan stadig variere).
@@ -42,7 +49,7 @@ async function bedsteMatch(adresse, fokus) {
   const koordinater = feature?.geometry?.coordinates; // [lon, lat]
   const resultat = koordinater
     ? { lon: koordinater[0], lat: koordinater[1], label: feature.properties?.label || adresse, confidence: feature.properties?.confidence ?? 0 }
-    : null;
+    : null; // reelt "ikke fundet" (tomt svar) - trygt at cache, ændrer sig sjældent.
   geokodeCache.set(noegle, resultat);
   return resultat;
 }
@@ -81,6 +88,8 @@ export async function soegAdresseForslag(delvisAdresse, fokus) {
   if (forslagCache.has(noegle)) return forslagCache.get(noegle);
 
   const data = await kaldProxy({ handling: "autocomplete", tekst: delvisAdresse, fokus });
+  if (data === null) return []; // kaldet fejlede - ikke cachet, felten falder blot tilbage til intet forslag.
+
   const forslag = (data?.features || [])
     .map((f) => {
       const p = f.properties || {};
@@ -106,11 +115,27 @@ export async function soegAdresseForslag(delvisAdresse, fokus) {
 
 // Geokoder en liste af adresser (dedupliceret) - bruges af AfstandsForslag
 // til at slå alle kommende sagers adresser op på én gang.
+//
+// Kører i små hold (BATCH_STOERRELSE ad gangen) med en kort pause imellem,
+// i stedet for at fyre ALLE opslag af på én gang. Uden dette kunne en butik
+// med mange kommende sager (fx efter en CSV-import, eller bare en travl
+// uge) sende hundredvis af samtidige kald til ORS-proxyen på et øjeblik -
+// det udløste ORS' rate-limit (429 "for mange forespørgsler"), og fordi
+// fejlede kald tidligere blev cachet som "ikke fundet", sad selv brugerens
+// egen adresse fast som fejlet resten af sessionen.
+const BATCH_STOERRELSE = 4;
+const BATCH_PAUSE_MS = 300;
+const MAKS_ADRESSER = 40; // nok til formålet (vise nærliggende bookinger) uden at bruge hele ORS-kvoten på ét opslag
+
 export async function geokodAdresser(adresser) {
-  const unikke = [...new Set((adresser || []).map(normaliser).filter((a) => a.length >= 5))];
-  const par = await Promise.all(unikke.map(async (a) => [a, await geokodAdresse(a)]));
+  const unikke = [...new Set((adresser || []).map(normaliser).filter((a) => a.length >= 5))].slice(0, MAKS_ADRESSER);
   const map = new Map();
-  par.forEach(([a, koord]) => { if (koord) map.set(a, koord); });
+  for (let i = 0; i < unikke.length; i += BATCH_STOERRELSE) {
+    const hold = unikke.slice(i, i + BATCH_STOERRELSE);
+    const resultater = await Promise.all(hold.map(async (a) => [a, await geokodAdresse(a)]));
+    resultater.forEach(([a, koord]) => { if (koord) map.set(a, koord); });
+    if (i + BATCH_STOERRELSE < unikke.length) await new Promise((r) => setTimeout(r, BATCH_PAUSE_MS));
+  }
   return map;
 }
 
