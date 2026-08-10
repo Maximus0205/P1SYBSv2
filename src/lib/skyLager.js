@@ -1,22 +1,25 @@
 // Erstatter den gamle blob-baserede storage.js. I stedet for at gemme hele
 // lister som én stor JSON-tekst, ligger hver sag/bil/montør/varetype nu som
-// sin egen række i Supabase - med butik_id, så data er delt mellem alle i
+// sin egen række i Supabase - med store_id, så data er delt mellem alle i
 // butikken (i modsætning til før, hvor det kun lå i den enkelte browser).
 //
 // VIGTIGT: vi gemmer og sletter altid ÉN specifik række ad gangen, aldrig
-// "gem hele listen og slet alt andet". Det sidste lyder ufarligt, men er
-// det ikke: hvis to brugere har appen åben samtidig, og bruger A's lokale
-// liste er en anelse forældet (fx fordi bruger B lige har oprettet en ny
-// sag), ville et "gem hele listen"-kald fra A slette B's nye sag i
-// databasen, fordi den ikke var med i A's (forældede) lokale liste. Med
-// målrettede insert/update/delete-kald rammer hver handling kun præcis den
-// række, den faktisk vedrører.
+// "gem hele listen og slet alt andet". Se git-historikken for den fulde
+// begrundelse (undgår "lost update" mellem samtidige brugere).
+//
+// NB (omlægning til engelsk skema): selve databasen (tabeller/kolonner) er
+// nu omdøbt til engelsk (stores, orders, vehicles, profiles, osv.) som
+// første skridt i en større oprydning af navngivningen i hele projektet.
+// Denne fils EGNE funktionsnavne (hentSager, gemBil osv.) er bevidst IKKE
+// ændret endnu, for at holde denne akutte rettelse lille og sikker - resten
+// af koden (App.jsx m.fl.) importerer stadig disse navne uændret. De bliver
+// omdøbt til engelsk i en efterfølgende, samlet omgang.
 
 import { supabase } from "./supabaseClient";
 
 async function hentListe(tabel, butikId) {
   if (!butikId) return [];
-  const { data, error } = await supabase.from(tabel).select("data").eq("butik_id", butikId);
+  const { data, error } = await supabase.from(tabel).select("data").eq("store_id", butikId);
   if (error) {
     console.error(`Kunne ikke hente ${tabel}:`, error.message);
     return [];
@@ -27,7 +30,7 @@ async function hentListe(tabel, butikId) {
 // Opretter eller opdaterer ÉN specifik række.
 async function gemRaekke(tabel, butikId, item) {
   if (!butikId || !item) return false;
-  const raekke = { id: String(item.id), butik_id: butikId, data: item, opdateret: new Date().toISOString() };
+  const raekke = { id: String(item.id), store_id: butikId, data: item, updated_at: new Date().toISOString() };
   const { error } = await supabase.from(tabel).upsert(raekke);
   if (error) {
     console.error(`Kunne ikke gemme i ${tabel}:`, error.message);
@@ -41,7 +44,7 @@ async function gemRaekke(tabel, butikId, item) {
 // forhindrer et forkert butikId i at ramme forkert række).
 async function sletRaekke(tabel, butikId, id) {
   if (!butikId || !id) return false;
-  const { error } = await supabase.from(tabel).delete().eq("butik_id", butikId).eq("id", String(id));
+  const { error } = await supabase.from(tabel).delete().eq("store_id", butikId).eq("id", String(id));
   if (error) {
     console.error(`Kunne ikke slette fra ${tabel}:`, error.message);
     return false;
@@ -54,7 +57,7 @@ async function sletRaekke(tabel, butikId, id) {
 // selv hvis to faner/enheder skulle starte op på samme butik samtidig.
 async function opsaetStandarder(tabel, butikId, liste) {
   if (!butikId || !liste || liste.length === 0) return false;
-  const raekker = liste.map((item) => ({ id: String(item.id), butik_id: butikId, data: item, opdateret: new Date().toISOString() }));
+  const raekker = liste.map((item) => ({ id: String(item.id), store_id: butikId, data: item, updated_at: new Date().toISOString() }));
   const { error } = await supabase.from(tabel).upsert(raekker);
   if (error) {
     console.error(`Kunne ikke oprette standardværdier i ${tabel}:`, error.message);
@@ -64,12 +67,12 @@ async function opsaetStandarder(tabel, butikId, liste) {
 }
 
 // Henter én enkelt (frisk) sag fra databasen - bruges lige efter oprettelse,
-// så vi får det RIGTIGE, databasetildelte sagsnummer med det samme (se
-// tildel_sagsnummer-triggeren i migrationen), i stedet for det midlertidige
+// så vi får det RIGTIGE, databasetildelte ordrenummer med det samme (se
+// assign_order_number-triggeren i databasen), i stedet for det midlertidige
 // nummer der blev gættet i browseren.
 export async function hentFriskSag(butikId, id) {
   if (!butikId || !id) return null;
-  const { data, error } = await supabase.from("sager").select("data").eq("butik_id", butikId).eq("id", String(id)).maybeSingle();
+  const { data, error } = await supabase.from("orders").select("data").eq("store_id", butikId).eq("id", String(id)).maybeSingle();
   if (error) {
     console.error("Kunne ikke hente sagen igen:", error.message);
     return null;
@@ -77,37 +80,37 @@ export async function hentFriskSag(butikId, id) {
   return data?.data || null;
 }
 
-export const hentSager = (butikId) => hentListe("sager", butikId);
-export const gemSag = (butikId, sag) => gemRaekke("sager", butikId, sag);
-export const sletSag = (butikId, id) => sletRaekke("sager", butikId, id);
+export const hentSager = (butikId) => hentListe("orders", butikId);
+export const gemSag = (butikId, sag) => gemRaekke("orders", butikId, sag);
+export const sletSag = (butikId, id) => sletRaekke("orders", butikId, id);
 
-export const hentBiler = (butikId) => hentListe("biler", butikId);
-export const gemBil = (butikId, bil) => gemRaekke("biler", butikId, bil);
-export const sletBil = (butikId, id) => sletRaekke("biler", butikId, id);
-export const opsaetStandardBiler = (butikId, biler) => opsaetStandarder("biler", butikId, biler);
+export const hentBiler = (butikId) => hentListe("vehicles", butikId);
+export const gemBil = (butikId, bil) => gemRaekke("vehicles", butikId, bil);
+export const sletBil = (butikId, id) => sletRaekke("vehicles", butikId, id);
+export const opsaetStandardBiler = (butikId, biler) => opsaetStandarder("vehicles", butikId, biler);
 
 // Montører findes ikke længere som selvstændig tabel - se hentButiksBrugere
-// nedenfor og profiler.bil_id.
+// nedenfor og profiles.vehicle_id.
 
-export const hentVaretyper = (butikId) => hentListe("varetyper", butikId);
-export const gemVaretype = (butikId, varetype) => gemRaekke("varetyper", butikId, varetype);
-export const sletVaretype = (butikId, id) => sletRaekke("varetyper", butikId, id);
-export const opsaetStandardVaretyper = (butikId, varetyper) => opsaetStandarder("varetyper", butikId, varetyper);
+export const hentVaretyper = (butikId) => hentListe("product_types", butikId);
+export const gemVaretype = (butikId, varetype) => gemRaekke("product_types", butikId, varetype);
+export const sletVaretype = (butikId, id) => sletRaekke("product_types", butikId, id);
+export const opsaetStandardVaretyper = (butikId, varetyper) => opsaetStandarder("product_types", butikId, varetyper);
 
-export const hentVarekategorier = (butikId) => hentListe("varekategorier", butikId);
-export const gemVarekategori = (butikId, kategori) => gemRaekke("varekategorier", butikId, kategori);
-export const sletVarekategori = (butikId, id) => sletRaekke("varekategorier", butikId, id);
-export const opsaetStandardVarekategorier = (butikId, kategorier) => opsaetStandarder("varekategorier", butikId, kategorier);
+export const hentVarekategorier = (butikId) => hentListe("product_categories", butikId);
+export const gemVarekategori = (butikId, kategori) => gemRaekke("product_categories", butikId, kategori);
+export const sletVarekategori = (butikId, id) => sletRaekke("product_categories", butikId, id);
+export const opsaetStandardVarekategorier = (butikId, kategorier) => opsaetStandarder("product_categories", butikId, kategorier);
 
-export const hentPrimaerydelser = (butikId) => hentListe("primaerydelser", butikId);
-export const gemPrimaerydelse = (butikId, ydelse) => gemRaekke("primaerydelser", butikId, ydelse);
-export const sletPrimaerydelse = (butikId, id) => sletRaekke("primaerydelser", butikId, id);
-export const opsaetStandardPrimaerydelser = (butikId, primaerydelser) => opsaetStandarder("primaerydelser", butikId, primaerydelser);
+export const hentPrimaerydelser = (butikId) => hentListe("primary_services", butikId);
+export const gemPrimaerydelse = (butikId, ydelse) => gemRaekke("primary_services", butikId, ydelse);
+export const sletPrimaerydelse = (butikId, id) => sletRaekke("primary_services", butikId, id);
+export const opsaetStandardPrimaerydelser = (butikId, primaerydelser) => opsaetStandarder("primary_services", butikId, primaerydelser);
 
-export const hentTillaegsydelser = (butikId) => hentListe("tillaegsydelser", butikId);
-export const gemTillaegsydelse = (butikId, ydelse) => gemRaekke("tillaegsydelser", butikId, ydelse);
-export const sletTillaegsydelse = (butikId, id) => sletRaekke("tillaegsydelser", butikId, id);
-export const opsaetStandardTillaegsydelser = (butikId, tillaegsydelser) => opsaetStandarder("tillaegsydelser", butikId, tillaegsydelser);
+export const hentTillaegsydelser = (butikId) => hentListe("add_on_services", butikId);
+export const gemTillaegsydelse = (butikId, ydelse) => gemRaekke("add_on_services", butikId, ydelse);
+export const sletTillaegsydelse = (butikId, id) => sletRaekke("add_on_services", butikId, id);
+export const opsaetStandardTillaegsydelser = (butikId, tillaegsydelser) => opsaetStandarder("add_on_services", butikId, tillaegsydelser);
 
 // Henter den rigtige fejlbesked fra en Edge Function-fejl. Uden dette viser
 // supabase-js kun en generisk "non-2xx status code"-tekst - den rigtige
@@ -133,22 +136,24 @@ async function laesEdgeFejl(data, error, standardBesked) {
 
 export async function hentButik(butikId) {
   if (!butikId) return null;
-  const { data, error } = await supabase.from("butikker").select("id, navn, adresse, lat, lon, butiksnummer").eq("id", butikId).maybeSingle();
+  const { data, error } = await supabase.from("stores").select("id, name, address, lat, lon, store_number").eq("id", butikId).maybeSingle();
   if (error) {
     console.error("Kunne ikke hente butik:", error.message);
     return null;
   }
-  return data;
+  if (!data) return null;
+  // Normaliseret til de camelCase-feltnavne resten af appen (endnu) forventer.
+  return { id: data.id, navn: data.name, adresse: data.address, lat: data.lat, lon: data.lon, butiksnummer: data.store_number };
 }
 
 // Alle butikker (kun synlige for en systemadmin, jf. RLS).
 export async function hentAlleButikker() {
-  const { data, error } = await supabase.from("butikker").select("id, navn, adresse, lat, lon, butiksnummer, oprettet").order("oprettet", { ascending: false });
+  const { data, error } = await supabase.from("stores").select("id, name, address, lat, lon, store_number, created_at").order("created_at", { ascending: false });
   if (error) {
     console.error("Kunne ikke hente butikker:", error.message);
     return [];
   }
-  return data || [];
+  return (data || []).map((b) => ({ id: b.id, navn: b.name, adresse: b.address, lat: b.lat, lon: b.lon, butiksnummer: b.store_number, oprettet: b.created_at }));
 }
 
 // Systemadmin opretter en helt ny butik + dens første admin-login.
@@ -164,9 +169,15 @@ export async function opretButikSystemadmin(felter) {
 
 // Systemadmin retter navn/butiksnummer/koordinater på en eksisterende
 // butik. Almindelig klient-opdatering (ingen edge function nødvendig) -
-// RLS-policyen "systemadmin opdaterer butikker" tillader det allerede.
+// RLS-policyen for stores tillader det allerede.
 export async function opdaterButikSystemadmin(butikId, felter) {
-  const { error } = await supabase.from("butikker").update(felter).eq("id", butikId);
+  const dbFelter = {};
+  if ("navn" in felter) dbFelter.name = felter.navn;
+  if ("adresse" in felter) dbFelter.address = felter.adresse;
+  if ("butiksnummer" in felter) dbFelter.store_number = felter.butiksnummer;
+  if ("lat" in felter) dbFelter.lat = felter.lat;
+  if ("lon" in felter) dbFelter.lon = felter.lon;
+  const { error } = await supabase.from("stores").update(dbFelter).eq("id", butikId);
   if (error) {
     console.error("Kunne ikke opdatere butik:", error.message);
     return { ok: false, fejl: error.message };
@@ -180,7 +191,7 @@ export async function opdaterButikSystemadmin(butikId, felter) {
 // admin ikke ved et uheld sletter folks adgang til systemet, kun selve
 // butiksdataen.
 export async function sletButikSystemadmin(butikId) {
-  const { error } = await supabase.from("butikker").delete().eq("id", butikId);
+  const { error } = await supabase.from("stores").delete().eq("id", butikId);
   if (error) {
     console.error("Kunne ikke slette butik:", error.message);
     return { ok: false, fejl: error.message };
@@ -190,7 +201,7 @@ export async function sletButikSystemadmin(butikId) {
 
 // ---------- Profiler (erstatter den gamle "brugere"-blob) ----------
 // Selve login/adgangskode håndteres af Supabase Auth (se LoginSide.jsx).
-// Denne tabel holder kun butik_id + rolle + navn/brugernavn pr. bruger.
+// Denne tabel holder kun store_id + role + name/username pr. bruger.
 
 // Opretter en helt ny bruger (rigtigt login, ikke bare en profilrække).
 // Kaldes af en almindelig admin (opretter altid i egen butik), ELLER af en
@@ -217,24 +228,25 @@ export async function nulstilAdgangskodeAdmin(brugerId, nyAdgangskode) {
 }
 
 export async function hentEgenProfil(brugerId) {
-  const { data, error } = await supabase.from("profiler").select("*").eq("id", brugerId).maybeSingle();
+  const { data, error } = await supabase.from("profiles").select("*").eq("id", brugerId).maybeSingle();
   if (error) {
     console.error("Kunne ikke hente profil:", error.message);
     return null;
   }
-  return data;
+  if (!data) return null;
+  // Normaliseret til de felter App.jsx forventer (butik_id/rolle/bil_id/er_systemadmin).
+  return { id: data.id, navn: data.name, butik_id: data.store_id, rolle: data.role, bil_id: data.vehicle_id, er_systemadmin: data.is_system_admin, brugernavn: data.username };
 }
 
 // Alle brugere i samme butik (til admin-siden, "Brugere"-fanen).
 export async function hentButiksBrugere(butikId) {
   if (!butikId) return [];
-  const { data, error } = await supabase.from("profiler").select("id, navn, rolle, bil_id, brugernavn").eq("butik_id", butikId);
+  const { data, error } = await supabase.from("profiles").select("id, name, role, vehicle_id, username").eq("store_id", butikId);
   if (error) {
     console.error("Kunne ikke hente butikkens brugere:", error.message);
     return [];
   }
-  // Normaliseret til samme feltnavne som resten af appen bruger (camelCase).
-  return (data || []).map((p) => ({ id: p.id, navn: p.navn, rolle: p.rolle, bilId: p.bil_id, brugernavn: p.brugernavn }));
+  return (data || []).map((p) => ({ id: p.id, navn: p.name, rolle: p.role, bilId: p.vehicle_id, brugernavn: p.username }));
 }
 
 // Systemadmin: søger/browser på tværs af ALLE butikker (til "Alle
@@ -243,37 +255,37 @@ export async function hentButiksBrugere(butikId) {
 // søgetekst søger på tværs af alt, ellers vises kun brugere der endnu ikke
 // hører til nogen butik (de mest relevante at koble op).
 export async function hentAlleBrugereSystemadmin(soegning, visAlle) {
-  let query = supabase.from("profiler").select("id, navn, rolle, butik_id, brugernavn").order("oprettet", { ascending: false });
+  let query = supabase.from("profiles").select("id, name, role, store_id, username").order("created_at", { ascending: false });
   if (visAlle) {
-    if (soegning?.trim()) query = query.or(`navn.ilike.%${soegning.trim()}%,brugernavn.ilike.%${soegning.trim()}%`);
+    if (soegning?.trim()) query = query.or(`name.ilike.%${soegning.trim()}%,username.ilike.%${soegning.trim()}%`);
   } else {
-    query = soegning?.trim() ? query.or(`navn.ilike.%${soegning.trim()}%,brugernavn.ilike.%${soegning.trim()}%`) : query.is("butik_id", null);
+    query = soegning?.trim() ? query.or(`name.ilike.%${soegning.trim()}%,username.ilike.%${soegning.trim()}%`) : query.is("store_id", null);
   }
   const { data, error } = await query;
   if (error) {
     console.error("Kunne ikke hente brugere (systemadmin):", error.message);
     return [];
   }
-  return (data || []).map((p) => ({ id: p.id, navn: p.navn, rolle: p.rolle, butikId: p.butik_id, brugernavn: p.brugernavn }));
+  return (data || []).map((p) => ({ id: p.id, navn: p.name, rolle: p.role, butikId: p.store_id, brugernavn: p.username }));
 }
 
 // ---------- Ferier (pr. montør) ----------
 // Bruges til at afgøre om en bil skal vises som blokeret for booking i en
 // periode: en bil er blokeret de dage, hvor den montør, der LIGE NU er
-// tilknyttet bilen (profiler.bil_id), holder ferie.
+// tilknyttet bilen (profiles.vehicle_id), holder ferie.
 
 export async function hentFerier(butikId) {
   if (!butikId) return [];
-  const { data, error } = await supabase.from("ferier").select("*").eq("butik_id", butikId);
+  const { data, error } = await supabase.from("time_off").select("*").eq("store_id", butikId);
   if (error) {
     console.error("Kunne ikke hente ferier:", error.message);
     return [];
   }
-  return (data || []).map((f) => ({ id: f.id, montorId: f.montor_id, startDato: f.start_dato, slutDato: f.slut_dato, note: f.note || "" }));
+  return (data || []).map((f) => ({ id: f.id, montorId: f.technician_id, startDato: f.start_date, slutDato: f.end_date, note: f.note || "" }));
 }
 
 export async function tilfoejFerie(butikId, { montorId, startDato, slutDato, note }) {
-  const { error } = await supabase.from("ferier").insert({ butik_id: butikId, montor_id: montorId, start_dato: startDato, slut_dato: slutDato, note: note || null });
+  const { error } = await supabase.from("time_off").insert({ store_id: butikId, technician_id: montorId, start_date: startDato, end_date: slutDato, note: note || null });
   if (error) {
     console.error("Kunne ikke oprette ferie:", error.message);
     return false;
@@ -282,7 +294,7 @@ export async function tilfoejFerie(butikId, { montorId, startDato, slutDato, not
 }
 
 export async function sletFerie(ferieId) {
-  const { error } = await supabase.from("ferier").delete().eq("id", ferieId);
+  const { error } = await supabase.from("time_off").delete().eq("id", ferieId);
   if (error) {
     console.error("Kunne ikke slette ferie:", error.message);
     return false;
@@ -294,9 +306,16 @@ export async function sletFerie(ferieId) {
 // eksisterende bruger.
 // NB: kan IKKE oprette nye Auth-brugere herfra (kræver service_role-nøgle,
 // som aldrig må ligge i frontend) - nye brugere skal selv oprette login via
-// signup, hvorefter en admin/systemadmin sætter butik_id + rolle.
+// signup, hvorefter en admin/systemadmin sætter store_id + role.
 export async function opdaterProfil(brugerId, felter) {
-  const { error } = await supabase.from("profiler").update(felter).eq("id", brugerId);
+  const dbFelter = {};
+  if ("navn" in felter) dbFelter.name = felter.navn;
+  if ("rolle" in felter) dbFelter.role = felter.rolle;
+  if ("bilId" in felter) dbFelter.vehicle_id = felter.bilId;
+  if ("bil_id" in felter) dbFelter.vehicle_id = felter.bil_id;
+  if ("butik_id" in felter) dbFelter.store_id = felter.butik_id;
+  if ("butikId" in felter) dbFelter.store_id = felter.butikId;
+  const { error } = await supabase.from("profiles").update(dbFelter).eq("id", brugerId);
   if (error) {
     console.error("Kunne ikke opdatere profil:", error.message);
     return false;
