@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { RefreshCw, Pencil, AlertCircle, KeyRound, Clock } from "lucide-react";
-import { bilBlokeretAfFerie, bilLabel, dannTitel, erIDag, formatDatoLang, formatVarighed, montorFarve, omraadeNoegle, sagForventetMinutter, statusMeta, tidsrumTekst, ugeDage } from "../data/appData";
+import { vehicleBlockedByTimeOff as bilBlokeretAfFerie, vehicleLabel as bilLabel, buildTitle as dannTitel, isToday as erIDag, formatLongDate as formatDatoLang, formatDuration as formatVarighed, technicianColor as montorFarve, areaKey as omraadeNoegle, orderExpectedMinutes as sagForventetMinutter, STATUS_META as statusMeta, timeSlotText as tidsrumTekst, weekDays as ugeDage } from "../data/domain";
 import { getAiRouteSuggestion as hentAiRuteforslag } from "../lib/dataStore";
 import { DatoVaelger } from "../components/common";
 import { SagKortKompakt } from "../components/SagKortKompakt";
