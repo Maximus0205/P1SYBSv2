@@ -1,17 +1,22 @@
 import React, { useState, useEffect } from "react";
 
 import { supabase } from "./lib/supabaseClient";
+// Importerer fra det nye, engelsk-navngivne dataStore.js (erstatter det
+// tidligere skyLager.js som en del af omlægningen til engelsk kodebase) -
+// aliaset tilbage til de eksisterende danske navne her i App.jsx, så resten
+// af filens body ikke skal omskrives i samme omgang.
 import {
-  hentSager, gemSag, sletSag, hentFriskSag,
-  hentBiler, gemBil, sletBil, opsaetStandardBiler,
-  hentVaretyper, gemVaretype, sletVaretype, opsaetStandardVaretyper,
-  hentVarekategorier, gemVarekategori, sletVarekategori, opsaetStandardVarekategorier,
-  hentPrimaerydelser, gemPrimaerydelse, sletPrimaerydelse, opsaetStandardPrimaerydelser,
-  hentTillaegsydelser, gemTillaegsydelse, sletTillaegsydelse, opsaetStandardTillaegsydelser,
-  hentEgenProfil, hentButiksBrugere, opdaterProfil, opretBrugerAdmin, nulstilAdgangskodeAdmin,
-  hentFerier, tilfoejFerie as tilfoejFerieSky, sletFerie as sletFerieSky,
-  hentButik,
-} from "./lib/skyLager";
+  getOrders as hentSager, saveOrder as gemSag, deleteOrder as sletSag, getFreshOrder as hentFriskSag,
+  getVehicles as hentBiler, saveVehicle as gemBil, deleteVehicle as sletBil, seedDefaultVehicles as opsaetStandardBiler,
+  getProductTypes as hentVaretyper, saveProductType as gemVaretype, deleteProductType as sletVaretype, seedDefaultProductTypes as opsaetStandardVaretyper,
+  getProductCategories as hentVarekategorier, saveProductCategory as gemVarekategori, deleteProductCategory as sletVarekategori, seedDefaultProductCategories as opsaetStandardVarekategorier,
+  getPrimaryServices as hentPrimaerydelser, savePrimaryService as gemPrimaerydelse, deletePrimaryService as sletPrimaerydelse, seedDefaultPrimaryServices as opsaetStandardPrimaerydelser,
+  getAddOnServices as hentTillaegsydelser, saveAddOnService as gemTillaegsydelse, deleteAddOnService as sletTillaegsydelse, seedDefaultAddOnServices as opsaetStandardTillaegsydelser,
+  getOwnProfile as hentEgenProfil, getStoreUsers as hentButiksBrugere, updateProfile as opdaterProfil,
+  createUserAsAdmin as opretBrugerAdmin, resetPasswordAsAdmin as nulstilAdgangskodeAdmin,
+  getTimeOff as hentFerier, addTimeOff as tilfoejFerieSky, deleteTimeOff as sletFerieSky,
+  getStore as hentButik,
+} from "./lib/dataStore";
 import {
   uid, todayISO,
   DEFAULT_VARETYPER, DEFAULT_VAREKATEGORIER, DEFAULT_PRIMAERYDELSER, DEFAULT_TILLAEGSYDELSER, DEFAULT_BILER,
@@ -145,7 +150,7 @@ export default function App() {
   // ---------- Generiske hjælpere: gem/slet ÉT element lokalt + i databasen ----------
   // (Hver liste har sin egen sky-funktion, men mønsteret er ens: opdatér
   // React-state for præcis dét element, og send KUN det element videre til
-  // databasen - se den vigtige note øverst i skyLager.js om hvorfor.)
+  // databasen - se den vigtige note øverst i dataStore.js om hvorfor.)
   const gemEtSager = (sag) => { setSager((prev) => (prev.some((s) => s.id === sag.id) ? prev.map((s) => (s.id === sag.id ? sag : s)) : [...prev, sag])); if (profil?.butikId) gemSag(profil.butikId, sag); };
   const fjernEtSager = (id) => { setSager((prev) => prev.filter((s) => s.id !== id)); if (profil?.butikId) sletSag(profil.butikId, id); };
 
@@ -186,7 +191,7 @@ export default function App() {
 
   // Opretter en ny sag med et midlertidigt sagsnummer (vises med det samme),
   // og henter den friske, database-tildelte version bagefter (se
-  // tildel_sagsnummer-triggeren) - så det ENDELIGE, garanteret unikke
+  // assign_order_number-triggeren) - så det ENDELIGE, garanteret unikke
   // sagsnummer altid vises korrekt, uden gæt fra browseren.
   const addSag = async ({ kunde, koeber, noegle, dato, tidsrumId, start, slut, montorId, varelinjer, ordrenummer }) => {
     if (!profil?.butikId) return;
