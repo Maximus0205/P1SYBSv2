@@ -1,6 +1,6 @@
 import React from "react";
 import { RefreshCw, Truck, KeyRound, Clock } from "lucide-react";
-import { dannTitel, erIDag, formatDatoLang, formatVarighed, montorFarve, noegleTekst, sagForventetMinutter, statusMeta, totalMinutter } from "../data/appData";
+import { buildTitle as dannTitel, isToday as erIDag, formatLongDate as formatDatoLang, formatDuration as formatVarighed, technicianColor as montorFarve, keyAccessText as noegleTekst, orderExpectedMinutes as sagForventetMinutter, STATUS_META as statusMeta, totalMinutes as totalMinutter } from "../data/domain";
 import { StatusBadge, VarelinjePiller, DatoVaelger } from "../components/common";
 
 function MontorVaelger({ montorer, onVaelg }) {
