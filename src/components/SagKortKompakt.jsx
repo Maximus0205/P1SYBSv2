@@ -1,7 +1,7 @@
 import React from "react";
 import { Clock } from "lucide-react";
 import { TIME_SLOTS as TIDSRUM, buildTitle as dannTitel, formatDuration as formatVarighed, orderExpectedMinutes as sagForventetMinutter } from "../data/domain";
-import { StatusBadge, VarelinjePiller } from "../components/common";
+import { StatusBadge, LineItemPills } from "../components/common";
 
 function SagKortKompakt({ sag, montorer, onOpen, onCycleStatus, onAssign, onUpdateTidsrum }) {
   return (
@@ -18,7 +18,7 @@ function SagKortKompakt({ sag, montorer, onOpen, onCycleStatus, onAssign, onUpda
         </div>
         <button onClick={() => onCycleStatus(sag.id)} className="shrink-0"><StatusBadge status={sag.status} /></button>
       </div>
-      <div className="mt-2"><VarelinjePiller sag={sag} /></div>
+      <div className="mt-2"><LineItemPills order={sag} /></div>
       {(onAssign || onUpdateTidsrum) && (
         <div className="flex items-center gap-2 mt-2 pt-2 border-t border-[#F0EBDD]">
           {onUpdateTidsrum && (
