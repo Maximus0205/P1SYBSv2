@@ -376,7 +376,7 @@ export default function App() {
         ) : page === "salg" ? (
           <SalesPage orders={orders} technicians={technicians} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onAdd={addOrder} onImport={importOrders} storeFocus={store?.lat && store?.lon ? { lat: store.lat, lon: store.lon } : null} />
         ) : page === "planlaegning" ? (
-          <PlanningPage orders={orders} technicians={technicians} onOpen={setSelectedId} onCycleStatus={cycleStatus} />
+          <PlanningPage orders={orders} technicians={technicians} onOpen={setSelectedId} onCycleStatus={cycleStatus} onAssign={assignTechnician} />
         ) : page === "koersel" ? (
           <DrivingPage orders={orders} technicians={technicians} vehicles={vehicles} timeOff={timeOff} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onCycleStatus={cycleStatus} onAssign={assignTechnician} onUpdateTimeSlot={updateTimeSlot} onUpdateTechnician={(technicianId, fields) => updateTechnicianVehicle(technicianId, fields.bilId)} onRefresh={refresh} refreshing={refreshing} />
         ) : page === "montor" ? (
