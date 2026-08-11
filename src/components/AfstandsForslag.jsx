@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { AlertCircle, MapPin } from "lucide-react";
-import { formatLongDate, todayISO, addDays } from "../data/domain";
+import { formatLongDate as formatDatoLang, todayISO, addDays as flytDato } from "../data/domain";
 import { geocodeAddress as geokodAdresse, geocodeAddresses as geokodAdresser, drivingDistances as koereafstande, hasOrsKey as harOrsNoegle } from "../lib/geocoding";
 
 const AFSTANDSGRAENSE_KM = 5; // vis kun forslag inden for denne afstand
