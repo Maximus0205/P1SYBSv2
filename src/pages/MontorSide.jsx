@@ -1,6 +1,6 @@
 import React from "react";
 import { RefreshCw, Truck, KeyRound, Clock } from "lucide-react";
-import { buildTitle as dannTitel, isToday as erIDag, formatLongDate as formatDatoLang, formatDuration as formatVarighed, technicianColor as montorFarve, keyAccessText as noegleTekst, orderExpectedMinutes as sagForventetMinutter, totalMinutes as totalMinutter } from "../data/domain";
+import { buildTitle as dannTitel, isToday as erIDag, formatLongDate as formatDatoLang, formatDuration as formatVarighed, technicianColor as montorFarve, keyAccessText as noegleTekst, orderExpectedMinutes as sagForventetMinutter, totalMinutes as totalMinutter, STATUS_META as statusMeta } from "../data/domain";
 import { StatusBadge, LineItemPills, DateSelector } from "../components/common";
 
 function MontorVaelger({ montorer, onVaelg }) {
@@ -62,7 +62,7 @@ function MontorRuteView({ sager, montor, valgtDato, onSkiftDato, onOpen, onCycle
           <div className="absolute left-[7px] top-2 bottom-2 w-[2px]" style={{ background: "#D8D0BE" }} />
           {mineSager.map((s) => (
             <div key={s.id} className="relative mb-4">
-              <div className="absolute -left-8 top-5 w-4 h-4 rounded-full border-2 bg-[#F3EFE6]" style={{ borderColor: STATUS_COLOR(s.status) }} />
+              <div className="absolute -left-8 top-5 w-4 h-4 rounded-full border-2 bg-[#F3EFE6]" style={{ borderColor: statusMeta[s.status].color }} />
               <div onClick={() => onOpen(s.id)} className="cursor-pointer bg-white border border-[#D8D0BE] hover:border-[#1C232E] transition-colors p-4">
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex items-baseline gap-4 min-w-0">
