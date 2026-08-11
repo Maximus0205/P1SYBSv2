@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { RefreshCw, Pencil, AlertCircle, KeyRound, Clock } from "lucide-react";
 import { vehicleBlockedByTimeOff as bilBlokeretAfFerie, vehicleLabel as bilLabel, buildTitle as dannTitel, isToday as erIDag, formatLongDate as formatDatoLang, formatDuration as formatVarighed, technicianColor as montorFarve, areaKey as omraadeNoegle, orderExpectedMinutes as sagForventetMinutter, STATUS_META as statusMeta, timeSlotText as tidsrumTekst, weekDays as ugeDage } from "../data/domain";
 import { getAiRouteSuggestion as hentAiRuteforslag } from "../lib/dataStore";
-import { DatoVaelger } from "../components/common";
+import { DateSelector } from "../components/common";
 import { SagKortKompakt } from "../components/SagKortKompakt";
 
 const tilMin = (hhmm) => {
@@ -183,7 +183,7 @@ function KoerselSide({ sager, montorer, biler, ferier, valgtDato, onSkiftDato, o
           <h1 className="font-['Barlow_Condensed'] text-4xl uppercase tracking-tight text-[#1C232E]">Kørselsoverblik</h1>
           <div className="flex items-center gap-3 mt-1">
             <p className="text-sm text-[#52697E]">{montorer.length} montører · faste tidsrum</p>
-            <DatoVaelger dato={valgtDato} onSkift={onSkiftDato} />
+            <DateSelector date={valgtDato} onChange={onSkiftDato} />
           </div>
         </div>
         <button onClick={onRefresh} className="p-2 text-[#1C232E] border border-[#D8D0BE] hover:border-[#E2621B] hover:text-[#E2621B] transition-colors" title="Opdater">
