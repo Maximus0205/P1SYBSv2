@@ -162,7 +162,10 @@ function SystemAdminSide() {
 
 // Redigering af én eksisterende butik: navn, butiksnummer og adresse
 // (geokoder på ny, hvis adressen ændres, så adresse-fokuspunktet forbliver
-// korrekt).
+// korrekt). Bruger geocodeAddresses (batch-funktionen, tager en liste og
+// returnerer et Map nøglet på normaliseret adressetekst) - der findes ikke
+// nogen ental-udgave i geocoding.js, så et enkelt-element-kald pakkes ind
+// som en liste med ét element.
 function ButikRedigering({ butik, onFaerdig, onAnnuller }) {
   const [navn, setNavn] = useState(butik.navn);
   const [butiksnummer, setButiksnummer] = useState(butik.butiksnummer || "");
@@ -177,8 +180,10 @@ function ButikRedigering({ butik, onFaerdig, onAnnuller }) {
     setTravl(true);
 
     const felter = { navn: navn.trim(), butiksnummer: butiksnummer.trim() || null, adresse: adresse.trim() };
-    if (adresse.trim() !== butik.adresse) {
-      const koord = await geokodAdresse(adresse.trim());
+    const renAdresse = adresse.trim();
+    if (renAdresse !== butik.adresse) {
+      const koordMap = await geocodeAddresses([renAdresse]);
+      const koord = koordMap.get(renAdresse.toLowerCase());
       if (koord) { felter.lat = koord.lat; felter.lon = koord.lon; }
     }
 
