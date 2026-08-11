@@ -38,6 +38,10 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus 
       const [list, validation] = await Promise.all([searchAddressSuggestions(value, focus), validateAddress(value, focus)]);
       if (cancelled) return;
       setSuggestions(list);
+      // Så snart der kommer nye forslag mens brugeren stadig sidder i
+      // feltet, skal listen vises igen - selv hvis den lige var skjult af
+      // en forsinket blur (se onBlur/onFocus nedenfor).
+      if (list.length > 0) setShowSuggestions(true);
       const newStatus = validation.gyldig ? "gyldig" : "usikker";
       setStatus(newStatus);
       onValidationChange?.(newStatus);
@@ -76,7 +80,16 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus 
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          onFocus={() => setShowSuggestions(true)}
+          onFocus={() => {
+            // VIGTIGT: en tidligere "skjul om 150ms"-timer fra en kortvarig
+            // blur (se onBlur) skal annulleres her. Ellers kunne brugeren
+            // fokusere feltet igen og skrive videre, men listen forsvandt
+            // alligevel når den gamle timer til sidst udløb - det så ud
+            // som om adresseforslag "holdt op med at virke" efter man
+            // havde slettet og skrevet videre.
+            if (blurTimerRef.current) { clearTimeout(blurTimerRef.current); blurTimerRef.current = null; }
+            setShowSuggestions(true);
+          }}
           onBlur={() => {
             // lille forsinkelse så et klik på et forslag når at blive registreret først
             blurTimerRef.current = setTimeout(() => setShowSuggestions(false), 150);
