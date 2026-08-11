@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { isToday as erIDag, formatLongDate as formatDatoLang } from "../data/domain";
-import { DatoVaelger } from "../components/common";
+import { DateSelector } from "../components/common";
 import { NyeSagForm } from "../components/NyeSagForm";
 import { CsvImport } from "../components/CsvImport";
 import { SagKortKompakt } from "../components/SagKortKompakt";
@@ -18,7 +18,7 @@ function SalgSide({ sager, montorer, varetyper, varekategorier, primaerydelser, 
           <h1 className="font-['Barlow_Condensed'] text-4xl uppercase tracking-tight text-[#1C232E]">Salg &amp; ordrebooking</h1>
           <div className="flex items-center gap-3 mt-1">
             <p className="text-sm text-[#52697E]">{dagensSager.length} sager</p>
-            <DatoVaelger dato={valgtDato} onSkift={onSkiftDato} />
+            <DateSelector date={valgtDato} onChange={onSkiftDato} />
           </div>
         </div>
         <div className="flex gap-2">
