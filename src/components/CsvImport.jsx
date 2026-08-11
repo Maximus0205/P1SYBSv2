@@ -1,8 +1,8 @@
 import React, { useState, useRef } from "react";
 import Papa from "papaparse";
-import { OTHER_PRODUCT_TYPE_ID as ANDET_VARETYPE_ID, createLineItem as lavVarelinje, createAddOn as lavYdelse, timeSlotById as tidsrumFraId, todayISO, uid } from "../data/domain";
+import { OTHER_PRODUCT_TYPE_ID, createLineItem, createAddOn, timeSlotById, todayISO, uid } from "../data/domain";
 
-function CsvImport({ montorer, varetyper, primaerydelser, onImport, onClose }) {
+function CsvImport({ technicians, productTypes, primaryServices, onImport, onClose }) {
   const inputRef = useRef(null);
   const [status, setStatus] = useState(null);
 
@@ -11,13 +11,13 @@ function CsvImport({ montorer, varetyper, primaerydelser, onImport, onClose }) {
     for (const k of Object.keys(row)) if (keys.includes(norm(k))) return (row[k] || "").toString().trim();
     return "";
   };
-  const matchTidsrum = (raw) => {
+  const matchTimeSlot = (raw) => {
     const n = norm(raw);
     if (n.includes("form")) return "formiddag";
     if (n.includes("efter")) return "eftermiddag";
     return "heldag";
   };
-  const matchDato = (raw) => {
+  const matchDate = (raw) => {
     const s = (raw || "").trim();
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
     const dmy = s.match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})$/);
@@ -32,19 +32,19 @@ function CsvImport({ montorer, varetyper, primaerydelser, onImport, onClose }) {
       complete: (results) => {
         try {
           const rows = results.data;
-          const nySager = rows
+          const newOrders = rows
             .map((row, i) => {
-              const montorNavn = norm(pick(row, ["montor", "montør", "bil", "installatoer"]));
-              const matchedMontor = montorer.find((m) => norm(m.navn) === montorNavn || norm(m.bil).includes(montorNavn));
-              const varetypeRaa = pick(row, ["varetype", "produkttype", "vare"]);
-              const matchedVaretype = varetyper.find((v) => norm(v.navn) === norm(varetypeRaa));
-              const tidsrumId = matchTidsrum(pick(row, ["tidsrum", "tid", "periode"]));
-              const t = tidsrumFraId(tidsrumId);
-              const dato = matchDato(pick(row, ["dato", "date"]));
-              const linje = lavVarelinje(varetyper, primaerydelser, matchedVaretype ? matchedVaretype.id : ANDET_VARETYPE_ID, matchedVaretype ? "" : varetypeRaa);
-              const ydelserRaa = pick(row, ["ydelser", "opgaver", "opmærksomhedspunkter"]);
-              if (ydelserRaa) linje.tillaeg = [...linje.tillaeg, ...ydelserRaa.split(/[;,]/).map((y) => y.trim()).filter(Boolean).map((navn) => lavYdelse(navn))];
-              const koeberNavn = pick(row, ["køber", "koeber", "buyer"]);
+              const technicianName = norm(pick(row, ["montor", "montør", "bil", "installatoer"]));
+              const matchedTechnician = technicians.find((m) => norm(m.navn) === technicianName || norm(m.bil).includes(technicianName));
+              const rawProductType = pick(row, ["varetype", "produkttype", "vare"]);
+              const matchedProductType = productTypes.find((v) => norm(v.navn) === norm(rawProductType));
+              const timeSlotId = matchTimeSlot(pick(row, ["tidsrum", "tid", "periode"]));
+              const t = timeSlotById(timeSlotId);
+              const date = matchDate(pick(row, ["dato", "date"]));
+              const lineItem = createLineItem(productTypes, primaryServices, matchedProductType ? matchedProductType.id : OTHER_PRODUCT_TYPE_ID, matchedProductType ? "" : rawProductType);
+              const rawAddOns = pick(row, ["ydelser", "opgaver", "opmærksomhedspunkter"]);
+              if (rawAddOns) lineItem.tillaeg = [...lineItem.tillaeg, ...rawAddOns.split(/[;,]/).map((y) => y.trim()).filter(Boolean).map((navn) => createAddOn(navn))];
+              const buyerName = pick(row, ["køber", "koeber", "buyer"]);
               return {
                 id: uid(),
                 nr: pick(row, ["sagsnr", "nr", "sag", "sagsnummer"]) || `IMP-${i + 1}`,
@@ -55,20 +55,20 @@ function CsvImport({ montorer, varetyper, primaerydelser, onImport, onClose }) {
                   adresse: pick(row, ["adresse"]),
                   leveringsnote: pick(row, ["leveringsnote", "note"]),
                 },
-                koeber: koeberNavn ? { navn: koeberNavn, telefon: pick(row, ["købertelefon", "koebertelefon"]), email: pick(row, ["købermail", "koebermail"]), adresse: pick(row, ["køberadresse", "koeberadresse"]) } : null,
+                koeber: buyerName ? { navn: buyerName, telefon: pick(row, ["købertelefon", "koebertelefon"]), email: pick(row, ["købermail", "koebermail"]), adresse: pick(row, ["køberadresse", "koeberadresse"]) } : null,
                 noegle: { kraeves: /ja|true|1/i.test(pick(row, ["nøgle", "noegle"])), type: pick(row, ["nøgletype", "noegletype"]), detaljer: pick(row, ["nøgledetaljer", "noegledetaljer"]), placering: pick(row, ["nøgleplacering", "noegleplacering"]) },
-                dato, tidsrumId, start: t.start, slut: t.slut,
-                montorId: matchedMontor ? matchedMontor.id : null,
+                dato: date, tidsrumId: timeSlotId, start: t.start, slut: t.slut,
+                montorId: matchedTechnician ? matchedTechnician.id : null,
                 status: "planlagt",
                 plukket: false,
-                varelinjer: [linje],
+                varelinjer: [lineItem],
                 noter: [], billeder: [], rapporter: [],
                 stemplerInd: null, logs: [],
               };
             })
             .filter((s) => s.kunde.navn !== "Uden navn" || s.kunde.adresse);
-          onImport(nySager);
-          setStatus({ count: nySager.length, error: null });
+          onImport(newOrders);
+          setStatus({ count: newOrders.length, error: null });
         } catch (e) {
           setStatus({ count: 0, error: "Kunne ikke læse filen." });
         }
@@ -98,9 +98,5 @@ function CsvImport({ montorer, varetyper, primaerydelser, onImport, onClose }) {
     </div>
   );
 }
-
-// ---------------- Fælles: kompakt sagskort ----------------
-
-
 
 export { CsvImport };
