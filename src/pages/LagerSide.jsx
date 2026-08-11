@@ -1,7 +1,7 @@
 import React from "react";
 import { Check, KeyRound } from "lucide-react";
 import { buildTitle as dannTitel, formatLongDate as formatDatoLang } from "../data/domain";
-import { DatoVaelger } from "../components/common";
+import { DateSelector } from "../components/common";
 
 function LagerSide({ sager, montorer, valgtDato, onSkiftDato, onTogglePluk, onOpen }) {
   const sorter = (a, b) => (a.start || "").localeCompare(b.start || "");
@@ -39,7 +39,7 @@ function LagerSide({ sager, montorer, valgtDato, onSkiftDato, onTogglePluk, onOp
       <h1 className="font-['Barlow_Condensed'] text-4xl uppercase tracking-tight text-[#1C232E] mb-1">Lager & ordrepluk</h1>
       <div className="flex items-center gap-3 mb-6">
         <p className="text-sm text-[#52697E]">{mangler.length} mangler at blive plukket · {klar.length} klar til afhentning</p>
-        <DatoVaelger dato={valgtDato} onSkift={onSkiftDato} />
+        <DateSelector date={valgtDato} onChange={onSkiftDato} />
       </div>
 
       <h2 className="text-sm font-semibold uppercase tracking-wide text-[#E2621B] mb-3 flex items-center gap-2">
