@@ -1,7 +1,7 @@
 import React from "react";
 import { RefreshCw, Truck, KeyRound, Clock } from "lucide-react";
-import { buildTitle as dannTitel, isToday as erIDag, formatLongDate as formatDatoLang, formatDuration as formatVarighed, technicianColor as montorFarve, keyAccessText as noegleTekst, orderExpectedMinutes as sagForventetMinutter, STATUS_META as statusMeta, totalMinutes as totalMinutter } from "../data/domain";
-import { StatusBadge, VarelinjePiller, DatoVaelger } from "../components/common";
+import { buildTitle as dannTitel, isToday as erIDag, formatLongDate as formatDatoLang, formatDuration as formatVarighed, technicianColor as montorFarve, keyAccessText as noegleTekst, orderExpectedMinutes as sagForventetMinutter, totalMinutes as totalMinutter } from "../data/domain";
+import { StatusBadge, LineItemPills, DateSelector } from "../components/common";
 
 function MontorVaelger({ montorer, onVaelg }) {
   return (
@@ -40,7 +40,7 @@ function MontorRuteView({ sager, montor, valgtDato, onSkiftDato, onOpen, onCycle
           <p className="text-sm text-[#52697E] mt-1">{montor.navn} · {montor.bil}</p>
           <div className="flex items-center gap-3 mt-1">
             <p className="text-sm text-[#52697E]">{mineSager.length} sager · {afsluttede} afsluttet</p>
-            <DatoVaelger dato={valgtDato} onSkift={onSkiftDato} />
+            <DateSelector date={valgtDato} onChange={onSkiftDato} />
           </div>
         </div>
         <div className="flex gap-2">
@@ -62,7 +62,7 @@ function MontorRuteView({ sager, montor, valgtDato, onSkiftDato, onOpen, onCycle
           <div className="absolute left-[7px] top-2 bottom-2 w-[2px]" style={{ background: "#D8D0BE" }} />
           {mineSager.map((s) => (
             <div key={s.id} className="relative mb-4">
-              <div className="absolute -left-8 top-5 w-4 h-4 rounded-full border-2 bg-[#F3EFE6]" style={{ borderColor: statusMeta[s.status].color }} />
+              <div className="absolute -left-8 top-5 w-4 h-4 rounded-full border-2 bg-[#F3EFE6]" style={{ borderColor: STATUS_COLOR(s.status) }} />
               <div onClick={() => onOpen(s.id)} className="cursor-pointer bg-white border border-[#D8D0BE] hover:border-[#1C232E] transition-colors p-4">
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex items-baseline gap-4 min-w-0">
@@ -90,7 +90,7 @@ function MontorRuteView({ sager, montor, valgtDato, onSkiftDato, onOpen, onCycle
                 )}
                 {s.kunde.leveringsnote && <p className="text-xs text-[#E2621B] mt-1 font-medium">⚠ {s.kunde.leveringsnote}</p>}
                 {s.koeber && <p className="text-xs text-[#52697E] mt-1">Køber: {s.koeber.navn}</p>}
-                <div className="mt-3 pt-3 border-t border-[#F0EBDD]"><VarelinjePiller sag={s} /></div>
+                <div className="mt-3 pt-3 border-t border-[#F0EBDD]"><LineItemPills order={s} /></div>
               </div>
             </div>
           ))}
