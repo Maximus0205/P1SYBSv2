@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { KeyRound, Building2, Hash, Pencil, X, Check } from "lucide-react";
 import { TIME_SLOTS, buildTitle, keyAccessText, timeSlotById, timeSlotText } from "../data/domain";
 import { StatusBadge } from "../components/common";
-import { LineItemDetails, Notes, Photos, Reports, TimeLog, ClockWidget } from "../components/OrderParts";
+import { LineItemDetails, Notes, Photos, Reports, TimeLog, ClockWidget, Signature } from "../components/OrderParts";
 import { AddressInput } from "../components/AddressInput";
 
 // Hurtig-redigering af en booket sag: dato, tidsrum, montør og
@@ -59,7 +59,7 @@ function BookingEditor({ order, technicians, onSave, onCancel }) {
   );
 }
 
-function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, onCycleStatus, onClockIn, onClockOut, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking }) {
+function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, onCycleStatus, onClockIn, onClockOut, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onSaveSignature }) {
   const [tab, setTab] = useState("noter");
   const [editing, setEditing] = useState(false);
   const technician = technicians.find((m) => m.id === order.montorId);
@@ -68,6 +68,7 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
     { key: "billeder", label: "Billeder", count: order.billeder.length },
     { key: "rapporter", label: "Rapporter", count: order.rapporter.length },
     { key: "tid", label: "Tid", count: order.logs.length },
+    { key: "underskrift", label: "Underskrift", count: order.underskrift ? 1 : 0 },
   ];
 
   return (
@@ -115,9 +116,9 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
 
       <LineItemDetails order={order} onToggleAddOn={onToggleAddOn} onAddAddOn={onAddAddOn} onRemoveAddOn={onRemoveAddOn} />
       <ClockWidget order={order} onClockIn={onClockIn} onClockOut={onClockOut} />
-      <div className="flex border-b border-[#D8D0BE] mb-5">
+      <div className="flex border-b border-[#D8D0BE] mb-5 overflow-x-auto">
         {tabs.map((t) => (
-          <button key={t.key} onClick={() => setTab(t.key)} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors ${tab === t.key ? "text-[#1C232E] border-b-2 border-[#E2621B]" : "text-[#52697E] hover:text-[#1C232E]"}`}>
+          <button key={t.key} onClick={() => setTab(t.key)} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors shrink-0 ${tab === t.key ? "text-[#1C232E] border-b-2 border-[#E2621B]" : "text-[#52697E] hover:text-[#1C232E]"}`}>
             {t.label} <span className="font-mono text-xs">({t.count})</span>
           </button>
         ))}
@@ -126,6 +127,7 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
       {tab === "billeder" && <Photos order={order} onAdd={addPhoto} />}
       {tab === "rapporter" && <Reports order={order} onAdd={addReport} />}
       {tab === "tid" && <TimeLog order={order} />}
+      {tab === "underskrift" && <Signature order={order} onSave={onSaveSignature} />}
     </div>
   );
 }
