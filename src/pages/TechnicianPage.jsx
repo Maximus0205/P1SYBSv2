@@ -4,10 +4,15 @@ import { buildTitle, isToday, formatLongDate, formatDuration, technicianColor, k
 import { StatusBadge, LineItemPills, DateSelector } from "../components/common";
 
 // Universelt Google Maps-link: åbner Google Maps-appen hvis den er
-// installeret (iOS og Android), ellers ruteplanlægning i browseren. Vi
-// sender kun adresseteksten (ikke koordinater) - ordrer har ikke gemte
-// koordinater i dag, og Google Maps geokoder selv adressen pålideligt.
-const mapsUrl = (address) => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
+// installeret (iOS og Android), ellers i browseren. Vi bruger søge-linket
+// (ikke rute-linket /maps/dir/) bevidst: rute-linket kræver at Maps selv
+// kan bestemme brugerens nuværende position som startpunkt, og hænger i en
+// evig "indlæser..."-tilstand hvis det ikke lykkes (lokation ikke givet,
+// dårligt signal, testet indendørs). Søge-linket viser blot adressen som
+// et punkt med det samme uden den afhængighed - montøren trykker selv på
+// rutevejledning inde i Maps, hvor lokationsadgang beder korrekt og
+// pålideligt.
+const mapsUrl = (address) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 
 function TechnicianPicker({ technicians, onSelect }) {
   return (
