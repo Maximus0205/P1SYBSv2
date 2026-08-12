@@ -306,6 +306,14 @@ export default function App() {
     if (s) saveOneOrder({ ...s, varelinjer: s.varelinjer.map((v) => (v.id === lineItemId ? { ...v, tillaeg: v.tillaeg.filter((y) => y.id !== addOnId) } : v)) });
   };
 
+  // Kundeunderskrift ved aflevering - se Signature-komponenten i
+  // OrderParts.jsx. Gemmes som ét felt på ordren (navn + billeddata +
+  // tidspunkt), ligesom noter/billeder/rapporter.
+  const saveSignature = (orderId, { navn, data }) => {
+    const s = orders.find((x) => x.id === orderId);
+    if (s) saveOneOrder({ ...s, underskrift: { navn, data, tid: new Date().toLocaleString("da-DK") } });
+  };
+
   const technician = technicians.find((m) => m.id === selectedTechnicianId);
   const narrowPage = page === "montor" || !!selected;
 
@@ -372,6 +380,7 @@ export default function App() {
             onAddAddOn={(lineItemId, navn) => addAddOn(selected.id, lineItemId, navn)}
             onRemoveAddOn={(lineItemId, addOnId) => removeAddOn(selected.id, lineItemId, addOnId)}
             onUpdateBooking={(fields) => updateBooking(selected.id, fields)}
+            onSaveSignature={(payload) => saveSignature(selected.id, payload)}
           />
         ) : page === "salg" ? (
           <SalesPage orders={orders} technicians={technicians} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onAdd={addOrder} onImport={importOrders} storeFocus={store?.lat && store?.lon ? { lat: store.lat, lon: store.lon } : null} />
