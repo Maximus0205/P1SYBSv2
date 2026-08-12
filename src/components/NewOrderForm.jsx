@@ -2,11 +2,11 @@ import React, { useState } from "react";
 import { Plus, Building2, Clock, Hash } from "lucide-react";
 import { TIME_SLOTS, buildTitle, formatDuration, createLineItem, lineItemMinutes, timeSlotById, timeSlotText, todayISO, emptyKeyAccess } from "../data/domain";
 import { ReceiptUpload } from "../components/ReceiptUpload";
-import { LineItemEditor, KeyAccessFields, AddressSuggestion, DailyRouteOverview } from "../components/OrderFormFields";
+import { LineItemEditor, KeyAccessFields, AddressSuggestion, CustomerHistory, DailyRouteOverview } from "../components/OrderFormFields";
 import { DistanceSuggestions } from "../components/DistanceSuggestions";
 import { AddressInput } from "../components/AddressInput";
 
-function NewOrderForm({ technicians, productTypes, productCategories, primaryServices, addOnServices, orders, selectedDate, onAdd, onClose, storeFocus }) {
+function NewOrderForm({ technicians, productTypes, productCategories, primaryServices, addOnServices, orders, selectedDate, onAdd, onClose, onOpen, storeFocus }) {
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -77,6 +77,7 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
         <input value={deliveryNote} onChange={(e) => setDeliveryNote(e.target.value)} placeholder="Leveringsnote, fx 'Ring før ankomst'" className="sm:col-span-2 border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
       </div>
 
+      <CustomerHistory phone={phone} name={customerName} orders={orders} onOpen={onOpen} />
       <AddressSuggestion address={address} date={date} orders={orders} onUseDate={(d) => setDate(d)} />
       <DistanceSuggestions address={address} date={date} orders={orders} onUseDate={(d) => setDate(d)} />
 
