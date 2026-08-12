@@ -69,27 +69,26 @@ function matchesSearch(order, search) {
   );
 }
 
-// Lille mærke ovenpå kortet der forklarer PRÆCIS hvorfor sagen kræver
-// handling - så man ikke skal regne det ud selv.
-function ReasonBadge({ order }) {
-  if (order._unassigned && order._overdue) {
-    return (
-      <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-2 py-1 bg-[#B3261E] text-white">
-        <UserX size={11} /> Ikke tildelt · {order._daysLate} {order._daysLate === 1 ? "dag" : "dage"} forsinket
-      </span>
-    );
-  }
-  if (order._unassigned) {
-    return (
-      <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-2 py-1 bg-[#E2621B] text-white">
-        <UserX size={11} /> Ikke tildelt montør
-      </span>
-    );
-  }
+const ACTION_RED = "#B3261E";
+const ACTION_ORANGE = "#E2621B";
+
+// Hvad kortet skal vise (farve + tekst) - beregnet én gang, brugt til
+// BÅDE kantfarven og teksten, så de altid stemmer overens.
+function actionReason(order) {
+  if (order._unassigned && order._overdue) return { color: ACTION_RED, text: `Ikke tildelt · ${order._daysLate} ${order._daysLate === 1 ? "dag" : "dage"} forsinket` };
+  if (order._unassigned) return { color: ACTION_ORANGE, text: "Ikke tildelt montør" };
+  return { color: ACTION_RED, text: `${order._daysLate} ${order._daysLate === 1 ? "dag" : "dage"} forsinket` };
+}
+
+// Lille tekstlinje der forklarer PRÆCIS hvorfor sagen kræver handling -
+// vises INDE i selve kortet (via OrderCardCompacts reason-prop), ikke som
+// en løsrevet boks ovenpå.
+function ReasonLine({ order }) {
+  const { color, text } = actionReason(order);
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-2 py-1 bg-[#B3261E] text-white">
-      <AlertCircle size={11} /> {order._daysLate} {order._daysLate === 1 ? "dag" : "dage"} forsinket
-    </span>
+    <p className="text-[11px] font-semibold uppercase tracking-wide flex items-center gap-1" style={{ color }}>
+      <UserX size={12} /> {text}
+    </p>
   );
 }
 
@@ -251,9 +250,11 @@ function PlanningPage({ orders, technicians, onOpen, onCycleStatus, onAssign }) 
         </div>
       ) : (
         <>
-          {/* Hovedfokus: sager der kræver handling - altid åben, øverst, aldrig gemt væk */}
-          <div className="border-2 border-[#B3261E] bg-[#B3261E08] mb-4">
-            <div className="p-3 border-b border-[#B3261E]/30 flex items-center gap-2">
+          {/* Hovedfokus: sager der kræver handling - altid åben, øverst, aldrig gemt væk.
+              Ren hvid kortoverflade med en rød topkant som eneste "alarm"-signal,
+              i stedet for en gennemgående farvet baggrund - renere på en smal skærm. */}
+          <div className="bg-white border border-[#D8D0BE] mb-4" style={{ borderTopWidth: 4, borderTopColor: ACTION_RED }}>
+            <div className="p-3 border-b border-[#D8D0BE] flex items-center gap-2">
               <AlertCircle size={17} className="text-[#B3261E] shrink-0" />
               <h2 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] flex-1">Kræver handling</h2>
               <span className="text-xs font-mono px-1.5 py-0.5 bg-[#B3261E] text-white">{needsAction.length}</span>
@@ -264,12 +265,18 @@ function PlanningPage({ orders, technicians, onOpen, onCycleStatus, onAssign }) 
                   <Sparkles size={16} /> Intet hænger — alle sager er enten tildelt en montør eller afsluttet til tiden.
                 </p>
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {needsAction.map((s) => (
-                    <div key={s.id} className="space-y-1.5">
-                      <ReasonBadge order={s} />
-                      <OrderCardCompact order={s} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} onAssign={onAssign} />
-                    </div>
+                    <OrderCardCompact
+                      key={s.id}
+                      order={s}
+                      technicians={technicians}
+                      onOpen={onOpen}
+                      onCycleStatus={onCycleStatus}
+                      onAssign={onAssign}
+                      reason={<ReasonLine order={s} />}
+                      accent={actionReason(s).color}
+                    />
                   ))}
                 </div>
               )}
