@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin } from "lucide-react";
-import { OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID, KEY_ACCESS_TYPES, buildingKey, formatLongDate, formatDuration, lineItemMinutes, availableAddOns, serviceIcon } from "../data/domain";
+import { OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID, KEY_ACCESS_TYPES, buildingKey, formatLongDate, formatDuration, lineItemMinutes, availableAddOns, serviceIcon, todayISO } from "../data/domain";
 
 function LineItemEditor({ lineItem, productTypes, productCategories, primaryServices, addOnServices, onChange, onRemove, canRemove }) {
   const isOther = lineItem.varetypeId === OTHER_PRODUCT_TYPE_ID;
@@ -165,16 +165,21 @@ function KeyAccessFields({ keyAccess, onChange }) {
   );
 }
 
+// Viser kun KOMMENDE sager (i dag eller frem) på samme opgang/ejendom - en
+// sag der allerede er overstået er ikke noget man kan koordinere kørsel
+// med, og ville ellers dukke op som et forslag der reelt er ubrugeligt
+// ("der var en sag her for 3 uger siden").
 function AddressSuggestion({ address, date, orders, onUseDate }) {
   const key = buildingKey(address);
   if (!key || address.trim().length < 5) return null;
-  const matches = (orders || []).filter((s) => s.dato && s.dato !== date && buildingKey(s.kunde?.adresse) === key);
+  const today = todayISO();
+  const matches = (orders || []).filter((s) => s.dato && s.dato !== date && s.dato >= today && buildingKey(s.kunde?.adresse) === key);
   if (matches.length === 0) return null;
   const dates = [...new Set(matches.map((s) => s.dato))].sort();
   return (
     <div className="mb-3 border border-[#E2621B] bg-[#E2621B10] p-3">
       <p className="text-sm font-semibold text-[#E2621B] flex items-center gap-1.5"><AlertCircle size={14} /> Samme opgang/ejendom er allerede booket</p>
-      <p className="text-xs text-[#52697E] mt-1">Der er allerede en sag på denne adresse på en anden dag — overvej at samle dem, så I ikke kører to gange til samme opgang:</p>
+      <p className="text-xs text-[#52697E] mt-1">Der er allerede en kommende sag på denne adresse på en anden dag — overvej at samle dem, så I ikke kører to gange til samme opgang:</p>
       <div className="mt-2 space-y-1">
         {dates.map((d) => {
           const onThatDay = matches.filter((s) => s.dato === d);
