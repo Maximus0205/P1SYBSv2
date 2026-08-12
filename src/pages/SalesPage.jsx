@@ -31,7 +31,7 @@ function SalesPage({ orders, technicians, productTypes, productCategories, prima
         </div>
       </div>
 
-      {panel === "ny" && <div className="mb-6"><NewOrderForm technicians={technicians} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} orders={orders} selectedDate={selectedDate} onAdd={onAdd} onClose={() => setPanel(null)} storeFocus={storeFocus} /></div>}
+      {panel === "ny" && <div className="mb-6"><NewOrderForm technicians={technicians} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} orders={orders} selectedDate={selectedDate} onAdd={onAdd} onClose={() => setPanel(null)} onOpen={onOpen} storeFocus={storeFocus} /></div>}
       {panel === "import" && <div className="mb-6"><CsvImport technicians={technicians} productTypes={productTypes} primaryServices={primaryServices} onImport={onImport} onClose={() => setPanel(null)} /></div>}
 
       <h2 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Sager {isToday(selectedDate) ? "i dag" : `d. ${selectedDate}`}</h2>
