@@ -1,4 +1,4 @@
-import { RotateCw, Trash2, Cable, Wifi, Wrench, Tag, ShoppingCart, Route, Truck, Package, Settings2, Building2 } from "lucide-react";
+import { RotateCw, Trash2, Cable, Wifi, Wrench, Tag, ShoppingCart, Route, Truck, Package, Settings2, Building2, Users } from "lucide-react";
 
 // Core domain helpers and default data for the app. Function/constant names
 // are English (part of the codebase's English rename); the actual STRING
@@ -233,12 +233,13 @@ const PAGES = [
   { key: "koersel", label: "Kørsel", icon: Route },
   { key: "montor", label: "Montør", icon: Truck },
   { key: "lager", label: "Lager", icon: Package },
+  { key: "kunder", label: "Kunder", icon: Users },
   { key: "admin", label: "Admin", icon: Settings2 },
   { key: "systemadmin", label: "System", icon: Building2 },
 ];
 const PAGES_FOR_ROLE = {
-  admin: ["salg", "planlaegning", "koersel", "montor", "lager", "admin"],
-  saelger: ["salg", "planlaegning", "koersel", "montor", "lager"],
+  admin: ["salg", "planlaegning", "koersel", "montor", "lager", "kunder", "admin"],
+  saelger: ["salg", "planlaegning", "koersel", "montor", "lager", "kunder"],
   montor: ["montor"],
 };
 
