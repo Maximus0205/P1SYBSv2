@@ -44,8 +44,13 @@ function KeyAccessPill({ keyAccess }) {
   );
 }
 
+// Varetypen står allerede i sagens overskrift (se buildTitle) - kun ved
+// FLERE varelinjer giver et separat mærke pr. linje reel ekstra klarhed (så
+// man kan se hvilke tillæg der hører til hvilken vare). Ved én enkelt linje
+// er mærket ren gentagelse af overskriften og udelades derfor.
 function LineItemPills({ order }) {
   if (!order.varelinjer || order.varelinjer.length === 0) return null;
+  const showLineLabel = order.varelinjer.length > 1;
   return (
     <div className="space-y-1">
       {order.noegle?.kraeves && (
@@ -53,7 +58,7 @@ function LineItemPills({ order }) {
       )}
       {order.varelinjer.map((v) => (
         <div key={v.id} className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 border border-[#52697E] text-[#52697E]">{lineItemLabel(v)}</span>
+          {showLineLabel && <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 border border-[#52697E] text-[#52697E]">{lineItemLabel(v)}</span>}
           {(v.tillaeg || []).map((y) => <AddOnPill key={y.id} addOn={y} />)}
         </div>
       ))}
