@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Trash2, X, Plus, AlertCircle, KeyRound, Clock, Truck, MapPin } from "lucide-react";
+import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin } from "lucide-react";
 import { OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID, KEY_ACCESS_TYPES, buildingKey, formatLongDate, formatDuration, lineItemMinutes, availableAddOns, serviceIcon } from "../data/domain";
 
 function LineItemEditor({ lineItem, productTypes, productCategories, primaryServices, addOnServices, onChange, onRemove, canRemove }) {
@@ -195,6 +195,58 @@ function AddressSuggestion({ address, date, orders, onUseDate }) {
   );
 }
 
+// Kundeopslag: mens sælgeren taster telefon/navn, tjekkes det op mod ALLE
+// tidligere ordrer (samme liste, som formularen allerede har fået sendt).
+// Matcher på telefonnummer (mest pålidelige - normaliseret uden mellemrum)
+// eller på eksakt (case-insensitive) navn, hvis der ikke er noget
+// telefonnummer at matche på endnu. Kræver et onOpen-prop for at kunne
+// klikke sig ind på en tidligere sag - ellers vises listen blot som
+// information uden klik-mulighed.
+function CustomerHistory({ phone, name, orders, onOpen }) {
+  const normPhone = (phone || "").replace(/\D/g, "");
+  const normName = (name || "").trim().toLowerCase();
+  if (normPhone.length < 6 && normName.length < 3) return null;
+
+  const matches = (orders || [])
+    .filter((o) => {
+      const oPhone = (o.kunde?.telefon || "").replace(/\D/g, "");
+      const oName = (o.kunde?.navn || "").trim().toLowerCase();
+      const phoneMatch = normPhone.length >= 6 && oPhone && oPhone === normPhone;
+      const nameMatch = normName.length >= 3 && oName && oName === normName;
+      return phoneMatch || nameMatch;
+    })
+    .sort((a, b) => (b.dato + b.start).localeCompare(a.dato + a.start));
+
+  if (matches.length === 0) return null;
+  const shown = matches.slice(0, 3);
+
+  return (
+    <div className="mb-3 border border-[#1C7C8C] bg-[#1C7C8C10] p-3">
+      <p className="text-sm font-semibold text-[#1C7C8C] flex items-center gap-1.5">
+        <History size={14} /> Kendt kunde — {matches.length} tidligere {matches.length === 1 ? "sag" : "sager"}
+      </p>
+      <div className="mt-2 space-y-1">
+        {shown.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => onOpen?.(s.id)}
+            disabled={!onOpen}
+            className="w-full text-left bg-white border border-[#D8D0BE] px-2 py-1.5 hover:border-[#1C7C8C] transition-colors disabled:cursor-default"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-[#1C232E]">{formatLongDate(s.dato)}</span>
+              <span className="text-[10px] font-mono text-[#52697E]">#{s.nr}</span>
+            </div>
+            <p className="text-[11px] text-[#52697E] truncate">{s.kunde?.adresse}</p>
+          </button>
+        ))}
+      </div>
+      {matches.length > shown.length && <p className="text-[11px] text-[#52697E] mt-1.5">+ {matches.length - shown.length} flere tidligere sager.</p>}
+    </div>
+  );
+}
+
 // Overblik over dagens allerede planlagte kørsler, grupperet pr. bil/tekniker
 // - så sælgeren kan se med det samme hvem der kører hvor den valgte dag, og
 // booke mere effektivt (fx lægge en ny sag hos en bil der alligevel er i
@@ -235,4 +287,4 @@ function DailyRouteOverview({ orders, technicians, date }) {
   );
 }
 
-export { LineItemEditor, KeyAccessFields, AddressSuggestion, DailyRouteOverview };
+export { LineItemEditor, KeyAccessFields, AddressSuggestion, CustomerHistory, DailyRouteOverview };
