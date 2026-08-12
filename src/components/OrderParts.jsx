@@ -193,4 +193,136 @@ function ClockWidget({ order, onClockIn, onClockOut }) {
   );
 }
 
-export { LineItemDetails, Notes, Photos, Reports, TimeLog, ClockWidget };
+// Simpel underskrifts-pad tegnet direkte på et <canvas> - ingen ekstern
+// afhængighed nødvendig. Understøtter både mus (desktop) og touch
+// (mobil/tablet, hvor den reelt skal bruges af montøren ved aflevering).
+// Canvas' pixel-størrelse sættes ud fra beholderens bredde ved opsætning
+// og ved vinduesændring, så tegnepositioner altid matcher pege-positionen
+// præcist (i stedet for at skalere med CSS, som ville kræve omregning).
+function SignaturePad({ defaultName, onSave, onCancel }) {
+  const wrapperRef = useRef(null);
+  const canvasRef = useRef(null);
+  const drawingRef = useRef(false);
+  const lastPointRef = useRef(null);
+  const [hasDrawn, setHasDrawn] = useState(false);
+  const [name, setName] = useState(defaultName || "");
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const wrapper = wrapperRef.current;
+    const setSize = () => {
+      const w = Math.max(280, wrapper.clientWidth);
+      canvas.width = w;
+      canvas.height = 180;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    };
+    setSize();
+    window.addEventListener("resize", setSize);
+    return () => window.removeEventListener("resize", setSize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const getPos = (e) => {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const point = e.touches ? e.touches[0] : e;
+    return { x: point.clientX - rect.left, y: point.clientY - rect.top };
+  };
+
+  const start = (e) => {
+    e.preventDefault();
+    drawingRef.current = true;
+    lastPointRef.current = getPos(e);
+  };
+  const move = (e) => {
+    if (!drawingRef.current) return;
+    e.preventDefault();
+    const ctx = canvasRef.current.getContext("2d");
+    const pos = getPos(e);
+    ctx.strokeStyle = "#1C232E";
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    lastPointRef.current = pos;
+    if (!hasDrawn) setHasDrawn(true);
+  };
+  const end = () => { drawingRef.current = false; };
+
+  const clear = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    setHasDrawn(false);
+  };
+
+  const save = () => {
+    if (!hasDrawn || !name.trim()) return;
+    onSave({ navn: name.trim(), data: canvasRef.current.toDataURL("image/png") });
+  };
+
+  return (
+    <div className="border border-[#D8D0BE] bg-white p-4">
+      <label className="text-xs text-[#52697E] block mb-2">
+        Navn på den der kvitterer
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Fx kundens navn" className="w-full mt-1 border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+      </label>
+      <p className="text-[11px] text-[#52697E] mb-1.5">Skriv under i feltet nedenfor:</p>
+      <div ref={wrapperRef} className="w-full">
+        <canvas
+          ref={canvasRef}
+          onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
+          onTouchStart={start} onTouchMove={move} onTouchEnd={end}
+          className="w-full border border-[#D8D0BE]"
+          style={{ touchAction: "none" }}
+        />
+      </div>
+      {!hasDrawn && <p className="text-[11px] text-[#B3261E] mt-1.5">Der skal skrives under, før den kan gemmes.</p>}
+      <div className="flex gap-2 mt-3">
+        <button onClick={save} disabled={!hasDrawn || !name.trim()} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors disabled:opacity-50">Gem underskrift</button>
+        <button onClick={clear} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-[#52697E] border border-[#D8D0BE] hover:border-[#52697E] transition-colors">Ryd</button>
+        {onCancel && <button onClick={onCancel} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-[#52697E] border border-[#D8D0BE] hover:border-[#52697E] transition-colors">Annuller</button>}
+      </div>
+    </div>
+  );
+}
+
+// Kundekvittering ved aflevering. Er allerede underskrevet, vises den
+// gemte underskrift + hvem der kvitterede og hvornår - med mulighed for at
+// underskrive igen (fx hvis der var en fejl, eller kunden ombestemmer sig
+// om hvem der kvitterer).
+function Signature({ order, onSave }) {
+  const existing = order.underskrift;
+  const [signing, setSigning] = useState(!existing);
+
+  if (!signing && existing) {
+    return (
+      <div className="border border-[#D8D0BE] bg-white p-4">
+        <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+          <div>
+            <p className="text-sm font-semibold text-[#1C232E]">Kvitteret af {existing.navn}</p>
+            <p className="text-[11px] text-[#52697E]">{existing.tid}</p>
+          </div>
+          <button onClick={() => setSigning(true)} className="text-xs font-semibold uppercase tracking-wide text-[#52697E] hover:text-[#E2621B] underline shrink-0">Underskriv igen</button>
+        </div>
+        <img src={existing.data} alt={`Underskrift fra ${existing.navn}`} className="w-full max-w-sm border border-[#D8D0BE] bg-white" />
+      </div>
+    );
+  }
+
+  return (
+    <SignaturePad
+      defaultName={existing?.navn || ""}
+      onSave={(payload) => { onSave(payload); setSigning(false); }}
+      onCancel={existing ? () => setSigning(false) : null}
+    />
+  );
+}
+
+export { LineItemDetails, Notes, Photos, Reports, TimeLog, ClockWidget, Signature };
