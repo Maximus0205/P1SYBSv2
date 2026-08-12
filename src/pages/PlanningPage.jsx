@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, PlayCircle, Search, Sparkles, UserX, X } from "lucide-react";
-import { todayISO } from "../data/domain";
+import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, Gauge, PlayCircle, Search, Sparkles, UserX, X } from "lucide-react";
+import { orderExpectedMinutes, todayISO, weekDays } from "../data/domain";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 
 // Kernen i denne side: find de sager der kræver handling NU, så ingen
@@ -119,6 +119,93 @@ function CollapsibleSection({ title, icon: Icon, color, items, technicians, onOp
   );
 }
 
+// En arbejdsdag regnes her som ca. 7,5 time (450 min) - en dag med mere
+// booket end det flages som overbooket, så man kan se det FØR flere sager
+// lægges oveni, i stedet for at opdage det for sent på selve dagen.
+const WORKDAY_MINUTES = 450;
+
+function hoursLabel(minutes) {
+  if (minutes === 0) return "–";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}t${m}m` : `${h}t`;
+}
+
+// Ugekapacitetsoverblik: hvor meget er hver montør booket til, dag for
+// dag, resten af ugen - så man kan se hvem der er ved at blive
+// overbooket, INDEN man lægger endnu en sag oven i en allerede fuld dag.
+// Tæller kun sager der ikke allerede er afsluttet (afsluttet arbejde
+// belaster ikke den fremadrettede kapacitet).
+function WeeklyCapacity({ orders, technicians }) {
+  const [open, setOpen] = useState(true);
+  const today = todayISO();
+  const week = weekDays(today);
+  const dayName = (d) => new Date(d + "T00:00:00").toLocaleDateString("da-DK", { weekday: "short" });
+
+  const rows = [...technicians, { id: null, navn: "Ikke tildelt" }];
+
+  const cellFor = (technicianId, day) => {
+    const dayOrders = orders.filter((o) => o.montorId === technicianId && o.dato === day && o.status !== "afsluttet");
+    const minutes = dayOrders.reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
+    return { count: dayOrders.length, minutes };
+  };
+
+  return (
+    <div className="border border-[#D8D0BE] bg-white mb-4">
+      <button onClick={() => setOpen((v) => !v)} className="w-full p-3 flex items-center gap-2 text-left">
+        <Gauge size={15} className="text-[#52697E] shrink-0" />
+        <span className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] flex-1">Ugens kapacitet</span>
+        <ChevronDown size={16} className={`text-[#52697E] transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="px-3 pb-3">
+          <p className="text-[11px] text-[#52697E] mb-2">Bookede timer pr. montør, dag for dag. Rødt = mere end en arbejdsdag booket ({hoursLabel(WORKDAY_MINUTES)}) - overvej at flytte noget, før der lægges mere oveni.</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-[#D8D0BE]">
+                  <th className="text-left p-1.5 text-[#52697E] font-semibold uppercase tracking-wide">Montør</th>
+                  {week.map((d) => (
+                    <th key={d} className={`text-center p-1.5 font-semibold uppercase tracking-wide ${d === today ? "text-[#E2621B]" : "text-[#52697E]"}`}>
+                      {dayName(d)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id || "utildelt"} className="border-b border-[#F0EBDD] last:border-b-0">
+                    <td className="p-1.5 text-[#1C232E] font-medium whitespace-nowrap">{r.navn}</td>
+                    {week.map((d) => {
+                      const { count, minutes } = cellFor(r.id, d);
+                      const overloaded = minutes > WORKDAY_MINUTES;
+                      return (
+                        <td key={d} className="p-1.5 text-center">
+                          {count === 0 ? (
+                            <span className="text-[#D8D0BE]">–</span>
+                          ) : (
+                            <span
+                              className={`inline-flex flex-col items-center px-1.5 py-0.5 ${overloaded ? "bg-[#B3261E] text-white" : "bg-[#F3EFE6] text-[#1C232E]"}`}
+                              title={`${count} ${count === 1 ? "sag" : "sager"} · ${hoursLabel(minutes)}`}
+                            >
+                              <span className="font-semibold">{hoursLabel(minutes)}</span>
+                              <span className="text-[9px] opacity-80">{count} {count === 1 ? "sag" : "sager"}</span>
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PlanningPage({ orders, technicians, onOpen, onCycleStatus, onAssign }) {
   const [search, setSearch] = useState("");
   const { needsAction, inProgressToday, upcoming, done } = useMemo(() => classify(orders), [orders]);
@@ -201,6 +288,8 @@ function PlanningPage({ orders, technicians, onOpen, onCycleStatus, onAssign }) 
               </div>
             </div>
           )}
+
+          <WeeklyCapacity orders={orders} technicians={technicians} />
 
           {/* Under kontrol - klap sammen som udgangspunkt, især vigtigt på mobil */}
           <div className="space-y-2">
