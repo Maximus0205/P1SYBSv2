@@ -30,6 +30,7 @@ import { PlanningPage } from "./pages/PlanningPage";
 import { DrivingPage } from "./pages/DrivingPage";
 import { TechnicianPicker, TechnicianRouteView } from "./pages/TechnicianPage";
 import { WarehousePage } from "./pages/WarehousePage";
+import { CustomersPage } from "./pages/CustomersPage";
 import { AdminPage } from "./pages/AdminPage";
 import { SystemAdminPage } from "./pages/SystemAdminPage";
 
@@ -398,6 +399,8 @@ export default function App() {
           )
         ) : page === "lager" ? (
           <WarehousePage orders={orders} technicians={technicians} selectedDate={selectedDate} onDateChange={setSelectedDate} onTogglePicked={togglePicked} onOpen={setSelectedId} />
+        ) : page === "kunder" ? (
+          <CustomersPage orders={orders} technicians={technicians} onOpen={setSelectedId} />
         ) : page === "systemadmin" ? (
           <SystemAdminPage />
         ) : (
