@@ -1,7 +1,13 @@
 import React from "react";
-import { RefreshCw, Truck, KeyRound, Clock } from "lucide-react";
+import { RefreshCw, Truck, KeyRound, Clock, Navigation } from "lucide-react";
 import { buildTitle, isToday, formatLongDate, formatDuration, technicianColor, keyAccessText, orderExpectedMinutes, totalMinutes, STATUS_META } from "../data/domain";
 import { StatusBadge, LineItemPills, DateSelector } from "../components/common";
+
+// Universelt Google Maps-link: åbner Google Maps-appen hvis den er
+// installeret (iOS og Android), ellers ruteplanlægning i browseren. Vi
+// sender kun adresseteksten (ikke koordinater) - ordrer har ikke gemte
+// koordinater i dag, og Google Maps geokoder selv adressen pålideligt.
+const mapsUrl = (address) => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
 
 function TechnicianPicker({ technicians, onSelect }) {
   return (
@@ -69,7 +75,7 @@ function TechnicianRouteView({ orders, technician, selectedDate, onDateChange, o
                     <span className="font-mono text-lg text-[#52697E] shrink-0">{s.start}–{s.slut}</span>
                     <div className="min-w-0">
                       <p className="font-semibold text-[#1C232E] truncate">{buildTitle(s.varelinjer)}</p>
-                      <p className="text-sm text-[#52697E] truncate">{s.kunde.navn} · {s.kunde.adresse}</p>
+                      <p className="text-sm text-[#52697E] truncate">{s.kunde.navn}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
@@ -85,6 +91,21 @@ function TechnicianRouteView({ orders, technician, selectedDate, onDateChange, o
                     <button onClick={(e) => { e.stopPropagation(); onCycleStatus(s.id); }}><StatusBadge status={s.status} /></button>
                   </div>
                 </div>
+
+                <div className="flex items-center justify-between gap-2 mt-2 flex-wrap">
+                  <p className="text-sm text-[#52697E]">{s.kunde.adresse}</p>
+                  <a
+                    href={mapsUrl(s.kunde.adresse)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-1.5 shrink-0 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors"
+                    title="Åbn adressen i Google Maps"
+                  >
+                    <Navigation size={13} /> Naviger
+                  </a>
+                </div>
+
                 {s.noegle?.kraeves && (
                   <p className="text-xs text-[#E2621B] mt-2 font-semibold flex items-center gap-1.5"><KeyRound size={13} /> {keyAccessText(s.noegle)}</p>
                 )}
