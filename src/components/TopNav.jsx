@@ -1,30 +1,16 @@
 import React from "react";
 import { LogOut } from "lucide-react";
 import { PAGES, PAGES_FOR_ROLE } from "../data/domain";
-
-// Logo-mærke der efterligner Punkt1s rigtige visuelle identitet: "punkt" i
-// fed sort/hvid, med tallet "1" i en rød cirkel-badge. Ingen billedfil
-// nødvendig - bygget rent med CSS, så den altid skalerer skarpt.
-function BrandMark() {
-  return (
-    <div className="flex items-center shrink-0 pl-4 pr-2 select-none" aria-label="Punkt1">
-      <span className="font-['Barlow_Condensed'] font-bold text-2xl tracking-tight text-white lowercase">punkt</span>
-      <span
-        className="ml-0.5 w-6 h-6 rounded-full bg-[#C8232E] border-2 border-[#3a3a3a] flex items-center justify-center shrink-0"
-        style={{ boxShadow: "inset 0 1px 2px rgba(255,255,255,0.25), 0 1px 2px rgba(0,0,0,0.4)" }}
-      >
-        <span className="text-white text-xs font-bold italic leading-none">1</span>
-      </span>
-    </div>
-  );
-}
+import { PUNKT1_LOGO_NEGATIV } from "../assets/logo";
 
 function TopNav({ page, onChange, user, onLogOut }) {
   const allowed = PAGES.filter((s) => (PAGES_FOR_ROLE[user.rolle] || []).includes(s.key) || (s.key === "systemadmin" && user.erSystemadmin));
   return (
     <div className="sticky top-0 z-20 bg-[#1A1A1A] mb-6">
       <div className="max-w-6xl mx-auto flex items-center justify-between">
-        <BrandMark />
+        <div className="pl-4 pr-2 shrink-0 flex items-center">
+          <img src={PUNKT1_LOGO_NEGATIV} alt="Punkt1" className="h-7 w-auto" />
+        </div>
         <div className="flex overflow-x-auto">
           {allowed.map((s) => {
             const Icon = s.icon;
