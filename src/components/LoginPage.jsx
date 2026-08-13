@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Lock, User, AlertCircle, Loader2 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { isEmailFormat, identifierToEmail, isValidUsername, emailFromUsername } from "../lib/username";
+import { PUNKT1_LOGO_POSITIV } from "../assets/logo";
 
 // Login foregår via Supabase Auth. Brugeren kan taste ENTEN en rigtig
 // e-mail ELLER et selvvalgt brugernavn i samme felt - se src/lib/username.js
@@ -66,15 +67,7 @@ function LoginPage() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center" style={{ background: "#F2F2F2" }}>
       <div className="w-full max-w-sm border border-[#DDDDDD] bg-white p-6">
-        <div className="flex items-center gap-1 mb-6 select-none">
-          <span className="font-['Barlow_Condensed'] font-bold text-3xl tracking-tight text-[#1A1A1A] lowercase">punkt</span>
-          <span
-            className="w-7 h-7 rounded-full bg-[#C8232E] border-2 border-[#1A1A1A] flex items-center justify-center shrink-0"
-            style={{ boxShadow: "inset 0 1px 2px rgba(255,255,255,0.25), 0 1px 2px rgba(0,0,0,0.4)" }}
-          >
-            <span className="text-white text-sm font-bold italic leading-none">1</span>
-          </span>
-        </div>
+        <img src={PUNKT1_LOGO_POSITIV} alt="Punkt1" className="h-9 w-auto mb-6" />
         <h1 className="font-['Barlow_Condensed'] text-3xl uppercase tracking-tight text-[#1A1A1A] mb-6">
           {signingUp ? "Opret bruger" : "Log ind"}
         </h1>
