@@ -115,6 +115,11 @@ const availableAddOns = (productTypeId, primaryServiceId, addOnServices) => {
   });
 };
 
+// NB: "plukket" (afkrydset på lager) sidder HER, pr. varelinje - se
+// WarehousePage.jsx, hvor 1 varelinje = 1 punkt på pluklisten. Det er
+// bevidst forskelligt fra order.plukket (se App.jsx), som blot er et
+// afledt "hele ordren er samlet"-flag, opdateret automatisk når alle
+// varelinjer på ordren er plukket.
 const createLineItem = (productTypes, primaryServices, productTypeId, text = "") => {
   const firstProductType = productTypes[0];
   const id = productTypeId || (firstProductType ? firstProductType.id : OTHER_PRODUCT_TYPE_ID);
@@ -129,6 +134,7 @@ const createLineItem = (productTypes, primaryServices, productTypeId, text = "")
     model: "",
     primaerYdelse: primaryService ? { id: primaryService.id, navn: primaryService.navn, minutter: 0 } : null,
     tillaeg: [],
+    plukket: false,
   };
 };
 
