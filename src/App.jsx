@@ -272,7 +272,19 @@ export default function App() {
 
   const assignTechnician = (orderId, technicianId) => { const s = orders.find((x) => x.id === orderId); if (s) saveOneOrder({ ...s, montorId: technicianId }); };
   const updateTimeSlot = (orderId, timeSlotId) => { const s = orders.find((x) => x.id === orderId); if (s) saveOneOrder({ ...s, tidsrumId: timeSlotId }); };
-  const togglePicked = (orderId) => { const s = orders.find((x) => x.id === orderId); if (s) saveOneOrder({ ...s, plukket: !s.plukket }); };
+
+  // Slår plukket til/fra for ÉN varelinje (se WarehousePage.jsx: dér er 1
+  // varelinje = 1 pluk-punkt på lagerlisten, i stedet for 1 punkt pr. hele
+  // ordren). Ordrens samlede "plukket"-flag holdes synkroniseret som et
+  // afledt "alle varelinjer på ordren er plukket"-flag, til brug de steder i
+  // appen der stadig kigger på hele ordren under ét.
+  const toggleLineItemPicked = (orderId, lineItemId) => {
+    const s = orders.find((x) => x.id === orderId);
+    if (!s) return;
+    const varelinjer = s.varelinjer.map((v) => (v.id === lineItemId ? { ...v, plukket: !v.plukket } : v));
+    const allPicked = varelinjer.length > 0 && varelinjer.every((v) => v.plukket);
+    saveOneOrder({ ...s, varelinjer, plukket: allPicked });
+  };
 
   const cycleStatus = (id) => {
     const s = orders.find((x) => x.id === id);
@@ -398,7 +410,7 @@ export default function App() {
             <TechnicianPicker technicians={technicians} onSelect={setSelectedTechnicianId} />
           )
         ) : page === "lager" ? (
-          <WarehousePage orders={orders} technicians={technicians} selectedDate={selectedDate} onDateChange={setSelectedDate} onTogglePicked={togglePicked} onOpen={setSelectedId} />
+          <WarehousePage orders={orders} technicians={technicians} selectedDate={selectedDate} onDateChange={setSelectedDate} onToggleLineItemPicked={toggleLineItemPicked} onOpen={setSelectedId} />
         ) : page === "arkiv" ? (
           <ArchivePage orders={orders} technicians={technicians} onOpen={setSelectedId} />
         ) : page === "systemadmin" ? (
