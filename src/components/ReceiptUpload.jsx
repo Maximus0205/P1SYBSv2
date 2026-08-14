@@ -69,18 +69,18 @@ function ReceiptUpload({ productTypes, onFill }) {
   };
 
   return (
-    <div className="border border-dashed border-[#D8D0BE] hover:border-[#E2621B] transition-colors bg-[#FCFAF4] p-4 mb-4">
+    <div className="rounded-xl border border-dashed border-line hover:border-brand transition-colors bg-panel p-4 mb-4">
       <div onClick={() => inputRef.current?.click()} className="flex items-center gap-3 cursor-pointer">
-        <Upload size={18} className="text-[#52697E] shrink-0" />
+        <Upload size={18} className="text-muted shrink-0" />
         <div>
-          <p className="text-sm font-semibold text-[#1C232E]">Læs ordreinfo fra PDF-kvittering (forsøg)</p>
-          <p className="text-xs text-[#52697E]">Udfylder navn/adresse/telefon/varetype hvis de kan genkendes — tjek altid felterne bagefter.</p>
+          <p className="text-sm font-semibold text-ink">Læs ordreinfo fra PDF-kvittering (forsøg)</p>
+          <p className="text-xs text-muted">Udfylder navn/adresse/telefon/varetype hvis de kan genkendes — tjek altid felterne bagefter.</p>
         </div>
         <input ref={inputRef} type="file" accept=".pdf,application/pdf" className="hidden" onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
       </div>
-      {status?.loading && <p className="text-xs text-[#52697E] mt-2">Læser PDF...</p>}
-      {status?.fejl && <p className="text-xs text-[#B3261E] mt-2 flex items-center gap-1.5"><AlertCircle size={13} /> {status.fejl}</p>}
-      {status?.fundet && <p className="text-xs text-[#3D7A5C] mt-2">Udfyldte felter automatisk: {status.fundet.join(", ")}. Tjek dem lige inden booking.</p>}
+      {status?.loading && <p className="text-xs text-muted mt-2">Læser PDF...</p>}
+      {status?.fejl && <p className="text-xs text-danger mt-2 flex items-center gap-1.5"><AlertCircle size={13} /> {status.fejl}</p>}
+      {status?.fundet && <p className="text-xs text-success mt-2">Udfyldte felter automatisk: {status.fundet.join(", ")}. Tjek dem lige inden booking.</p>}
     </div>
   );
 }
