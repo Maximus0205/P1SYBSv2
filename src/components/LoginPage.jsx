@@ -23,8 +23,9 @@ function LoginPage() {
   // (særligt iOS Safari under hukommelsespres eller med en indholds-
   // blokerings-udvidelse aktiv) - i stedet for at vise Safaris ødelagte
   // billede-ikon falder vi tilbage til et tekstbaseret ordmærke, så
-  // login-siden aldrig ser "i stykker" ud. Se også docs/kendte-issues.md
-  // hvis den skal erstattes med en rigtig statisk billedfil.
+  // login-siden aldrig ser "i stykker" ud. På sigt bør logo.js erstattes af
+  // en rigtig statisk billedfil importeret via Vite, i stedet for en kæmpe
+  // inline base64-streng i JS-bundlen.
   const [logoFailed, setLogoFailed] = useState(false);
 
   const logIn = async () => {
