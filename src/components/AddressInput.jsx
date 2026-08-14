@@ -69,7 +69,7 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus 
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]"
+        className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
       />
     );
   }
@@ -95,35 +95,35 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus 
             blurTimerRef.current = setTimeout(() => setShowSuggestions(false), 150);
           }}
           placeholder={placeholder}
-          className="w-full border border-[#D8D0BE] bg-[#F3EFE6] pl-3 pr-8 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]"
+          className="w-full rounded-lg border border-line bg-panel pl-3 pr-8 py-2 text-sm text-ink focus:outline-none focus:border-brand"
         />
         <span className="absolute right-2.5 top-1/2 -translate-y-1/2">
-          {status === "tjekker" && <Loader2 size={14} className="animate-spin text-[#52697E]" />}
-          {status === "gyldig" && <Check size={14} className="text-[#3D7A5C]" />}
-          {status === "usikker" && <AlertTriangle size={14} className="text-[#B3261E]" />}
+          {status === "tjekker" && <Loader2 size={14} className="animate-spin text-muted" />}
+          {status === "gyldig" && <Check size={14} className="text-success" />}
+          {status === "usikker" && <AlertTriangle size={14} className="text-danger" />}
         </span>
       </div>
 
       {status === "usikker" && (
-        <p className="text-[11px] text-[#B3261E] mt-1 flex items-center gap-1">
+        <p className="text-[11px] text-danger mt-1 flex items-center gap-1">
           <AlertTriangle size={11} /> Adressen kunne ikke bekræftes — tjek for tastefejl, eller vælg et forslag herunder.
         </p>
       )}
 
       {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-[#D8D0BE] shadow-lg max-h-64 overflow-auto">
+        <div className="absolute z-20 left-0 right-0 mt-1 rounded-xl bg-white border border-line shadow-lg max-h-64 overflow-auto">
           {suggestions.map((f, i) => (
             <button
               key={i}
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => selectSuggestion(f)}
-              className="w-full text-left px-3 py-2.5 hover:bg-[#F3EFE6] flex items-start gap-2.5 border-b border-[#D8D0BE] last:border-b-0"
+              className="w-full text-left px-3 py-2.5 hover:bg-panel flex items-start gap-2.5 border-b border-divider last:border-b-0"
             >
-              <MapPin size={15} className="text-[#52697E] shrink-0 mt-0.5" />
+              <MapPin size={15} className="text-muted shrink-0 mt-0.5" />
               <span className="min-w-0">
-                <span className="block text-sm text-[#1C232E] font-medium truncate">{f.hovedtekst || f.label}</span>
-                {f.undertekst && <span className="block text-xs text-[#52697E] truncate">{f.undertekst}</span>}
+                <span className="block text-sm text-ink font-medium truncate">{f.hovedtekst || f.label}</span>
+                {f.undertekst && <span className="block text-xs text-muted truncate">{f.undertekst}</span>}
               </span>
             </button>
           ))}
