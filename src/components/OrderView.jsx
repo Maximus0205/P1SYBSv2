@@ -26,34 +26,34 @@ function BookingEditor({ order, technicians, onSave, onCancel }) {
   };
 
   return (
-    <div className="bg-white border border-[#E2621B] p-4 mb-5">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Redigér booking</h3>
+    <div className="rounded-xl bg-white border border-brand p-4 mb-5 shadow-sm">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Redigér booking</h3>
       <div className="grid gap-3 sm:grid-cols-2 mb-3">
-        <label className="text-xs text-[#52697E]">
+        <label className="text-xs text-muted">
           Dato
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full mt-1 border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] font-mono focus:outline-none focus:border-[#E2621B]" />
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
         </label>
-        <label className="text-xs text-[#52697E]">
+        <label className="text-xs text-muted">
           Tidsrum
-          <select value={timeSlotId} onChange={(e) => setTimeSlotId(e.target.value)} className="w-full mt-1 border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]">
+          <select value={timeSlotId} onChange={(e) => setTimeSlotId(e.target.value)} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
             {TIME_SLOTS.map((t) => <option key={t.id} value={t.id}>{timeSlotText(t.id)}</option>)}
           </select>
         </label>
-        <label className="text-xs text-[#52697E] sm:col-span-2">
+        <label className="text-xs text-muted sm:col-span-2">
           Montør/bil
-          <select value={technicianId} onChange={(e) => setTechnicianId(e.target.value)} className="w-full mt-1 border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]">
+          <select value={technicianId} onChange={(e) => setTechnicianId(e.target.value)} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
             <option value="">Ikke tildelt</option>
             {technicians.map((m) => <option key={m.id} value={m.id}>{m.navn} — {m.bil}</option>)}
           </select>
         </label>
-        <label className="text-xs text-[#52697E] sm:col-span-2">
+        <label className="text-xs text-muted sm:col-span-2">
           Leveringsadresse
           <div className="mt-1"><AddressInput value={address} onChange={setAddress} placeholder="Leveringsadresse" /></div>
         </label>
       </div>
       <div className="flex gap-2">
-        <button onClick={save} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors flex items-center gap-1.5"><Check size={14} /> Gem ændringer</button>
-        <button onClick={onCancel} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-[#52697E] border border-[#D8D0BE] hover:border-[#52697E] transition-colors flex items-center gap-1.5"><X size={14} /> Annuller</button>
+        <button onClick={save} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors flex items-center gap-1.5"><Check size={14} /> Gem ændringer</button>
+        <button onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted transition-colors flex items-center gap-1.5"><X size={14} /> Annuller</button>
       </div>
     </div>
   );
@@ -73,7 +73,7 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
 
   return (
     <div>
-      <button onClick={onBack} className="text-sm text-[#52697E] hover:text-[#E2621B] mb-4 flex items-center gap-1">← Tilbage</button>
+      <button onClick={onBack} className="text-sm text-muted hover:text-brand mb-4 flex items-center gap-1">← Tilbage</button>
 
       {editing ? (
         <BookingEditor
@@ -83,32 +83,32 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
           onSave={(fields) => { onUpdateBooking(fields); setEditing(false); }}
         />
       ) : (
-        <div className="bg-white border border-[#D8D0BE] p-5 mb-5">
+        <div className="rounded-xl bg-white border border-line p-5 mb-5 shadow-sm">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
-              <p className="font-mono text-xs text-[#52697E] mb-1">
+              <p className="font-mono text-xs text-muted mb-1">
                 #{order.nr} · {order.dato} · {order.start}–{order.slut}{technician ? ` · ${technician.navn}` : " · ikke tildelt"}
                 {order.ordrenummer && <span className="ml-2 inline-flex items-center gap-0.5"><Hash size={10} /> {order.ordrenummer}</span>}
               </p>
-              <h1 className="font-['Barlow_Condensed'] text-3xl uppercase tracking-tight text-[#1C232E] leading-none">{buildTitle(order.varelinjer)}</h1>
-              <p className="text-sm text-[#52697E] mt-2 font-semibold">Kunde (modtager)</p>
-              <p className="text-sm text-[#52697E]">{order.kunde.navn}{order.kunde.telefon ? ` · ${order.kunde.telefon}` : ""}{order.kunde.email ? ` · ${order.kunde.email}` : ""}</p>
-              <p className="text-sm text-[#52697E]">{order.kunde.adresse}</p>
-              {order.kunde.leveringsnote && <p className="text-sm text-[#E2621B] font-medium mt-1">⚠ {order.kunde.leveringsnote}</p>}
+              <h1 className="font-display text-3xl uppercase tracking-tight text-ink leading-none">{buildTitle(order.varelinjer)}</h1>
+              <p className="text-sm text-muted mt-2 font-semibold">Kunde (modtager)</p>
+              <p className="text-sm text-muted">{order.kunde.navn}{order.kunde.telefon ? ` · ${order.kunde.telefon}` : ""}{order.kunde.email ? ` · ${order.kunde.email}` : ""}</p>
+              <p className="text-sm text-muted">{order.kunde.adresse}</p>
+              {order.kunde.leveringsnote && <p className="text-sm text-brand font-medium mt-1">⚠ {order.kunde.leveringsnote}</p>}
               {order.koeber && (
-                <div className="mt-3 pt-3 border-t border-[#F0EBDD]">
-                  <p className="text-sm text-[#52697E] font-semibold flex items-center gap-1.5"><Building2 size={13} /> Køber (afviger fra kunden)</p>
-                  <p className="text-sm text-[#52697E]">{order.koeber.navn}{order.koeber.telefon ? ` · ${order.koeber.telefon}` : ""}{order.koeber.email ? ` · ${order.koeber.email}` : ""}</p>
-                  {order.koeber.adresse && <p className="text-sm text-[#52697E]">{order.koeber.adresse}</p>}
+                <div className="mt-3 pt-3 border-t border-divider">
+                  <p className="text-sm text-muted font-semibold flex items-center gap-1.5"><Building2 size={13} /> Køber (afviger fra kunden)</p>
+                  <p className="text-sm text-muted">{order.koeber.navn}{order.koeber.telefon ? ` · ${order.koeber.telefon}` : ""}{order.koeber.email ? ` · ${order.koeber.email}` : ""}</p>
+                  {order.koeber.adresse && <p className="text-sm text-muted">{order.koeber.adresse}</p>}
                 </div>
               )}
               {order.noegle?.kraeves && (
-                <p className="text-sm text-[#E2621B] font-semibold mt-2 flex items-center gap-1.5"><KeyRound size={14} /> {keyAccessText(order.noegle)}</p>
+                <p className="text-sm text-brand font-semibold mt-2 flex items-center gap-1.5"><KeyRound size={14} /> {keyAccessText(order.noegle)}</p>
               )}
             </div>
             <div className="flex flex-col items-end gap-2">
               <button onClick={() => onCycleStatus(order.id)}><StatusBadge status={order.status} /></button>
-              <button onClick={() => setEditing(true)} className="text-xs font-semibold uppercase tracking-wide text-[#52697E] hover:text-[#E2621B] flex items-center gap-1"><Pencil size={13} /> Redigér booking</button>
+              <button onClick={() => setEditing(true)} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand flex items-center gap-1"><Pencil size={13} /> Redigér booking</button>
             </div>
           </div>
         </div>
@@ -116,9 +116,9 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
 
       <LineItemDetails order={order} onToggleAddOn={onToggleAddOn} onAddAddOn={onAddAddOn} onRemoveAddOn={onRemoveAddOn} />
       <ClockWidget order={order} onClockIn={onClockIn} onClockOut={onClockOut} />
-      <div className="flex border-b border-[#D8D0BE] mb-5 overflow-x-auto">
+      <div className="flex border-b border-line mb-5 overflow-x-auto">
         {tabs.map((t) => (
-          <button key={t.key} onClick={() => setTab(t.key)} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors shrink-0 ${tab === t.key ? "text-[#1C232E] border-b-2 border-[#E2621B]" : "text-[#52697E] hover:text-[#1C232E]"}`}>
+          <button key={t.key} onClick={() => setTab(t.key)} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors shrink-0 ${tab === t.key ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
             {t.label} <span className="font-mono text-xs">({t.count})</span>
           </button>
         ))}
