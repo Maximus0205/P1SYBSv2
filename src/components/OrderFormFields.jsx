@@ -48,21 +48,21 @@ function LineItemEditor({ lineItem, productTypes, productCategories, primaryServ
   const changeAddOnMinutes = (id, min) => onChange({ ...lineItem, tillaeg: lineItem.tillaeg.map((y) => (y.id === id ? { ...y, minutter: Number(min) || 0 } : y)) });
 
   return (
-    <div className="border border-[#D8D0BE] bg-[#FCFAF4] p-3">
+    <div className="rounded-xl border border-line bg-panel p-3">
       <div className="grid gap-2 sm:grid-cols-3 mb-2">
-        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="border border-[#D8D0BE] bg-white px-2 py-1.5 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]">
+        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand">
           <option value="">Alle kategorier</option>
           {productCategories.map((k) => <option key={k.id} value={k.id}>{k.navn}</option>)}
         </select>
-        <select value={lineItem.varetypeId} onChange={(e) => changeProductType(e.target.value)} className="border border-[#D8D0BE] bg-white px-2 py-1.5 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]">
+        <select value={lineItem.varetypeId} onChange={(e) => changeProductType(e.target.value)} className="rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand">
           {visibleProductTypes.map((v) => <option key={v.id} value={v.id}>{v.navn}</option>)}
           <option value={OTHER_PRODUCT_TYPE_ID}>{OTHER_PRODUCT_TYPE}</option>
         </select>
         <div className="flex items-center gap-1.5">
-          <select value={lineItem.primaerYdelse?.id || ""} onChange={(e) => changePrimaryService(e.target.value)} className="flex-1 border border-[#D8D0BE] bg-white px-2 py-1.5 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]">
+          <select value={lineItem.primaerYdelse?.id || ""} onChange={(e) => changePrimaryService(e.target.value)} className="flex-1 rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand">
             {primaryServices.map((p) => <option key={p.id} value={p.id}>{p.navn}</option>)}
           </select>
-          {canRemove && <button onClick={onRemove} className="p-1.5 text-[#52697E] hover:text-[#B3261E] shrink-0" title="Fjern varelinje"><Trash2 size={15} /></button>}
+          {canRemove && <button onClick={onRemove} className="p-1.5 text-muted hover:text-danger shrink-0" title="Fjern varelinje"><Trash2 size={15} /></button>}
         </div>
       </div>
 
@@ -71,30 +71,30 @@ function LineItemEditor({ lineItem, productTypes, productCategories, primaryServ
           value={lineItem.varetypeTekst}
           onChange={(e) => onChange({ ...lineItem, varetypeTekst: e.target.value })}
           placeholder="Beskriv varen/opgaven, fx 'Specialbygget vinkøleskab'"
-          className="w-full border border-[#D8D0BE] bg-white px-2 py-1.5 text-sm text-[#1C232E] mb-2 focus:outline-none focus:border-[#E2621B]"
+          className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink mb-2 focus:outline-none focus:border-brand"
         />
       )}
 
       <div className="grid gap-2 sm:grid-cols-2 mb-2">
-        <input value={lineItem.maerke} onChange={(e) => onChange({ ...lineItem, maerke: e.target.value })} placeholder="Mærke, fx 'Bosch'" className="border border-[#D8D0BE] bg-white px-2 py-1.5 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-        <input value={lineItem.model} onChange={(e) => onChange({ ...lineItem, model: e.target.value })} placeholder="Modelnummer" className="border border-[#D8D0BE] bg-white px-2 py-1.5 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+        <input value={lineItem.maerke} onChange={(e) => onChange({ ...lineItem, maerke: e.target.value })} placeholder="Mærke, fx 'Bosch'" className="rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand" />
+        <input value={lineItem.model} onChange={(e) => onChange({ ...lineItem, model: e.target.value })} placeholder="Modelnummer" className="rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand" />
       </div>
 
-      <label className="flex items-center gap-2 mb-2 text-xs text-[#52697E]">
+      <label className="flex items-center gap-2 mb-2 text-xs text-muted">
         <Clock size={12} className="shrink-0" />
         Estimeret tid til {lineItem.primaerYdelse?.navn?.toLowerCase() || "denne ydelse"}
         <input
           type="number" min="0"
           value={lineItem.primaerYdelse?.minutter ?? 0}
           onChange={(e) => changePrimaryServiceMinutes(e.target.value)}
-          className="w-16 border border-[#D8D0BE] bg-white px-2 py-1 text-right text-[#1C232E] focus:outline-none focus:border-[#E2621B]"
+          className="w-16 rounded-lg border border-line bg-white px-2 py-1 text-right text-ink focus:outline-none focus:border-brand"
         />
         min
       </label>
 
       {available.length > 0 && (
         <div className="mb-2">
-          <p className="text-[10px] uppercase tracking-wide text-[#52697E] mb-1">Tillægsydelser</p>
+          <p className="text-[10px] uppercase tracking-wide text-muted mb-1">Tillægsydelser</p>
           <div className="flex flex-wrap gap-1.5">
             {available.map((t) => {
               const selected = lineItem.tillaeg.find((x) => x.id === t.id || x.navn === t.navn);
@@ -103,7 +103,7 @@ function LineItemEditor({ lineItem, productTypes, productCategories, primaryServ
                 <button
                   key={t.id}
                   onClick={() => toggleAddOn(t)}
-                  className={`inline-flex items-center gap-1.5 text-xs px-2 py-1 border transition-colors ${selected ? "border-[#3D7A5C] bg-[#3D7A5C10] text-[#3D7A5C]" : "border-[#D8D0BE] text-[#52697E] hover:border-[#E2621B] hover:text-[#E2621B]"}`}
+                  className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border transition-colors ${selected ? "border-success bg-success/10 text-success" : "border-line text-muted hover:border-brand hover:text-brand"}`}
                 >
                   <Icon size={12} strokeWidth={2.5} />
                   {t.navn}
@@ -116,49 +116,49 @@ function LineItemEditor({ lineItem, productTypes, productCategories, primaryServ
       )}
 
       {lineItem.tillaeg.length > 0 && (
-        <div className="space-y-1 mb-2 border-t border-[#F0EBDD] pt-2">
+        <div className="space-y-1 mb-2 border-t border-divider pt-2">
           {lineItem.tillaeg.map((y) => {
             const Icon = serviceIcon(y.navn);
             return (
-              <div key={y.id} className="flex items-center gap-2 px-1.5 py-1 hover:bg-white group">
-                <input type="checkbox" checked={y.udfoert} onChange={() => toggleDone(y.id)} className="w-4 h-4 accent-[#3D7A5C] shrink-0" title="Udført" />
-                <Icon size={13} className="text-[#52697E] shrink-0" strokeWidth={2.5} />
-                <span className="text-sm text-[#1C232E] flex-1 truncate">{y.navn}</span>
+              <div key={y.id} className="flex items-center gap-2 px-1.5 py-1 rounded-lg hover:bg-white group">
+                <input type="checkbox" checked={y.udfoert} onChange={() => toggleDone(y.id)} className="w-4 h-4 accent-success shrink-0" title="Udført" />
+                <Icon size={13} className="text-muted shrink-0" strokeWidth={2.5} />
+                <span className="text-sm text-ink flex-1 truncate">{y.navn}</span>
                 <input
                   type="number" min="0"
                   value={y.minutter}
                   onChange={(e) => changeAddOnMinutes(y.id, e.target.value)}
-                  className="w-14 border border-[#D8D0BE] bg-white px-1.5 py-0.5 text-right text-[10px] text-[#1C232E] focus:outline-none focus:border-[#E2621B]"
+                  className="w-14 rounded-lg border border-line bg-white px-1.5 py-0.5 text-right text-[10px] text-ink focus:outline-none focus:border-brand"
                   title="Estimeret tid for denne tillægsydelse"
                 />
-                <span className="text-[10px] text-[#52697E]">min</span>
+                <span className="text-[10px] text-muted">min</span>
               </div>
             );
           })}
         </div>
       )}
 
-      <p className="text-[10px] text-[#52697E] flex items-center gap-1"><Clock size={10} /> I alt for denne linje: {formatDuration(lineItemMinutes(lineItem))}</p>
+      <p className="text-[10px] text-muted flex items-center gap-1"><Clock size={10} /> I alt for denne linje: {formatDuration(lineItemMinutes(lineItem))}</p>
     </div>
   );
 }
 
 function KeyAccessFields({ keyAccess, onChange }) {
   return (
-    <div className="border border-[#D8D0BE] bg-[#FCFAF4] p-3">
+    <div className="rounded-xl border border-line bg-panel p-3">
       <label className="flex items-center gap-2 cursor-pointer mb-2">
-        <input type="checkbox" checked={keyAccess.kraeves} onChange={(e) => onChange({ ...keyAccess, kraeves: e.target.checked })} className="w-4 h-4 accent-[#E2621B]" />
-        <KeyRound size={14} className="text-[#52697E]" />
-        <span className="text-sm font-medium text-[#1C232E]">Kræver nøgle/adgang</span>
+        <input type="checkbox" checked={keyAccess.kraeves} onChange={(e) => onChange({ ...keyAccess, kraeves: e.target.checked })} className="w-4 h-4 accent-brand" />
+        <KeyRound size={14} className="text-muted" />
+        <span className="text-sm font-medium text-ink">Kræver nøgle/adgang</span>
       </label>
       {keyAccess.kraeves && (
         <div className="grid gap-2 sm:grid-cols-2 pl-1">
-          <select value={keyAccess.type} onChange={(e) => onChange({ ...keyAccess, type: e.target.value })} className="border border-[#D8D0BE] bg-white px-2 py-1.5 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]">
+          <select value={keyAccess.type} onChange={(e) => onChange({ ...keyAccess, type: e.target.value })} className="rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand">
             <option value="">Vælg type</option>
             {KEY_ACCESS_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
-          <input value={keyAccess.detaljer} onChange={(e) => onChange({ ...keyAccess, detaljer: e.target.value })} placeholder="Detaljer, fx kode eller nøgleboks-nr." className="border border-[#D8D0BE] bg-white px-2 py-1.5 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-          <input value={keyAccess.placering} onChange={(e) => onChange({ ...keyAccess, placering: e.target.value })} placeholder="Placering, fx 'Ved hoveddøren bag lampen'" className="sm:col-span-2 border border-[#D8D0BE] bg-white px-2 py-1.5 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+          <input value={keyAccess.detaljer} onChange={(e) => onChange({ ...keyAccess, detaljer: e.target.value })} placeholder="Detaljer, fx kode eller nøgleboks-nr." className="rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand" />
+          <input value={keyAccess.placering} onChange={(e) => onChange({ ...keyAccess, placering: e.target.value })} placeholder="Placering, fx 'Ved hoveddøren bag lampen'" className="sm:col-span-2 rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand" />
         </div>
       )}
     </div>
@@ -177,20 +177,20 @@ function AddressSuggestion({ address, date, orders, onUseDate }) {
   if (matches.length === 0) return null;
   const dates = [...new Set(matches.map((s) => s.dato))].sort();
   return (
-    <div className="mb-3 border border-[#E2621B] bg-[#E2621B10] p-3">
-      <p className="text-sm font-semibold text-[#E2621B] flex items-center gap-1.5"><AlertCircle size={14} /> Samme opgang/ejendom er allerede booket</p>
-      <p className="text-xs text-[#52697E] mt-1">Der er allerede en kommende sag på denne adresse på en anden dag — overvej at samle dem, så I ikke kører to gange til samme opgang:</p>
+    <div className="mb-3 rounded-xl border border-brand bg-brand/10 p-3">
+      <p className="text-sm font-semibold text-brand flex items-center gap-1.5"><AlertCircle size={14} /> Samme opgang/ejendom er allerede booket</p>
+      <p className="text-xs text-muted mt-1">Der er allerede en kommende sag på denne adresse på en anden dag — overvej at samle dem, så I ikke kører to gange til samme opgang:</p>
       <div className="mt-2 space-y-1">
         {dates.map((d) => {
           const onThatDay = matches.filter((s) => s.dato === d);
           return (
-            <div key={d} className="bg-white border border-[#D8D0BE] px-2 py-1.5">
+            <div key={d} className="rounded-lg bg-white border border-line px-2 py-1.5">
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="text-xs font-semibold text-[#1C232E]">{formatLongDate(d)}</span>
-                <button onClick={() => onUseDate(d)} className="text-[10px] font-semibold uppercase tracking-wide text-[#1C232E] border border-[#D8D0BE] hover:border-[#E2621B] hover:text-[#E2621B] px-2 py-1 shrink-0">Brug denne dato</button>
+                <span className="text-xs font-semibold text-ink">{formatLongDate(d)}</span>
+                <button onClick={() => onUseDate(d)} className="text-[10px] font-semibold uppercase tracking-wide text-ink border border-line rounded-full hover:border-brand hover:text-brand px-2 py-1 shrink-0">Brug denne dato</button>
               </div>
               {onThatDay.map((s) => (
-                <p key={s.id} className="text-[11px] text-[#52697E] flex items-center gap-1 mt-0.5"><MapPin size={10} className="shrink-0" /> {s.kunde.navn} — {s.kunde.adresse}</p>
+                <p key={s.id} className="text-[11px] text-muted flex items-center gap-1 mt-0.5"><MapPin size={10} className="shrink-0" /> {s.kunde.navn} — {s.kunde.adresse}</p>
               ))}
             </div>
           );
@@ -226,8 +226,8 @@ function CustomerHistory({ phone, name, orders, onOpen }) {
   const shown = matches.slice(0, 3);
 
   return (
-    <div className="mb-3 border border-[#1C7C8C] bg-[#1C7C8C10] p-3">
-      <p className="text-sm font-semibold text-[#1C7C8C] flex items-center gap-1.5">
+    <div className="mb-3 rounded-xl border border-info bg-info/10 p-3">
+      <p className="text-sm font-semibold text-info flex items-center gap-1.5">
         <History size={14} /> Kendt kunde — {matches.length} tidligere {matches.length === 1 ? "sag" : "sager"}
       </p>
       <div className="mt-2 space-y-1">
@@ -237,17 +237,17 @@ function CustomerHistory({ phone, name, orders, onOpen }) {
             type="button"
             onClick={() => onOpen?.(s.id)}
             disabled={!onOpen}
-            className="w-full text-left bg-white border border-[#D8D0BE] px-2 py-1.5 hover:border-[#1C7C8C] transition-colors disabled:cursor-default"
+            className="w-full text-left rounded-lg bg-white border border-line px-2 py-1.5 hover:border-info transition-colors disabled:cursor-default"
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold text-[#1C232E]">{formatLongDate(s.dato)}</span>
-              <span className="text-[10px] font-mono text-[#52697E]">#{s.nr}</span>
+              <span className="text-xs font-semibold text-ink">{formatLongDate(s.dato)}</span>
+              <span className="text-[10px] font-mono text-muted">#{s.nr}</span>
             </div>
-            <p className="text-[11px] text-[#52697E] truncate">{s.kunde?.adresse}</p>
+            <p className="text-[11px] text-muted truncate">{s.kunde?.adresse}</p>
           </button>
         ))}
       </div>
-      {matches.length > shown.length && <p className="text-[11px] text-[#52697E] mt-1.5">+ {matches.length - shown.length} flere tidligere sager.</p>}
+      {matches.length > shown.length && <p className="text-[11px] text-muted mt-1.5">+ {matches.length - shown.length} flere tidligere sager.</p>}
     </div>
   );
 }
@@ -266,22 +266,22 @@ function DailyRouteOverview({ orders, technicians, date }) {
     .filter((g) => g.orders.length > 0);
 
   return (
-    <div className="mb-4 border border-[#D8D0BE] bg-[#FCFAF4] p-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-[#1C232E] mb-2.5 flex items-center gap-1.5">
-        <Truck size={13} /> Dagens ruter — {formatLongDate(date)} <span className="font-mono text-[#52697E]">({todaysOrders.length} sager)</span>
+    <div className="mb-4 rounded-xl border border-line bg-panel p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-ink mb-2.5 flex items-center gap-1.5">
+        <Truck size={13} /> Dagens ruter — {formatLongDate(date)} <span className="font-mono text-muted">({todaysOrders.length} sager)</span>
       </p>
       <div className="space-y-3">
         {rows.map((g) => (
           <div key={g.id || "utildelt"}>
-            <p className="text-[11px] font-semibold text-[#52697E] mb-1">
+            <p className="text-[11px] font-semibold text-muted mb-1">
               {g.navn}{g.bil ? ` — ${g.bil}` : ""} <span className="font-mono">({g.orders.length})</span>
             </p>
             <div className="space-y-1">
               {g.orders.map((s) => (
-                <div key={s.id} className="flex items-start gap-2 text-xs bg-white border border-[#D8D0BE] px-2 py-1.5">
-                  <span className="font-mono text-[#52697E] shrink-0">{s.start}</span>
-                  <span className="text-[#1C232E] shrink-0 font-medium">{s.kunde?.navn}</span>
-                  <span className="text-[#52697E] truncate flex items-center gap-1"><MapPin size={10} className="shrink-0" /> {s.kunde?.adresse}</span>
+                <div key={s.id} className="flex items-start gap-2 text-xs rounded-lg bg-white border border-line px-2 py-1.5">
+                  <span className="font-mono text-muted shrink-0">{s.start}</span>
+                  <span className="text-ink shrink-0 font-medium">{s.kunde?.navn}</span>
+                  <span className="text-muted truncate flex items-center gap-1"><MapPin size={10} className="shrink-0" /> {s.kunde?.adresse}</span>
                 </div>
               ))}
             </div>
