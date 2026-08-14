@@ -66,14 +66,14 @@ function LoginPage() {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center" style={{ background: "#F2F2F2" }}>
-      <div className="w-full max-w-sm border border-[#DDDDDD] bg-white p-6">
+      <div className="w-full max-w-sm rounded-xl border border-[#DDDDDD] bg-white p-6 shadow-sm">
         <img src={PUNKT1_LOGO_POSITIV} alt="Punkt1" className="h-9 w-auto mb-6" />
         <h1 className="font-['Barlow_Condensed'] text-3xl uppercase tracking-tight text-[#1A1A1A] mb-6">
           {signingUp ? "Opret bruger" : "Log ind"}
         </h1>
 
         {signingUp && (
-          <div className="flex border border-[#DDDDDD] mb-3 text-xs font-semibold uppercase tracking-wide">
+          <div className="flex rounded-full border border-[#DDDDDD] mb-3 text-xs font-semibold uppercase tracking-wide overflow-hidden">
             <button onClick={() => setUseUsername(true)} className={`flex-1 py-2 transition-colors ${useUsername ? "bg-[#1A1A1A] text-white" : "text-[#5C5C5C] hover:text-[#1A1A1A]"}`}>Brugernavn</button>
             <button onClick={() => setUseUsername(false)} className={`flex-1 py-2 transition-colors ${!useUsername ? "bg-[#1A1A1A] text-white" : "text-[#5C5C5C] hover:text-[#1A1A1A]"}`}>E-mail</button>
           </div>
@@ -86,7 +86,7 @@ function LoginPage() {
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full mt-1 border border-[#DDDDDD] bg-[#F2F2F2] px-3 py-2 text-sm text-[#1A1A1A] focus:outline-none focus:border-[#C8232E]"
+                className="w-full mt-1 rounded-lg border border-[#DDDDDD] bg-[#F2F2F2] px-3 py-2 text-sm text-[#1A1A1A] focus:outline-none focus:border-[#C8232E]"
               />
             </label>
           )}
@@ -99,7 +99,7 @@ function LoginPage() {
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && submit()}
-                className="w-full border border-[#DDDDDD] bg-[#F2F2F2] pl-8 pr-3 py-2 text-sm text-[#1A1A1A] focus:outline-none focus:border-[#C8232E]"
+                className="w-full rounded-lg border border-[#DDDDDD] bg-[#F2F2F2] pl-8 pr-3 py-2 text-sm text-[#1A1A1A] focus:outline-none focus:border-[#C8232E]"
               />
             </div>
           </label>
@@ -112,7 +112,7 @@ function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && submit()}
-                className="w-full border border-[#DDDDDD] bg-[#F2F2F2] pl-8 pr-3 py-2 text-sm text-[#1A1A1A] focus:outline-none focus:border-[#C8232E]"
+                className="w-full rounded-lg border border-[#DDDDDD] bg-[#F2F2F2] pl-8 pr-3 py-2 text-sm text-[#1A1A1A] focus:outline-none focus:border-[#C8232E]"
               />
             </div>
           </label>
@@ -125,7 +125,7 @@ function LoginPage() {
         <button
           onClick={submit}
           disabled={busy}
-          className="w-full mt-5 px-4 py-2.5 text-sm font-semibold uppercase tracking-wide text-white bg-[#1A1A1A] hover:bg-[#C8232E] transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+          className="w-full mt-5 px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-[#1A1A1A] hover:bg-[#C8232E] transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
         >
           {busy && <Loader2 size={14} className="animate-spin" />}
           {signingUp ? "Opret bruger" : "Log ind"}
