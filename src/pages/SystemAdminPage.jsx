@@ -84,70 +84,70 @@ function SystemAdminPage() {
 
   return (
     <div>
-      <div className="border border-[#D8D0BE] bg-white p-5 mb-6">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-1 flex items-center gap-2"><Building2 size={16} /> Opret ny butik</h3>
-        <p className="text-xs text-[#52697E] mb-3">Butikkens adresse geokodes automatisk - resten af butikkens system (adresseforslag ved booking) tager udgangspunkt i den, så en butik på Fyn ikke primært får forslag fra København.</p>
+      <div className="rounded-xl border border-line bg-white p-5 mb-6 shadow-sm">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-2"><Building2 size={16} /> Opret ny butik</h3>
+        <p className="text-xs text-muted mb-3">Butikkens adresse geokodes automatisk - resten af butikkens system (adresseforslag ved booking) tager udgangspunkt i den, så en butik på Fyn ikke primært får forslag fra København.</p>
         <div className="grid gap-3 sm:grid-cols-2">
-          <input value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="Butiksnavn" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-          <input value={storeNumber} onChange={(e) => setStoreNumber(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="Butiksnummer (4 cifre, valgfrit)" inputMode="numeric" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] font-mono focus:outline-none focus:border-[#E2621B]" />
+          <input value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="Butiksnavn" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+          <input value={storeNumber} onChange={(e) => setStoreNumber(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="Butiksnummer (4 cifre, valgfrit)" inputMode="numeric" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
           <div className="sm:col-span-2">
             <AddressInput value={address} onChange={setAddress} placeholder="Butikkens adresse" onValidationChange={setAddressStatus} />
           </div>
         </div>
 
-        <p className="text-xs font-semibold uppercase tracking-wide text-[#52697E] mt-4 mb-2">Butikkens første admin</p>
-        <div className="flex border border-[#D8D0BE] mb-3 text-xs font-semibold uppercase tracking-wide w-fit">
-          <button onClick={() => setAdminLoginType("brugernavn")} className={`px-3 py-1.5 transition-colors ${adminLoginType === "brugernavn" ? "bg-[#1C232E] text-white" : "text-[#52697E] hover:text-[#1C232E]"}`}>Brugernavn</button>
-          <button onClick={() => setAdminLoginType("email")} className={`px-3 py-1.5 transition-colors ${adminLoginType === "email" ? "bg-[#1C232E] text-white" : "text-[#52697E] hover:text-[#1C232E]"}`}>E-mail</button>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted mt-4 mb-2">Butikkens første admin</p>
+        <div className="flex rounded-full border border-line mb-3 text-xs font-semibold uppercase tracking-wide w-fit overflow-hidden">
+          <button onClick={() => setAdminLoginType("brugernavn")} className={`px-3 py-1.5 transition-colors ${adminLoginType === "brugernavn" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>Brugernavn</button>
+          <button onClick={() => setAdminLoginType("email")} className={`px-3 py-1.5 transition-colors ${adminLoginType === "email" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>E-mail</button>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <input value={adminName} onChange={(e) => changeAdminName(e.target.value)} placeholder="Navn på butikkens første admin" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+          <input value={adminName} onChange={(e) => changeAdminName(e.target.value)} placeholder="Navn på butikkens første admin" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
           {adminLoginType === "brugernavn" ? (
-            <input value={adminUsername} onChange={(e) => { setAdminUsername(e.target.value); setAdminUsernameEdited(true); }} placeholder="Brugernavn (foreslået, kan rettes)" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] font-mono focus:outline-none focus:border-[#E2621B]" />
+            <input value={adminUsername} onChange={(e) => { setAdminUsername(e.target.value); setAdminUsernameEdited(true); }} placeholder="Brugernavn (foreslået, kan rettes)" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
           ) : (
-            <input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="Admin e-mail" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+            <input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="Admin e-mail" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
           )}
-          <input value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} placeholder="Admin adgangskode (mindst 6 tegn)" className="sm:col-span-2 border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+          <input value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} placeholder="Admin adgangskode (mindst 6 tegn)" className="sm:col-span-2 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
         </div>
-        {error && <p className="text-xs text-[#B3261E] mt-2 flex items-center gap-1.5"><AlertCircle size={13} /> {error}</p>}
-        {message && <p className="text-xs text-[#3D7A5C] mt-2 flex items-center gap-1.5"><Check size={13} /> {message}</p>}
-        <button onClick={create} disabled={busy} className="mt-3 px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors flex items-center gap-1.5 disabled:opacity-60">
+        {error && <p className="text-xs text-danger mt-2 flex items-center gap-1.5"><AlertCircle size={13} /> {error}</p>}
+        {message && <p className="text-xs text-success mt-2 flex items-center gap-1.5"><Check size={13} /> {message}</p>}
+        <button onClick={create} disabled={busy} className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors flex items-center gap-1.5 disabled:opacity-60">
           {busy && <Loader2 size={14} className="animate-spin" />} {busy ? "Opretter..." : "Opret butik"}
         </button>
       </div>
 
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Alle butikker ({stores.length})</h3>
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Alle butikker ({stores.length})</h3>
       {loading ? (
-        <p className="text-sm text-[#52697E]">Indlæser...</p>
+        <p className="text-sm text-muted">Indlæser...</p>
       ) : (
         <div className="space-y-2 mb-8">
           {stores.map((b) =>
             editingId === b.id ? (
               <StoreEditor key={b.id} store={b} onDone={() => { setEditingId(null); reload(); }} onCancel={() => setEditingId(null)} />
             ) : deletingId === b.id ? (
-              <div key={b.id} className="bg-white border border-[#B3261E] p-3">
-                <p className="text-sm text-[#B3261E] font-semibold flex items-center gap-1.5 mb-1"><AlertCircle size={14} /> Slet "{b.navn}" permanent?</p>
-                <p className="text-xs text-[#52697E] mb-2">Alle butikkens sager, biler, varetyper m.m. slettes for altid. Brugernes login bevares, de mister blot adgangen til denne butik. Skriv butikkens navn for at bekræfte.</p>
+              <div key={b.id} className="rounded-xl bg-white border border-danger p-3 shadow-sm">
+                <p className="text-sm text-danger font-semibold flex items-center gap-1.5 mb-1"><AlertCircle size={14} /> Slet "{b.navn}" permanent?</p>
+                <p className="text-xs text-muted mb-2">Alle butikkens sager, biler, varetyper m.m. slettes for altid. Brugernes login bevares, de mister blot adgangen til denne butik. Skriv butikkens navn for at bekræfte.</p>
                 <div className="flex gap-2 flex-wrap items-center">
-                  <input autoFocus value={deleteConfirm} onChange={(e) => setDeleteConfirm(e.target.value)} placeholder={b.navn} className="flex-1 min-w-[160px] border border-[#B3261E] bg-[#F3EFE6] px-2 py-1.5 text-sm text-[#1C232E]" />
-                  <button onClick={() => confirmDelete(b)} disabled={deleteBusy} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white bg-[#B3261E] hover:bg-[#1C232E] transition-colors disabled:opacity-60 flex items-center gap-1.5">
+                  <input autoFocus value={deleteConfirm} onChange={(e) => setDeleteConfirm(e.target.value)} placeholder={b.navn} className="flex-1 min-w-[160px] rounded-lg border border-danger bg-panel px-2 py-1.5 text-sm text-ink" />
+                  <button onClick={() => confirmDelete(b)} disabled={deleteBusy} className="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-danger hover:bg-ink transition-colors disabled:opacity-60 flex items-center gap-1.5">
                     {deleteBusy && <Loader2 size={12} className="animate-spin" />} Slet permanent
                   </button>
-                  <button onClick={() => setDeletingId(null)} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#52697E] border border-[#D8D0BE]">Fortryd</button>
+                  <button onClick={() => setDeletingId(null)} className="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-muted border border-line">Fortryd</button>
                 </div>
-                {deleteError && <p className="text-xs text-[#B3261E] mt-2">{deleteError}</p>}
+                {deleteError && <p className="text-xs text-danger mt-2">{deleteError}</p>}
               </div>
             ) : (
-              <div key={b.id} className="bg-white border border-[#D8D0BE] p-3 flex items-center gap-3 flex-wrap">
+              <div key={b.id} className="rounded-xl bg-white border border-line p-3 flex items-center gap-3 flex-wrap shadow-sm">
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-sm text-[#1C232E]">
+                  <p className="font-semibold text-sm text-ink">
                     {b.navn}
-                    {b.butiksnummer && <span className="ml-2 font-mono text-xs text-[#52697E]">#{b.butiksnummer}</span>}
+                    {b.butiksnummer && <span className="ml-2 font-mono text-xs text-muted">#{b.butiksnummer}</span>}
                   </p>
-                  <p className="text-xs text-[#52697E] truncate">{b.adresse}</p>
+                  <p className="text-xs text-muted truncate">{b.adresse}</p>
                 </div>
-                <button onClick={() => setEditingId(b.id)} className="p-1.5 text-[#52697E] hover:text-[#E2621B] shrink-0" title="Redigér"><Pencil size={15} /></button>
-                <button onClick={() => startDelete(b.id)} className="p-1.5 text-[#52697E] hover:text-[#B3261E] shrink-0" title="Slet butik"><Trash2 size={15} /></button>
+                <button onClick={() => setEditingId(b.id)} className="p-1.5 text-muted hover:text-brand shrink-0" title="Redigér"><Pencil size={15} /></button>
+                <button onClick={() => startDelete(b.id)} className="p-1.5 text-muted hover:text-danger shrink-0" title="Slet butik"><Trash2 size={15} /></button>
               </div>
             )
           )}
@@ -197,20 +197,20 @@ function StoreEditor({ store, onDone, onCancel }) {
   };
 
   return (
-    <div className="bg-white border border-[#E2621B] p-3">
+    <div className="rounded-xl bg-white border border-brand p-3 shadow-sm">
       <div className="grid gap-2 sm:grid-cols-2 mb-2">
-        <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Butiksnavn" className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-        <input value={number} onChange={(e) => setNumber(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="Butiksnummer (4 cifre)" inputMode="numeric" className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-sm text-[#1C232E] font-mono focus:outline-none focus:border-[#E2621B]" />
+        <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Butiksnavn" className="rounded-lg border border-line bg-panel px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand" />
+        <input value={number} onChange={(e) => setNumber(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="Butiksnummer (4 cifre)" inputMode="numeric" className="rounded-lg border border-line bg-panel px-2 py-1.5 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
         <div className="sm:col-span-2">
           <AddressInput value={address} onChange={setAddress} placeholder="Adresse" />
         </div>
       </div>
-      {error && <p className="text-xs text-[#B3261E] mb-2 flex items-center gap-1.5"><AlertCircle size={12} /> {error}</p>}
+      {error && <p className="text-xs text-danger mb-2 flex items-center gap-1.5"><AlertCircle size={12} /> {error}</p>}
       <div className="flex gap-2">
-        <button onClick={save} disabled={busy} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors disabled:opacity-60 flex items-center gap-1.5">
+        <button onClick={save} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors disabled:opacity-60 flex items-center gap-1.5">
           {busy && <Loader2 size={12} className="animate-spin" />} Gem
         </button>
-        <button onClick={onCancel} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#52697E] border border-[#D8D0BE]">Fortryd</button>
+        <button onClick={onCancel} className="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-muted border border-line">Fortryd</button>
       </div>
     </div>
   );
@@ -251,34 +251,34 @@ function CreateUserDirect({ stores }) {
   };
 
   return (
-    <div className="border border-[#D8D0BE] bg-white p-5 mb-8">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-1 flex items-center gap-2"><UserPlus size={16} /> Opret bruger direkte til en butik</h3>
-      <p className="text-xs text-[#52697E] mb-3">Til at oprette en ekstra bruger i en butik, der allerede findes — uden at skulle oprette en ny butik.</p>
-      <div className="flex border border-[#D8D0BE] mb-3 text-xs font-semibold uppercase tracking-wide w-fit">
-        <button onClick={() => setLoginType("brugernavn")} className={`px-3 py-1.5 transition-colors ${loginType === "brugernavn" ? "bg-[#1C232E] text-white" : "text-[#52697E] hover:text-[#1C232E]"}`}>Brugernavn</button>
-        <button onClick={() => setLoginType("email")} className={`px-3 py-1.5 transition-colors ${loginType === "email" ? "bg-[#1C232E] text-white" : "text-[#52697E] hover:text-[#1C232E]"}`}>E-mail</button>
+    <div className="rounded-xl border border-line bg-white p-5 mb-8 shadow-sm">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-2"><UserPlus size={16} /> Opret bruger direkte til en butik</h3>
+      <p className="text-xs text-muted mb-3">Til at oprette en ekstra bruger i en butik, der allerede findes — uden at skulle oprette en ny butik.</p>
+      <div className="flex rounded-full border border-line mb-3 text-xs font-semibold uppercase tracking-wide w-fit overflow-hidden">
+        <button onClick={() => setLoginType("brugernavn")} className={`px-3 py-1.5 transition-colors ${loginType === "brugernavn" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>Brugernavn</button>
+        <button onClick={() => setLoginType("email")} className={`px-3 py-1.5 transition-colors ${loginType === "email" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>E-mail</button>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <select value={storeId} onChange={(e) => setStoreId(e.target.value)} className="sm:col-span-2 border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]">
+        <select value={storeId} onChange={(e) => setStoreId(e.target.value)} className="sm:col-span-2 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
           <option value="">Vælg butik...</option>
           {stores.map((b) => <option key={b.id} value={b.id}>{b.navn}{b.butiksnummer ? ` #${b.butiksnummer}` : ""}</option>)}
         </select>
-        <input value={name} onChange={(e) => changeName(e.target.value)} placeholder="Navn" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+        <input value={name} onChange={(e) => changeName(e.target.value)} placeholder="Navn" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
         {loginType === "brugernavn" ? (
-          <input value={username} onChange={(e) => { setUsername(e.target.value); setUsernameEdited(true); }} placeholder="Brugernavn (foreslået, kan rettes)" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] font-mono focus:outline-none focus:border-[#E2621B]" />
+          <input value={username} onChange={(e) => { setUsername(e.target.value); setUsernameEdited(true); }} placeholder="Brugernavn (foreslået, kan rettes)" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
         ) : (
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
         )}
-        <select value={role} onChange={(e) => setRole(e.target.value)} className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E]">
+        <select value={role} onChange={(e) => setRole(e.target.value)} className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink">
           <option value="saelger">Sælger</option>
           <option value="montor">Montør</option>
           <option value="admin">Administrator</option>
         </select>
-        <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Adgangskode (mindst 6 tegn)" className="border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+        <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Adgangskode (mindst 6 tegn)" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
       </div>
-      {error && <p className="text-xs text-[#B3261E] mt-2 flex items-center gap-1.5"><AlertCircle size={13} /> {error}</p>}
-      {message && <p className="text-xs text-[#3D7A5C] mt-2 flex items-center gap-1.5"><Check size={13} /> {message}</p>}
-      <button onClick={create} disabled={busy} className="mt-3 px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors flex items-center gap-1.5 disabled:opacity-60">
+      {error && <p className="text-xs text-danger mt-2 flex items-center gap-1.5"><AlertCircle size={13} /> {error}</p>}
+      {message && <p className="text-xs text-success mt-2 flex items-center gap-1.5"><Check size={13} /> {message}</p>}
+      <button onClick={create} disabled={busy} className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors flex items-center gap-1.5 disabled:opacity-60">
         {busy && <Loader2 size={14} className="animate-spin" />} {busy ? "Opretter..." : "Opret bruger"}
       </button>
     </div>
@@ -324,39 +324,39 @@ function SystemAdminUserRow({ user, stores, onUpdated }) {
   };
 
   return (
-    <div className="bg-white border border-[#D8D0BE] p-3">
+    <div className="rounded-xl bg-white border border-line p-3 shadow-sm">
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex-1 min-w-[160px]">
           {editingName ? (
             <div className="flex items-center gap-1.5">
-              <input autoFocus value={name} onChange={(e) => setName(e.target.value)} className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-              <button onClick={saveName} className="text-xs text-[#3D7A5C] font-semibold uppercase">Gem</button>
-              <button onClick={() => { setName(user.navn); setEditingName(false); }} className="text-xs text-[#52697E] font-semibold uppercase">Fortryd</button>
+              <input autoFocus value={name} onChange={(e) => setName(e.target.value)} className="rounded-lg border border-line bg-panel px-2 py-1 text-sm text-ink focus:outline-none focus:border-brand" />
+              <button onClick={saveName} className="text-xs text-success font-semibold uppercase">Gem</button>
+              <button onClick={() => { setName(user.navn); setEditingName(false); }} className="text-xs text-muted font-semibold uppercase">Fortryd</button>
             </div>
           ) : (
-            <p className="text-sm text-[#1C232E] truncate">{user.navn}</p>
+            <p className="text-sm text-ink truncate">{user.navn}</p>
           )}
-          <p className="text-[11px] text-[#52697E] truncate">
+          <p className="text-[11px] text-muted truncate">
             {user.brugernavn ? `brugernavn: ${user.brugernavn}` : "login via e-mail"}
             {store ? ` · ${store.navn}` : " · ingen butik"}
           </p>
         </div>
-        <select value={user.rolle} onChange={(e) => updateField({ rolle: e.target.value })} disabled={busy} className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-xs text-[#1C232E]">
+        <select value={user.rolle} onChange={(e) => updateField({ rolle: e.target.value })} disabled={busy} className="rounded-lg border border-line bg-panel px-2 py-1.5 text-xs text-ink">
           {Object.entries(ROLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
-        <select value={user.butikId || ""} onChange={(e) => updateField({ butik_id: e.target.value || null })} disabled={busy} className="border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-xs text-[#1C232E] min-w-[160px]">
+        <select value={user.butikId || ""} onChange={(e) => updateField({ butik_id: e.target.value || null })} disabled={busy} className="rounded-lg border border-line bg-panel px-2 py-1.5 text-xs text-ink min-w-[160px]">
           <option value="">Ingen butik</option>
           {stores.map((bu) => <option key={bu.id} value={bu.id}>{bu.navn}{bu.butiksnummer ? ` #${bu.butiksnummer}` : ""}</option>)}
         </select>
-        {!editingName && <button onClick={() => setEditingName(true)} className="p-1.5 text-[#52697E] hover:text-[#E2621B]" title="Ret navn"><Pencil size={15} /></button>}
-        <button onClick={() => { setShowReset((v) => !v); setResetMessage(""); setNewPassword(""); }} className="p-1.5 text-[#52697E] hover:text-[#E2621B]" title="Nulstil adgangskode"><KeyRound size={15} /></button>
-        {busy && <Loader2 size={14} className="animate-spin text-[#52697E]" />}
+        {!editingName && <button onClick={() => setEditingName(true)} className="p-1.5 text-muted hover:text-brand" title="Ret navn"><Pencil size={15} /></button>}
+        <button onClick={() => { setShowReset((v) => !v); setResetMessage(""); setNewPassword(""); }} className="p-1.5 text-muted hover:text-brand" title="Nulstil adgangskode"><KeyRound size={15} /></button>
+        {busy && <Loader2 size={14} className="animate-spin text-muted" />}
       </div>
       {showReset && (
-        <div className="mt-2.5 pt-2.5 border-t border-[#F0EBDD] flex items-center gap-2 flex-wrap">
-          <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Ny adgangskode (mindst 6 tegn)" className="flex-1 min-w-[160px] border border-[#D8D0BE] bg-[#F3EFE6] px-2 py-1.5 text-xs text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
-          <button onClick={reset} disabled={busy} className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors disabled:opacity-60">Sæt ny adgangskode</button>
-          {resetMessage && <span className={`text-[11px] ${resetMessage === "Nulstillet." ? "text-[#3D7A5C]" : "text-[#B3261E]"}`}>{resetMessage}</span>}
+        <div className="mt-2.5 pt-2.5 border-t border-divider flex items-center gap-2 flex-wrap">
+          <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Ny adgangskode (mindst 6 tegn)" className="flex-1 min-w-[160px] rounded-lg border border-line bg-panel px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-brand" />
+          <button onClick={reset} disabled={busy} className="px-3 py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors disabled:opacity-60">Sæt ny adgangskode</button>
+          {resetMessage && <span className={`text-[11px] ${resetMessage === "Nulstillet." ? "text-success" : "text-danger"}`}>{resetMessage}</span>}
         </div>
       )}
     </div>
@@ -384,32 +384,32 @@ function AllUsers({ stores }) {
 
   return (
     <div>
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-1 flex items-center gap-2"><Users size={16} /> Alle brugere</h3>
-      <p className="text-xs text-[#52697E] mb-3">Se, redigér og kobl enhver bruger i hele kæden til en butik, eller nulstil deres adgangskode. Uden "Vis alle" vises kun brugere der endnu ikke er koblet til nogen butik.</p>
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-2"><Users size={16} /> Alle brugere</h3>
+      <p className="text-xs text-muted mb-3">Se, redigér og kobl enhver bruger i hele kæden til en butik, eller nulstil deres adgangskode. Uden "Vis alle" vises kun brugere der endnu ikke er koblet til nogen butik.</p>
 
       <div className="flex gap-2 mb-3 flex-wrap items-center">
         <div className="relative flex-1 min-w-[200px]">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#52697E]" />
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && reload(search, showAll)}
             placeholder="Søg på navn eller brugernavn..."
-            className="w-full border border-[#D8D0BE] bg-[#F3EFE6] pl-8 pr-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]"
+            className="w-full rounded-lg border border-line bg-panel pl-8 pr-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
           />
         </div>
         <button
           onClick={toggleShowAll}
-          className={`px-3 py-2 text-xs font-semibold uppercase tracking-wide border transition-colors ${showAll ? "bg-[#1C232E] text-white border-[#1C232E]" : "text-[#52697E] border-[#D8D0BE] hover:border-[#E2621B] hover:text-[#E2621B]"}`}
+          className={`px-3 py-2 rounded-full text-xs font-semibold uppercase tracking-wide border transition-colors ${showAll ? "bg-ink text-white border-ink" : "text-muted border-line hover:border-brand hover:text-brand"}`}
         >
           {showAll ? "Viser alle" : "Vis alle brugere"}
         </button>
       </div>
 
       {loading ? (
-        <p className="text-sm text-[#52697E]">Indlæser...</p>
+        <p className="text-sm text-muted">Indlæser...</p>
       ) : users.length === 0 ? (
-        <p className="text-sm text-[#52697E] italic">{search ? "Ingen brugere matcher søgningen." : showAll ? "Ingen brugere i systemet endnu." : "Ingen ukoblede brugere lige nu."}</p>
+        <p className="text-sm text-muted italic">{search ? "Ingen brugere matcher søgningen." : showAll ? "Ingen brugere i systemet endnu." : "Ingen ukoblede brugere lige nu."}</p>
       ) : (
         <div className="space-y-2">
           {users.map((b) => (
