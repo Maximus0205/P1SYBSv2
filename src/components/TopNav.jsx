@@ -7,11 +7,11 @@ function TopNav({ page, onChange, user, onLogOut }) {
   const allowed = PAGES.filter((s) => (PAGES_FOR_ROLE[user.rolle] || []).includes(s.key) || (s.key === "systemadmin" && user.erSystemadmin));
   return (
     <div className="sticky top-0 z-20 bg-[#1A1A1A] mb-6">
-      <div className="max-w-6xl mx-auto flex items-center justify-between">
-        <div className="pl-4 pr-2 shrink-0 flex items-center">
+      <div className="max-w-6xl mx-auto flex items-center justify-between gap-2 px-3 py-2.5">
+        <div className="shrink-0 flex items-center pr-1">
           <img src={PUNKT1_LOGO_NEGATIV} alt="Punkt1" className="h-7 w-auto" />
         </div>
-        <div className="flex overflow-x-auto">
+        <div className="flex overflow-x-auto gap-1.5 py-0.5">
           {allowed.map((s) => {
             const Icon = s.icon;
             const active = page === s.key;
@@ -19,18 +19,23 @@ function TopNav({ page, onChange, user, onLogOut }) {
               <button
                 key={s.key}
                 onClick={() => onChange(s.key)}
-                className="flex items-center gap-2 px-4 sm:px-5 py-3.5 shrink-0 transition-colors"
-                style={{ background: active ? "#F2F2F2" : "transparent", color: active ? "#1A1A1A" : "#C9C9C9", borderBottom: active ? "3px solid #C8232E" : "3px solid transparent" }}
+                className={`flex items-center gap-1.5 px-3.5 py-2 shrink-0 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${
+                  active ? "bg-white text-[#1A1A1A]" : "bg-transparent text-[#C9C9C9] hover:text-white"
+                }`}
               >
-                <Icon size={16} strokeWidth={2.5} />
-                <span className="text-sm font-semibold uppercase tracking-wide whitespace-nowrap">{s.label}</span>
+                <Icon size={15} strokeWidth={2.5} />
+                {s.label}
               </button>
             );
           })}
         </div>
-        <div className="flex items-center gap-3 px-4 shrink-0">
-          <span className="text-xs text-[#C9C9C9] hidden sm:inline">{user.navn}</span>
-          <button onClick={onLogOut} className="p-2 text-[#C9C9C9] hover:text-[#C8232E] transition-colors" title="Log ud">
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs text-[#C9C9C9] hidden sm:inline pr-1">{user.navn}</span>
+          <button
+            onClick={onLogOut}
+            className="w-10 h-10 rounded-lg bg-black border border-[#333] flex items-center justify-center text-[#C8232E] hover:border-[#C8232E] transition-colors"
+            title="Log ud"
+          >
             <LogOut size={16} />
           </button>
         </div>
