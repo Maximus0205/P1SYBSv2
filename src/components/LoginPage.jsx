@@ -18,6 +18,14 @@ function LoginPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  // Logoet er indlejret som en stor base64-data-URI direkte i JS-bundlen
+  // (se src/assets/logo.js). Det er sårbart på nogle mobile browsere
+  // (særligt iOS Safari under hukommelsespres eller med en indholds-
+  // blokerings-udvidelse aktiv) - i stedet for at vise Safaris ødelagte
+  // billede-ikon falder vi tilbage til et tekstbaseret ordmærke, så
+  // login-siden aldrig ser "i stykker" ud. Se også docs/kendte-issues.md
+  // hvis den skal erstattes med en rigtig statisk billedfil.
+  const [logoFailed, setLogoFailed] = useState(false);
 
   const logIn = async () => {
     setError("");
@@ -67,7 +75,20 @@ function LoginPage() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-paper">
       <div className="w-full max-w-sm rounded-xl border border-line bg-white p-6 shadow-sm">
-        <img src={PUNKT1_LOGO_POSITIV} alt="Punkt1" className="h-9 w-auto mb-6" />
+        {logoFailed ? (
+          <p className="font-display text-2xl uppercase tracking-tight text-ink mb-6">Punkt1</p>
+        ) : (
+          <img
+            src={PUNKT1_LOGO_POSITIV}
+            alt="Punkt1"
+            className="h-9 w-auto mb-6"
+            width={180}
+            height={36}
+            loading="eager"
+            decoding="sync"
+            onError={() => setLogoFailed(true)}
+          />
+        )}
         <h1 className="font-display text-3xl uppercase tracking-tight text-ink mb-6">
           {signingUp ? "Opret bruger" : "Log ind"}
         </h1>
