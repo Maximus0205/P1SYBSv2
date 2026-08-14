@@ -65,67 +65,67 @@ function LoginPage() {
   const submit = () => (signingUp ? signUp() : logIn());
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center" style={{ background: "#F2F2F2" }}>
-      <div className="w-full max-w-sm rounded-xl border border-[#DDDDDD] bg-white p-6 shadow-sm">
+    <div className="min-h-screen w-full flex items-center justify-center bg-paper">
+      <div className="w-full max-w-sm rounded-xl border border-line bg-white p-6 shadow-sm">
         <img src={PUNKT1_LOGO_POSITIV} alt="Punkt1" className="h-9 w-auto mb-6" />
-        <h1 className="font-['Barlow_Condensed'] text-3xl uppercase tracking-tight text-[#1A1A1A] mb-6">
+        <h1 className="font-display text-3xl uppercase tracking-tight text-ink mb-6">
           {signingUp ? "Opret bruger" : "Log ind"}
         </h1>
 
         {signingUp && (
-          <div className="flex rounded-full border border-[#DDDDDD] mb-3 text-xs font-semibold uppercase tracking-wide overflow-hidden">
-            <button onClick={() => setUseUsername(true)} className={`flex-1 py-2 transition-colors ${useUsername ? "bg-[#1A1A1A] text-white" : "text-[#5C5C5C] hover:text-[#1A1A1A]"}`}>Brugernavn</button>
-            <button onClick={() => setUseUsername(false)} className={`flex-1 py-2 transition-colors ${!useUsername ? "bg-[#1A1A1A] text-white" : "text-[#5C5C5C] hover:text-[#1A1A1A]"}`}>E-mail</button>
+          <div className="flex rounded-full border border-line mb-3 text-xs font-semibold uppercase tracking-wide overflow-hidden">
+            <button onClick={() => setUseUsername(true)} className={`flex-1 py-2 transition-colors ${useUsername ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>Brugernavn</button>
+            <button onClick={() => setUseUsername(false)} className={`flex-1 py-2 transition-colors ${!useUsername ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>E-mail</button>
           </div>
         )}
 
         <div className="grid gap-3">
           {signingUp && (
-            <label className="text-xs text-[#5C5C5C]">
+            <label className="text-xs text-muted">
               Navn
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full mt-1 rounded-lg border border-[#DDDDDD] bg-[#F2F2F2] px-3 py-2 text-sm text-[#1A1A1A] focus:outline-none focus:border-[#C8232E]"
+                className="w-full mt-1 rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
               />
             </label>
           )}
-          <label className="text-xs text-[#5C5C5C]">
+          <label className="text-xs text-muted">
             {signingUp ? (useUsername ? "Vælg et brugernavn" : "E-mail") : "E-mail eller brugernavn"}
             <div className="relative mt-1">
-              <User size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5C5C5C]" />
+              <User size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
               <input
                 type={!signingUp || useUsername ? "text" : "email"}
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && submit()}
-                className="w-full rounded-lg border border-[#DDDDDD] bg-[#F2F2F2] pl-8 pr-3 py-2 text-sm text-[#1A1A1A] focus:outline-none focus:border-[#C8232E]"
+                className="w-full rounded-lg border border-line bg-paper pl-8 pr-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
               />
             </div>
           </label>
-          <label className="text-xs text-[#5C5C5C]">
+          <label className="text-xs text-muted">
             Adgangskode
             <div className="relative mt-1">
-              <Lock size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5C5C5C]" />
+              <Lock size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && submit()}
-                className="w-full rounded-lg border border-[#DDDDDD] bg-[#F2F2F2] pl-8 pr-3 py-2 text-sm text-[#1A1A1A] focus:outline-none focus:border-[#C8232E]"
+                className="w-full rounded-lg border border-line bg-paper pl-8 pr-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
               />
             </div>
           </label>
         </div>
 
-        {error && <p className="text-sm text-[#B3261E] mt-3 flex items-center gap-1.5"><AlertCircle size={14} /> {error}</p>}
-        {message && <p className="text-sm text-[#3D7A5C] mt-3">{message}</p>}
-        {!signingUp && <p className="text-[11px] text-[#5C5C5C] mt-3">Glemt adgangskode? Kontakt din butiks admin eller systemadmin — de kan nulstille den for dig.</p>}
+        {error && <p className="text-sm text-danger mt-3 flex items-center gap-1.5"><AlertCircle size={14} /> {error}</p>}
+        {message && <p className="text-sm text-success mt-3">{message}</p>}
+        {!signingUp && <p className="text-[11px] text-muted mt-3">Glemt adgangskode? Kontakt din butiks admin eller systemadmin — de kan nulstille den for dig.</p>}
 
         <button
           onClick={submit}
           disabled={busy}
-          className="w-full mt-5 px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-[#1A1A1A] hover:bg-[#C8232E] transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+          className="w-full mt-5 px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
         >
           {busy && <Loader2 size={14} className="animate-spin" />}
           {signingUp ? "Opret bruger" : "Log ind"}
@@ -133,7 +133,7 @@ function LoginPage() {
 
         <button
           onClick={() => { setSigningUp(!signingUp); setError(""); setMessage(""); }}
-          className="w-full mt-3 text-[11px] text-[#5C5C5C] hover:text-[#C8232E] underline"
+          className="w-full mt-3 text-[11px] text-muted hover:text-brand underline"
         >
           {signingUp ? "Har du allerede en bruger? Log ind i stedet" : "Ny i butikken? Opret en bruger"}
         </button>
