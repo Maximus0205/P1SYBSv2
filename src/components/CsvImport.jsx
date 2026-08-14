@@ -78,21 +78,21 @@ function CsvImport({ technicians, productTypes, primaryServices, onImport, onClo
   };
 
   return (
-    <div className="border border-[#D8D0BE] bg-white p-5">
-      <h3 className="font-['Barlow_Condensed'] text-xl uppercase tracking-wide text-[#1C232E] mb-2">Importér sager fra CSV</h3>
-      <p className="text-sm text-[#52697E] mb-4">
+    <div className="rounded-xl border border-line bg-white p-5 shadow-sm">
+      <h3 className="font-display text-xl uppercase tracking-wide text-ink mb-2">Importér sager fra CSV</h3>
+      <p className="text-sm text-muted mb-4">
         Forventede kolonner: <strong>Sagsnr, Kunde, Telefon, Email, Adresse, Leveringsnote, Køber, Nøgle, Nøgletype, Nøgleplacering, Dato, Tidsrum, Montør, Varetype, Ydelser</strong>. Hver række giver én varelinje. Mangler en kolonne, springes den over.
       </p>
-      <div onClick={() => inputRef.current?.click()} className="border border-dashed border-[#D8D0BE] hover:border-[#E2621B] transition-colors p-6 text-center cursor-pointer bg-[#F3EFE6]">
-        <p className="text-sm text-[#52697E]">Tryk for at vælge CSV-fil</p>
+      <div onClick={() => inputRef.current?.click()} className="rounded-xl border border-dashed border-line hover:border-brand transition-colors p-6 text-center cursor-pointer bg-panel">
+        <p className="text-sm text-muted">Tryk for at vælge CSV-fil</p>
         <input ref={inputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
       </div>
       {status && (
-        <p className="text-sm mt-3" style={{ color: status.error ? "#B3261E" : "#3D7A5C" }}>
+        <p className={`text-sm mt-3 ${status.error ? "text-danger" : "text-success"}`}>
           {status.error ? status.error : `${status.count} sager importeret.`}
         </p>
       )}
-      <button onClick={onClose} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-[#52697E] border border-[#D8D0BE] hover:border-[#52697E] transition-colors mt-4">
+      <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted transition-colors mt-4">
         Luk
       </button>
     </div>
