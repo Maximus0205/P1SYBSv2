@@ -5,8 +5,8 @@ import { formatTime, formatDuration, now, totalMinutes, lineItemLabel, serviceIc
 function LineItemDetails({ order, onToggleAddOn, onAddAddOn, onRemoveAddOn }) {
   const [newItem, setNewItem] = useState({});
   return (
-    <div className="bg-white border border-[#D8D0BE] p-4 mb-5">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">Varelinjer, ydelser & opmærksomhedspunkter</h3>
+    <div className="rounded-xl bg-white border border-line p-4 mb-5 shadow-sm">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Varelinjer, ydelser & opmærksomhedspunkter</h3>
       <div className="space-y-4">
         {order.varelinjer.map((v) => {
           const addOns = v.tillaeg || [];
@@ -15,23 +15,23 @@ function LineItemDetails({ order, onToggleAddOn, onAddAddOn, onRemoveAddOn }) {
             <div key={v.id}>
               <div className="flex items-center justify-between mb-1.5">
                 <div>
-                  <p className="text-sm font-semibold text-[#1C232E]">{lineItemLabel(v)}</p>
-                  {v.primaerYdelse && <p className="text-[11px] text-[#52697E]">{v.primaerYdelse.navn}</p>}
+                  <p className="text-sm font-semibold text-ink">{lineItemLabel(v)}</p>
+                  {v.primaerYdelse && <p className="text-[11px] text-muted">{v.primaerYdelse.navn}</p>}
                 </div>
-                {missing > 0 && <span className="font-mono text-[11px] text-[#E2621B]">{missing} mangler</span>}
+                {missing > 0 && <span className="font-mono text-[11px] text-brand">{missing} mangler</span>}
               </div>
               {addOns.length === 0 ? (
-                <p className="text-xs text-[#52697E] italic mb-1">Ingen tillægsydelser/punkter for denne varelinje.</p>
+                <p className="text-xs text-muted italic mb-1">Ingen tillægsydelser/punkter for denne varelinje.</p>
               ) : (
                 <div className="space-y-1 mb-1">
                   {addOns.map((y) => {
                     const Icon = serviceIcon(y.navn);
                     return (
-                      <label key={y.id} className="flex items-center gap-2.5 px-2 py-1.5 hover:bg-[#F3EFE6] cursor-pointer group">
-                        <input type="checkbox" checked={y.udfoert} onChange={() => onToggleAddOn(v.id, y.id)} className="w-4 h-4 accent-[#3D7A5C]" />
-                        <Icon size={14} className="text-[#52697E] shrink-0" strokeWidth={2.5} />
-                        <span className="text-sm flex-1" style={{ textDecoration: y.udfoert ? "line-through" : "none", color: y.udfoert ? "#52697E" : "#1C232E" }}>{y.navn}</span>
-                        <button onClick={(e) => { e.preventDefault(); onRemoveAddOn(v.id, y.id); }} className="opacity-0 group-hover:opacity-100 text-[#52697E] hover:text-[#E2621B]"><X size={14} /></button>
+                      <label key={y.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-panel cursor-pointer group">
+                        <input type="checkbox" checked={y.udfoert} onChange={() => onToggleAddOn(v.id, y.id)} className="w-4 h-4 accent-success" />
+                        <Icon size={14} className="text-muted shrink-0" strokeWidth={2.5} />
+                        <span className={`text-sm flex-1 ${y.udfoert ? "line-through text-muted" : "text-ink"}`}>{y.navn}</span>
+                        <button onClick={(e) => { e.preventDefault(); onRemoveAddOn(v.id, y.id); }} className="opacity-0 group-hover:opacity-100 text-muted hover:text-brand"><X size={14} /></button>
                       </label>
                     );
                   })}
@@ -43,9 +43,9 @@ function LineItemDetails({ order, onToggleAddOn, onAddAddOn, onRemoveAddOn }) {
                   onChange={(e) => setNewItem((p) => ({ ...p, [v.id]: e.target.value }))}
                   onKeyDown={(e) => { if (e.key === "Enter" && (newItem[v.id] || "").trim()) { onAddAddOn(v.id, newItem[v.id].trim()); setNewItem((p) => ({ ...p, [v.id]: "" })); } }}
                   placeholder="Tilføj punkt..."
-                  className="flex-1 border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-1.5 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]"
+                  className="flex-1 rounded-lg border border-line bg-panel px-3 py-1.5 text-sm text-ink focus:outline-none focus:border-brand"
                 />
-                <button onClick={() => { if (!(newItem[v.id] || "").trim()) return; onAddAddOn(v.id, newItem[v.id].trim()); setNewItem((p) => ({ ...p, [v.id]: "" })); }} className="px-3 text-[#1C232E] border border-[#D8D0BE] hover:border-[#E2621B] hover:text-[#E2621B] transition-colors"><Plus size={16} /></button>
+                <button onClick={() => { if (!(newItem[v.id] || "").trim()) return; onAddAddOn(v.id, newItem[v.id].trim()); setNewItem((p) => ({ ...p, [v.id]: "" })); }} className="px-3 rounded-lg text-ink border border-line hover:border-brand hover:text-brand transition-colors"><Plus size={16} /></button>
               </div>
             </div>
           );
@@ -60,15 +60,15 @@ function Notes({ order, onAdd }) {
   return (
     <div>
       <div className="flex gap-2 mb-4">
-        <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Skriv en note om sagen..." rows={2} className="flex-1 border border-[#D8D0BE] bg-white px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B] resize-none" />
-        <button onClick={() => { if (!text.trim()) return; onAdd(text); setText(""); }} className="px-4 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors">Tilføj</button>
+        <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Skriv en note om sagen..." rows={2} className="flex-1 rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand resize-none" />
+        <button onClick={() => { if (!text.trim()) return; onAdd(text); setText(""); }} className="px-4 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors">Tilføj</button>
       </div>
-      {order.noter.length === 0 ? <p className="text-sm text-[#52697E] italic">Ingen noter endnu for denne sag.</p> : (
+      {order.noter.length === 0 ? <p className="text-sm text-muted italic">Ingen noter endnu for denne sag.</p> : (
         <div className="space-y-2">
           {[...order.noter].reverse().map((n) => (
-            <div key={n.id} className="border-l-2 border-[#E2621B] bg-white px-3 py-2">
-              <p className="text-sm text-[#1C232E]">{n.tekst}</p>
-              <p className="font-mono text-[11px] text-[#52697E] mt-1">{n.tid}</p>
+            <div key={n.id} className="rounded-lg border-l-2 border-brand bg-white px-3 py-2 shadow-sm">
+              <p className="text-sm text-ink">{n.tekst}</p>
+              <p className="font-mono text-[11px] text-muted mt-1">{n.tid}</p>
             </div>
           ))}
         </div>
@@ -88,21 +88,21 @@ function Photos({ order, onAdd }) {
   };
   return (
     <div>
-      <div onClick={() => inputRef.current?.click()} className="mb-4 border border-dashed border-[#D8D0BE] hover:border-[#E2621B] transition-colors bg-white p-6 text-center cursor-pointer">
-        <p className="text-sm text-[#52697E]">Tryk for at tilføje billeder fra sagen</p>
+      <div onClick={() => inputRef.current?.click()} className="mb-4 rounded-xl border border-dashed border-line hover:border-brand transition-colors bg-white p-6 text-center cursor-pointer">
+        <p className="text-sm text-muted">Tryk for at tilføje billeder fra sagen</p>
         <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => e.target.files && handleFiles(e.target.files)} />
       </div>
-      {order.billeder.length === 0 ? <p className="text-sm text-[#52697E] italic">Ingen billeder endnu for denne sag.</p> : (
+      {order.billeder.length === 0 ? <p className="text-sm text-muted italic">Ingen billeder endnu for denne sag.</p> : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {order.billeder.map((b) => (
-            <div key={b.id} className="border border-[#D8D0BE] bg-white">
+            <div key={b.id} className="rounded-xl overflow-hidden border border-line bg-white shadow-sm">
               <img src={b.src} alt={b.navn} className="w-full h-32 object-cover" />
-              <p className="text-[11px] text-[#52697E] px-2 py-1 truncate">{b.navn}</p>
+              <p className="text-[11px] text-muted px-2 py-1 truncate">{b.navn}</p>
             </div>
           ))}
         </div>
       )}
-      <p className="text-[11px] text-[#52697E] mt-3">Billeder gemmes kun i denne session og forsvinder ved genindlæsning.</p>
+      <p className="text-[11px] text-muted mt-3">Billeder gemmes kun i denne session og forsvinder ved genindlæsning.</p>
     </div>
   );
 }
@@ -112,20 +112,20 @@ function Reports({ order, onAdd }) {
   const [text, setText] = useState("");
   return (
     <div>
-      <div className="border border-[#D8D0BE] bg-white p-4 mb-4">
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Rapporttitel, fx 'Afleveringsrapport'" className="w-full border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] mb-2 focus:outline-none focus:border-[#E2621B]" />
-        <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Beskrivelse af udført arbejde..." rows={3} className="w-full border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] mb-2 focus:outline-none focus:border-[#E2621B] resize-none" />
-        <button onClick={() => { if (!title.trim() || !text.trim()) return; onAdd(title, text); setTitle(""); setText(""); }} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors">Gem rapport</button>
+      <div className="rounded-xl border border-line bg-white p-4 mb-4 shadow-sm">
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Rapporttitel, fx 'Afleveringsrapport'" className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink mb-2 focus:outline-none focus:border-brand" />
+        <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Beskrivelse af udført arbejde..." rows={3} className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink mb-2 focus:outline-none focus:border-brand resize-none" />
+        <button onClick={() => { if (!title.trim() || !text.trim()) return; onAdd(title, text); setTitle(""); setText(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors">Gem rapport</button>
       </div>
-      {order.rapporter.length === 0 ? <p className="text-sm text-[#52697E] italic">Ingen rapporter endnu for denne sag.</p> : (
+      {order.rapporter.length === 0 ? <p className="text-sm text-muted italic">Ingen rapporter endnu for denne sag.</p> : (
         <div className="space-y-2">
           {[...order.rapporter].reverse().map((r) => (
-            <div key={r.id} className="border border-[#D8D0BE] bg-white p-3">
+            <div key={r.id} className="rounded-xl border border-line bg-white p-3 shadow-sm">
               <div className="flex items-center justify-between mb-1">
-                <p className="font-semibold text-sm text-[#1C232E]">{r.titel}</p>
-                <p className="font-mono text-[11px] text-[#52697E]">{r.tid}</p>
+                <p className="font-semibold text-sm text-ink">{r.titel}</p>
+                <p className="font-mono text-[11px] text-muted">{r.tid}</p>
               </div>
-              <p className="text-sm text-[#52697E]">{r.tekst}</p>
+              <p className="text-sm text-muted">{r.tekst}</p>
             </div>
           ))}
         </div>
@@ -138,16 +138,16 @@ function TimeLog({ order }) {
   const mins = totalMinutes(order);
   return (
     <div>
-      <div className="border border-[#D8D0BE] bg-white p-4 mb-4 flex items-center justify-between">
-        <span className="text-sm text-[#52697E]">Samlet registreret tid</span>
-        <span className="font-mono text-lg text-[#1C232E]">{formatDuration(mins)}</span>
+      <div className="rounded-xl border border-line bg-white p-4 mb-4 flex items-center justify-between shadow-sm">
+        <span className="text-sm text-muted">Samlet registreret tid</span>
+        <span className="font-mono text-lg text-ink">{formatDuration(mins)}</span>
       </div>
-      {order.logs.length === 0 ? <p className="text-sm text-[#52697E] italic">Ingen stemplinger registreret endnu.</p> : (
+      {order.logs.length === 0 ? <p className="text-sm text-muted italic">Ingen stemplinger registreret endnu.</p> : (
         <div className="space-y-2">
           {[...order.logs].reverse().map((l) => (
-            <div key={l.id} className="border border-[#D8D0BE] bg-white p-3 flex items-center justify-between">
-              <span className="font-mono text-sm text-[#1C232E]">{formatTime(l.ind)} → {formatTime(l.ud)}</span>
-              <span className="font-mono text-sm text-[#52697E]">{formatDuration(l.minutter)}</span>
+            <div key={l.id} className="rounded-xl border border-line bg-white p-3 flex items-center justify-between shadow-sm">
+              <span className="font-mono text-sm text-ink">{formatTime(l.ind)} → {formatTime(l.ud)}</span>
+              <span className="font-mono text-sm text-muted">{formatDuration(l.minutter)}</span>
             </div>
           ))}
         </div>
@@ -170,24 +170,24 @@ function ClockWidget({ order, onClockIn, onClockOut }) {
   const ss = String(liveSeconds % 60).padStart(2, "0");
 
   return (
-    <div className="flex items-center justify-between border border-[#D8D0BE] bg-white p-4 mb-5">
+    <div className="flex items-center justify-between rounded-xl border border-line bg-white p-4 mb-5 shadow-sm">
       <div>
         {order.stemplerInd ? (
           <>
-            <p className="text-[11px] uppercase tracking-wide text-[#52697E]">Stemplet ind kl. {formatTime(order.stemplerInd)}</p>
-            <p className="font-mono text-2xl text-[#E2621B]">{hh}:{mm}:{ss}</p>
+            <p className="text-[11px] uppercase tracking-wide text-muted">Stemplet ind kl. {formatTime(order.stemplerInd)}</p>
+            <p className="font-mono text-2xl text-brand">{hh}:{mm}:{ss}</p>
           </>
         ) : (
           <>
-            <p className="text-[11px] uppercase tracking-wide text-[#52697E]">Ikke stemplet ind</p>
-            <p className="font-mono text-2xl text-[#1C232E]">{formatDuration(totalMinutes(order))}</p>
+            <p className="text-[11px] uppercase tracking-wide text-muted">Ikke stemplet ind</p>
+            <p className="font-mono text-2xl text-ink">{formatDuration(totalMinutes(order))}</p>
           </>
         )}
       </div>
       {order.stemplerInd ? (
-        <button onClick={onClockOut} className="px-5 py-2.5 text-sm font-semibold uppercase tracking-wide text-white bg-[#E2621B] hover:bg-[#1C232E] transition-colors">Stemplet ud</button>
+        <button onClick={onClockOut} className="px-5 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-ink transition-colors">Stemplet ud</button>
       ) : (
-        <button onClick={onClockIn} className="px-5 py-2.5 text-sm font-semibold uppercase tracking-wide text-white bg-[#3D7A5C] hover:bg-[#1C232E] transition-colors">Stemplet ind</button>
+        <button onClick={onClockIn} className="px-5 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-success hover:bg-ink transition-colors">Stemplet ind</button>
       )}
     </div>
   );
@@ -241,7 +241,7 @@ function SignaturePad({ defaultName, onSave, onCancel }) {
     e.preventDefault();
     const ctx = canvasRef.current.getContext("2d");
     const pos = getPos(e);
-    ctx.strokeStyle = "#1C232E";
+    ctx.strokeStyle = "#1A1A1A";
     ctx.lineWidth = 2.5;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
@@ -268,26 +268,26 @@ function SignaturePad({ defaultName, onSave, onCancel }) {
   };
 
   return (
-    <div className="border border-[#D8D0BE] bg-white p-4">
-      <label className="text-xs text-[#52697E] block mb-2">
+    <div className="rounded-xl border border-line bg-white p-4 shadow-sm">
+      <label className="text-xs text-muted block mb-2">
         Navn på den der kvitterer
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Fx kundens navn" className="w-full mt-1 border border-[#D8D0BE] bg-[#F3EFE6] px-3 py-2 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]" />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Fx kundens navn" className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
       </label>
-      <p className="text-[11px] text-[#52697E] mb-1.5">Skriv under i feltet nedenfor:</p>
+      <p className="text-[11px] text-muted mb-1.5">Skriv under i feltet nedenfor:</p>
       <div ref={wrapperRef} className="w-full">
         <canvas
           ref={canvasRef}
           onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
           onTouchStart={start} onTouchMove={move} onTouchEnd={end}
-          className="w-full border border-[#D8D0BE]"
+          className="w-full rounded-lg border border-line"
           style={{ touchAction: "none" }}
         />
       </div>
-      {!hasDrawn && <p className="text-[11px] text-[#B3261E] mt-1.5">Der skal skrives under, før den kan gemmes.</p>}
+      {!hasDrawn && <p className="text-[11px] text-danger mt-1.5">Der skal skrives under, før den kan gemmes.</p>}
       <div className="flex gap-2 mt-3">
-        <button onClick={save} disabled={!hasDrawn || !name.trim()} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors disabled:opacity-50">Gem underskrift</button>
-        <button onClick={clear} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-[#52697E] border border-[#D8D0BE] hover:border-[#52697E] transition-colors">Ryd</button>
-        {onCancel && <button onClick={onCancel} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide text-[#52697E] border border-[#D8D0BE] hover:border-[#52697E] transition-colors">Annuller</button>}
+        <button onClick={save} disabled={!hasDrawn || !name.trim()} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors disabled:opacity-50">Gem underskrift</button>
+        <button onClick={clear} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted transition-colors">Ryd</button>
+        {onCancel && <button onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted transition-colors">Annuller</button>}
       </div>
     </div>
   );
@@ -303,15 +303,15 @@ function Signature({ order, onSave }) {
 
   if (!signing && existing) {
     return (
-      <div className="border border-[#D8D0BE] bg-white p-4">
+      <div className="rounded-xl border border-line bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
           <div>
-            <p className="text-sm font-semibold text-[#1C232E]">Kvitteret af {existing.navn}</p>
-            <p className="text-[11px] text-[#52697E]">{existing.tid}</p>
+            <p className="text-sm font-semibold text-ink">Kvitteret af {existing.navn}</p>
+            <p className="text-[11px] text-muted">{existing.tid}</p>
           </div>
-          <button onClick={() => setSigning(true)} className="text-xs font-semibold uppercase tracking-wide text-[#52697E] hover:text-[#E2621B] underline shrink-0">Underskriv igen</button>
+          <button onClick={() => setSigning(true)} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand underline shrink-0">Underskriv igen</button>
         </div>
-        <img src={existing.data} alt={`Underskrift fra ${existing.navn}`} className="w-full max-w-sm border border-[#D8D0BE] bg-white" />
+        <img src={existing.data} alt={`Underskrift fra ${existing.navn}`} className="w-full max-w-sm rounded-lg border border-line bg-white" />
       </div>
     );
   }
