@@ -26,25 +26,25 @@ function OrderCardCompact({ order, technicians, onOpen, onCycleStatus, onAssign,
       <div className="flex items-start justify-between gap-3">
         <div onClick={() => onOpen(order.id)} className="cursor-pointer min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-1">
-            <span className="font-mono text-sm text-[#1A1A1A]">{order.start}–{order.slut}</span>
-            <span className="font-mono text-[10px] text-[#BBBBBB]">#{order.nr}</span>
+            <span className="font-mono text-sm text-ink">{order.start}–{order.slut}</span>
+            <span className="font-mono text-[10px] text-faint">#{order.nr}</span>
           </div>
-          <p className="font-semibold text-sm text-[#1A1A1A] truncate">{buildTitle(order.varelinjer)}</p>
-          <p className="text-xs text-[#5C5C5C] truncate">{order.kunde.navn} · {order.kunde.adresse}</p>
-          <p className="text-[10px] text-[#5C5C5C] flex items-center gap-1 mt-0.5"><Clock size={10} /> {formatDuration(orderExpectedMinutes(order))} forventet</p>
+          <p className="font-semibold text-sm text-ink truncate">{buildTitle(order.varelinjer)}</p>
+          <p className="text-xs text-muted truncate">{order.kunde.navn} · {order.kunde.adresse}</p>
+          <p className="text-[10px] text-muted flex items-center gap-1 mt-0.5"><Clock size={10} /> {formatDuration(orderExpectedMinutes(order))} forventet</p>
         </div>
         <button onClick={() => onCycleStatus(order.id)} className="shrink-0"><StatusBadge status={order.status} /></button>
       </div>
       <div className="mt-2"><LineItemPills order={order} /></div>
       {(onAssign || onUpdateTimeSlot) && (
-        <div className="flex flex-col sm:flex-row gap-2 mt-2 pt-2 border-t border-[#F2F2F2] min-w-0">
+        <div className="flex flex-col sm:flex-row gap-2 mt-2 pt-2 border-t border-divider min-w-0">
           {onUpdateTimeSlot && (
-            <select value={order.tidsrumId} onChange={(e) => onUpdateTimeSlot(order.id, e.target.value)} className="w-full sm:w-auto min-w-0 rounded-lg text-xs border border-[#DDDDDD] px-2 py-1.5 text-[#5C5C5C] focus:outline-none focus:border-[#C8232E]">
+            <select value={order.tidsrumId} onChange={(e) => onUpdateTimeSlot(order.id, e.target.value)} className="w-full sm:w-auto min-w-0 rounded-lg text-xs border border-line px-2 py-1.5 text-muted focus:outline-none focus:border-brand">
               {TIME_SLOTS.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
             </select>
           )}
           {onAssign && (
-            <select value={order.montorId || ""} onChange={(e) => onAssign(order.id, e.target.value || null)} className={`w-full min-w-0 flex-1 rounded-lg text-xs border px-2 py-1.5 focus:outline-none focus:border-[#C8232E] ${order.montorId ? "border-[#DDDDDD] text-[#1A1A1A]" : "border-[#C8232E] text-[#C8232E] font-semibold"}`}>
+            <select value={order.montorId || ""} onChange={(e) => onAssign(order.id, e.target.value || null)} className={`w-full min-w-0 flex-1 rounded-lg text-xs border px-2 py-1.5 focus:outline-none focus:border-brand ${order.montorId ? "border-line text-ink" : "border-brand text-brand font-semibold"}`}>
               <option value="">Vælg montør...</option>
               {technicians.map((m) => <option key={m.id} value={m.id}>{m.navn}</option>)}
             </select>
