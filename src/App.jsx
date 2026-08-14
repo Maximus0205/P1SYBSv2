@@ -319,7 +319,7 @@ export default function App() {
   const narrowPage = page === "montor" || !!selected;
 
   if (loading) {
-    return <div className="min-h-screen w-full flex items-center justify-center" style={{ background: "#F2F2F2" }}><p className="text-sm text-[#5C5C5C]">Indlæser...</p></div>;
+    return <div className="min-h-screen w-full flex items-center justify-center bg-paper"><p className="text-sm text-muted">Indlæser...</p></div>;
   }
 
   if (!session) {
@@ -327,17 +327,17 @@ export default function App() {
   }
 
   if (!profile) {
-    return <div className="min-h-screen w-full flex items-center justify-center" style={{ background: "#F2F2F2" }}><p className="text-sm text-[#5C5C5C]">Indlæser profil...</p></div>;
+    return <div className="min-h-screen w-full flex items-center justify-center bg-paper"><p className="text-sm text-muted">Indlæser profil...</p></div>;
   }
 
   if (!profile.butikId) {
     if (profile.erSystemadmin) {
       return (
-        <div className="min-h-screen w-full" style={{ background: "#F2F2F2" }}>
+        <div className="min-h-screen w-full bg-paper">
           <div className="max-w-2xl mx-auto px-4 py-8">
             <div className="flex justify-between items-center mb-4">
-              <p className="font-mono text-[11px] tracking-widest uppercase text-[#C8232E]">Systemadministration</p>
-              <button onClick={logOut} className="text-xs text-[#5C5C5C] hover:text-[#C8232E] underline">Log ud</button>
+              <p className="font-mono text-[11px] tracking-widest uppercase text-brand">Systemadministration</p>
+              <button onClick={logOut} className="text-xs text-muted hover:text-brand underline">Log ud</button>
             </div>
             <SystemAdminPage />
           </div>
@@ -345,19 +345,19 @@ export default function App() {
       );
     }
     return (
-      <div className="min-h-screen w-full flex items-center justify-center px-4" style={{ background: "#F2F2F2" }}>
-        <div className="max-w-sm rounded-xl border border-[#DDDDDD] bg-white p-6 text-center shadow-sm">
-          <p className="text-sm text-[#1A1A1A]">
+      <div className="min-h-screen w-full flex items-center justify-center px-4 bg-paper">
+        <div className="max-w-sm rounded-xl border border-line bg-white p-6 text-center shadow-sm">
+          <p className="text-sm text-ink">
             Din bruger er oprettet, men er endnu ikke koblet til en butik. Bed en administrator om at give dig adgang.
           </p>
-          <button onClick={logOut} className="mt-4 text-xs text-[#5C5C5C] hover:text-[#C8232E] underline">Log ud</button>
+          <button onClick={logOut} className="mt-4 text-xs text-muted hover:text-brand underline">Log ud</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen w-full" style={{ background: "#F2F2F2", fontFamily: "Inter, sans-serif" }}>
+    <div className="min-h-screen w-full bg-paper" style={{ fontFamily: "Inter, sans-serif" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
         .font-mono { font-family: 'JetBrains Mono', monospace; }
@@ -391,7 +391,7 @@ export default function App() {
           <DrivingPage orders={orders} technicians={technicians} vehicles={vehicles} timeOff={timeOff} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onCycleStatus={cycleStatus} onAssign={assignTechnician} onUpdateTimeSlot={updateTimeSlot} onUpdateTechnician={(technicianId, fields) => updateTechnicianVehicle(technicianId, fields.bilId)} onRefresh={refresh} refreshing={refreshing} />
         ) : page === "montor" ? (
           profile.rolle === "montor" ? (
-            technician ? <TechnicianRouteView orders={orders} technician={technician} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onCycleStatus={cycleStatus} onRefresh={refresh} refreshing={refreshing} /> : <p className="text-sm text-[#5C5C5C]">Din bruger er ikke koblet til en montør/bil-profil endnu — kontakt en administrator.</p>
+            technician ? <TechnicianRouteView orders={orders} technician={technician} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onCycleStatus={cycleStatus} onRefresh={refresh} refreshing={refreshing} /> : <p className="text-sm text-muted">Din bruger er ikke koblet til en montør/bil-profil endnu — kontakt en administrator.</p>
           ) : technician ? (
             <TechnicianRouteView orders={orders} technician={technician} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onCycleStatus={cycleStatus} onChangeTechnician={() => setSelectedTechnicianId(null)} onRefresh={refresh} refreshing={refreshing} />
           ) : (
