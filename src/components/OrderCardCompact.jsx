@@ -19,32 +19,32 @@ import { StatusBadge, LineItemPills } from "../components/common";
 function OrderCardCompact({ order, technicians, onOpen, onCycleStatus, onAssign, onUpdateTimeSlot, reason, accent }) {
   return (
     <div
-      className="bg-white border border-[#D8D0BE] hover:border-[#1C232E] transition-colors p-3 min-w-0 w-full"
+      className="bg-white rounded-xl border border-[#ECECEC] shadow-sm hover:shadow-md transition-shadow p-3.5 min-w-0 w-full"
       style={accent ? { borderLeftWidth: 4, borderLeftColor: accent } : undefined}
     >
       {reason && <div className="mb-2">{reason}</div>}
       <div className="flex items-start justify-between gap-3">
         <div onClick={() => onOpen(order.id)} className="cursor-pointer min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-1">
-            <span className="font-mono text-sm text-[#1C232E]">{order.start}–{order.slut}</span>
-            <span className="font-mono text-[10px] text-[#D8D0BE]">#{order.nr}</span>
+            <span className="font-mono text-sm text-[#1A1A1A]">{order.start}–{order.slut}</span>
+            <span className="font-mono text-[10px] text-[#BBBBBB]">#{order.nr}</span>
           </div>
-          <p className="font-semibold text-sm text-[#1C232E] truncate">{buildTitle(order.varelinjer)}</p>
-          <p className="text-xs text-[#52697E] truncate">{order.kunde.navn} · {order.kunde.adresse}</p>
-          <p className="text-[10px] text-[#52697E] flex items-center gap-1 mt-0.5"><Clock size={10} /> {formatDuration(orderExpectedMinutes(order))} forventet</p>
+          <p className="font-semibold text-sm text-[#1A1A1A] truncate">{buildTitle(order.varelinjer)}</p>
+          <p className="text-xs text-[#5C5C5C] truncate">{order.kunde.navn} · {order.kunde.adresse}</p>
+          <p className="text-[10px] text-[#5C5C5C] flex items-center gap-1 mt-0.5"><Clock size={10} /> {formatDuration(orderExpectedMinutes(order))} forventet</p>
         </div>
         <button onClick={() => onCycleStatus(order.id)} className="shrink-0"><StatusBadge status={order.status} /></button>
       </div>
       <div className="mt-2"><LineItemPills order={order} /></div>
       {(onAssign || onUpdateTimeSlot) && (
-        <div className="flex flex-col sm:flex-row gap-2 mt-2 pt-2 border-t border-[#F0EBDD] min-w-0">
+        <div className="flex flex-col sm:flex-row gap-2 mt-2 pt-2 border-t border-[#F2F2F2] min-w-0">
           {onUpdateTimeSlot && (
-            <select value={order.tidsrumId} onChange={(e) => onUpdateTimeSlot(order.id, e.target.value)} className="w-full sm:w-auto min-w-0 text-xs border border-[#D8D0BE] px-1.5 py-1.5 text-[#52697E] focus:outline-none focus:border-[#E2621B]">
+            <select value={order.tidsrumId} onChange={(e) => onUpdateTimeSlot(order.id, e.target.value)} className="w-full sm:w-auto min-w-0 rounded-lg text-xs border border-[#DDDDDD] px-2 py-1.5 text-[#5C5C5C] focus:outline-none focus:border-[#C8232E]">
               {TIME_SLOTS.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
             </select>
           )}
           {onAssign && (
-            <select value={order.montorId || ""} onChange={(e) => onAssign(order.id, e.target.value || null)} className={`w-full min-w-0 flex-1 text-xs border px-1.5 py-1.5 focus:outline-none focus:border-[#E2621B] ${order.montorId ? "border-[#D8D0BE] text-[#1C232E]" : "border-[#E2621B] text-[#E2621B] font-semibold"}`}>
+            <select value={order.montorId || ""} onChange={(e) => onAssign(order.id, e.target.value || null)} className={`w-full min-w-0 flex-1 rounded-lg text-xs border px-2 py-1.5 focus:outline-none focus:border-[#C8232E] ${order.montorId ? "border-[#DDDDDD] text-[#1A1A1A]" : "border-[#C8232E] text-[#C8232E] font-semibold"}`}>
               <option value="">Vælg montør...</option>
               {technicians.map((m) => <option key={m.id} value={m.id}>{m.navn}</option>)}
             </select>
