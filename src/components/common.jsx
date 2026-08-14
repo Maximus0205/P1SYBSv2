@@ -5,6 +5,10 @@ import { isToday, addDays, keyAccessText, STATUS_META, todayISO, lineItemLabel, 
 // NB: den underliggende JSON-data (order.kunde, order.varelinjer osv.) er
 // IKKE omdøbt i denne omgang - kun kodens egne variabel-/prop-/komponentnavne.
 // Det ville kræve en separat datamigration af alt eksisterende data.
+//
+// Farver her kommer fra STATUS_META (domain.js), som er uafhængig af
+// brand-temaet (status skal ikke skifte farve hvis vi rebrander) - resten
+// af filen bruger de centrale semantiske temaklasser fra tailwind.config.js.
 
 function StatusBadge({ status }) {
   const m = STATUS_META[status];
@@ -19,15 +23,7 @@ function StatusBadge({ status }) {
 function AddOnPill({ addOn }) {
   const Icon = serviceIcon(addOn.navn);
   return (
-    <span
-      className="inline-flex items-center text-[11px] px-2.5 py-1 gap-1 border rounded-full font-medium"
-      style={{
-        borderColor: addOn.udfoert ? "#3D7A5C" : "#C8232E",
-        color: addOn.udfoert ? "#3D7A5C" : "#C8232E",
-        background: addOn.udfoert ? "#3D7A5C10" : "#C8232E10",
-        textDecoration: addOn.udfoert ? "line-through" : "none",
-      }}
-    >
+    <span className={`inline-flex items-center text-[11px] px-2.5 py-1 gap-1 border rounded-full font-medium ${addOn.udfoert ? "border-success text-success bg-success/10 line-through" : "border-brand text-brand bg-brand/10"}`}>
       <Icon size={11} strokeWidth={2.5} />
       {addOn.navn}
     </span>
@@ -37,7 +33,7 @@ function AddOnPill({ addOn }) {
 function KeyAccessPill({ keyAccess }) {
   if (!keyAccess || !keyAccess.kraeves) return null;
   return (
-    <span className="inline-flex items-center text-[11px] px-2.5 py-1 gap-1 rounded-full border font-semibold border-[#C8232E] text-[#C8232E] bg-[#C8232E10]">
+    <span className="inline-flex items-center text-[11px] px-2.5 py-1 gap-1 rounded-full border font-semibold border-brand text-brand bg-brand/10">
       <KeyRound size={11} strokeWidth={2.5} />
       {keyAccessText(keyAccess)}
     </span>
@@ -58,7 +54,7 @@ function LineItemPills({ order }) {
       )}
       {order.varelinjer.map((v) => (
         <div key={v.id} className="flex flex-wrap items-center gap-1.5">
-          {showLineLabel && <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border border-[#5C5C5C] text-[#5C5C5C]">{lineItemLabel(v)}</span>}
+          {showLineLabel && <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border border-muted text-muted">{lineItemLabel(v)}</span>}
           {(v.tillaeg || []).map((y) => <AddOnPill key={y.id} addOn={y} />)}
         </div>
       ))}
@@ -69,18 +65,18 @@ function LineItemPills({ order }) {
 function DateSelector({ date, onChange }) {
   return (
     <div className="flex items-center gap-1.5">
-      <button onClick={() => onChange(addDays(date, -1))} className="p-1.5 rounded-lg text-[#5C5C5C] hover:text-[#C8232E] border border-[#DDDDDD] hover:border-[#C8232E] transition-colors" title="Forrige dag">
+      <button onClick={() => onChange(addDays(date, -1))} className="p-1.5 rounded-lg text-muted hover:text-brand border border-line hover:border-brand transition-colors" title="Forrige dag">
         <ChevronLeft size={15} />
       </button>
       <div className="relative">
-        <Calendar size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-[#5C5C5C] pointer-events-none" />
-        <input type="date" value={date} onChange={(e) => e.target.value && onChange(e.target.value)} className="rounded-lg border border-[#DDDDDD] bg-white pl-7 pr-2 py-1.5 text-sm text-[#1A1A1A] font-mono focus:outline-none focus:border-[#C8232E]" />
+        <Calendar size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+        <input type="date" value={date} onChange={(e) => e.target.value && onChange(e.target.value)} className="rounded-lg border border-line bg-white pl-7 pr-2 py-1.5 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
       </div>
-      <button onClick={() => onChange(addDays(date, 1))} className="p-1.5 rounded-lg text-[#5C5C5C] hover:text-[#C8232E] border border-[#DDDDDD] hover:border-[#C8232E] transition-colors" title="Næste dag">
+      <button onClick={() => onChange(addDays(date, 1))} className="p-1.5 rounded-lg text-muted hover:text-brand border border-line hover:border-brand transition-colors" title="Næste dag">
         <ChevronRight size={15} />
       </button>
       {!isToday(date) && (
-        <button onClick={() => onChange(todayISO())} className="px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wide text-[#C8232E] border border-[#C8232E] hover:bg-[#C8232E] hover:text-white transition-colors">
+        <button onClick={() => onChange(todayISO())} className="px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wide text-brand border border-brand hover:bg-brand hover:text-white transition-colors">
           I dag
         </button>
       )}
