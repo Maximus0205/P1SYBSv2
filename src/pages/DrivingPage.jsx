@@ -18,21 +18,21 @@ function DrivingRowHeader({ r, loadMinutes, vehicles, technicians, timeOff, sele
   const timeOffBlock = vehicleBlockedByTimeOff(r.bilId, selectedDate, technicians, timeOff);
 
   if (!r.id) {
-    return <div className="min-w-0"><p className="text-xs font-semibold text-[#1C232E] truncate">{r.navn}</p></div>;
+    return <div className="min-w-0"><p className="text-xs font-semibold text-ink truncate">{r.navn}</p></div>;
   }
 
   const save = (newVehicleId) => { onUpdateTechnician(r.id, { bilId: newVehicleId || null }); setEditing(false); };
 
   return (
     <div className="min-w-0 flex-1">
-      <p className="text-xs font-semibold text-[#1C232E] truncate">{r.navn}</p>
+      <p className="text-xs font-semibold text-ink truncate">{r.navn}</p>
       {editing ? (
         <select
           autoFocus
           value={vehicleId}
           onChange={(e) => { setVehicleId(e.target.value); save(e.target.value); }}
           onBlur={() => setEditing(false)}
-          className="w-full min-w-0 border border-[#D8D0BE] bg-white px-1 py-0.5 text-[10px] text-[#1C232E] focus:outline-none focus:border-[#E2621B] mt-0.5"
+          className="w-full min-w-0 rounded-md border border-line bg-white px-1 py-0.5 text-[10px] text-ink focus:outline-none focus:border-brand mt-0.5"
         >
           <option value="">Ingen bil</option>
           {vehicles.map((b) => (
@@ -42,14 +42,14 @@ function DrivingRowHeader({ r, loadMinutes, vehicles, technicians, timeOff, sele
           ))}
         </select>
       ) : (
-        <button onClick={() => { setVehicleId(r.bilId || ""); setEditing(true); }} className="flex items-center gap-1 text-[10px] text-[#52697E] hover:text-[#E2621B] border-b border-dashed border-[#B8AF9A] hover:border-[#E2621B] w-fit" title="Klik for at skifte bil">
+        <button onClick={() => { setVehicleId(r.bilId || ""); setEditing(true); }} className="flex items-center gap-1 text-[10px] text-muted hover:text-brand border-b border-dashed border-line hover:border-brand w-fit" title="Klik for at skifte bil">
           <span className="truncate">{linkedVehicle ? vehicleLabel(linkedVehicle) : "Ingen bil"}</span>
           <Pencil size={9} className="shrink-0" />
         </button>
       )}
-      {loadMinutes > 0 && <p className="text-[10px] text-[#E2621B] font-semibold flex items-center gap-1"><Clock size={9} /> {formatDuration(loadMinutes)} planlagt</p>}
-      {linkedVehicle?.lukket && <p className="text-[10px] text-[#B3261E] font-semibold flex items-center gap-1"><AlertCircle size={9} /> Bil lukket ({linkedVehicle.lukketAarsag || "værksted"})</p>}
-      {!linkedVehicle?.lukket && timeOffBlock && <p className="text-[10px] text-[#B3261E] font-semibold flex items-center gap-1"><AlertCircle size={9} /> {timeOffBlock.montor.navn} holder ferie</p>}
+      {loadMinutes > 0 && <p className="text-[10px] text-brand font-semibold flex items-center gap-1"><Clock size={9} /> {formatDuration(loadMinutes)} planlagt</p>}
+      {linkedVehicle?.lukket && <p className="text-[10px] text-danger font-semibold flex items-center gap-1"><AlertCircle size={9} /> Bil lukket ({linkedVehicle.lukketAarsag || "værksted"})</p>}
+      {!linkedVehicle?.lukket && timeOffBlock && <p className="text-[10px] text-danger font-semibold flex items-center gap-1"><AlertCircle size={9} /> {timeOffBlock.montor.navn} holder ferie</p>}
     </div>
   );
 }
@@ -99,20 +99,20 @@ function WeeklyAreas({ orders, technicians, selectedDate }) {
   return (
     <div className="mt-8">
       <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E]">Ugens områdefordeling</h2>
-        <button onClick={askAI} disabled={aiLoading} className="text-xs font-semibold uppercase tracking-wide text-white bg-[#1C232E] hover:bg-[#E2621B] transition-colors px-3 py-1.5 disabled:opacity-50 flex items-center gap-1.5">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink">Ugens områdefordeling</h2>
+        <button onClick={askAI} disabled={aiLoading} className="text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors px-3 py-1.5 rounded-lg disabled:opacity-50 flex items-center gap-1.5">
           {aiLoading ? "Analyserer..." : "Bed AI om ruteforslag"}
         </button>
       </div>
-      <p className="text-xs text-[#52697E] mb-3">Grupperet på postnummer/by, ud fra kundens leveringsadresse. Bruges til at opdage dobbeltkørsel og spredte besøg — ikke reel kørselsafstand.</p>
+      <p className="text-xs text-muted mb-3">Grupperet på postnummer/by, ud fra kundens leveringsadresse. Bruges til at opdage dobbeltkørsel og spredte besøg — ikke reel kørselsafstand.</p>
 
-      <div className="border border-[#D8D0BE] bg-white overflow-x-auto">
+      <div className="rounded-xl border border-line bg-white overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-[#D8D0BE]">
-              <th className="text-left p-2 text-[#52697E] font-semibold uppercase tracking-wide">Område</th>
+            <tr className="border-b border-line">
+              <th className="text-left p-2 text-muted font-semibold uppercase tracking-wide">Område</th>
               {week.map((d) => (
-                <th key={d} className={`text-center p-2 font-semibold uppercase tracking-wide ${isToday(d) ? "text-[#E2621B]" : "text-[#52697E]"}`}>
+                <th key={d} className={`text-center p-2 font-semibold uppercase tracking-wide ${isToday(d) ? "text-brand" : "text-muted"}`}>
                   {new Date(d + "T00:00:00").toLocaleDateString("da-DK", { weekday: "short" })}
                 </th>
               ))}
@@ -120,10 +120,10 @@ function WeeklyAreas({ orders, technicians, selectedDate }) {
           </thead>
           <tbody>
             {areaNames.map((key) => (
-              <tr key={key} className="border-b border-[#F0EBDD]">
-                <td className="p-2 text-[#1C232E] font-medium whitespace-nowrap">
+              <tr key={key} className="border-b border-divider">
+                <td className="p-2 text-ink font-medium whitespace-nowrap">
                   {key}
-                  {isProblem(key) && <AlertCircle size={11} className="inline ml-1 -mt-0.5 text-[#E2621B]" />}
+                  {isProblem(key) && <AlertCircle size={11} className="inline ml-1 -mt-0.5 text-brand" />}
                 </td>
                 {week.map((d) => {
                   const here = areas[key]?.[d] || [];
@@ -133,7 +133,7 @@ function WeeklyAreas({ orders, technicians, selectedDate }) {
                     <td key={d} className="p-2 text-center">
                       {here.length > 0 && (
                         <span
-                          className={`inline-flex items-center justify-center min-w-[20px] px-1 text-[10px] font-semibold ${problem ? "bg-[#B3261E] text-white" : "bg-[#F3EFE6] text-[#1C232E]"}`}
+                          className={`inline-flex items-center justify-center min-w-[20px] px-1 rounded-md text-[10px] font-semibold ${problem ? "bg-danger text-white" : "bg-panel text-ink"}`}
                           title={here.map((s) => `${s.kunde.navn} — ${technicianName(s.montorId) || "ikke tildelt"}`).join(" · ")}
                         >
                           {here.length}
@@ -147,15 +147,15 @@ function WeeklyAreas({ orders, technicians, selectedDate }) {
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-[#52697E] mt-2 flex items-center gap-1.5">
-        <AlertCircle size={12} className="text-[#E2621B] shrink-0" /> Rødt tal = flere forskellige biler i samme område samme dag. ⚠ ved områdenavnet = enten dobbeltdækket eller besøgt spredt over flere dage i ugen.
+      <p className="text-xs text-muted mt-2 flex items-center gap-1.5">
+        <AlertCircle size={12} className="text-brand shrink-0" /> Rødt tal = flere forskellige biler i samme område samme dag. ⚠ ved områdenavnet = enten dobbeltdækket eller besøgt spredt over flere dage i ugen.
       </p>
 
-      {aiError && <p className="text-xs text-[#B3261E] mt-2">{aiError}</p>}
+      {aiError && <p className="text-xs text-danger mt-2">{aiError}</p>}
       {aiAnswer && (
-        <div className="mt-3 border border-[#1C232E] bg-[#FCFAF4] p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#1C232E] mb-1.5">AI-forslag til bedre ruteplanlægning</p>
-          <div className="text-sm text-[#1C232E] whitespace-pre-wrap">{aiAnswer}</div>
+        <div className="mt-3 rounded-xl border border-ink bg-panel p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink mb-1.5">AI-forslag til bedre ruteplanlægning</p>
+          <div className="text-sm text-ink whitespace-pre-wrap">{aiAnswer}</div>
         </div>
       )}
     </div>
@@ -179,25 +179,25 @@ function DrivingPage({ orders, technicians, vehicles, timeOff, selectedDate, onD
     <div>
       <div className="flex items-end justify-between mb-6 flex-wrap gap-3">
         <div>
-          <p className="font-mono text-[11px] tracking-widest uppercase text-[#E2621B] mb-1">{formatLongDate(selectedDate)}</p>
-          <h1 className="font-['Barlow_Condensed'] text-4xl uppercase tracking-tight text-[#1C232E]">Kørselsoverblik</h1>
+          <p className="font-mono text-[11px] tracking-widest uppercase text-brand mb-1">{formatLongDate(selectedDate)}</p>
+          <h1 className="font-display text-4xl uppercase tracking-tight text-ink">Kørselsoverblik</h1>
           <div className="flex items-center gap-3 mt-1">
-            <p className="text-sm text-[#52697E]">{technicians.length} montører · faste tidsrum</p>
+            <p className="text-sm text-muted">{technicians.length} montører · faste tidsrum</p>
             <DateSelector date={selectedDate} onChange={onDateChange} />
           </div>
         </div>
-        <button onClick={onRefresh} className="p-2 text-[#1C232E] border border-[#D8D0BE] hover:border-[#E2621B] hover:text-[#E2621B] transition-colors" title="Opdater">
+        <button onClick={onRefresh} className="p-2 rounded-lg text-ink border border-line hover:border-brand hover:text-brand transition-colors" title="Opdater">
           <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
         </button>
       </div>
 
-      <div className="border border-[#D8D0BE] bg-white overflow-x-auto">
+      <div className="rounded-xl border border-line bg-white overflow-x-auto">
         <div style={{ width: width + 160, minWidth: "100%" }}>
-          <div className="flex sticky top-0 bg-white z-10 border-b border-[#D8D0BE]">
-            <div className="w-[160px] shrink-0 border-r border-[#D8D0BE]" />
+          <div className="flex sticky top-0 bg-white z-10 border-b border-line">
+            <div className="w-[160px] shrink-0 border-r border-line" />
             <div className="relative" style={{ width, height: 26 }}>
               {hourMarks.map((t) => (
-                <div key={t} className="absolute top-0 bottom-0 border-l border-[#F0EBDD] text-[10px] font-mono text-[#52697E] pl-1 pt-1" style={{ left: (t - dayStart) * PX_PER_MIN }}>
+                <div key={t} className="absolute top-0 bottom-0 border-l border-divider text-[10px] font-mono text-muted pl-1 pt-1" style={{ left: (t - dayStart) * PX_PER_MIN }}>
                   {String(Math.floor(t / 60)).padStart(2, "0")}
                 </div>
               ))}
@@ -208,18 +208,18 @@ function DrivingPage({ orders, technicians, vehicles, timeOff, selectedDate, onD
             const myOrders = validOrders.filter((s) => s.montorId === r.id);
             const loadMinutes = myOrders.reduce((sum, s) => sum + orderExpectedMinutes(s), 0);
             return (
-              <div key={r.id || "utildelt"} className="flex border-b border-[#F0EBDD]">
-                <div className="w-[160px] shrink-0 border-r border-[#D8D0BE] p-2.5 flex items-center gap-2 bg-[#FCFAF4]">
+              <div key={r.id || "utildelt"} className="flex border-b border-divider">
+                <div className="w-[160px] shrink-0 border-r border-line p-2.5 flex items-center gap-2 bg-panel">
                   {r.id ? (
                     <span className="w-2 h-2 rounded-full shrink-0" style={{ background: technicianColor(r.id, technicians) }} />
                   ) : (
-                    <span className="w-2 h-2 rounded-full shrink-0 border border-[#E2621B]" />
+                    <span className="w-2 h-2 rounded-full shrink-0 border border-brand" />
                   )}
                   <DrivingRowHeader r={r} loadMinutes={loadMinutes} vehicles={vehicles} technicians={technicians} timeOff={timeOff} selectedDate={selectedDate} onUpdateTechnician={onUpdateTechnician} />
                 </div>
                 <div className="relative" style={{ width, height: 72 }}>
                   {hourMarks.map((t) => (
-                    <div key={t} className="absolute top-0 bottom-0 border-l border-[#F0EBDD]" style={{ left: (t - dayStart) * PX_PER_MIN }} />
+                    <div key={t} className="absolute top-0 bottom-0 border-l border-divider" style={{ left: (t - dayStart) * PX_PER_MIN }} />
                   ))}
                   {myOrders.map((s) => {
                     const left = (toMinutes(s.start) - dayStart) * PX_PER_MIN;
@@ -229,15 +229,15 @@ function DrivingPage({ orders, technicians, vehicles, timeOff, selectedDate, onD
                       <div
                         key={s.id}
                         onClick={() => onOpen(s.id)}
-                        className="absolute top-1.5 bottom-1.5 px-2 py-1 cursor-pointer overflow-hidden bg-white hover:z-10 hover:shadow-md transition-shadow"
-                        style={{ left, width: w, border: conflict ? "1px solid #B3261E" : "1px solid #D8D0BE", borderLeftWidth: 3, borderLeftColor: STATUS_META[s.status].color }}
+                        className="absolute top-1.5 bottom-1.5 px-2 py-1 rounded-md cursor-pointer overflow-hidden bg-white hover:z-10 hover:shadow-md transition-shadow"
+                        style={{ left, width: w, border: conflict ? "1px solid #B3261E" : "1px solid #DDDDDD", borderLeftWidth: 3, borderLeftColor: STATUS_META[s.status].color }}
                         title={conflict ? "Overlapper med en anden sag på samme bil" : ""}
                       >
-                        <p className="text-[10px] font-mono text-[#52697E] truncate">{s.start}–{s.slut}</p>
-                        <p className="text-xs font-semibold text-[#1C232E] truncate">{buildTitle(s.varelinjer)}</p>
-                        <p className="text-[10px] text-[#52697E] truncate">{s.kunde.navn}</p>
-                        {s.noegle?.kraeves && <p className="text-[10px] text-[#E2621B] truncate flex items-center gap-0.5"><KeyRound size={9} /> nøgle</p>}
-                        {conflict && <p className="text-[10px] text-[#B3261E] font-semibold">Overlap!</p>}
+                        <p className="text-[10px] font-mono text-muted truncate">{s.start}–{s.slut}</p>
+                        <p className="text-xs font-semibold text-ink truncate">{buildTitle(s.varelinjer)}</p>
+                        <p className="text-[10px] text-muted truncate">{s.kunde.navn}</p>
+                        {s.noegle?.kraeves && <p className="text-[10px] text-brand truncate flex items-center gap-0.5"><KeyRound size={9} /> nøgle</p>}
+                        {conflict && <p className="text-[10px] text-danger font-semibold">Overlap!</p>}
                       </div>
                     );
                   })}
@@ -247,13 +247,13 @@ function DrivingPage({ orders, technicians, vehicles, timeOff, selectedDate, onD
           })}
         </div>
       </div>
-      <p className="text-xs text-[#52697E] mt-3">
+      <p className="text-xs text-muted mt-3">
         Stop følger de faste tidsrum. Rød kant = overlap på samme bil. Kørselsafstand og reel rute-optimering kræver et korttjeneste-API (fx Google Maps), som ikke er koblet på endnu.
       </p>
 
       <WeeklyAreas orders={orders} technicians={technicians} selectedDate={selectedDate} />
 
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mt-8 mb-3">Omfordel hurtigt</h2>
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-ink mt-8 mb-3">Omfordel hurtigt</h2>
       <div className="grid sm:grid-cols-2 gap-2">
         {[...todaysOrders].sort((a, b) => (a.start || "").localeCompare(b.start || "")).map((s) => (
           <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} onAssign={onAssign} onUpdateTimeSlot={onUpdateTimeSlot} />
