@@ -69,14 +69,16 @@ function matchesSearch(order, search) {
   );
 }
 
+// Farverne her hentes fra det centrale tema (tailwind.config.js), så
+// "reason"-mærket i kortet (se OrderCardCompact) altid matcher brand-temaet.
 const ACTION_RED = "#B3261E";
-const ACTION_ORANGE = "#E2621B";
+const ACTION_BRAND = "#C8232E";
 
 // Hvad kortet skal vise (farve + tekst) - beregnet én gang, brugt til
 // BÅDE kantfarven og teksten, så de altid stemmer overens.
 function actionReason(order) {
   if (order._unassigned && order._overdue) return { color: ACTION_RED, text: `Ikke tildelt · ${order._daysLate} ${order._daysLate === 1 ? "dag" : "dage"} forsinket` };
-  if (order._unassigned) return { color: ACTION_ORANGE, text: "Ikke tildelt montør" };
+  if (order._unassigned) return { color: ACTION_BRAND, text: "Ikke tildelt montør" };
   return { color: ACTION_RED, text: `${order._daysLate} ${order._daysLate === 1 ? "dag" : "dage"} forsinket` };
 }
 
@@ -95,20 +97,20 @@ function ReasonLine({ order }) {
 // Sammenklappelig sektion til det, der IKKE kræver handling lige nu -
 // holdt ude af syne som udgangspunkt, så mobilskærmen ikke fyldes med
 // sager der allerede er under kontrol.
-function CollapsibleSection({ title, icon: Icon, color, items, technicians, onOpen, onCycleStatus, emptyText }) {
+function CollapsibleSection({ title, icon: Icon, colorClass, items, technicians, onOpen, onCycleStatus, emptyText }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="border border-[#D8D0BE] bg-white">
+    <div className="rounded-xl border border-line bg-white overflow-hidden">
       <button onClick={() => setOpen((v) => !v)} className="w-full p-3 flex items-center gap-2 text-left">
-        <Icon size={15} style={{ color }} className="shrink-0" />
-        <span className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] flex-1">{title}</span>
-        <span className="text-xs font-mono px-1.5 py-0.5 border border-[#D8D0BE] text-[#52697E]">{items.length}</span>
-        <ChevronDown size={16} className={`text-[#52697E] transition-transform ${open ? "rotate-180" : ""}`} />
+        <Icon size={15} className={`shrink-0 ${colorClass}`} />
+        <span className="text-sm font-semibold uppercase tracking-wide text-ink flex-1">{title}</span>
+        <span className="text-xs font-mono px-1.5 py-0.5 rounded-full border border-line text-muted">{items.length}</span>
+        <ChevronDown size={16} className={`text-muted transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
         <div className="p-3 pt-0 grid gap-2 sm:grid-cols-2">
           {items.length === 0 ? (
-            <p className="text-xs text-[#52697E] italic pt-2">{emptyText}</p>
+            <p className="text-xs text-muted italic pt-2">{emptyText}</p>
           ) : (
             items.map((s) => <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} />)
           )}
@@ -150,22 +152,22 @@ function WeeklyCapacity({ orders, technicians }) {
   };
 
   return (
-    <div className="border border-[#D8D0BE] bg-white mb-4">
+    <div className="rounded-xl border border-line bg-white mb-4 overflow-hidden">
       <button onClick={() => setOpen((v) => !v)} className="w-full p-3 flex items-center gap-2 text-left">
-        <Gauge size={15} className="text-[#52697E] shrink-0" />
-        <span className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] flex-1">Ugens kapacitet</span>
-        <ChevronDown size={16} className={`text-[#52697E] transition-transform ${open ? "rotate-180" : ""}`} />
+        <Gauge size={15} className="text-muted shrink-0" />
+        <span className="text-sm font-semibold uppercase tracking-wide text-ink flex-1">Ugens kapacitet</span>
+        <ChevronDown size={16} className={`text-muted transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
         <div className="px-3 pb-3">
-          <p className="text-[11px] text-[#52697E] mb-2">Bookede timer pr. montør, dag for dag. Rødt = mere end en arbejdsdag booket ({hoursLabel(WORKDAY_MINUTES)}) - overvej at flytte noget, før der lægges mere oveni.</p>
+          <p className="text-[11px] text-muted mb-2">Bookede timer pr. montør, dag for dag. Rødt = mere end en arbejdsdag booket ({hoursLabel(WORKDAY_MINUTES)}) - overvej at flytte noget, før der lægges mere oveni.</p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-[#D8D0BE]">
-                  <th className="text-left p-1.5 text-[#52697E] font-semibold uppercase tracking-wide">Montør</th>
+                <tr className="border-b border-line">
+                  <th className="text-left p-1.5 text-muted font-semibold uppercase tracking-wide">Montør</th>
                   {week.map((d) => (
-                    <th key={d} className={`text-center p-1.5 font-semibold uppercase tracking-wide ${d === today ? "text-[#E2621B]" : "text-[#52697E]"}`}>
+                    <th key={d} className={`text-center p-1.5 font-semibold uppercase tracking-wide ${d === today ? "text-brand" : "text-muted"}`}>
                       {dayName(d)}
                     </th>
                   ))}
@@ -173,18 +175,18 @@ function WeeklyCapacity({ orders, technicians }) {
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.id || "utildelt"} className="border-b border-[#F0EBDD] last:border-b-0">
-                    <td className="p-1.5 text-[#1C232E] font-medium whitespace-nowrap">{r.navn}</td>
+                  <tr key={r.id || "utildelt"} className="border-b border-divider last:border-b-0">
+                    <td className="p-1.5 text-ink font-medium whitespace-nowrap">{r.navn}</td>
                     {week.map((d) => {
                       const { count, minutes } = cellFor(r.id, d);
                       const overloaded = minutes > WORKDAY_MINUTES;
                       return (
                         <td key={d} className="p-1.5 text-center">
                           {count === 0 ? (
-                            <span className="text-[#D8D0BE]">–</span>
+                            <span className="text-line">–</span>
                           ) : (
                             <span
-                              className={`inline-flex flex-col items-center px-1.5 py-0.5 ${overloaded ? "bg-[#B3261E] text-white" : "bg-[#F3EFE6] text-[#1C232E]"}`}
+                              className={`inline-flex flex-col items-center px-1.5 py-0.5 rounded-lg ${overloaded ? "bg-danger text-white" : "bg-panel text-ink"}`}
                               title={`${count} ${count === 1 ? "sag" : "sager"} · ${hoursLabel(minutes)}`}
                             >
                               <span className="font-semibold">{hoursLabel(minutes)}</span>
@@ -216,20 +218,20 @@ function PlanningPage({ orders, technicians, onOpen, onCycleStatus, onAssign }) 
 
   return (
     <div>
-      <p className="font-mono text-[11px] tracking-widest uppercase text-[#E2621B] mb-1">Overblik</p>
-      <h1 className="font-['Barlow_Condensed'] text-4xl uppercase tracking-tight text-[#1C232E] mb-1">Planlægning</h1>
-      <p className="text-sm text-[#52697E] mb-4">Sager der kræver handling — ikke tildelt en montør, eller forsinkede uden at være afsluttet.</p>
+      <p className="font-mono text-[11px] tracking-widest uppercase text-brand mb-1">Overblik</p>
+      <h1 className="font-display text-4xl uppercase tracking-tight text-ink mb-1">Planlægning</h1>
+      <p className="text-sm text-muted mb-4">Sager der kræver handling — ikke tildelt en montør, eller forsinkede uden at være afsluttet.</p>
 
       <div className="relative mb-6">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#52697E]" />
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Søg efter sagsnr., ordre-/fakturanr., telefon, adresse eller kundenavn..."
-          className="w-full border border-[#D8D0BE] bg-white pl-9 pr-9 py-2.5 text-sm text-[#1C232E] focus:outline-none focus:border-[#E2621B]"
+          className="w-full rounded-lg border border-line bg-white pl-9 pr-9 py-2.5 text-sm text-ink focus:outline-none focus:border-brand"
         />
         {search && (
-          <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#52697E] hover:text-[#E2621B]">
+          <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-brand">
             <X size={16} />
           </button>
         )}
@@ -237,11 +239,11 @@ function PlanningPage({ orders, technicians, onOpen, onCycleStatus, onAssign }) 
 
       {searchResults ? (
         <div>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] mb-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">
             {searchResults.length} {searchResults.length === 1 ? "match" : "matches"} på "{search}"
           </h2>
           {searchResults.length === 0 ? (
-            <p className="text-sm text-[#52697E] italic">Ingen sager matcher søgningen — tjek stavning, eller søg på et andet felt (sagsnr., ordrenr., telefon, adresse, kundenavn).</p>
+            <p className="text-sm text-muted italic">Ingen sager matcher søgningen — tjek stavning, eller søg på et andet felt (sagsnr., ordrenr., telefon, adresse, kundenavn).</p>
           ) : (
             <div className="grid sm:grid-cols-2 gap-2">
               {searchResults.map((s) => <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} />)}
@@ -253,15 +255,15 @@ function PlanningPage({ orders, technicians, onOpen, onCycleStatus, onAssign }) 
           {/* Hovedfokus: sager der kræver handling - altid åben, øverst, aldrig gemt væk.
               Ren hvid kortoverflade med en rød topkant som eneste "alarm"-signal,
               i stedet for en gennemgående farvet baggrund - renere på en smal skærm. */}
-          <div className="bg-white border border-[#D8D0BE] mb-4" style={{ borderTopWidth: 4, borderTopColor: ACTION_RED }}>
-            <div className="p-3 border-b border-[#D8D0BE] flex items-center gap-2">
-              <AlertCircle size={17} className="text-[#B3261E] shrink-0" />
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] flex-1">Kræver handling</h2>
-              <span className="text-xs font-mono px-1.5 py-0.5 bg-[#B3261E] text-white">{needsAction.length}</span>
+          <div className="rounded-xl bg-white border border-line mb-4 overflow-hidden" style={{ borderTopWidth: 4, borderTopColor: ACTION_RED }}>
+            <div className="p-3 border-b border-line flex items-center gap-2">
+              <AlertCircle size={17} className="text-danger shrink-0" />
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-ink flex-1">Kræver handling</h2>
+              <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-danger text-white">{needsAction.length}</span>
             </div>
             <div className="p-3">
               {needsAction.length === 0 ? (
-                <p className="text-sm text-[#3D7A5C] font-medium flex items-center gap-2 py-2">
+                <p className="text-sm text-success font-medium flex items-center gap-2 py-2">
                   <Sparkles size={16} /> Intet hænger — alle sager er enten tildelt en montør eller afsluttet til tiden.
                 </p>
               ) : (
@@ -284,11 +286,11 @@ function PlanningPage({ orders, technicians, onOpen, onCycleStatus, onAssign }) 
           </div>
 
           {inProgressToday.length > 0 && (
-            <div className="border border-[#1C7C8C] bg-white mb-4">
-              <div className="p-3 border-b border-[#D8D0BE] flex items-center gap-2">
-                <PlayCircle size={15} className="text-[#1C7C8C] shrink-0" />
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-[#1C232E] flex-1">I gang i dag</h2>
-                <span className="text-xs font-mono px-1.5 py-0.5 border border-[#D8D0BE] text-[#52697E]">{inProgressToday.length}</span>
+            <div className="rounded-xl border border-info bg-white mb-4 overflow-hidden">
+              <div className="p-3 border-b border-line flex items-center gap-2">
+                <PlayCircle size={15} className="text-info shrink-0" />
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-ink flex-1">I gang i dag</h2>
+                <span className="text-xs font-mono px-1.5 py-0.5 rounded-full border border-line text-muted">{inProgressToday.length}</span>
               </div>
               <div className="p-3 grid gap-2 sm:grid-cols-2">
                 {inProgressToday.map((s) => <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} />)}
@@ -300,8 +302,8 @@ function PlanningPage({ orders, technicians, onOpen, onCycleStatus, onAssign }) 
 
           {/* Under kontrol - klap sammen som udgangspunkt, især vigtigt på mobil */}
           <div className="space-y-2">
-            <CollapsibleSection title="Planlagt fremad" icon={CalendarClock} color="#52697E" items={upcoming} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} emptyText="Ingen kommende planlagte sager." />
-            <CollapsibleSection title="Afsluttet" icon={CheckCircle2} color="#3D7A5C" items={done} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} emptyText="Ingen afsluttede sager endnu." />
+            <CollapsibleSection title="Planlagt fremad" icon={CalendarClock} colorClass="text-muted" items={upcoming} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} emptyText="Ingen kommende planlagte sager." />
+            <CollapsibleSection title="Afsluttet" icon={CheckCircle2} colorClass="text-success" items={done} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} emptyText="Ingen afsluttede sager endnu." />
           </div>
         </>
       )}
