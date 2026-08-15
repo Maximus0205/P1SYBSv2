@@ -147,7 +147,7 @@ function LoginPage() {
         <button
           onClick={submit}
           disabled={busy}
-          className="w-full mt-5 px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+          className="w-full mt-5 px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-ink transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
         >
           {busy && <Loader2 size={14} className="animate-spin" />}
           {signingUp ? "Opret bruger" : "Log ind"}
