@@ -1,7 +1,8 @@
-import React, { useState } from "react";
-import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin, Sparkles } from "lucide-react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin, Sparkles, ChevronDown, RefreshCw } from "lucide-react";
 import { OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID, KEY_ACCESS_TYPES, buildingKey, formatLongDate, formatDuration, lineItemMinutes, availableAddOns, serviceIcon, todayISO, weekDays, orderExpectedMinutes } from "../data/domain";
 import { getAiRouteSuggestion } from "../lib/dataStore";
+import { geocodeAddress, geocodeAddresses, drivingDistances } from "../lib/geocoding";
 
 function LineItemEditor({ lineItem, productTypes, productCategories, primaryServices, addOnServices, onChange, onRemove, canRemove }) {
   const isOther = lineItem.varetypeId === OTHER_PRODUCT_TYPE_ID;
@@ -166,41 +167,6 @@ function KeyAccessFields({ keyAccess, onChange }) {
   );
 }
 
-// Viser kun KOMMENDE sager (i dag eller frem) på samme opgang/ejendom - en
-// sag der allerede er overstået er ikke noget man kan koordinere kørsel
-// med, og ville ellers dukke op som et forslag der reelt er ubrugeligt
-// ("der var en sag her for 3 uger siden").
-function AddressSuggestion({ address, date, orders, onUseDate }) {
-  const key = buildingKey(address);
-  if (!key || address.trim().length < 5) return null;
-  const today = todayISO();
-  const matches = (orders || []).filter((s) => s.dato && s.dato !== date && s.dato >= today && buildingKey(s.kunde?.adresse) === key);
-  if (matches.length === 0) return null;
-  const dates = [...new Set(matches.map((s) => s.dato))].sort();
-  return (
-    <div className="mb-3 rounded-xl border border-brand bg-brand/10 p-3">
-      <p className="text-sm font-semibold text-brand flex items-center gap-1.5"><AlertCircle size={14} /> Samme opgang/ejendom er allerede booket</p>
-      <p className="text-xs text-muted mt-1">Der er allerede en kommende sag på denne adresse på en anden dag — overvej at samle dem, så I ikke kører to gange til samme opgang:</p>
-      <div className="mt-2 space-y-1">
-        {dates.map((d) => {
-          const onThatDay = matches.filter((s) => s.dato === d);
-          return (
-            <div key={d} className="rounded-lg bg-white border border-line px-2 py-1.5">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="text-xs font-semibold text-ink">{formatLongDate(d)}</span>
-                <button onClick={() => onUseDate(d)} className="text-[10px] font-semibold uppercase tracking-wide text-ink border border-line rounded-full hover:border-brand hover:text-brand px-2 py-1 shrink-0">Brug denne dato</button>
-              </div>
-              {onThatDay.map((s) => (
-                <p key={s.id} className="text-[11px] text-muted flex items-center gap-1 mt-0.5"><MapPin size={10} className="shrink-0" /> {s.kunde.navn} — {s.kunde.adresse}</p>
-              ))}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 // Kundeopslag: mens sælgeren taster telefon/navn, tjekkes det op mod ALLE
 // tidligere ordrer (samme liste, som formularen allerede har fået sendt).
 // Matcher på telefonnummer (mest pålidelige - normaliseret uden mellemrum)
@@ -253,47 +219,7 @@ function CustomerHistory({ phone, name, orders, onOpen }) {
   );
 }
 
-// Overblik over dagens allerede planlagte kørsler, grupperet pr. bil/tekniker
-// - så sælgeren kan se med det samme hvem der kører hvor den valgte dag, og
-// booke mere effektivt (fx lægge en ny sag hos en bil der alligevel er i
-// området). Viser sig kun når der rent faktisk er noget booket den dag.
-function DailyRouteOverview({ orders, technicians, date }) {
-  if (!date) return null;
-  const todaysOrders = (orders || []).filter((s) => s.dato === date).sort((a, b) => (a.start || "").localeCompare(b.start || ""));
-  if (todaysOrders.length === 0) return null;
-
-  const rows = [{ id: null, navn: "Ikke tildelt endnu", bil: "" }, ...technicians]
-    .map((m) => ({ ...m, orders: todaysOrders.filter((s) => s.montorId === m.id) }))
-    .filter((g) => g.orders.length > 0);
-
-  return (
-    <div className="mb-4 rounded-xl border border-line bg-panel p-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-ink mb-2.5 flex items-center gap-1.5">
-        <Truck size={13} /> Dagens ruter — {formatLongDate(date)} <span className="font-mono text-muted">({todaysOrders.length} sager)</span>
-      </p>
-      <div className="space-y-3">
-        {rows.map((g) => (
-          <div key={g.id || "utildelt"}>
-            <p className="text-[11px] font-semibold text-muted mb-1">
-              {g.navn}{g.bil ? ` — ${g.bil}` : ""} <span className="font-mono">({g.orders.length})</span>
-            </p>
-            <div className="space-y-1">
-              {g.orders.map((s) => (
-                <div key={s.id} className="flex items-start gap-2 text-xs rounded-lg bg-white border border-line px-2 py-1.5">
-                  <span className="font-mono text-muted shrink-0">{s.start}</span>
-                  <span className="text-ink shrink-0 font-medium">{s.kunde?.navn}</span>
-                  <span className="text-muted truncate flex items-center gap-1"><MapPin size={10} className="shrink-0" /> {s.kunde?.adresse}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-const WORKDAY_MINUTES = 450; // ~7,5 time - samme tærskel som Planlægnings ugekapacitet
+const WORKDAY_MINUTES = 450; // ~7,5 time
 function hoursLabel(minutes) {
   if (minutes === 0) return "–";
   const h = Math.floor(minutes / 60);
@@ -301,9 +227,8 @@ function hoursLabel(minutes) {
   return m > 0 ? `${h}t${m}m` : `${h}t`;
 }
 
-// Ugekapacitet vist i bookingflowets SIDSTE trin - så sælgeren kan se
-// hvilke dage der allerede er fyldt op, FØR en dato vælges, i stedet for
-// at skulle gætte og risikere at overbooke en montør.
+// Ugekapacitet - vist som en valgfri, klappet-sammen detalje under de
+// foreslåede datoer (se SuggestedDates), til den der vil dobbelttjekke selv.
 function WeeklyScheduleOverview({ orders, technicians, date }) {
   const anchor = date || todayISO();
   const week = weekDays(anchor);
@@ -317,97 +242,184 @@ function WeeklyScheduleOverview({ orders, technicians, date }) {
   };
 
   return (
-    <div className="rounded-xl border border-line bg-white p-3 mb-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-ink mb-2">Ugens kapacitet</p>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-line">
-              <th className="text-left p-1.5 text-muted font-semibold uppercase tracking-wide">Montør</th>
-              {week.map((d) => (
-                <th key={d} className={`text-center p-1.5 font-semibold uppercase tracking-wide ${d === date ? "text-brand" : d === today ? "text-ink" : "text-muted"}`}>
-                  {new Date(d + "T00:00:00").toLocaleDateString("da-DK", { weekday: "short" })}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id || "utildelt"} className="border-b border-divider last:border-b-0">
-                <td className="p-1.5 text-ink font-medium whitespace-nowrap">{r.navn}</td>
-                {week.map((d) => {
-                  const { count, minutes } = cellFor(r.id, d);
-                  const overloaded = minutes > WORKDAY_MINUTES;
-                  return (
-                    <td key={d} className={`p-1.5 text-center ${d === date ? "bg-brand/10" : ""}`}>
-                      {count === 0 ? (
-                        <span className="text-line">–</span>
-                      ) : (
-                        <span
-                          className={`inline-flex flex-col items-center px-1.5 py-0.5 rounded-lg ${overloaded ? "bg-danger text-white" : "bg-panel text-ink"}`}
-                          title={`${count} ${count === 1 ? "sag" : "sager"} · ${hoursLabel(minutes)}`}
-                        >
-                          <span className="font-semibold">{hoursLabel(minutes)}</span>
-                          <span className="text-[9px] opacity-80">{count} {count === 1 ? "sag" : "sager"}</span>
-                        </span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-line">
+            <th className="text-left p-1.5 text-muted font-semibold uppercase tracking-wide">Montør</th>
+            {week.map((d) => (
+              <th key={d} className={`text-center p-1.5 font-semibold uppercase tracking-wide ${d === date ? "text-brand" : d === today ? "text-ink" : "text-muted"}`}>
+                {new Date(d + "T00:00:00").toLocaleDateString("da-DK", { weekday: "short" })}
+              </th>
             ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-[10px] text-muted mt-2">Den valgte dato er markeret. Rødt = allerede booket mere end en arbejdsdag ({hoursLabel(WORKDAY_MINUTES)}).</p>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id || "utildelt"} className="border-b border-divider last:border-b-0">
+              <td className="p-1.5 text-ink font-medium whitespace-nowrap">{r.navn}</td>
+              {week.map((d) => {
+                const { count, minutes } = cellFor(r.id, d);
+                const overloaded = minutes > WORKDAY_MINUTES;
+                return (
+                  <td key={d} className={`p-1.5 text-center ${d === date ? "bg-brand/10" : ""}`}>
+                    {count === 0 ? (
+                      <span className="text-line">–</span>
+                    ) : (
+                      <span
+                        className={`inline-flex flex-col items-center px-1.5 py-0.5 rounded-lg ${overloaded ? "bg-danger text-white" : "bg-panel text-ink"}`}
+                        title={`${count} ${count === 1 ? "sag" : "sager"} · ${hoursLabel(minutes)}`}
+                      >
+                        <span className="font-semibold">{hoursLabel(minutes)}</span>
+                        <span className="text-[9px] opacity-80">{count} {count === 1 ? "sag" : "sager"}</span>
+                      </span>
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="text-[10px] text-muted mt-2">Rødt = allerede booket mere end en arbejdsdag ({hoursLabel(WORKDAY_MINUTES)}).</p>
     </div>
   );
 }
 
-// AI-forslag til PLACERING af den nye sag (hvilken dag/montør passer bedst
-// ind i ugens eksisterende ruter) - adskilt fra AI-ruteforslaget i
-// Kørselsoverblik, som i stedet analyserer allerede bookede sager for
-// ineffektiv kørsel. Samme underliggende edge function, forskellig prompt
-// (se ai-ruteforslag), skelnet på om `jobSummary` (nyOpgave) er angivet.
+// ÉT samlet, AI-prioriteret forslag til levering/montering - erstatter det
+// der FØR var 3-4 separate bokse (samme opgang, køreafstand, AI-tekst,
+// ugekapacitet), som alle konkurrerede om opmærksomheden samtidig. Formålet
+// er at gøre det hurtigt og enkelt for en sælger, der står hos kunden og
+// skal aftale en dato der og da: ÉT sæt klikbare forslag, ikke fire ting at
+// læse og selv sammenligne.
 //
-// Forslaget er RÅDGIVENDE - det sætter ikke selv dato/montør, sælgeren skal
-// stadig selv vælge nedenfor. Det er bevidst, jf. at AI-forslag i denne app
-// aldrig må ændre forretningsdata automatisk.
-function AiPlacementSuggestion({ orders, technicians, date, jobSummary }) {
+// Kører automatisk når trinnet vises (kræver adresse udfyldt fra kunde-
+// trinnet) - ingen knap man skal huske at trykke først. "Samme opgang" og
+// "køreafstand" beregnes stadig (samme logik som før), men vises IKKE som
+// egne bokse - de sendes i stedet med som en del af grundlaget til AI'en,
+// som selv vejer dem sammen med ugens kapacitet og returnerer 1-3 konkrete,
+// klikbare forslag. Et klik sætter dato (og evt. montør) med det samme.
+//
+// Forslagene er RÅDGIVENDE, ikke en automatisk booking - sælgeren skal
+// stadig trykke "Book sag" til sidst, og kan altid vælge en helt anden
+// dato manuelt nedenfor.
+function SuggestedDates({ orders, technicians, date, address, jobSummary, onSelectDate }) {
   const [loading, setLoading] = useState(false);
-  const [answer, setAnswer] = useState(null);
+  const [suggestions, setSuggestions] = useState(null);
+  const [note, setNote] = useState("");
   const [error, setError] = useState(null);
+  const [showDetails, setShowDetails] = useState(false);
+  const ranRef = useRef(false);
 
-  const ask = async () => {
-    setLoading(true); setError(null); setAnswer(null);
-    const week = weekDays(date || todayISO());
+  const run = useCallback(async () => {
+    if (!address || address.trim().length < 5) {
+      setError("Udfyld leveringsadressen på kunde-trinnet først, så kan der beregnes forslag.");
+      return;
+    }
+    setLoading(true); setError(null);
+
+    const anchor = date || todayISO();
+    const week = weekDays(anchor);
     const weekOrders = (orders || []).filter((o) => week.includes(o.dato) && o.kunde?.adresse);
+
+    // Samme opgang/bygning - ingen netværkskald nødvendigt.
+    const key = buildingKey(address);
+    const sameBuildingDates = key
+      ? [...new Set(weekOrders.filter((o) => o.dato !== anchor && buildingKey(o.kunde.adresse) === key).map((o) => o.dato))]
+      : [];
+
+    // Nærliggende sager (køreafstand) - kræver geokodning. Fejler den
+    // stille (fx ingen ORS-nøgle sat op), fortsætter vi bare uden det
+    // signal - resten af forslaget bygger stadig på kapacitet+samme opgang.
+    let nearbyDates = [];
+    try {
+      const source = await geocodeAddress(address);
+      if (source) {
+        const others = weekOrders.filter((o) => o.dato !== anchor);
+        const coordMap = await geocodeAddresses(others.map((o) => o.kunde.adresse));
+        const withCoords = others
+          .map((o) => ({ order: o, coord: coordMap.get(o.kunde.adresse.trim().toLowerCase()) }))
+          .filter((x) => x.coord);
+        if (withCoords.length > 0) {
+          const distances = await drivingDistances(source, withCoords.map((x) => x.coord));
+          nearbyDates = withCoords
+            .map((x, i) => ({ dato: x.order.dato, km: distances[i] != null ? distances[i] / 1000 : null }))
+            .filter((x) => x.km != null && x.km <= 5)
+            .map((x) => ({ dato: x.dato, km: Math.round(x.km * 10) / 10 }));
+        }
+      }
+    } catch (_) {
+      // Stille - se kommentar ovenfor.
+    }
+
     const grundlag = weekOrders.map((s) => ({
       sag: s.nr, dato: s.dato, adresse: s.kunde.adresse,
       bil: technicians.find((m) => m.id === s.montorId)?.navn || "ikke tildelt",
     }));
     const montorTekst = technicians.map((m) => `${m.navn} (${m.bil})`).join(", ");
-    const result = await getAiRouteSuggestion({ grundlag, montorTekst, valgtDato: date, nyOpgave: jobSummary });
+    const nyOpgave = { ...jobSummary, sammeOpgangDatoer: sameBuildingDates, naerliggendeDatoer: nearbyDates };
+
+    const result = await getAiRouteSuggestion({ grundlag, montorTekst, valgtDato: anchor, nyOpgave });
     setLoading(false);
-    if (!result.ok) { setError(result.fejl || "Kunne ikke hente AI-forslag lige nu. Prøv igen om lidt."); return; }
-    setAnswer(result.tekst);
-  };
+    if (!result.ok) { setError(result.fejl || "Kunne ikke hente forslag lige nu."); return; }
+    setSuggestions(result.forslag || []);
+    setNote(result.generelKommentar || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address]);
+
+  useEffect(() => {
+    if (ranRef.current) return;
+    ranRef.current = true;
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="rounded-xl border border-ink bg-panel p-3 mb-4">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink flex items-center gap-1.5"><Sparkles size={13} /> AI-forslag til placering</p>
-        <button onClick={ask} disabled={loading} className="text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors px-3 py-1.5 rounded-lg disabled:opacity-50">
-          {loading ? "Analyserer..." : "Bed AI om forslag"}
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink flex items-center gap-1.5"><Sparkles size={13} /> Foreslåede datoer</p>
+        <button onClick={run} disabled={loading} className="text-muted hover:text-brand disabled:opacity-50" title="Opdater forslag">
+          <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
         </button>
       </div>
-      {!answer && !error && !loading && (
-        <p className="text-[11px] text-muted mt-1.5">Foreslår bedste dag og montør ud fra ugens eksisterende ruter og adresser. Et forslag, ikke en automatisk booking — du vælger stadig selv nedenfor.</p>
+
+      {loading && <p className="text-xs text-muted">Analyserer ugens ruter og adresser...</p>}
+      {error && <p className="text-xs text-danger">{error}</p>}
+
+      {!loading && !error && suggestions?.length > 0 && (
+        <div className="space-y-1.5 mt-1">
+          {suggestions.map((s, i) => {
+            const technician = technicians.find((m) => m.navn === s.montorNavn);
+            return (
+              <button
+                key={i}
+                onClick={() => onSelectDate(s.dato, technician ? technician.id : null)}
+                className="w-full text-left rounded-lg bg-white border border-line hover:border-brand transition-colors px-3 py-2"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-ink">{formatLongDate(s.dato)}</span>
+                  {technician && <span className="text-[10px] font-mono text-muted shrink-0">{technician.navn}</span>}
+                </div>
+                {s.begrundelse && <p className="text-[11px] text-muted mt-0.5">{s.begrundelse}</p>}
+              </button>
+            );
+          })}
+        </div>
       )}
-      {error && <p className="text-xs text-danger mt-2">{error}</p>}
-      {answer && <div className="text-sm text-ink whitespace-pre-wrap mt-2 pt-2 border-t border-line">{answer}</div>}
+      {!loading && !error && suggestions?.length === 0 && (
+        <p className="text-xs text-muted">Intet specifikt forslag ud fra ugens data — vælg selv nedenfor.</p>
+      )}
+      {note && <p className="text-[11px] text-muted italic mt-2">{note}</p>}
+
+      <button onClick={() => setShowDetails((v) => !v)} className="w-full flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-muted hover:text-ink mt-3 pt-2 border-t border-divider">
+        Se ugens kapacitet i detaljer
+        <ChevronDown size={14} className={`transition-transform ${showDetails ? "rotate-180" : ""}`} />
+      </button>
+      {showDetails && <div className="mt-2"><WeeklyScheduleOverview orders={orders} technicians={technicians} date={date} /></div>}
+
+      <p className="text-[10px] text-muted mt-2">Forslag ud fra samme opgang, køreafstand og ugens kapacitet — et forslag, ikke en automatisk booking. Tryk på et forslag for at bruge det.</p>
     </div>
   );
 }
 
-export { LineItemEditor, KeyAccessFields, AddressSuggestion, CustomerHistory, DailyRouteOverview, WeeklyScheduleOverview, AiPlacementSuggestion };
+export { LineItemEditor, KeyAccessFields, CustomerHistory, SuggestedDates };
