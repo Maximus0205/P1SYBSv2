@@ -1,21 +1,23 @@
 import React, { useState } from "react";
 import { Plus, Building2, Clock, Hash, ChevronLeft, ChevronRight, Check } from "lucide-react";
-import { TIME_SLOTS, buildTitle, formatDuration, createLineItem, lineItemMinutes, timeSlotById, timeSlotText, todayISO, emptyKeyAccess } from "../data/domain";
+import { TIME_SLOTS, buildTitle, formatDuration, createLineItem, lineItemMinutes, timeSlotById, timeSlotText, todayISO, emptyKeyAccess, keyAccessText } from "../data/domain";
 import { ReceiptUpload } from "../components/ReceiptUpload";
-import { LineItemEditor, KeyAccessFields, AddressSuggestion, CustomerHistory, DailyRouteOverview } from "../components/OrderFormFields";
+import { LineItemEditor, KeyAccessFields, AddressSuggestion, CustomerHistory, WeeklyScheduleOverview, AiPlacementSuggestion } from "../components/OrderFormFields";
 import { DistanceSuggestions } from "../components/DistanceSuggestions";
 import { AddressInput } from "../components/AddressInput";
 
 // Bookingflowet er delt op i 4 mindre "kort" (trin) i stedet for én lang
-// formular - nemmere at overskue, især på mobil, hvor hele formularen
-// tidligere krævede meget scroll. Al state ligger stadig samlet ét sted
-// (som før), kun VISNINGEN er trinvis - selve booking-payloaden til onAdd
-// er uændret.
+// formular. VIGTIGT: "Tidspunkt & montør" er bevidst det SIDSTE trin, ikke
+// det tredje - at vælge dato/montør er den beslutning der reelt kræver
+// mest kontekst (ugens kapacitet, samme-opgang, køreafstand, AI-forslag),
+// så det giver ikke mening at spørge om det, før resten af sagen (kunde,
+// nøgle, varer) er kendt. Det var uhensigtsmæssigt tidligere, hvor
+// planlægningsforslag dukkede op allerede på kunde-trinnet.
 const STEPS = [
   { key: "kunde", label: "Kunde" },
   { key: "noegle", label: "Nøgle & adgang" },
-  { key: "tid", label: "Tidspunkt & montør" },
   { key: "varer", label: "Varer & ydelser" },
+  { key: "tid", label: "Tidspunkt & montør" },
 ];
 
 function StepProgress({ step }) {
@@ -74,10 +76,11 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
     }
   };
 
-  // Kun kunde-trinnet (navn) og tidspunkt-trinnet (dato) er reelt påkrævet
-  // for at booke - resten kan altid springes videre fra, så flowet ikke
-  // føles blokerende for felter der er reelt valgfrie.
-  const stepValid = [!!customerName.trim(), true, !!date, true];
+  // Kun kunde-trinnet (navn) er reelt påkrævet for at bladre videre - dato
+  // har allerede en fornuftig standardværdi (selectedDate/i dag), så den
+  // blokerer ikke fremad. Selve booking-knappen validerer stadig
+  // kundenavn+dato til sidst, som en sidste sikkerhed.
+  const stepValid = [!!customerName.trim(), true, true, true];
   const canProceed = stepValid[step];
 
   const goNext = () => {
@@ -86,6 +89,13 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   };
   const goBack = () => { setAttemptedNext(false); setStep((s) => Math.max(s - 1, 0)); };
+
+  const jobSummaryForAi = {
+    titel: titlePreview,
+    adresse: address || "(ikke udfyldt endnu)",
+    forventetVarighed: formatDuration(expectedMinutes),
+    noegle: keyAccess.kraeves ? keyAccessText(keyAccess) : undefined,
+  };
 
   const submit = async () => {
     if (!customerName.trim() || !date) return;
@@ -130,8 +140,6 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
           </div>
 
           <CustomerHistory phone={phone} name={customerName} orders={orders} onOpen={onOpen} />
-          <AddressSuggestion address={address} date={date} orders={orders} onUseDate={(d) => setDate(d)} />
-          <DistanceSuggestions address={address} date={date} orders={orders} onUseDate={(d) => setDate(d)} />
 
           <label className="flex items-center gap-2 cursor-pointer mb-3">
             <input type="checkbox" checked={hasBuyer} onChange={(e) => setHasBuyer(e.target.checked)} className="w-4 h-4 accent-ink" />
@@ -159,8 +167,41 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
 
       {step === 2 && (
         <div>
+          <div className="mb-4 px-3 py-2 rounded-xl bg-panel border border-line flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-muted">Overskrift (dannes automatisk)</p>
+              <p className="text-sm font-semibold text-ink">{titlePreview}</p>
+            </div>
+            <div className="flex items-center gap-1.5 text-muted">
+              <Clock size={14} />
+              <span className="text-sm font-semibold text-ink">{formatDuration(expectedMinutes)}</span>
+              <span className="text-xs">forventet</span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">Varelinjer & ydelser</h4>
+            <button onClick={addLineItem} className="text-xs font-semibold uppercase tracking-wide text-ink border border-line rounded-full hover:border-brand hover:text-brand px-3 py-1.5 flex items-center gap-1"><Plus size={13} /> Tilføj varelinje</button>
+          </div>
+          <div className="space-y-2">
+            {lineItems.map((l, idx) => (
+              <LineItemEditor key={l.id} lineItem={l} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} onChange={(next) => updateLineItem(idx, next)} onRemove={() => removeLineItem(idx)} canRemove={lineItems.length > 1} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {step === 3 && (
+        <div>
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Tidspunkt & montør</h4>
-          <div className="grid gap-3 sm:grid-cols-3 mb-4">
+          <p className="text-xs text-muted mb-3">Se ugens kapacitet og eventuelle forslag nedenfor, før du vælger dato og montør for "{titlePreview}" hos {address || "kunden"}.</p>
+
+          <WeeklyScheduleOverview orders={orders} technicians={technicians} date={date} />
+          <AiPlacementSuggestion orders={orders} technicians={technicians} date={date} jobSummary={jobSummaryForAi} />
+          <AddressSuggestion address={address} date={date} orders={orders} onUseDate={(d) => setDate(d)} />
+          <DistanceSuggestions address={address} date={date} orders={orders} onUseDate={(d) => setDate(d)} />
+
+          <div className="grid gap-3 sm:grid-cols-3 mb-2">
             <label className="text-xs text-muted">
               Dato
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
@@ -179,38 +220,11 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
               </select>
             </label>
           </div>
-          <DailyRouteOverview orders={orders} technicians={technicians} date={date} />
-          {attemptedNext && !stepValid[2] && <p className="text-xs text-danger">Vælg en dato, før du kan gå videre.</p>}
-        </div>
-      )}
-
-      {step === 3 && (
-        <div>
-          <div className="mb-4 px-3 py-2 rounded-xl bg-panel border border-line flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <p className="text-[10px] uppercase tracking-wide text-muted">Overskrift (dannes automatisk)</p>
-              <p className="text-sm font-semibold text-ink">{titlePreview}</p>
-            </div>
-            <div className="flex items-center gap-1.5 text-muted">
-              <Clock size={14} />
-              <span className="text-sm font-semibold text-ink">{formatDuration(expectedMinutes)}</span>
-              <span className="text-xs">forventet</span>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">Varelinjer & ydelser</h4>
-            <button onClick={addLineItem} className="text-xs font-semibold uppercase tracking-wide text-ink border border-line rounded-full hover:border-brand hover:text-brand px-3 py-1.5 flex items-center gap-1"><Plus size={13} /> Tilføj varelinje</button>
-          </div>
-          <div className="space-y-2 mb-3">
-            {lineItems.map((l, idx) => (
-              <LineItemEditor key={l.id} lineItem={l} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} onChange={(next) => updateLineItem(idx, next)} onRemove={() => removeLineItem(idx)} canRemove={lineItems.length > 1} />
-            ))}
-          </div>
 
           {addressStatus === "usikker" && (
             <p className="text-xs text-danger mb-2">Bemærk: leveringsadressen kunne ikke bekræftes af korttjenesten — dobbelttjek den, inden du booker.</p>
           )}
+          {attemptedNext && !stepValid[3] && <p className="text-xs text-danger">Vælg en dato, før du kan booke.</p>}
         </div>
       )}
 
@@ -233,7 +247,7 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
         ) : (
           <button
             onClick={submit}
-            disabled={saving}
+            disabled={saving || !date}
             className="px-5 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors disabled:opacity-60 flex items-center gap-1.5"
           >
             <Check size={15} /> {saving ? "Booker..." : "Book sag"}
