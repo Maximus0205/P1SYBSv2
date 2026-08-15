@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Lock, User, AlertCircle, Loader2 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { isEmailFormat, identifierToEmail, isValidUsername, emailFromUsername } from "../lib/username";
-import { PUNKT1_LOGO_POSITIV } from "../assets/logo";
+import { PUNKT1_LOGO_POSITIV } from "../assets/punkt1_positiv";
 
 // Login foregår via Supabase Auth. Brugeren kan taste ENTEN en rigtig
 // e-mail ELLER et selvvalgt brugernavn i samme felt - se src/lib/username.js
