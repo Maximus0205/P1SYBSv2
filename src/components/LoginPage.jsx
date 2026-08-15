@@ -91,7 +91,7 @@ function LoginPage() {
           />
         )}
         <h1 className="font-display text-3xl uppercase tracking-tight text-ink mb-6">
-          {signingUp ? "Opret bruger" : "Log ind"}
+          {signingUp ? "Opret bruger" : "Velkommen"}
         </h1>
 
         {signingUp && (
