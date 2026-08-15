@@ -321,10 +321,13 @@ export async function updateProfile(userId, fields) {
 
 // ---------- AI route suggestion ----------
 // Calls an Edge Function instead of the Claude API directly, so the API key
-// never lives in the frontend code.
-export async function getAiRouteSuggestion({ grundlag, montorTekst, valgtDato }) {
+// never lives in the frontend code. `nyOpgave` er valgfri - angives den,
+// skifter edge function til at foreslå PLACERING af en ny, endnu ikke
+// booket sag (bruges i bookingflowets sidste trin), i stedet for at
+// analysere allerede bookede sager for ineffektiv kørsel (Kørselsoverblik).
+export async function getAiRouteSuggestion({ grundlag, montorTekst, valgtDato, nyOpgave }) {
   const { data, error } = await supabase.functions.invoke("ai-ruteforslag", {
-    body: { grundlag, montorTekst, valgtDato },
+    body: { grundlag, montorTekst, valgtDato, nyOpgave },
   });
   if (error || data?.fejl) return { ok: false, fejl: await readEdgeFunctionError(data, error, "Could not get an AI suggestion") };
   return { ok: true, tekst: data.tekst };
