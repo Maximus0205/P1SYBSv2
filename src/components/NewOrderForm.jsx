@@ -2,17 +2,15 @@ import React, { useState } from "react";
 import { Plus, Building2, Clock, Hash, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { TIME_SLOTS, buildTitle, formatDuration, createLineItem, lineItemMinutes, timeSlotById, timeSlotText, todayISO, emptyKeyAccess, keyAccessText } from "../data/domain";
 import { ReceiptUpload } from "../components/ReceiptUpload";
-import { LineItemEditor, KeyAccessFields, AddressSuggestion, CustomerHistory, WeeklyScheduleOverview, AiPlacementSuggestion } from "../components/OrderFormFields";
-import { DistanceSuggestions } from "../components/DistanceSuggestions";
+import { LineItemEditor, KeyAccessFields, CustomerHistory, SuggestedDates } from "../components/OrderFormFields";
 import { AddressInput } from "../components/AddressInput";
 
 // Bookingflowet er delt op i 4 mindre "kort" (trin) i stedet for én lang
-// formular. VIGTIGT: "Tidspunkt & montør" er bevidst det SIDSTE trin, ikke
-// det tredje - at vælge dato/montør er den beslutning der reelt kræver
-// mest kontekst (ugens kapacitet, samme-opgang, køreafstand, AI-forslag),
-// så det giver ikke mening at spørge om det, før resten af sagen (kunde,
-// nøgle, varer) er kendt. Det var uhensigtsmæssigt tidligere, hvor
-// planlægningsforslag dukkede op allerede på kunde-trinnet.
+// formular. "Tidspunkt & montør" er bevidst det SIDSTE trin - at vælge
+// dato/montør er den beslutning der reelt kræver mest kontekst, og det
+// sidste trin viser nu ÉT samlet, AI-prioriteret datoforslag (se
+// SuggestedDates i OrderFormFields.jsx) i stedet for flere separate
+// forslagsbokse, der tidligere konkurrerede om opmærksomheden på samme tid.
 const STEPS = [
   { key: "kunde", label: "Kunde" },
   { key: "noegle", label: "Nøgle & adgang" },
@@ -89,6 +87,13 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   };
   const goBack = () => { setAttemptedNext(false); setStep((s) => Math.max(s - 1, 0)); };
+
+  // Bruges af SuggestedDates til at klikke et forslag direkte ind - sætter
+  // dato og (hvis AI'en foreslog en specifik montør) også montør, med ét klik.
+  const applySuggestion = (suggestedDate, suggestedTechnicianId) => {
+    if (suggestedDate) setDate(suggestedDate);
+    if (suggestedTechnicianId) setTechnicianId(suggestedTechnicianId);
+  };
 
   const jobSummaryForAi = {
     titel: titlePreview,
@@ -194,12 +199,16 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
       {step === 3 && (
         <div>
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Tidspunkt & montør</h4>
-          <p className="text-xs text-muted mb-3">Se ugens kapacitet og eventuelle forslag nedenfor, før du vælger dato og montør for "{titlePreview}" hos {address || "kunden"}.</p>
+          <p className="text-xs text-muted mb-3">Forslag til "{titlePreview}" hos {address || "kunden"} herunder — tryk på ét for at bruge det, eller vælg selv manuelt nedenfor.</p>
 
-          <WeeklyScheduleOverview orders={orders} technicians={technicians} date={date} />
-          <AiPlacementSuggestion orders={orders} technicians={technicians} date={date} jobSummary={jobSummaryForAi} />
-          <AddressSuggestion address={address} date={date} orders={orders} onUseDate={(d) => setDate(d)} />
-          <DistanceSuggestions address={address} date={date} orders={orders} onUseDate={(d) => setDate(d)} />
+          <SuggestedDates
+            orders={orders}
+            technicians={technicians}
+            date={date}
+            address={address}
+            jobSummary={jobSummaryForAi}
+            onSelectDate={applySuggestion}
+          />
 
           <div className="grid gap-3 sm:grid-cols-3 mb-2">
             <label className="text-xs text-muted">
