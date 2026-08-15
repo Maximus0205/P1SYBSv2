@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin } from "lucide-react";
-import { OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID, KEY_ACCESS_TYPES, buildingKey, formatLongDate, formatDuration, lineItemMinutes, availableAddOns, serviceIcon, todayISO } from "../data/domain";
+import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin, Sparkles } from "lucide-react";
+import { OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID, KEY_ACCESS_TYPES, buildingKey, formatLongDate, formatDuration, lineItemMinutes, availableAddOns, serviceIcon, todayISO, weekDays, orderExpectedMinutes } from "../data/domain";
+import { getAiRouteSuggestion } from "../lib/dataStore";
 
 function LineItemEditor({ lineItem, productTypes, productCategories, primaryServices, addOnServices, onChange, onRemove, canRemove }) {
   const isOther = lineItem.varetypeId === OTHER_PRODUCT_TYPE_ID;
@@ -292,4 +293,121 @@ function DailyRouteOverview({ orders, technicians, date }) {
   );
 }
 
-export { LineItemEditor, KeyAccessFields, AddressSuggestion, CustomerHistory, DailyRouteOverview };
+const WORKDAY_MINUTES = 450; // ~7,5 time - samme tærskel som Planlægnings ugekapacitet
+function hoursLabel(minutes) {
+  if (minutes === 0) return "–";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}t${m}m` : `${h}t`;
+}
+
+// Ugekapacitet vist i bookingflowets SIDSTE trin - så sælgeren kan se
+// hvilke dage der allerede er fyldt op, FØR en dato vælges, i stedet for
+// at skulle gætte og risikere at overbooke en montør.
+function WeeklyScheduleOverview({ orders, technicians, date }) {
+  const anchor = date || todayISO();
+  const week = weekDays(anchor);
+  const today = todayISO();
+  const rows = [...technicians, { id: null, navn: "Ikke tildelt" }];
+
+  const cellFor = (technicianId, day) => {
+    const dayOrders = (orders || []).filter((o) => o.montorId === technicianId && o.dato === day && o.status !== "afsluttet");
+    const minutes = dayOrders.reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
+    return { count: dayOrders.length, minutes };
+  };
+
+  return (
+    <div className="rounded-xl border border-line bg-white p-3 mb-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-ink mb-2">Ugens kapacitet</p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-line">
+              <th className="text-left p-1.5 text-muted font-semibold uppercase tracking-wide">Montør</th>
+              {week.map((d) => (
+                <th key={d} className={`text-center p-1.5 font-semibold uppercase tracking-wide ${d === date ? "text-brand" : d === today ? "text-ink" : "text-muted"}`}>
+                  {new Date(d + "T00:00:00").toLocaleDateString("da-DK", { weekday: "short" })}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id || "utildelt"} className="border-b border-divider last:border-b-0">
+                <td className="p-1.5 text-ink font-medium whitespace-nowrap">{r.navn}</td>
+                {week.map((d) => {
+                  const { count, minutes } = cellFor(r.id, d);
+                  const overloaded = minutes > WORKDAY_MINUTES;
+                  return (
+                    <td key={d} className={`p-1.5 text-center ${d === date ? "bg-brand/10" : ""}`}>
+                      {count === 0 ? (
+                        <span className="text-line">–</span>
+                      ) : (
+                        <span
+                          className={`inline-flex flex-col items-center px-1.5 py-0.5 rounded-lg ${overloaded ? "bg-danger text-white" : "bg-panel text-ink"}`}
+                          title={`${count} ${count === 1 ? "sag" : "sager"} · ${hoursLabel(minutes)}`}
+                        >
+                          <span className="font-semibold">{hoursLabel(minutes)}</span>
+                          <span className="text-[9px] opacity-80">{count} {count === 1 ? "sag" : "sager"}</span>
+                        </span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[10px] text-muted mt-2">Den valgte dato er markeret. Rødt = allerede booket mere end en arbejdsdag ({hoursLabel(WORKDAY_MINUTES)}).</p>
+    </div>
+  );
+}
+
+// AI-forslag til PLACERING af den nye sag (hvilken dag/montør passer bedst
+// ind i ugens eksisterende ruter) - adskilt fra AI-ruteforslaget i
+// Kørselsoverblik, som i stedet analyserer allerede bookede sager for
+// ineffektiv kørsel. Samme underliggende edge function, forskellig prompt
+// (se ai-ruteforslag), skelnet på om `jobSummary` (nyOpgave) er angivet.
+//
+// Forslaget er RÅDGIVENDE - det sætter ikke selv dato/montør, sælgeren skal
+// stadig selv vælge nedenfor. Det er bevidst, jf. at AI-forslag i denne app
+// aldrig må ændre forretningsdata automatisk.
+function AiPlacementSuggestion({ orders, technicians, date, jobSummary }) {
+  const [loading, setLoading] = useState(false);
+  const [answer, setAnswer] = useState(null);
+  const [error, setError] = useState(null);
+
+  const ask = async () => {
+    setLoading(true); setError(null); setAnswer(null);
+    const week = weekDays(date || todayISO());
+    const weekOrders = (orders || []).filter((o) => week.includes(o.dato) && o.kunde?.adresse);
+    const grundlag = weekOrders.map((s) => ({
+      sag: s.nr, dato: s.dato, adresse: s.kunde.adresse,
+      bil: technicians.find((m) => m.id === s.montorId)?.navn || "ikke tildelt",
+    }));
+    const montorTekst = technicians.map((m) => `${m.navn} (${m.bil})`).join(", ");
+    const result = await getAiRouteSuggestion({ grundlag, montorTekst, valgtDato: date, nyOpgave: jobSummary });
+    setLoading(false);
+    if (!result.ok) { setError(result.fejl || "Kunne ikke hente AI-forslag lige nu. Prøv igen om lidt."); return; }
+    setAnswer(result.tekst);
+  };
+
+  return (
+    <div className="rounded-xl border border-ink bg-panel p-3 mb-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink flex items-center gap-1.5"><Sparkles size={13} /> AI-forslag til placering</p>
+        <button onClick={ask} disabled={loading} className="text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors px-3 py-1.5 rounded-lg disabled:opacity-50">
+          {loading ? "Analyserer..." : "Bed AI om forslag"}
+        </button>
+      </div>
+      {!answer && !error && !loading && (
+        <p className="text-[11px] text-muted mt-1.5">Foreslår bedste dag og montør ud fra ugens eksisterende ruter og adresser. Et forslag, ikke en automatisk booking — du vælger stadig selv nedenfor.</p>
+      )}
+      {error && <p className="text-xs text-danger mt-2">{error}</p>}
+      {answer && <div className="text-sm text-ink whitespace-pre-wrap mt-2 pt-2 border-t border-line">{answer}</div>}
+    </div>
+  );
+}
+
+export { LineItemEditor, KeyAccessFields, AddressSuggestion, CustomerHistory, DailyRouteOverview, WeeklyScheduleOverview, AiPlacementSuggestion };
