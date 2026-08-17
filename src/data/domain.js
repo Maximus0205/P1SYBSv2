@@ -233,10 +233,12 @@ const STATUS_META = {
   afsluttet: { label: "Afsluttet", color: "#3D7A5C" },
 };
 
+// Kørsel er fusioneret ind i Planlægning (august 2026) - de to sider
+// dækkede reelt samme arbejdsopgave. "koersel" findes derfor ikke længere
+// som selvstændig fane, se PlanningPage.jsx.
 const PAGES = [
   { key: "salg", label: "Salg", icon: ShoppingCart },
   { key: "planlaegning", label: "Planlægning", icon: Route },
-  { key: "koersel", label: "Kørsel", icon: Route },
   { key: "montor", label: "Montør", icon: Truck },
   { key: "lager", label: "Lager", icon: Package },
   { key: "arkiv", label: "Arkiv", icon: Archive },
@@ -244,8 +246,8 @@ const PAGES = [
   { key: "systemadmin", label: "System", icon: Building2 },
 ];
 const PAGES_FOR_ROLE = {
-  admin: ["salg", "planlaegning", "koersel", "montor", "lager", "arkiv", "admin"],
-  saelger: ["salg", "planlaegning", "koersel", "montor", "lager", "arkiv"],
+  admin: ["salg", "planlaegning", "montor", "lager", "arkiv", "admin"],
+  saelger: ["salg", "planlaegning", "montor", "lager", "arkiv"],
   montor: ["montor"],
 };
 
