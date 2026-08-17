@@ -27,7 +27,6 @@ import { OrderView } from "./components/OrderView";
 
 import { SalesPage } from "./pages/SalesPage";
 import { PlanningPage } from "./pages/PlanningPage";
-import { DrivingPage } from "./pages/DrivingPage";
 import { TechnicianPicker, TechnicianRouteView } from "./pages/TechnicianPage";
 import { WarehousePage } from "./pages/WarehousePage";
 import { ArchivePage } from "./pages/ArchivePage";
@@ -398,9 +397,13 @@ export default function App() {
         ) : page === "salg" ? (
           <SalesPage orders={orders} technicians={technicians} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onAdd={addOrder} onImport={importOrders} storeFocus={store?.lat && store?.lon ? { lat: store.lat, lon: store.lon } : null} />
         ) : page === "planlaegning" ? (
-          <PlanningPage orders={orders} technicians={technicians} onOpen={setSelectedId} onCycleStatus={cycleStatus} onAssign={assignTechnician} />
-        ) : page === "koersel" ? (
-          <DrivingPage orders={orders} technicians={technicians} vehicles={vehicles} timeOff={timeOff} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onCycleStatus={cycleStatus} onAssign={assignTechnician} onUpdateTimeSlot={updateTimeSlot} onUpdateTechnician={(technicianId, fields) => updateTechnicianVehicle(technicianId, fields.bilId)} onRefresh={refresh} refreshing={refreshing} />
+          <PlanningPage
+            orders={orders} technicians={technicians} vehicles={vehicles} timeOff={timeOff}
+            selectedDate={selectedDate} onDateChange={setSelectedDate}
+            onOpen={setSelectedId} onCycleStatus={cycleStatus} onAssign={assignTechnician}
+            onUpdateTechnician={(technicianId, fields) => updateTechnicianVehicle(technicianId, fields.bilId)}
+            onRefresh={refresh} refreshing={refreshing}
+          />
         ) : page === "montor" ? (
           profile.rolle === "montor" ? (
             technician ? <TechnicianRouteView orders={orders} technician={technician} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onCycleStatus={cycleStatus} onRefresh={refresh} refreshing={refreshing} /> : <p className="text-sm text-muted">Din bruger er ikke koblet til en montør/bil-profil endnu — kontakt en administrator.</p>
