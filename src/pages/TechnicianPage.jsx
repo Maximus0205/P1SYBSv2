@@ -1,7 +1,8 @@
 import React from "react";
-import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare } from "lucide-react";
+import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, Loader2 } from "lucide-react";
 import { buildTitle, isToday, formatLongDate, formatDuration, technicianColor, keyAccessText, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel } from "../data/domain";
 import { StatusBadge, LineItemPills, DateSelector } from "../components/common";
+import { sendArrivalSms } from "../lib/dataStore";
 
 // Universelt Google Maps-link: åbner Google Maps-appen hvis den er
 // installeret (iOS og Android), ellers i browseren. Vi bruger søge-linket
@@ -20,20 +21,14 @@ const telHref = (phone) => `tel:${(phone || "").replace(/[^\d+]/g, "")}`;
 
 const ARRIVAL_PRESETS_MIN = [5, 10, 15, 30, 60];
 
-// SMS-link der forudfylder en besked om forventet ankomsttid. "?&body="
-// (frem for blot "?body=") er den kombination der i praksis åbner korrekt
-// forudfyldt på både iOS og Android uden platform-detektion.
-const smsHref = (phone, minutes, customerName) => {
-  const firstName = (customerName || "").trim().split(/\s+/)[0];
-  const text = `Hej${firstName ? " " + firstName : ""}, vi forventer at ankomme hos dig om ca. ${minutes} minutter.`;
-  return `sms:${(phone || "").replace(/[^\d+]/g, "")}?&body=${encodeURIComponent(text)}`;
-};
-
-// Lille popover til at vælge "ankomst om X minutter" og sende en
-// forudfyldt SMS til kunden - montøren trykker blot "Send" i sin egen
-// SMS-app bagefter, vi forsøger bevidst ikke at sende automatisk.
+// Popover til at vælge "ankomst om X minutter" og sende SMS'en MED DET
+// SAMME ved tryk - via en Edge Function der sender fra firmaets fælles
+// Twilio-nummer (se dataStore.js: sendArrivalSms). IKKE via montørens egen
+// telefon/SMS-app: montøren har typisk sin egen private telefon, og skal
+// hverken dele sit eget nummer eller selv afsende noget manuelt.
 function ArrivalSmsButton({ phone, customerName }) {
   const [open, setOpen] = React.useState(false);
+  const [status, setStatus] = React.useState({ state: "idle" }); // idle | sending | sent | error
   const ref = React.useRef(null);
 
   React.useEffect(() => {
@@ -43,32 +38,52 @@ function ArrivalSmsButton({ phone, customerName }) {
     return () => document.removeEventListener("mousedown", onOutside);
   }, [open]);
 
+  // Nulstil "sendt"-kvitteringen efter et par sekunder, og luk popoveren
+  // igen, når man åbner den på ny (så en gammel fejl/kvittering ikke
+  // hænger ved for altid).
+  React.useEffect(() => {
+    if (status.state !== "sent") return;
+    const t = setTimeout(() => { setStatus({ state: "idle" }); setOpen(false); }, 1600);
+    return () => clearTimeout(t);
+  }, [status]);
+
   if (!phone) return null;
+
+  const send = async (minutter) => {
+    setStatus({ state: "sending" });
+    const result = await sendArrivalSms({ telefon: phone, minutter, kundeNavn: customerName });
+    if (result.ok) setStatus({ state: "sent" });
+    else setStatus({ state: "error", fejl: result.fejl });
+  };
 
   return (
     <div ref={ref} className="relative" onClick={(e) => e.stopPropagation()}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-ink border border-line hover:border-brand hover:text-brand transition-colors"
+        disabled={status.state === "sending"}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-ink border border-line hover:border-brand hover:text-brand transition-colors disabled:opacity-60"
         title="Send SMS om forventet ankomst"
       >
-        <MessageSquare size={13} /> SMS
+        {status.state === "sending" ? <Loader2 size={13} className="animate-spin" /> : status.state === "sent" ? <Check size={13} className="text-success" /> : <MessageSquare size={13} />}
+        {status.state === "sent" ? "Sendt" : "SMS"}
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-line rounded-xl shadow-lg p-2 w-52">
-          <p className="text-[11px] uppercase tracking-wide text-muted font-semibold px-1 pb-1.5">Ankomst om…</p>
+        <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-line rounded-xl shadow-lg p-2 w-56">
+          <p className="text-[11px] uppercase tracking-wide text-muted font-semibold px-1 pb-1.5">Send "ankomst om…" nu</p>
           <div className="grid grid-cols-3 gap-1.5">
             {ARRIVAL_PRESETS_MIN.map((m) => (
-              <a
+              <button
                 key={m}
-                href={smsHref(phone, m, customerName)}
-                onClick={() => setOpen(false)}
-                className="text-center px-2 py-1.5 rounded-lg text-xs font-mono border border-line hover:border-brand hover:text-brand transition-colors"
+                onClick={() => send(m)}
+                disabled={status.state === "sending"}
+                className="text-center px-2 py-1.5 rounded-lg text-xs font-mono border border-line hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
               >
                 {m} min
-              </a>
+              </button>
             ))}
           </div>
+          {status.state === "error" && <p className="text-[11px] text-danger mt-1.5">{status.fejl}</p>}
+          <p className="text-[10px] text-muted mt-2">Sendes med det samme fra butikkens nummer.</p>
         </div>
       )}
     </div>
