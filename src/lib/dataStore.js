@@ -333,3 +333,18 @@ export async function getAiRouteSuggestion({ grundlag, montorTekst, valgtDato, n
   if (error || data?.fejl) return { ok: false, fejl: await readEdgeFunctionError(data, error, "Could not get an AI suggestion") };
   return { ok: true, tekst: data.tekst, forslag: data.forslag, generelKommentar: data.generelKommentar };
 }
+
+// ---------- Ankomst-SMS til kunden ----------
+// Sendes via en Edge Function (se supabase/functions/send-ankomst-sms i
+// Supabase-projektet), som sender fra firmaets FÆLLES Twilio-afsender -
+// IKKE fra montørens egen telefon (mange montører bruger deres private
+// telefon, og skal hverken dele deres eget nummer med kunden eller selv
+// åbne/afsende noget manuelt). Sendes med det samme når denne kaldes - se
+// ArrivalSmsButton i TechnicianPage.jsx.
+export async function sendArrivalSms({ telefon, minutter, kundeNavn }) {
+  const { data, error } = await supabase.functions.invoke("send-ankomst-sms", {
+    body: { telefon, minutter, kundeNavn },
+  });
+  if (error || data?.fejl) return { ok: false, fejl: await readEdgeFunctionError(data, error, "Kunne ikke sende SMS'en") };
+  return { ok: true };
+}
