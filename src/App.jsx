@@ -410,7 +410,7 @@ export default function App() {
             <TechnicianPicker technicians={technicians} onSelect={setSelectedTechnicianId} />
           )
         ) : page === "lager" ? (
-          <WarehousePage orders={orders} technicians={technicians} selectedDate={selectedDate} onDateChange={setSelectedDate} onToggleLineItemPicked={toggleLineItemPicked} onOpen={setSelectedId} />
+          <WarehousePage orders={orders} technicians={technicians} vehicles={vehicles} selectedDate={selectedDate} onDateChange={setSelectedDate} onToggleLineItemPicked={toggleLineItemPicked} onOpen={setSelectedId} />
         ) : page === "arkiv" ? (
           <ArchivePage orders={orders} technicians={technicians} onOpen={setSelectedId} />
         ) : page === "systemadmin" ? (
