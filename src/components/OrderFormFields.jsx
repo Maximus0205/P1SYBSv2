@@ -1,8 +1,34 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin, Sparkles, ChevronDown, RefreshCw } from "lucide-react";
-import { OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID, KEY_ACCESS_TYPES, buildingKey, formatLongDate, formatDuration, lineItemMinutes, availableAddOns, serviceIcon, todayISO, weekDays, orderExpectedMinutes } from "../data/domain";
+import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin, Sparkles, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, ExternalLink } from "lucide-react";
+import { OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID, KEY_ACCESS_TYPES, buildingKey, formatLongDate, formatDuration, lineItemMinutes, availableAddOns, serviceIcon, todayISO, addDays, weekDays, orderExpectedMinutes } from "../data/domain";
 import { getAiRouteSuggestion } from "../lib/dataStore";
 import { geocodeAddress, geocodeAddresses, drivingDistances } from "../lib/geocoding";
+
+// Modelnummer-tjek mod punkt1.dk: punkt1.dk er en JavaScript-renderet side
+// uden noget offentligt/dokumenteret søge-API vi kan finde og med sikkerhed
+// kalde direkte fra en edge function - at gætte på et internt endpoint ville
+// risikere at give FORKERT eller INGEN data, uden varsel når det en dag
+// ændrer sig. I stedet for at foregive automatisk verifikation, åbner denne
+// knap en Google-søgning afgrænset til punkt1.dk i en ny fane, så sælgeren
+// selv kan bekræfte modellen og aflæse mærket på 5 sekunder - 100%
+// pålideligt, kræver ingen gætning om deres interne systemer. Rigtig
+// automatisk udfyldning af mærke-feltet kræver en officiel API-aftale med
+// punkt1.dk's tekniske team.
+function ModelNumberCheckLink({ model }) {
+  if (!model || model.trim().length < 2) return null;
+  const url = `https://www.google.com/search?q=${encodeURIComponent(`site:punkt1.dk ${model.trim()}`)}`;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-info hover:text-brand mt-1"
+      title="Åbner en søgning på punkt1.dk for dette modelnummer i en ny fane"
+    >
+      <ExternalLink size={10} /> Tjek "{model.trim()}" på punkt1.dk
+    </a>
+  );
+}
 
 function LineItemEditor({ lineItem, productTypes, productCategories, primaryServices, addOnServices, onChange, onRemove, canRemove }) {
   const isOther = lineItem.varetypeId === OTHER_PRODUCT_TYPE_ID;
@@ -77,10 +103,14 @@ function LineItemEditor({ lineItem, productTypes, productCategories, primaryServ
         />
       )}
 
-      <div className="grid gap-2 sm:grid-cols-2 mb-2">
+      <div className="grid gap-2 sm:grid-cols-2 mb-1">
         <input value={lineItem.maerke} onChange={(e) => onChange({ ...lineItem, maerke: e.target.value })} placeholder="Mærke, fx 'Bosch'" className="rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand" />
-        <input value={lineItem.model} onChange={(e) => onChange({ ...lineItem, model: e.target.value })} placeholder="Modelnummer" className="rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand" />
+        <div>
+          <input value={lineItem.model} onChange={(e) => onChange({ ...lineItem, model: e.target.value })} placeholder="Modelnummer" className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand" />
+          <ModelNumberCheckLink model={lineItem.model} />
+        </div>
       </div>
+      <p className="text-[10px] text-muted mb-2">Modelnummer-tjek åbner en søgning i en ny fane, så du kan aflæse/bekræfte mærket — udfyldes ikke automatisk endnu.</p>
 
       <label className="flex items-center gap-2 mb-2 text-xs text-muted">
         <Clock size={12} className="shrink-0" />
@@ -286,6 +316,102 @@ function WeeklyScheduleOverview({ orders, technicians, date }) {
   );
 }
 
+// Interaktiv ugevisning til MANUELT datovalg - erstatter et rent
+// dato-inputfelt som eneste måde at vælge dato på. Blad frem/tilbage
+// mellem uger, se hvordan hver bil/montør er booket dag for dag, og klik
+// direkte på en dag (evt. under en bestemt montørs række) for at vælge
+// den - klik under en montørs række vælger BÅDE dato og den montør, klik
+// på selve dags-overskriften vælger kun dato. Let, overskueligt: samme
+// visuelle sprog som ugekapaciteten ovenfor, bare interaktiv og med egen
+// uge-navigation uafhængig af den valgte dato.
+function shortDayLabel(iso) {
+  return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { weekday: "short" });
+}
+function shortDateLabel(iso) {
+  return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "short" });
+}
+
+function InteractiveWeekPicker({ orders, technicians, date, onSelectDate }) {
+  const [weekAnchor, setWeekAnchor] = useState(date || todayISO());
+  const week = weekDays(weekAnchor);
+  const today = todayISO();
+  const rows = [...technicians, { id: null, navn: "Ikke tildelt" }];
+
+  const cellFor = (technicianId, day) => {
+    const dayOrders = (orders || []).filter((o) => o.montorId === technicianId && o.dato === day && o.status !== "afsluttet");
+    const minutes = dayOrders.reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
+    return { count: dayOrders.length, minutes };
+  };
+
+  return (
+    <div className="rounded-xl border border-line bg-white p-3 mb-4">
+      <div className="flex items-center justify-between mb-2">
+        <button onClick={() => setWeekAnchor((w) => addDays(w, -7))} className="p-1.5 rounded-lg text-muted hover:text-brand border border-line hover:border-brand transition-colors" title="Forrige uge">
+          <ChevronLeft size={14} />
+        </button>
+        <div className="text-center">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink">{shortDateLabel(week[0])} – {shortDateLabel(week[6])}</p>
+          {weekAnchor !== today && (
+            <button onClick={() => setWeekAnchor(today)} className="text-[10px] font-semibold uppercase tracking-wide text-brand hover:underline">Gå til denne uge</button>
+          )}
+        </div>
+        <button onClick={() => setWeekAnchor((w) => addDays(w, 7))} className="p-1.5 rounded-lg text-muted hover:text-brand border border-line hover:border-brand transition-colors" title="Næste uge">
+          <ChevronRight size={14} />
+        </button>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr>
+              <th className="text-left p-1 text-muted font-semibold uppercase tracking-wide w-20">Montør</th>
+              {week.map((d) => (
+                <th key={d} className="p-0.5">
+                  <button
+                    onClick={() => onSelectDate(d, null)}
+                    className={`w-full flex flex-col items-center py-1.5 rounded-lg transition-colors ${d === date ? "bg-brand text-white" : d === today ? "bg-panel text-ink font-semibold" : "text-muted hover:bg-panel"}`}
+                  >
+                    <span className="text-[9px] uppercase">{shortDayLabel(d)}</span>
+                    <span className="text-sm font-semibold">{new Date(d + "T00:00:00").getDate()}</span>
+                  </button>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id || "utildelt"}>
+                <td className="p-1 text-ink font-medium whitespace-nowrap">{r.navn}</td>
+                {week.map((d) => {
+                  const { count, minutes } = cellFor(r.id, d);
+                  const overloaded = minutes > WORKDAY_MINUTES;
+                  const selected = d === date;
+                  return (
+                    <td key={d} className="p-0.5">
+                      <button
+                        onClick={() => onSelectDate(d, r.id)}
+                        title={`${r.navn} · ${shortDateLabel(d)}${count > 0 ? ` · ${count} ${count === 1 ? "sag" : "sager"}, ${hoursLabel(minutes)}` : ", ledig"}`}
+                        className={`w-full flex items-center justify-center py-1.5 rounded-lg border transition-colors ${selected ? "border-brand bg-brand/10" : "border-transparent hover:border-line"}`}
+                      >
+                        {count === 0 ? (
+                          <span className="text-line">–</span>
+                        ) : (
+                          <span className={`px-1.5 py-0.5 rounded-md font-semibold ${overloaded ? "bg-danger text-white" : "bg-panel text-ink"}`}>{hoursLabel(minutes)}</span>
+                        )}
+                      </button>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[10px] text-muted mt-2">Klik på en dag for kun at vælge dato — klik under en montørs egen række for at vælge dato og montør samtidig. Rødt tal = mere end en arbejdsdag booket ({hoursLabel(WORKDAY_MINUTES)}).</p>
+    </div>
+  );
+}
+
 // ÉT samlet, AI-prioriteret forslag til levering/montering - erstatter det
 // der FØR var 3-4 separate bokse (samme opgang, køreafstand, AI-tekst,
 // ugekapacitet), som alle konkurrerede om opmærksomheden samtidig. Formålet
@@ -302,7 +428,7 @@ function WeeklyScheduleOverview({ orders, technicians, date }) {
 //
 // Forslagene er RÅDGIVENDE, ikke en automatisk booking - sælgeren skal
 // stadig trykke "Book sag" til sidst, og kan altid vælge en helt anden
-// dato manuelt nedenfor.
+// dato manuelt nedenfor (se InteractiveWeekPicker ovenfor).
 function SuggestedDates({ orders, technicians, date, address, jobSummary, onSelectDate }) {
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState(null);
@@ -313,7 +439,7 @@ function SuggestedDates({ orders, technicians, date, address, jobSummary, onSele
 
   const run = useCallback(async () => {
     if (!address || address.trim().length < 5) {
-      setError("Udfyld leveringsadressen på kunde-trinnet først, så kan der beregnes forslag.");
+      setError("Udfyld leveringsadressen på leveringstrinnet først, så kan der beregnes forslag.");
       return;
     }
     setLoading(true); setError(null);
@@ -422,4 +548,4 @@ function SuggestedDates({ orders, technicians, date, address, jobSummary, onSele
   );
 }
 
-export { LineItemEditor, KeyAccessFields, CustomerHistory, SuggestedDates };
+export { LineItemEditor, KeyAccessFields, CustomerHistory, SuggestedDates, InteractiveWeekPicker };
