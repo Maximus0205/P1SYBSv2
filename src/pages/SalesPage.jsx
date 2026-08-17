@@ -78,7 +78,7 @@ function SalesPage({ orders, technicians, productTypes, productCategories, prima
       ) : (
         <div className="grid sm:grid-cols-2 gap-2">
           {visibleOrders.map((s) => (
-            <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} onCycleStatus={() => {}} />
+            <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} onCycleStatus={() => {}} minimal />
           ))}
         </div>
       )}
