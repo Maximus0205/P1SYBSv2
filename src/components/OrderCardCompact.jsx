@@ -8,6 +8,12 @@ import { StatusBadge, LineItemPills } from "../components/common";
 // ovenpå. reason: valgfrit lille node øverst i kortet (fx "Ikke tildelt ·
 // 3 dage forsinket") - vises inde i kortet, ikke som separat element.
 //
+// minimal: skjuler forventet-varighed-linjen og alle varelinje-/tillægs-
+// mærker, så kortet kun viser tid, sagsnr., status, overskrift og kunde/
+// adresse - til lister hvor pointen er et hurtigt overblik (fx dagens
+// sager på Salg), ikke alle detaljer på forhånd. Klik åbner stadig fuld
+// sagsdetalje uanset minimal eller ej.
+//
 // VIGTIGT om min-w-0: Kortet ligger som CSS grid/flex-element i sine
 // forældre (fx grid'et i PlanningPage). Grid- og flex-elementer har som
 // standard en usynlig "min-width: auto", som betyder de IKKE må blive
@@ -16,7 +22,7 @@ import { StatusBadge, LineItemPills } from "../components/common";
 // derfor sig selv (og alt indhold i det) ud over skærmens kant på mobil,
 // i stedet for at ombryde/krympe som forventet. Sættes eksplicit her og på
 // select-rækken nedenfor.
-function OrderCardCompact({ order, technicians, onOpen, onCycleStatus, onAssign, onUpdateTimeSlot, reason, accent }) {
+function OrderCardCompact({ order, technicians, onOpen, onCycleStatus, onAssign, onUpdateTimeSlot, reason, accent, minimal }) {
   return (
     <div
       className="bg-white rounded-xl border border-[#ECECEC] shadow-sm hover:shadow-md transition-shadow p-3.5 min-w-0 w-full"
@@ -31,11 +37,11 @@ function OrderCardCompact({ order, technicians, onOpen, onCycleStatus, onAssign,
           </div>
           <p className="font-semibold text-sm text-ink truncate">{buildTitle(order.varelinjer)}</p>
           <p className="text-xs text-muted truncate">{order.kunde.navn} · {order.kunde.adresse}</p>
-          <p className="text-[10px] text-muted flex items-center gap-1 mt-0.5"><Clock size={10} /> {formatDuration(orderExpectedMinutes(order))} forventet</p>
+          {!minimal && <p className="text-[10px] text-muted flex items-center gap-1 mt-0.5"><Clock size={10} /> {formatDuration(orderExpectedMinutes(order))} forventet</p>}
         </div>
         <button onClick={() => onCycleStatus(order.id)} className="shrink-0"><StatusBadge status={order.status} /></button>
       </div>
-      <div className="mt-2"><LineItemPills order={order} /></div>
+      {!minimal && <div className="mt-2"><LineItemPills order={order} /></div>}
       {(onAssign || onUpdateTimeSlot) && (
         <div className="flex flex-col sm:flex-row gap-2 mt-2 pt-2 border-t border-divider min-w-0">
           {onUpdateTimeSlot && (
