@@ -2,18 +2,20 @@ import React, { useState } from "react";
 import { Plus, Building2, Clock, Hash, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { TIME_SLOTS, buildTitle, formatDuration, createLineItem, lineItemMinutes, timeSlotById, timeSlotText, todayISO, emptyKeyAccess, keyAccessText } from "../data/domain";
 import { ReceiptUpload } from "../components/ReceiptUpload";
-import { LineItemEditor, KeyAccessFields, CustomerHistory, SuggestedDates } from "../components/OrderFormFields";
+import { LineItemEditor, KeyAccessFields, CustomerHistory, SuggestedDates, InteractiveWeekPicker } from "../components/OrderFormFields";
 import { AddressInput } from "../components/AddressInput";
 
 // Bookingflowet er delt op i 4 mindre "kort" (trin) i stedet for én lang
-// formular. "Tidspunkt & montør" er bevidst det SIDSTE trin - at vælge
-// dato/montør er den beslutning der reelt kræver mest kontekst, og det
-// sidste trin viser nu ÉT samlet, AI-prioriteret datoforslag (se
-// SuggestedDates i OrderFormFields.jsx) i stedet for flere separate
-// forslagsbokse, der tidligere konkurrerede om opmærksomheden på samme tid.
+// formular:
+//  1. Kunde       - KUN kundeinfo (navn/telefon/e-mail) + ordrenummer.
+//  2. Levering     - adresse, leveringsnote og nøgle/adgang samlet, da det
+//                    hele handler om "hvordan/hvor kommer vi ind".
+//  3. Varer        - varelinjer & ydelser, inkl. modelnummer-tjek.
+//  4. Tidspunkt    - bevidst SIDST: kræver mest kontekst (adresse, varer,
+//                    nøgle), viser AI-forslag + interaktiv ugevisning.
 const STEPS = [
   { key: "kunde", label: "Kunde" },
-  { key: "noegle", label: "Nøgle & adgang" },
+  { key: "levering", label: "Levering" },
   { key: "varer", label: "Varer & ydelser" },
   { key: "tid", label: "Tidspunkt & montør" },
 ];
@@ -37,15 +39,15 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [address, setAddress] = useState("");
-  const [addressStatus, setAddressStatus] = useState("tom");
-  const [deliveryNote, setDeliveryNote] = useState("");
   const [externalReference, setExternalReference] = useState("");
   const [hasBuyer, setHasBuyer] = useState(false);
   const [buyerName, setBuyerName] = useState("");
   const [buyerPhone, setBuyerPhone] = useState("");
   const [buyerEmail, setBuyerEmail] = useState("");
   const [buyerAddress, setBuyerAddress] = useState("");
+  const [address, setAddress] = useState("");
+  const [addressStatus, setAddressStatus] = useState("tom");
+  const [deliveryNote, setDeliveryNote] = useState("");
   const [keyAccess, setKeyAccess] = useState(emptyKeyAccess());
   const [date, setDate] = useState(selectedDate || todayISO());
   const [timeSlotId, setTimeSlotId] = useState("heldag");
@@ -88,8 +90,8 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
   };
   const goBack = () => { setAttemptedNext(false); setStep((s) => Math.max(s - 1, 0)); };
 
-  // Bruges af SuggestedDates til at klikke et forslag direkte ind - sætter
-  // dato og (hvis AI'en foreslog en specifik montør) også montør, med ét klik.
+  // Bruges af BÅDE SuggestedDates og InteractiveWeekPicker til at sætte
+  // dato (og evt. montør) med ét klik.
   const applySuggestion = (suggestedDate, suggestedTechnicianId) => {
     if (suggestedDate) setDate(suggestedDate);
     if (suggestedTechnicianId) setTechnicianId(suggestedTechnicianId);
@@ -131,17 +133,15 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
         <div>
           <ReceiptUpload productTypes={productTypes} onFill={fillFromPdf} />
 
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Kunde (modtager af levering)</h4>
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Kunde</h4>
           <div className="grid gap-3 sm:grid-cols-2 mb-3">
             <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Kundenavn" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
             <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Telefon" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
             <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail (valgfri)" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-            <AddressInput value={address} onChange={setAddress} placeholder="Leveringsadresse" onValidationChange={setAddressStatus} focus={storeFocus} />
-            <div className="relative sm:col-span-2">
+            <div className="relative">
               <Hash size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
-              <input value={externalReference} onChange={(e) => setExternalReference(e.target.value)} placeholder="Ordre-/fakturanummer (valgfrit, til sporbarhed)" className="w-full rounded-lg border border-line bg-panel pl-8 pr-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+              <input value={externalReference} onChange={(e) => setExternalReference(e.target.value)} placeholder="Ordre-/fakturanummer (valgfrit)" className="w-full rounded-lg border border-line bg-panel pl-8 pr-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
             </div>
-            <input value={deliveryNote} onChange={(e) => setDeliveryNote(e.target.value)} placeholder="Leveringsnote, fx 'Ring før ankomst'" className="sm:col-span-2 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
           </div>
 
           <CustomerHistory phone={phone} name={customerName} orders={orders} onOpen={onOpen} />
@@ -165,6 +165,15 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
 
       {step === 1 && (
         <div>
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Leveringsadresse</h4>
+          <div className="grid gap-3 mb-4">
+            <AddressInput value={address} onChange={setAddress} placeholder="Leveringsadresse" onValidationChange={setAddressStatus} focus={storeFocus} />
+            <input value={deliveryNote} onChange={(e) => setDeliveryNote(e.target.value)} placeholder="Leveringsnote, fx 'Ring før ankomst'" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+          </div>
+          {addressStatus === "usikker" && (
+            <p className="text-xs text-danger mb-4">Bemærk: leveringsadressen kunne ikke bekræftes af korttjenesten — dobbelttjek den.</p>
+          )}
+
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Nøgle & adgang</h4>
           <KeyAccessFields keyAccess={keyAccess} onChange={setKeyAccess} />
         </div>
@@ -199,7 +208,7 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
       {step === 3 && (
         <div>
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Tidspunkt & montør</h4>
-          <p className="text-xs text-muted mb-3">Forslag til "{titlePreview}" hos {address || "kunden"} herunder — tryk på ét for at bruge det, eller vælg selv manuelt nedenfor.</p>
+          <p className="text-xs text-muted mb-3">Forslag til "{titlePreview}" hos {address || "kunden"} herunder — tryk på ét for at bruge det, eller vælg selv i ugevisningen.</p>
 
           <SuggestedDates
             orders={orders}
@@ -210,9 +219,11 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
             onSelectDate={applySuggestion}
           />
 
+          <InteractiveWeekPicker orders={orders} technicians={technicians} date={date} onSelectDate={applySuggestion} />
+
           <div className="grid gap-3 sm:grid-cols-3 mb-2">
             <label className="text-xs text-muted">
-              Dato
+              Dato (kan også vælges ovenfor)
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
             </label>
             <label className="text-xs text-muted">
@@ -230,9 +241,6 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
             </label>
           </div>
 
-          {addressStatus === "usikker" && (
-            <p className="text-xs text-danger mb-2">Bemærk: leveringsadressen kunne ikke bekræftes af korttjenesten — dobbelttjek den, inden du booker.</p>
-          )}
           {attemptedNext && !stepValid[3] && <p className="text-xs text-danger">Vælg en dato, før du kan booke.</p>}
         </div>
       )}
