@@ -1,32 +1,71 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin, Sparkles, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, ExternalLink } from "lucide-react";
+import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin, Sparkles, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, ExternalLink, Check, Loader2 } from "lucide-react";
 import { OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID, KEY_ACCESS_TYPES, buildingKey, formatLongDate, formatDuration, lineItemMinutes, availableAddOns, serviceIcon, todayISO, addDays, weekDays, orderExpectedMinutes } from "../data/domain";
-import { getAiRouteSuggestion } from "../lib/dataStore";
+import { getAiRouteSuggestion, lookupPunkt1Product } from "../lib/dataStore";
 import { geocodeAddress, geocodeAddresses, drivingDistances } from "../lib/geocoding";
 
-// Modelnummer-tjek mod punkt1.dk: punkt1.dk er en JavaScript-renderet side
-// uden noget offentligt/dokumenteret søge-API vi kan finde og med sikkerhed
-// kalde direkte fra en edge function - at gætte på et internt endpoint ville
-// risikere at give FORKERT eller INGEN data, uden varsel når det en dag
-// ændrer sig. I stedet for at foregive automatisk verifikation, åbner denne
-// knap en Google-søgning afgrænset til punkt1.dk i en ny fane, så sælgeren
-// selv kan bekræfte modellen og aflæse mærket på 5 sekunder - 100%
-// pålideligt, kræver ingen gætning om deres interne systemer. Rigtig
-// automatisk udfyldning af mærke-feltet kræver en officiel API-aftale med
-// punkt1.dk's tekniske team.
-function ModelNumberCheckLink({ model }) {
-  if (!model || model.trim().length < 2) return null;
-  const url = `https://www.google.com/search?q=${encodeURIComponent(`site:punkt1.dk ${model.trim()}`)}`;
+// Modelnummer-opslag mod punkt1.dk's EGET, offentlige søge-API (fundet og
+// bekræftet via Chrome DevTools Network-fanen - se
+// /Umbraco/Api/-research-samtalen). Kører live mens sælgeren skriver
+// (med lidt forsinkelse), og udfylder mærke-feltet automatisk HVIS der er
+// ét entydigt mærke blandt træfferne - ellers vises produkterne blot til
+// selv at vurdere ud fra. Kaldes gennem en edge function (punkt1-
+// produktopslag), som proxy'er kaldet server-side for at undgå CORS.
+function ModelNumberLookup({ model, onUseBrand }) {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null); // { matchCount, brand, products } | null
+  const [error, setError] = useState(null);
+  const [checkedTerm, setCheckedTerm] = useState("");
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    const term = (model || "").trim();
+    if (term.length < 3) { setResult(null); setError(null); return; }
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(async () => {
+      setLoading(true); setError(null);
+      const res = await lookupPunkt1Product(term);
+      setLoading(false);
+      setCheckedTerm(term);
+      if (!res.ok) { setError(res.fejl || "Kunne ikke slå op lige nu."); setResult(null); return; }
+      setResult(res);
+    }, 600);
+    return () => clearTimeout(timerRef.current);
+  }, [model]);
+
+  if (!model || model.trim().length < 3) return null;
+
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-info hover:text-brand mt-1"
-      title="Åbner en søgning på punkt1.dk for dette modelnummer i en ny fane"
-    >
-      <ExternalLink size={10} /> Tjek "{model.trim()}" på punkt1.dk
-    </a>
+    <div className="mt-1">
+      {loading && <p className="text-[10px] text-muted flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Tjekker punkt1.dk...</p>}
+      {error && <p className="text-[10px] text-danger">{error}</p>}
+      {!loading && !error && result && result.matchCount === 0 && (
+        <p className="text-[10px] text-muted">Intet fundet på punkt1.dk for "{checkedTerm}".</p>
+      )}
+      {!loading && !error && result && result.matchCount > 0 && (
+        <div className="space-y-1">
+          {result.products.slice(0, 3).map((p, i) => (
+            <div key={i} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-panel px-2 py-1">
+              {p.url ? (
+                <a href={p.url} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 text-[11px] text-ink hover:text-brand truncate flex items-center gap-1">
+                  <span className="truncate">{p.title}</span> <ExternalLink size={9} className="shrink-0" />
+                </a>
+              ) : (
+                <span className="min-w-0 flex-1 text-[11px] text-ink truncate">{p.title}</span>
+              )}
+              {result.brand && (
+                <button onClick={() => onUseBrand(result.brand)} className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-success hover:text-brand flex items-center gap-1">
+                  <Check size={11} /> Brug "{result.brand}"
+                </button>
+              )}
+            </div>
+          ))}
+          {!result.brand && (
+            <p className="text-[10px] text-muted">Flere mærker matcher — vælg selv mærke ud fra produkterne ovenfor.</p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -107,10 +146,10 @@ function LineItemEditor({ lineItem, productTypes, productCategories, primaryServ
         <input value={lineItem.maerke} onChange={(e) => onChange({ ...lineItem, maerke: e.target.value })} placeholder="Mærke, fx 'Bosch'" className="rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand" />
         <div>
           <input value={lineItem.model} onChange={(e) => onChange({ ...lineItem, model: e.target.value })} placeholder="Modelnummer" className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand" />
-          <ModelNumberCheckLink model={lineItem.model} />
+          <ModelNumberLookup model={lineItem.model} onUseBrand={(brand) => onChange({ ...lineItem, maerke: brand })} />
         </div>
       </div>
-      <p className="text-[10px] text-muted mb-2">Modelnummer-tjek åbner en søgning i en ny fane, så du kan aflæse/bekræfte mærket — udfyldes ikke automatisk endnu.</p>
+      <p className="text-[10px] text-muted mb-2">Modelnummer tjekkes automatisk mod punkt1.dk's varekartotek — tryk "Brug mærke", når det rigtige produkt vises.</p>
 
       <label className="flex items-center gap-2 mb-2 text-xs text-muted">
         <Clock size={12} className="shrink-0" />
