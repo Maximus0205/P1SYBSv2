@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, PlayCircle, Search, Sparkles, UserX, X, Users, RefreshCw, Pencil, KeyRound, Clock, Check } from "lucide-react";
+import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, PlayCircle, Search, Sparkles, UserX, X, Users, RefreshCw, Pencil, KeyRound, Clock, Check, Maximize2, CheckCheck } from "lucide-react";
 import { orderExpectedMinutes, todayISO, addDays, weekDays, vehicleLabel, vehicleBlockedByTimeOff, buildTitle, isToday, formatLongDate, formatDuration, technicianColor, STATUS_META } from "../data/domain";
 import { getAiRouteSuggestion } from "../lib/dataStore";
 import { DateSelector } from "../components/common";
@@ -10,12 +10,8 @@ import { OrderCardCompact } from "../components/OrderCardCompact";
 // bygget med ÉT primært formål for øje: gøre det hurtigt at OMFORDELE
 // sager, når en montør bliver syg, eller et besøg var forgæves - den
 // hyppigste, mest tidskritiske opgave i den daglige planlægning. Se
-// QuickReassign, som kombinerer en bladbar uge-kalender (kapacitetsoverblik
-// pr. montør/dag) med selve omfordelingen ét sted.
-//
-// "Ugens områdefordeling" (postnummer-baseret dobbeltkørsels-tjek) er
-// fjernet igen - vurderet overflødig oven på QuickReassigns ugevisning og
-// Kræver-handling-sektionen.
+// WeekBoardModal, en fuldskærms ugekalender med alle sager som kort,
+// grupperet på montør, med indbygget omfordeling.
 // ---------------------------------------------------------------------------
 
 function daysLate(dato, today) {
@@ -24,11 +20,6 @@ function daysLate(dato, today) {
   return Math.round((d2 - d1) / 86400000);
 }
 
-// En sag kan kræve handling af FLERE grunde nu, ikke kun "ikke tildelt"
-// eller "forsinket": tildeles en montør der er markeret fraværende (ferie/
-// sygdom) på sagens dato, eller hvis montørens nuværende bil er ude af
-// drift, kan sagen reelt ikke gennemføres som planlagt - og skal opdages
-// HER, ikke først når montøren alligevel ikke dukker op.
 function technicianIssue(order, technicians, vehicles, timeOff) {
   if (!order.montorId) return null;
   const technician = technicians.find((m) => m.id === order.montorId);
@@ -109,21 +100,11 @@ function ReasonLine({ order }) {
 }
 
 // ---------------- AI-forslag til løsning på "Kræver handling" ----------------
-// Foreslår, PR. SAG i listen, hvilken montør der bedst kan tage den - ud fra
-// ledig kapacitet og geografisk naerhed til andre allerede bookede sager
-// (samme underliggende edge function som booking-flowets AI-forslag, se
-// ai-ruteforslag: kraeverHandling-feltet giver ét svar pr. sag i stedet for
-// bare ét svar i alt). Rådgivende, ikke automatisk: hvert forslag skal
-// trykkes "Tildel" for at blive anvendt. Retter KUN montør - forsinkede
-// sager kan stadig kraeve at datoen ogsaa rettes manuelt (aabn sagen).
-
-// Loftet er sat ud fra Gemini's output-token-graense (se ai-ruteforslag i
-// Supabase): hver sag koster ca. 60-80 tokens at faa et struktureret svar
-// for, og modellen kan reelt kun levere op til ca. 8000 tokens tilbage pr.
-// kald. Sendes flere sager end det, bliver AI-svaret afskaaret midt i
-// JSON'en og kan slet ikke laeses (det var den oprindelige 503/502-fejl).
-// needsAction er allerede sorteret efter alvorlighed i classify() ovenfor,
-// saa de vigtigste sager er altid dem der rent faktisk faar et forslag.
+// Foreslår, PR. SAG i listen, hvilken montør der bedst kan tage den. Grupperet
+// PR. FORESLÅET MONTØR (i stedet for en flad liste) - med op til 80 sager i
+// spil på én gang giver en flad liste intet overblik; grupperingen gør det
+// muligt at se "Peter får 12 sager, Anne får 8" på ét blik, og tildele hele
+// gruppen på én gang med "Tildel alle".
 const AI_BATCH_LIMIT = 80;
 
 function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
@@ -146,8 +127,6 @@ function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
       aarsag: actionReason(s).text,
       forventetVarighed: formatDuration(orderExpectedMinutes(s)),
     }));
-    // Bred kontekst (kapacitet/geografi) - alle ikke-afsluttede, allerede
-    // TILDELTE sager de kommende to uger, så AI'en kan se hvem der har plads.
     const today = todayISO();
     const horizon = addDays(today, 14);
     const grundlag = orders
@@ -165,8 +144,32 @@ function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
     onAssign(orderId, technicianId);
     setApplied((prev) => ({ ...prev, [sagNr]: true }));
   };
+  const applyGroup = (items, technicianId) => {
+    items.forEach((s) => {
+      const order = aiTargets.find((o) => o.nr === s.sag);
+      if (order) onAssign(order.id, technicianId);
+    });
+    setApplied((prev) => {
+      const next = { ...prev };
+      items.forEach((s) => { next[s.sag] = true; });
+      return next;
+    });
+  };
 
   const visible = (solutions || []).filter((s) => !applied[s.sag]);
+  const groups = [];
+  if (visible.length > 0) {
+    const byName = new Map();
+    for (const s of visible) {
+      const key = s.montorNavn && technicians.some((m) => m.navn === s.montorNavn) ? s.montorNavn : "";
+      if (!byName.has(key)) byName.set(key, []);
+      byName.get(key).push(s);
+    }
+    for (const [navn, items] of byName) if (navn) groups.push({ navn, items });
+    groups.sort((a, b) => b.items.length - a.items.length);
+    const none = byName.get("");
+    if (none && none.length > 0) groups.push({ navn: "", items: none });
+  }
 
   return (
     <div className="rounded-xl border border-ink bg-panel p-3 mb-3">
@@ -178,34 +181,47 @@ function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
       </div>
 
       {!solutions && !error && !loading && (
-        <p className="text-[11px] text-muted mt-1.5">Foreslår en montør til hver sag nedenfor, ud fra ledig kapacitet og geografisk nærhed. Rådgivende — retter kun montør; forsinkede sager kan stadig kræve, du selv retter datoen (åbn sagen).{truncated ? ` Kun de ${AI_BATCH_LIMIT} mest kritiske sager (ud af ${needsAction.length}) sendes til AI'en ad gangen.` : ""}</p>
+        <p className="text-[11px] text-muted mt-1.5">Foreslår en montør til hver sag, grupperet så du kan se og tildele en hel gruppe ad gangen. Rådgivende — retter kun montør; forsinkede sager kan stadig kræve, du selv retter datoen.{truncated ? ` Kun de ${AI_BATCH_LIMIT} mest kritiske sager (ud af ${needsAction.length}) sendes ad gangen.` : ""}</p>
       )}
       {error && <p className="text-xs text-danger mt-2">{error}</p>}
 
       {solutions && (
-        visible.length === 0 ? (
+        groups.length === 0 ? (
           <p className="text-xs text-success mt-2 flex items-center gap-1.5"><Check size={13} /> Alle forslag er anvendt.</p>
         ) : (
-          <div className="space-y-1.5 mt-2">
+          <div className="space-y-2 mt-2">
             {truncated && (
               <p className="text-[11px] text-muted">Kun de {AI_BATCH_LIMIT} mest kritiske sager (ud af {needsAction.length}) fik et forslag denne omgang - kør igen bagefter for de næste.</p>
             )}
-            {visible.map((s) => {
-              const order = aiTargets.find((o) => o.nr === s.sag);
-              const technician = technicians.find((m) => m.navn === s.montorNavn);
-              if (!order) return null;
+            {groups.map((g) => {
+              const technician = g.navn && technicians.find((m) => m.navn === g.navn);
               return (
-                <div key={s.sag} className="flex items-center gap-2 rounded-lg bg-white border border-line p-2.5 flex-wrap">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-mono text-muted">#{s.sag}</p>
-                    <p className="text-sm text-ink">{technician ? <span className="font-semibold">{technician.navn}</span> : <span className="text-muted italic">Intet klart forslag</span>}</p>
-                    {s.begrundelse && <p className="text-[11px] text-muted">{s.begrundelse}</p>}
+                <div key={g.navn || "__none__"} className="rounded-lg bg-white border border-line p-2.5">
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <p className="text-xs font-semibold text-ink flex items-center gap-1.5">
+                      {technician && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: technicianColor(technician.id, technicians) }} />}
+                      {g.navn || "Intet klart forslag"} <span className="font-mono text-muted">({g.items.length})</span>
+                    </p>
+                    {technician && (
+                      <button onClick={() => applyGroup(g.items, technician.id)} className="text-[10px] font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors px-2.5 py-1 rounded-lg flex items-center gap-1 shrink-0">
+                        <CheckCheck size={12} /> Tildel alle
+                      </button>
+                    )}
                   </div>
-                  {technician && (
-                    <button onClick={() => apply(s.sag, order.id, technician.id)} className="text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors px-3 py-1.5 rounded-lg shrink-0">
-                      Tildel
-                    </button>
-                  )}
+                  <div className="flex flex-wrap gap-1.5">
+                    {g.items.map((s) => {
+                      const order = aiTargets.find((o) => o.nr === s.sag);
+                      if (!order) return null;
+                      return (
+                        <div key={s.sag} title={s.begrundelse || ""} className="flex items-center gap-1 rounded-full border border-line bg-panel pl-2 pr-1 py-0.5 text-[10px]">
+                          <span className="font-mono text-muted">#{s.sag}</span>
+                          {technician && (
+                            <button onClick={() => apply(s.sag, order.id, technician.id)} className="text-success hover:text-brand p-0.5" title="Tildel denne ene"><Check size={11} /></button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })}
@@ -249,118 +265,154 @@ function hoursLabel(minutes) {
 function shortDayLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { weekday: "short" }); }
 function shortDateLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "short" }); }
 
-// ---------------- Omfordel hurtigt: bladbar ugekalender + omfordeling ----------------
-function QuickReassign({ orders, technicians, timeOff, onAssign, onOpen }) {
+// ---------------- Ugekalender (fuldskærm): alle sager som kort, pr. montør, pr. dag ----------------
+// Det egentlige omfordelingsværktøj. Rækker = montører (+ "Ikke tildelt"),
+// kolonner = ugedage - en rigtig ressourcekalender, ikke bare et talskema.
+// Hvert kort viser tid, kunde og opgave, og kan omfordeles direkte fra
+// kortet (uden at forlade visningen) via den lille vælger nederst på
+// kortet. Klik på selve kortteksten åbner sagen i fuld visning (lukker
+// kalenderen, samme mønster som resten af appen).
+function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnicianId, color, onLeave }) {
+  return (
+    <div
+      className="rounded-lg bg-white border border-line hover:shadow-sm transition-shadow px-2 py-1.5 mb-1.5 last:mb-0"
+      style={{ borderLeftWidth: 3, borderLeftColor: color }}
+    >
+      <div onClick={() => onOpen(order.id)} className="cursor-pointer">
+        <div className="flex items-center justify-between gap-1">
+          <span className="text-[10px] font-mono text-muted">{order.start}–{order.slut}</span>
+          {order.noegle?.kraeves && <KeyRound size={9} className="text-brand shrink-0" />}
+        </div>
+        <p className="text-xs font-semibold text-ink truncate">{order.kunde?.navn}</p>
+        <p className="text-[10px] text-muted truncate">{buildTitle(order.varelinjer)}</p>
+      </div>
+      <select
+        value={currentTechnicianId || ""}
+        onChange={(e) => onAssign(order.id, e.target.value || null)}
+        onClick={(e) => e.stopPropagation()}
+        className={`w-full mt-1 rounded-md border px-1 py-0.5 text-[9px] focus:outline-none ${onLeave ? "border-danger text-danger font-semibold" : "border-line bg-panel text-muted focus:border-brand"}`}
+      >
+        <option value="">Ikke tildelt</option>
+        {technicians.map((m) => <option key={m.id} value={m.id}>{m.navn}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function WeekBoardModal({ orders, technicians, timeOff, onAssign, onOpen, onClose }) {
   const [weekAnchor, setWeekAnchor] = useState(todayISO());
-  const [selected, setSelected] = useState(null); // { technicianId, date } | null
   const week = weekDays(weekAnchor);
   const today = todayISO();
   const rows = [...technicians, { id: null, navn: "Ikke tildelt" }];
 
-  const cellFor = (technicianId, day) => {
-    const dayOrders = (orders || []).filter((o) => o.montorId === technicianId && o.dato === day && o.status !== "afsluttet");
-    const minutes = dayOrders.reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
-    return { count: dayOrders.length, minutes };
-  };
+  const ordersFor = (technicianId, day) =>
+    orders.filter((o) => o.montorId === technicianId && o.dato === day && o.status !== "afsluttet")
+      .sort((a, b) => (a.start || "").localeCompare(b.start || ""));
 
-  const selectedTechnician = selected && technicians.find((m) => m.id === selected.technicianId);
-  const selectedOrders = selected
-    ? orders.filter((o) => o.montorId === selected.technicianId && o.dato === selected.date && o.status !== "afsluttet").sort((a, b) => (a.start || "").localeCompare(b.start || ""))
-    : [];
-  const onLeave = selected && (timeOff || []).some((f) => f.montorId === selected.technicianId && selected.date >= f.startDato && selected.date <= f.slutDato);
+  const isOnLeave = (technicianId, day) => !!technicianId && (timeOff || []).some((f) => f.montorId === technicianId && day >= f.startDato && day <= f.slutDato);
+
+  const openAndClose = (id) => { onClose(); onOpen(id); };
 
   return (
-    <div className="rounded-xl border border-brand bg-brand/5 p-4 mb-4">
-      <p className="text-sm font-semibold text-ink mb-1 flex items-center gap-1.5"><Users size={15} className="text-brand" /> Omfordel hurtigt</p>
-      <p className="text-xs text-muted mb-3">Bookede timer pr. montør, dag for dag — klik en dag for at se og omfordele sagerne, fx ved sygdom eller et forgæves besøg.</p>
-
-      <div className="flex items-center justify-between mb-2">
-        <button onClick={() => setWeekAnchor((w) => addDays(w, -7))} className="p-1.5 rounded-lg text-muted hover:text-brand border border-line hover:border-brand transition-colors bg-white" title="Forrige uge">
-          <ChevronLeft size={14} />
-        </button>
-        <div className="text-center">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink">{shortDateLabel(week[0])} – {shortDateLabel(week[6])}</p>
-          {weekAnchor !== today && <button onClick={() => setWeekAnchor(today)} className="text-[10px] font-semibold uppercase tracking-wide text-brand hover:underline">Gå til denne uge</button>}
+    <div className="fixed inset-0 z-50 bg-paper flex flex-col">
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-line bg-white shrink-0">
+        <div className="flex items-center gap-2">
+          <button onClick={() => setWeekAnchor((w) => addDays(w, -7))} className="p-1.5 rounded-lg border border-line text-muted hover:text-brand hover:border-brand transition-colors" title="Forrige uge">
+            <ChevronLeft size={16} />
+          </button>
+          <div className="text-center min-w-[130px]">
+            <p className="text-sm font-semibold text-ink">{shortDateLabel(week[0])} – {shortDateLabel(week[6])}</p>
+            {weekAnchor !== today && <button onClick={() => setWeekAnchor(today)} className="text-[10px] font-semibold uppercase tracking-wide text-brand hover:underline">Gå til denne uge</button>}
+          </div>
+          <button onClick={() => setWeekAnchor((w) => addDays(w, 7))} className="p-1.5 rounded-lg border border-line text-muted hover:text-brand hover:border-brand transition-colors" title="Næste uge">
+            <ChevronRight size={16} />
+          </button>
         </div>
-        <button onClick={() => setWeekAnchor((w) => addDays(w, 7))} className="p-1.5 rounded-lg text-muted hover:text-brand border border-line hover:border-brand transition-colors bg-white" title="Næste uge">
-          <ChevronRight size={14} />
-        </button>
+        <div className="flex items-center gap-3">
+          <p className="text-xs text-muted hidden sm:block">Klik en dag/montør-vælger på et kort for at omfordele — klik selve kortet for at åbne sagen.</p>
+          <button onClick={onClose} className="p-2 rounded-lg text-muted hover:text-brand hover:bg-panel transition-colors" title="Luk"><X size={20} /></button>
+        </div>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-line bg-white">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-line">
-              <th className="text-left p-1.5 text-muted font-semibold uppercase tracking-wide">Montør</th>
-              {week.map((d) => (
-                <th key={d} className={`text-center p-1.5 font-semibold uppercase tracking-wide ${d === today ? "text-brand" : "text-muted"}`}>{shortDayLabel(d)}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id || "utildelt"} className="border-b border-divider last:border-b-0">
-                <td className="p-1.5 text-ink font-medium whitespace-nowrap">{r.navn}</td>
-                {week.map((d) => {
-                  const { count, minutes } = cellFor(r.id, d);
-                  const overloaded = minutes > WORKDAY_MINUTES;
-                  const isSel = selected && selected.technicianId === r.id && selected.date === d;
-                  return (
-                    <td key={d} className="p-1">
-                      <button
-                        onClick={() => r.id && setSelected(isSel ? null : { technicianId: r.id, date: d })}
-                        disabled={!r.id}
-                        title={`${r.navn} · ${shortDateLabel(d)}${count > 0 ? ` · ${count} ${count === 1 ? "sag" : "sager"}, ${hoursLabel(minutes)}` : ", ledig"}`}
-                        className={`w-full flex items-center justify-center py-1.5 rounded-lg border transition-colors ${isSel ? "border-brand bg-brand/10" : "border-transparent hover:border-line"} ${!r.id ? "cursor-default" : ""}`}
-                      >
-                        {count === 0 ? (
-                          <span className="text-line">–</span>
-                        ) : (
-                          <span className={`px-1.5 py-0.5 rounded-md font-semibold ${overloaded ? "bg-danger text-white" : "bg-panel text-ink"}`}>{hoursLabel(minutes)}</span>
-                        )}
-                      </button>
-                    </td>
-                  );
-                })}
-              </tr>
+      <div className="flex-1 overflow-auto">
+        <div style={{ minWidth: 150 + 152 * 7 }}>
+          <div className="grid sticky top-0 z-20 bg-panel border-b border-line" style={{ gridTemplateColumns: "150px repeat(7, minmax(150px, 1fr))" }}>
+            <div className="p-2 text-[10px] font-semibold uppercase tracking-wide text-muted sticky left-0 bg-panel z-10 border-r border-line">Montør</div>
+            {week.map((d) => (
+              <div key={d} className={`p-2 text-center border-l border-divider ${d === today ? "bg-brand/10" : ""}`}>
+                <p className={`text-[10px] font-semibold uppercase tracking-wide ${d === today ? "text-brand" : "text-muted"}`}>{shortDayLabel(d)}</p>
+                <p className={`text-sm font-semibold ${d === today ? "text-brand" : "text-ink"}`}>{new Date(d + "T00:00:00").getDate()}</p>
+              </div>
             ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-[10px] text-muted mt-2">Rødt = mere end en arbejdsdag booket ({hoursLabel(WORKDAY_MINUTES)}). Klik en montørs dag for at omfordele.</p>
+          </div>
 
-      {selected && (
-        <div className="mt-3 pt-3 border-t border-line">
-          <p className="text-sm font-semibold text-ink mb-2">{selectedTechnician?.navn} — {formatLongDate(selected.date)}</p>
-          {onLeave && <p className="text-xs text-danger font-semibold mb-2 flex items-center gap-1.5"><AlertCircle size={13} /> Registreret fraværende denne dag.</p>}
-          {selectedOrders.length === 0 ? (
-            <p className="text-xs text-muted italic">Ingen sager denne dag.</p>
-          ) : (
-            <div className="space-y-2">
-              {selectedOrders.map((o) => (
-                <div key={o.id} className="flex items-center gap-2 rounded-lg bg-white border border-line p-2.5 flex-wrap">
-                  <div onClick={() => onOpen(o.id)} className="min-w-0 flex-1 cursor-pointer">
-                    <p className="text-xs font-mono text-muted">{o.start}–{o.slut}</p>
-                    <p className="text-sm font-semibold text-ink truncate">{buildTitle(o.varelinjer)}</p>
-                    <p className="text-xs text-muted truncate">{o.kunde.navn} · {o.kunde.adresse}</p>
+          {rows.map((r) => (
+            <div key={r.id || "utildelt"} className="grid border-b border-divider" style={{ gridTemplateColumns: "150px repeat(7, minmax(150px, 1fr))" }}>
+              <div className="p-2 sticky left-0 bg-white z-10 border-r border-line flex items-center gap-1.5">
+                {r.id && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: technicianColor(r.id, technicians) }} />}
+                <span className="text-xs font-semibold text-ink truncate">{r.navn}</span>
+              </div>
+              {week.map((d) => {
+                const dayOrders = ordersFor(r.id, d);
+                const onLeave = isOnLeave(r.id, d);
+                return (
+                  <div key={d} className={`p-1.5 border-l border-divider min-h-[64px] ${d === today ? "bg-brand/5" : ""}`}>
+                    {onLeave && <p className="text-[9px] font-semibold uppercase tracking-wide text-danger mb-1 flex items-center gap-0.5"><AlertCircle size={9} /> Fraværende</p>}
+                    {dayOrders.length === 0 ? (
+                      <p className="text-[10px] text-line text-center pt-2">–</p>
+                    ) : (
+                      dayOrders.map((o) => (
+                        <MiniOrderCard
+                          key={o.id}
+                          order={o}
+                          onOpen={openAndClose}
+                          onAssign={onAssign}
+                          technicians={technicians}
+                          currentTechnicianId={r.id}
+                          color={r.id ? technicianColor(r.id, technicians) : "#C8232E"}
+                          onLeave={onLeave}
+                        />
+                      ))
+                    )}
                   </div>
-                  <select
-                    onChange={(e) => onAssign(o.id, e.target.value || null)}
-                    defaultValue=""
-                    className="rounded-lg border border-brand text-brand font-semibold px-2 py-1.5 text-xs focus:outline-none shrink-0"
-                  >
-                    <option value="" disabled>Flyt til...</option>
-                    <option value="">Ikke tildelt</option>
-                    {technicians.filter((m) => m.id !== selected.technicianId).map((m) => <option key={m.id} value={m.id}>{m.navn}</option>)}
-                  </select>
-                </div>
-              ))}
+                );
+              })}
             </div>
-          )}
-          <p className="text-[10px] text-muted mt-2">Skal en sag flyttes til en ANDEN dato (ikke bare en anden montør), åbn sagen og redigér bookingen der.</p>
+          ))}
         </div>
-      )}
+      </div>
     </div>
+  );
+}
+
+// Lille "launcher"-kort på selve siden - viser et hurtigt pulstjek (denne
+// uges samlede antal sager) og åbner den fulde ugekalender (WeekBoardModal)
+// ved klik. Selve omfordelingen sker i modalen, ikke her - det er bevidst
+// holdt til ÉT sted, i stedet for at have to delvist overlappende versioner.
+function QuickReassign({ orders, technicians, timeOff, onAssign, onOpen }) {
+  const [boardOpen, setBoardOpen] = useState(false);
+  const week = weekDays(todayISO());
+  const weekOrders = orders.filter((o) => week.includes(o.dato) && o.status !== "afsluttet");
+  const unassignedThisWeek = weekOrders.filter((o) => !o.montorId).length;
+
+  return (
+    <>
+      <button
+        onClick={() => setBoardOpen(true)}
+        className="w-full text-left rounded-xl border border-brand bg-brand/5 hover:bg-brand/10 transition-colors p-4 mb-4 flex items-center justify-between gap-3"
+      >
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink flex items-center gap-1.5"><Users size={15} className="text-brand shrink-0" /> Omfordel hurtigt</p>
+          <p className="text-xs text-muted mt-0.5">{weekOrders.length} sager denne uge{unassignedThisWeek > 0 ? ` · ${unassignedThisWeek} ikke tildelt` : ""} — åbn ugekalenderen for at se fordelingen og omfordele ved sygdom eller et forgæves besøg.</p>
+        </div>
+        <span className="shrink-0 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-white bg-ink group-hover:bg-brand px-3 py-2 rounded-lg">
+          <Maximize2 size={13} /> Åbn ugekalender
+        </span>
+      </button>
+      {boardOpen && (
+        <WeekBoardModal orders={orders} technicians={technicians} timeOff={timeOff} onAssign={onAssign} onOpen={onOpen} onClose={() => setBoardOpen(false)} />
+      )}
+    </>
   );
 }
 
