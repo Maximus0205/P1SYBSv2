@@ -14,7 +14,7 @@ import {
   getStore,
 } from "./lib/dataStore";
 import {
-  uid, todayISO,
+  uid, todayISO, dailyOrderCompare,
   DEFAULT_PRODUCT_TYPES, DEFAULT_PRODUCT_CATEGORIES,
   DEFAULT_PRIMARY_SERVICES, DEFAULT_ADD_ON_SERVICES,
   DEFAULT_VEHICLES,
@@ -272,6 +272,27 @@ export default function App() {
   const assignTechnician = (orderId, technicianId) => { const s = orders.find((x) => x.id === orderId); if (s) saveOneOrder({ ...s, montorId: technicianId }); };
   const updateTimeSlot = (orderId, timeSlotId) => { const s = orders.find((x) => x.id === orderId); if (s) saveOneOrder({ ...s, tidsrumId: timeSlotId }); };
 
+  // Ændrer besøgs-RÆKKEFØLGEN for sager hos samme montør, samme dag (fx ved
+  // sygdom, forgæves besøg, eller bare fordi en anden rute giver mere
+  // mening). Direction er -1 (flyt op/tidligere) eller +1 (flyt ned/senere).
+  // Normaliserer HELE dagens gruppe for den montør til fortløbende tal
+  // (0,1,2...) hver gang - se dailyOrderCompare i domain.js for hvorfor.
+  // Kun de sager hvis raekkefolge rent faktisk ændrer sig bliver gemt.
+  const reorderOrder = (technicianId, date, orderId, direction) => {
+    const group = orders
+      .filter((o) => o.montorId === technicianId && o.dato === date && o.status !== "afsluttet")
+      .sort(dailyOrderCompare);
+    const currentIndex = group.findIndex((o) => o.id === orderId);
+    if (currentIndex === -1) return;
+    const targetIndex = currentIndex + direction;
+    if (targetIndex < 0 || targetIndex >= group.length) return;
+    const reordered = [...group];
+    [reordered[currentIndex], reordered[targetIndex]] = [reordered[targetIndex], reordered[currentIndex]];
+    reordered.forEach((o, i) => {
+      if (o.raekkefolge !== i) saveOneOrder({ ...o, raekkefolge: i });
+    });
+  };
+
   // Slår plukket til/fra for ÉN varelinje (se WarehousePage.jsx: dér er 1
   // varelinje = 1 pluk-punkt på lagerlisten, i stedet for 1 punkt pr. hele
   // ordren). Ordrens samlede "plukket"-flag holdes synkroniseret som et
@@ -400,15 +421,15 @@ export default function App() {
           <PlanningPage
             orders={orders} technicians={technicians} vehicles={vehicles} timeOff={timeOff}
             selectedDate={selectedDate} onDateChange={setSelectedDate}
-            onOpen={setSelectedId} onCycleStatus={cycleStatus} onAssign={assignTechnician}
+            onOpen={setSelectedId} onCycleStatus={cycleStatus} onAssign={assignTechnician} onReorder={reorderOrder}
             onUpdateTechnician={(technicianId, fields) => updateTechnicianVehicle(technicianId, fields.bilId)}
             onRefresh={refresh} refreshing={refreshing}
           />
         ) : page === "montor" ? (
           profile.rolle === "montor" ? (
-            technician ? <TechnicianRouteView orders={orders} technician={technician} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onCycleStatus={cycleStatus} onRefresh={refresh} refreshing={refreshing} /> : <p className="text-sm text-muted">Din bruger er ikke koblet til en montør/bil-profil endnu — kontakt en administrator.</p>
+            technician ? <TechnicianRouteView orders={orders} technician={technician} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onCycleStatus={cycleStatus} onReorder={reorderOrder} onRefresh={refresh} refreshing={refreshing} /> : <p className="text-sm text-muted">Din bruger er ikke koblet til en montør/bil-profil endnu — kontakt en administrator.</p>
           ) : technician ? (
-            <TechnicianRouteView orders={orders} technician={technician} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onCycleStatus={cycleStatus} onChangeTechnician={() => setSelectedTechnicianId(null)} onRefresh={refresh} refreshing={refreshing} />
+            <TechnicianRouteView orders={orders} technician={technician} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onCycleStatus={cycleStatus} onReorder={reorderOrder} onChangeTechnician={() => setSelectedTechnicianId(null)} onRefresh={refresh} refreshing={refreshing} />
           ) : (
             <TechnicianPicker technicians={technicians} onSelect={setSelectedTechnicianId} />
           )
