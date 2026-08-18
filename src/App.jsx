@@ -420,6 +420,7 @@ export default function App() {
         ) : page === "planlaegning" ? (
           <PlanningPage
             orders={orders} technicians={technicians} vehicles={vehicles} timeOff={timeOff}
+            store={store}
             selectedDate={selectedDate} onDateChange={setSelectedDate}
             onOpen={setSelectedId} onCycleStatus={cycleStatus} onAssign={assignTechnician} onReorder={reorderOrder}
             onUpdateTechnician={(technicianId, fields) => updateTechnicianVehicle(technicianId, fields.bilId)}
