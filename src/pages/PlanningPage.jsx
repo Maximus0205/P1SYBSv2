@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, PlayCircle, Search, Sparkles, UserX, X, Users, RefreshCw, Pencil, KeyRound, Clock, Check, Maximize2, CheckCheck } from "lucide-react";
-import { orderExpectedMinutes, todayISO, addDays, weekDays, vehicleLabel, vehicleBlockedByTimeOff, buildTitle, isToday, formatLongDate, formatDuration, technicianColor, STATUS_META } from "../data/domain";
+import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, Users, RefreshCw, Pencil, KeyRound, Clock, Check, Maximize2, CheckCheck } from "lucide-react";
+import { orderExpectedMinutes, todayISO, addDays, weekDays, vehicleLabel, vehicleBlockedByTimeOff, buildTitle, isToday, formatLongDate, formatDuration, technicianColor, STATUS_META, dailyOrderCompare } from "../data/domain";
 import { getAiRouteSuggestion } from "../lib/dataStore";
 import { DateSelector } from "../components/common";
 import { OrderCardCompact } from "../components/OrderCardCompact";
@@ -11,7 +11,7 @@ import { OrderCardCompact } from "../components/OrderCardCompact";
 // sager, når en montør bliver syg, eller et besøg var forgæves - den
 // hyppigste, mest tidskritiske opgave i den daglige planlægning. Se
 // WeekBoardModal, en fuldskærms ugekalender med alle sager som kort,
-// grupperet på montør, med indbygget omfordeling.
+// grupperet på montør, med indbygget omfordeling OG besøgsrækkefølge.
 // ---------------------------------------------------------------------------
 
 function daysLate(dato, today) {
@@ -268,23 +268,36 @@ function shortDateLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateSt
 // ---------------- Ugekalender (fuldskærm): alle sager som kort, pr. montør, pr. dag ----------------
 // Det egentlige omfordelingsværktøj. Rækker = montører (+ "Ikke tildelt"),
 // kolonner = ugedage - en rigtig ressourcekalender, ikke bare et talskema.
-// Hvert kort viser tid, kunde og opgave, og kan omfordeles direkte fra
-// kortet (uden at forlade visningen) via den lille vælger nederst på
-// kortet. Klik på selve kortteksten åbner sagen i fuld visning (lukker
-// kalenderen, samme mønster som resten af appen).
-function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnicianId, color, onLeave }) {
+// Hvert kort viser tid, kunde og opgave, kan omfordeles til en anden montør
+// direkte fra kortet, og kan flyttes op/ned i BESØGSRÆKKEFØLGEN for den
+// dag/montør (se dailyOrderCompare i domain.js). Klik på selve kortteksten
+// åbner sagen i fuld visning (lukker kalenderen, samme mønster som resten
+// af appen).
+function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnicianId, color, onLeave, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
   return (
     <div
       className="rounded-lg bg-white border border-line hover:shadow-sm transition-shadow px-2 py-1.5 mb-1.5 last:mb-0"
       style={{ borderLeftWidth: 3, borderLeftColor: color }}
     >
-      <div onClick={() => onOpen(order.id)} className="cursor-pointer">
-        <div className="flex items-center justify-between gap-1">
-          <span className="text-[10px] font-mono text-muted">{order.start}–{order.slut}</span>
-          {order.noegle?.kraeves && <KeyRound size={9} className="text-brand shrink-0" />}
+      <div className="flex items-start gap-1">
+        {(onMoveUp || onMoveDown) && (
+          <div className="flex flex-col shrink-0 -ml-0.5 -mt-0.5">
+            <button onClick={(e) => { e.stopPropagation(); onMoveUp(); }} disabled={!canMoveUp} className="p-0.5 rounded text-muted hover:text-brand disabled:opacity-20 disabled:pointer-events-none" title="Flyt tidligere i ruten">
+              <ChevronUp size={12} />
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); onMoveDown(); }} disabled={!canMoveDown} className="p-0.5 rounded text-muted hover:text-brand disabled:opacity-20 disabled:pointer-events-none" title="Flyt senere i ruten">
+              <ChevronDown size={12} />
+            </button>
+          </div>
+        )}
+        <div onClick={() => onOpen(order.id)} className="cursor-pointer min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-1">
+            <span className="text-[10px] font-mono text-muted">{order.start}–{order.slut}</span>
+            {order.noegle?.kraeves && <KeyRound size={9} className="text-brand shrink-0" />}
+          </div>
+          <p className="text-xs font-semibold text-ink truncate">{order.kunde?.navn}</p>
+          <p className="text-[10px] text-muted truncate">{buildTitle(order.varelinjer)}</p>
         </div>
-        <p className="text-xs font-semibold text-ink truncate">{order.kunde?.navn}</p>
-        <p className="text-[10px] text-muted truncate">{buildTitle(order.varelinjer)}</p>
       </div>
       <select
         value={currentTechnicianId || ""}
@@ -299,7 +312,7 @@ function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnician
   );
 }
 
-function WeekBoardModal({ orders, technicians, timeOff, onAssign, onOpen, onClose }) {
+function WeekBoardModal({ orders, technicians, timeOff, onAssign, onReorder, onOpen, onClose }) {
   const [weekAnchor, setWeekAnchor] = useState(todayISO());
   const week = weekDays(weekAnchor);
   const today = todayISO();
@@ -307,7 +320,7 @@ function WeekBoardModal({ orders, technicians, timeOff, onAssign, onOpen, onClos
 
   const ordersFor = (technicianId, day) =>
     orders.filter((o) => o.montorId === technicianId && o.dato === day && o.status !== "afsluttet")
-      .sort((a, b) => (a.start || "").localeCompare(b.start || ""));
+      .sort(dailyOrderCompare);
 
   const isOnLeave = (technicianId, day) => !!technicianId && (timeOff || []).some((f) => f.montorId === technicianId && day >= f.startDato && day <= f.slutDato);
 
@@ -329,7 +342,7 @@ function WeekBoardModal({ orders, technicians, timeOff, onAssign, onOpen, onClos
           </button>
         </div>
         <div className="flex items-center gap-3">
-          <p className="text-xs text-muted hidden sm:block">Klik en dag/montør-vælger på et kort for at omfordele — klik selve kortet for at åbne sagen.</p>
+          <p className="text-xs text-muted hidden md:block">Pilene ændrer besøgsrækkefølgen — vælgeren omfordeler til en anden montør — klik kortet åbner sagen.</p>
           <button onClick={onClose} className="p-2 rounded-lg text-muted hover:text-brand hover:bg-panel transition-colors" title="Luk"><X size={20} /></button>
         </div>
       </div>
@@ -361,7 +374,7 @@ function WeekBoardModal({ orders, technicians, timeOff, onAssign, onOpen, onClos
                     {dayOrders.length === 0 ? (
                       <p className="text-[10px] text-line text-center pt-2">–</p>
                     ) : (
-                      dayOrders.map((o) => (
+                      dayOrders.map((o, i) => (
                         <MiniOrderCard
                           key={o.id}
                           order={o}
@@ -371,6 +384,10 @@ function WeekBoardModal({ orders, technicians, timeOff, onAssign, onOpen, onClos
                           currentTechnicianId={r.id}
                           color={r.id ? technicianColor(r.id, technicians) : "#C8232E"}
                           onLeave={onLeave}
+                          onMoveUp={r.id && onReorder ? () => onReorder(r.id, d, o.id, -1) : undefined}
+                          onMoveDown={r.id && onReorder ? () => onReorder(r.id, d, o.id, 1) : undefined}
+                          canMoveUp={i > 0}
+                          canMoveDown={i < dayOrders.length - 1}
                         />
                       ))
                     )}
@@ -389,7 +406,7 @@ function WeekBoardModal({ orders, technicians, timeOff, onAssign, onOpen, onClos
 // uges samlede antal sager) og åbner den fulde ugekalender (WeekBoardModal)
 // ved klik. Selve omfordelingen sker i modalen, ikke her - det er bevidst
 // holdt til ÉT sted, i stedet for at have to delvist overlappende versioner.
-function QuickReassign({ orders, technicians, timeOff, onAssign, onOpen }) {
+function QuickReassign({ orders, technicians, timeOff, onAssign, onReorder, onOpen }) {
   const [boardOpen, setBoardOpen] = useState(false);
   const week = weekDays(todayISO());
   const weekOrders = orders.filter((o) => week.includes(o.dato) && o.status !== "afsluttet");
@@ -403,14 +420,14 @@ function QuickReassign({ orders, technicians, timeOff, onAssign, onOpen }) {
       >
         <div className="min-w-0">
           <p className="text-sm font-semibold text-ink flex items-center gap-1.5"><Users size={15} className="text-brand shrink-0" /> Omfordel hurtigt</p>
-          <p className="text-xs text-muted mt-0.5">{weekOrders.length} sager denne uge{unassignedThisWeek > 0 ? ` · ${unassignedThisWeek} ikke tildelt` : ""} — åbn ugekalenderen for at se fordelingen og omfordele ved sygdom eller et forgæves besøg.</p>
+          <p className="text-xs text-muted mt-0.5">{weekOrders.length} sager denne uge{unassignedThisWeek > 0 ? ` · ${unassignedThisWeek} ikke tildelt` : ""} — åbn ugekalenderen for at se fordelingen, omfordele og justere besøgsrækkefølgen.</p>
         </div>
         <span className="shrink-0 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-white bg-ink group-hover:bg-brand px-3 py-2 rounded-lg">
           <Maximize2 size={13} /> Åbn ugekalender
         </span>
       </button>
       {boardOpen && (
-        <WeekBoardModal orders={orders} technicians={technicians} timeOff={timeOff} onAssign={onAssign} onOpen={onOpen} onClose={() => setBoardOpen(false)} />
+        <WeekBoardModal orders={orders} technicians={technicians} timeOff={timeOff} onAssign={onAssign} onReorder={onReorder} onOpen={onOpen} onClose={() => setBoardOpen(false)} />
       )}
     </>
   );
@@ -538,7 +555,7 @@ function DailyTimeline({ orders, technicians, vehicles, timeOff, selectedDate, o
   );
 }
 
-function PlanningPage({ orders, technicians, vehicles, timeOff, selectedDate, onDateChange, onOpen, onCycleStatus, onAssign, onUpdateTechnician, onRefresh, refreshing }) {
+function PlanningPage({ orders, technicians, vehicles, timeOff, selectedDate, onDateChange, onOpen, onCycleStatus, onAssign, onReorder, onUpdateTechnician, onRefresh, refreshing }) {
   const [search, setSearch] = useState("");
   const { needsAction, inProgressToday, upcoming, done } = useMemo(() => classify(orders, technicians, vehicles, timeOff), [orders, technicians, vehicles, timeOff]);
 
@@ -589,7 +606,7 @@ function PlanningPage({ orders, technicians, vehicles, timeOff, selectedDate, on
         </div>
       ) : (
         <>
-          <QuickReassign orders={orders} technicians={technicians} timeOff={timeOff} onAssign={onAssign} onOpen={onOpen} />
+          <QuickReassign orders={orders} technicians={technicians} timeOff={timeOff} onAssign={onAssign} onReorder={onReorder} onOpen={onOpen} />
 
           <div className="rounded-xl bg-white border border-line mb-4 overflow-hidden" style={{ borderTopWidth: 4, borderTopColor: ACTION_RED }}>
             <div className="p-3 border-b border-line flex items-center gap-2">
