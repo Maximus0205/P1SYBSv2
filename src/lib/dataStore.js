@@ -351,3 +351,16 @@ export async function sendArrivalSms({ telefon, minutter, kundeNavn }) {
   if (error || data?.fejl) return { ok: false, fejl: await readEdgeFunctionError(data, error, "Kunne ikke sende SMS'en") };
   return { ok: true };
 }
+
+// ---------- Modelnummer-opslag mod punkt1.dk ----------
+// Kalder punkt1.dk's EGET, offentlige søge-API (fundet via Chrome DevTools,
+// bekræftet at give rigtige produktdata - se samtalen om varenummer-
+// validering) igennem en edge function (undgår CORS-problemer ved at kalde
+// det direkte fra browseren). Returnerer matchende produkter + et
+// foreslået mærke, HVIS der er ét entydigt mærke blandt træfferne - se
+// ModelNumberLookup i OrderFormFields.jsx.
+export async function lookupPunkt1Product(model) {
+  const { data, error } = await supabase.functions.invoke("punkt1-produktopslag", { body: { model } });
+  if (error || data?.fejl) return { ok: false, fejl: await readEdgeFunctionError(data, error, "Kunne ikke slå produktet op på punkt1.dk") };
+  return { ok: true, matchCount: data.matchCount, brand: data.brand, products: data.products };
+}
