@@ -116,6 +116,16 @@ function ReasonLine({ order }) {
 // bare ét svar i alt). Rådgivende, ikke automatisk: hvert forslag skal
 // trykkes "Tildel" for at blive anvendt. Retter KUN montør - forsinkede
 // sager kan stadig kraeve at datoen ogsaa rettes manuelt (aabn sagen).
+
+// Loftet er sat ud fra Gemini's output-token-graense (se ai-ruteforslag i
+// Supabase): hver sag koster ca. 60-80 tokens at faa et struktureret svar
+// for, og modellen kan reelt kun levere op til ca. 8000 tokens tilbage pr.
+// kald. Sendes flere sager end det, bliver AI-svaret afskaaret midt i
+// JSON'en og kan slet ikke laeses (det var den oprindelige 503/502-fejl).
+// needsAction er allerede sorteret efter alvorlighed i classify() ovenfor,
+// saa de vigtigste sager er altid dem der rent faktisk faar et forslag.
+const AI_BATCH_LIMIT = 80;
+
 function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
   const [loading, setLoading] = useState(false);
   const [solutions, setSolutions] = useState(null);
@@ -124,9 +134,12 @@ function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
 
   if (needsAction.length === 0) return null;
 
+  const aiTargets = needsAction.slice(0, AI_BATCH_LIMIT);
+  const truncated = needsAction.length > AI_BATCH_LIMIT;
+
   const ask = async () => {
     setLoading(true); setError(null); setSolutions(null); setApplied({});
-    const kraeverHandling = needsAction.map((s) => ({
+    const kraeverHandling = aiTargets.map((s) => ({
       sag: s.nr,
       dato: s.dato,
       adresse: s.kunde?.adresse || "",
@@ -165,7 +178,7 @@ function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
       </div>
 
       {!solutions && !error && !loading && (
-        <p className="text-[11px] text-muted mt-1.5">Foreslår en montør til hver sag nedenfor, ud fra ledig kapacitet og geografisk nærhed. Rådgivende — retter kun montør; forsinkede sager kan stadig kræve, du selv retter datoen (åbn sagen).</p>
+        <p className="text-[11px] text-muted mt-1.5">Foreslår en montør til hver sag nedenfor, ud fra ledig kapacitet og geografisk nærhed. Rådgivende — retter kun montør; forsinkede sager kan stadig kræve, du selv retter datoen (åbn sagen).{truncated ? ` Kun de ${AI_BATCH_LIMIT} mest kritiske sager (ud af ${needsAction.length}) sendes til AI'en ad gangen.` : ""}</p>
       )}
       {error && <p className="text-xs text-danger mt-2">{error}</p>}
 
@@ -174,8 +187,11 @@ function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
           <p className="text-xs text-success mt-2 flex items-center gap-1.5"><Check size={13} /> Alle forslag er anvendt.</p>
         ) : (
           <div className="space-y-1.5 mt-2">
+            {truncated && (
+              <p className="text-[11px] text-muted">Kun de {AI_BATCH_LIMIT} mest kritiske sager (ud af {needsAction.length}) fik et forslag denne omgang - kør igen bagefter for de næste.</p>
+            )}
             {visible.map((s) => {
-              const order = needsAction.find((o) => o.nr === s.sag);
+              const order = aiTargets.find((o) => o.nr === s.sag);
               const technician = technicians.find((m) => m.navn === s.montorNavn);
               if (!order) return null;
               return (
