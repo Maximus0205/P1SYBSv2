@@ -30,16 +30,26 @@ function guessBrandAndModel(title) {
 // mærke- og modelnummer-feltet direkte, ud fra selve det matchede produkt
 // - ingen ekstern fane, ingen mellemtrin. Kaldes gennem en edge function
 // (punkt1-produktopslag), som proxy'er kaldet server-side for at undgå CORS.
+//
+// VIGTIGT: confirmedRef husker det modelnummer, der lige er valgt fra et
+// forslag. Uden den ville selve VALGET (som ændrer lineItem.model til fx
+// "PODW56042W") trigge endnu et automatisk opslag på det nye, allerede
+// bekræftede modelnummer - unødvendigt (vi ved jo allerede at det er et
+// gyldigt match, det var netop det brugeren klikkede på), og var årsagen
+// til en forbigående fejlmeddelelse lige efter et valgt forslag. Opslaget
+// springes nu helt over, når feltet lige er sat via et valgt forslag.
 function ModelNumberLookup({ model, onSelectProduct }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null); // { matchCount, products } | null
   const [error, setError] = useState(null);
   const [checkedTerm, setCheckedTerm] = useState("");
   const timerRef = useRef(null);
+  const confirmedRef = useRef("");
 
   useEffect(() => {
     const term = (model || "").trim();
     if (term.length < 3) { setResult(null); setError(null); return; }
+    if (term === confirmedRef.current) { setResult(null); setError(null); return; }
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(async () => {
       setLoading(true); setError(null);
@@ -51,6 +61,13 @@ function ModelNumberLookup({ model, onSelectProduct }) {
     }, 600);
     return () => clearTimeout(timerRef.current);
   }, [model]);
+
+  const selectProduct = (product) => {
+    const guess = guessBrandAndModel(product.title);
+    confirmedRef.current = guess.model;
+    setResult(null);
+    onSelectProduct(guess);
+  };
 
   if (!model || model.trim().length < 3) return null;
 
@@ -67,7 +84,7 @@ function ModelNumberLookup({ model, onSelectProduct }) {
             <button
               key={i}
               type="button"
-              onClick={() => onSelectProduct(guessBrandAndModel(p.title))}
+              onClick={() => selectProduct(p)}
               className="w-full flex items-center justify-between gap-2 rounded-lg border border-line bg-panel hover:border-success hover:bg-success/10 transition-colors px-2 py-1.5 text-left"
             >
               <span className="min-w-0 flex-1 text-[11px] text-ink truncate">{p.title}</span>
