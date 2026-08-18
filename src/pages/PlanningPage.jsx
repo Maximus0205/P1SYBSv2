@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
-import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, PlayCircle, Search, Sparkles, UserX, X, Users, RefreshCw, Pencil, KeyRound, Clock } from "lucide-react";
+import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, PlayCircle, Search, Sparkles, UserX, X, Users, RefreshCw, Pencil, KeyRound, Clock, Check } from "lucide-react";
 import { orderExpectedMinutes, todayISO, addDays, weekDays, vehicleLabel, vehicleBlockedByTimeOff, buildTitle, isToday, formatLongDate, formatDuration, technicianColor, STATUS_META } from "../data/domain";
+import { getAiRouteSuggestion } from "../lib/dataStore";
 import { DateSelector } from "../components/common";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 
@@ -107,6 +108,98 @@ function ReasonLine({ order }) {
   );
 }
 
+// ---------------- AI-forslag til løsning på "Kræver handling" ----------------
+// Foreslår, PR. SAG i listen, hvilken montør der bedst kan tage den - ud fra
+// ledig kapacitet og geografisk naerhed til andre allerede bookede sager
+// (samme underliggende edge function som booking-flowets AI-forslag, se
+// ai-ruteforslag: kraeverHandling-feltet giver ét svar pr. sag i stedet for
+// bare ét svar i alt). Rådgivende, ikke automatisk: hvert forslag skal
+// trykkes "Tildel" for at blive anvendt. Retter KUN montør - forsinkede
+// sager kan stadig kraeve at datoen ogsaa rettes manuelt (aabn sagen).
+function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
+  const [loading, setLoading] = useState(false);
+  const [solutions, setSolutions] = useState(null);
+  const [error, setError] = useState(null);
+  const [applied, setApplied] = useState({});
+
+  if (needsAction.length === 0) return null;
+
+  const ask = async () => {
+    setLoading(true); setError(null); setSolutions(null); setApplied({});
+    const kraeverHandling = needsAction.map((s) => ({
+      sag: s.nr,
+      dato: s.dato,
+      adresse: s.kunde?.adresse || "",
+      aarsag: actionReason(s).text,
+      forventetVarighed: formatDuration(orderExpectedMinutes(s)),
+    }));
+    // Bred kontekst (kapacitet/geografi) - alle ikke-afsluttede, allerede
+    // TILDELTE sager de kommende to uger, så AI'en kan se hvem der har plads.
+    const today = todayISO();
+    const horizon = addDays(today, 14);
+    const grundlag = orders
+      .filter((o) => o.status !== "afsluttet" && o.montorId && o.dato >= today && o.dato <= horizon)
+      .map((s) => ({ sag: s.nr, dato: s.dato, adresse: s.kunde?.adresse || "", bil: technicians.find((m) => m.id === s.montorId)?.navn || "ikke tildelt" }));
+    const montorTekst = technicians.map((m) => `${m.navn} (${m.bil})`).join(", ");
+
+    const result = await getAiRouteSuggestion({ grundlag, montorTekst, valgtDato: today, kraeverHandling });
+    setLoading(false);
+    if (!result.ok) { setError(result.fejl || "Kunne ikke hente forslag lige nu."); return; }
+    setSolutions(result.loesninger || []);
+  };
+
+  const apply = (sagNr, orderId, technicianId) => {
+    onAssign(orderId, technicianId);
+    setApplied((prev) => ({ ...prev, [sagNr]: true }));
+  };
+
+  const visible = (solutions || []).filter((s) => !applied[s.sag]);
+
+  return (
+    <div className="rounded-xl border border-ink bg-panel p-3 mb-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink flex items-center gap-1.5"><Sparkles size={13} /> AI-forslag til løsning</p>
+        <button onClick={ask} disabled={loading} className="text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors px-3 py-1.5 rounded-lg disabled:opacity-50">
+          {loading ? "Analyserer..." : "Bed AI om forslag"}
+        </button>
+      </div>
+
+      {!solutions && !error && !loading && (
+        <p className="text-[11px] text-muted mt-1.5">Foreslår en montør til hver sag nedenfor, ud fra ledig kapacitet og geografisk nærhed. Rådgivende — retter kun montør; forsinkede sager kan stadig kræve, du selv retter datoen (åbn sagen).</p>
+      )}
+      {error && <p className="text-xs text-danger mt-2">{error}</p>}
+
+      {solutions && (
+        visible.length === 0 ? (
+          <p className="text-xs text-success mt-2 flex items-center gap-1.5"><Check size={13} /> Alle forslag er anvendt.</p>
+        ) : (
+          <div className="space-y-1.5 mt-2">
+            {visible.map((s) => {
+              const order = needsAction.find((o) => o.nr === s.sag);
+              const technician = technicians.find((m) => m.navn === s.montorNavn);
+              if (!order) return null;
+              return (
+                <div key={s.sag} className="flex items-center gap-2 rounded-lg bg-white border border-line p-2.5 flex-wrap">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-mono text-muted">#{s.sag}</p>
+                    <p className="text-sm text-ink">{technician ? <span className="font-semibold">{technician.navn}</span> : <span className="text-muted italic">Intet klart forslag</span>}</p>
+                    {s.begrundelse && <p className="text-[11px] text-muted">{s.begrundelse}</p>}
+                  </div>
+                  {technician && (
+                    <button onClick={() => apply(s.sag, order.id, technician.id)} className="text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors px-3 py-1.5 rounded-lg shrink-0">
+                      Tildel
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 function CollapsibleSection({ title, icon: Icon, colorClass, items, technicians, onOpen, onCycleStatus, emptyText }) {
   const [open, setOpen] = useState(false);
   return (
@@ -141,12 +234,6 @@ function shortDayLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateStr
 function shortDateLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "short" }); }
 
 // ---------------- Omfordel hurtigt: bladbar ugekalender + omfordeling ----------------
-// Erstatter BÅDE den gamle "vælg én montør ad gangen"-udgave OG den
-// separate "Ugens kapacitet"-boks (som nu ville have vist præcis samme tal
-// to steder på siden). Én sammenhængende ting: en uge-kalender med bookede
-// timer pr. montør pr. dag - blad frem/tilbage i tiden med pilene - hvor
-// man kan klikke en celle for at folde sagerne for netop den montør/dag ud
-// og omfordele dem med det samme, uden at forlade visningen.
 function QuickReassign({ orders, technicians, timeOff, onAssign, onOpen }) {
   const [weekAnchor, setWeekAnchor] = useState(todayISO());
   const [selected, setSelected] = useState(null); // { technicianId, date } | null
@@ -446,11 +533,14 @@ function PlanningPage({ orders, technicians, vehicles, timeOff, selectedDate, on
               {needsAction.length === 0 ? (
                 <p className="text-sm text-success font-medium flex items-center gap-2 py-2"><Sparkles size={16} /> Intet hænger — alle sager er tildelt, gennemførbare og afsluttet til tiden.</p>
               ) : (
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {needsAction.map((s) => (
-                    <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} onAssign={onAssign} reason={<ReasonLine order={s} />} accent={actionReason(s).color} />
-                  ))}
-                </div>
+                <>
+                  <AiActionSuggestions needsAction={needsAction} orders={orders} technicians={technicians} onAssign={onAssign} />
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {needsAction.map((s) => (
+                      <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} onAssign={onAssign} reason={<ReasonLine order={s} />} accent={actionReason(s).color} />
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           </div>
