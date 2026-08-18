@@ -1,6 +1,6 @@
 import React from "react";
-import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, Loader2, AlertTriangle } from "lucide-react";
-import { buildTitle, isToday, formatLongDate, formatDuration, technicianColor, keyAccessText, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel } from "../data/domain";
+import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, Loader2, AlertTriangle, ChevronUp, ChevronDown } from "lucide-react";
+import { buildTitle, isToday, formatLongDate, formatDuration, technicianColor, keyAccessText, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel, dailyOrderCompare } from "../data/domain";
 import { StatusBadge, AddOnPill, DateSelector } from "../components/common";
 import { sendArrivalSms } from "../lib/dataStore";
 
@@ -114,30 +114,60 @@ function TechnicianPicker({ technicians, onSelect }) {
   );
 }
 
+// Op/ned-pile til at ændre BESØGSRÆKKEFØLGEN for dagens rute. Bevidst ikke
+// træk-og-slip (drag-and-drop er langt mindre pålideligt på touch, især
+// med en scrollende liste bag ved) - to store, nemme knapper virker
+// forudsigeligt med tommelfingeren, uanset enhed.
+function ReorderButtons({ onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
+  return (
+    <div className="flex flex-col shrink-0" onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={onMoveUp}
+        disabled={!canMoveUp}
+        className="p-1 rounded-md text-muted hover:text-brand hover:bg-panel disabled:opacity-20 disabled:pointer-events-none transition-colors"
+        title="Flyt tidligere i ruten"
+      >
+        <ChevronUp size={16} />
+      </button>
+      <button
+        onClick={onMoveDown}
+        disabled={!canMoveDown}
+        className="p-1 rounded-md text-muted hover:text-brand hover:bg-panel disabled:opacity-20 disabled:pointer-events-none transition-colors"
+        title="Flyt senere i ruten"
+      >
+        <ChevronDown size={16} />
+      </button>
+    </div>
+  );
+}
+
 // Ét kort pr. sag i montørens rute. Bevidst opdelt i tydeligt adskilte
 // sektioner (header / alerts / kontakt / varelinjer) i stedet for én lang
 // stak tekstlinjer - det gør kortet hurtigere at skimme i marken, og
 // undgår at samme oplysning (nøgleadgang, varenavn) optræder to gange i
 // forskellig form (tekst ét sted, pille et andet).
-function OrderStopCard({ order: s, onOpen, onCycleStatus }) {
+function OrderStopCard({ order: s, onOpen, onCycleStatus, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
   const hasAlerts = Boolean(s.noegle?.kraeves || s.kunde.leveringsnote);
 
   return (
     <div onClick={() => onOpen(s.id)} className="cursor-pointer rounded-xl bg-white border border-[#ECECEC] shadow-sm hover:shadow-md transition-shadow overflow-hidden">
-      {/* Header: tid, varighed/status, titel, kunde */}
+      {/* Header: rækkefølge-pile, tid, varighed/status, titel, kunde */}
       <div className="p-4 pb-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-baseline gap-3 min-w-0">
-            <span className="font-mono text-lg font-semibold text-ink shrink-0">{s.start}–{s.slut}</span>
-            {s.stemplerInd ? (
-              <span className="font-mono text-[11px] text-brand flex items-center gap-1 shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" /> stemplet ind
-              </span>
-            ) : (
-              <span className="font-mono text-[11px] text-muted flex items-center gap-1 shrink-0" title="Forventet/registreret tidsforbrug">
-                <Clock size={10} /> {formatDuration(totalMinutes(s) > 0 ? totalMinutes(s) : orderExpectedMinutes(s))}
-              </span>
-            )}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            {(onMoveUp || onMoveDown) && <ReorderButtons onMoveUp={onMoveUp} onMoveDown={onMoveDown} canMoveUp={canMoveUp} canMoveDown={canMoveDown} />}
+            <div className="flex items-baseline gap-3 min-w-0">
+              <span className="font-mono text-lg font-semibold text-ink shrink-0">{s.start}–{s.slut}</span>
+              {s.stemplerInd ? (
+                <span className="font-mono text-[11px] text-brand flex items-center gap-1 shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" /> stemplet ind
+                </span>
+              ) : (
+                <span className="font-mono text-[11px] text-muted flex items-center gap-1 shrink-0" title="Forventet/registreret tidsforbrug">
+                  <Clock size={10} /> {formatDuration(totalMinutes(s) > 0 ? totalMinutes(s) : orderExpectedMinutes(s))}
+                </span>
+              )}
+            </div>
           </div>
           <button onClick={(e) => { e.stopPropagation(); onCycleStatus(s.id); }} className="shrink-0"><StatusBadge status={s.status} /></button>
         </div>
@@ -219,8 +249,8 @@ function OrderStopCard({ order: s, onOpen, onCycleStatus }) {
   );
 }
 
-function TechnicianRouteView({ orders, technician, selectedDate, onDateChange, onOpen, onCycleStatus, onChangeTechnician, onRefresh, refreshing }) {
-  const myOrders = orders.filter((s) => s.montorId === technician.id && s.dato === selectedDate).sort((a, b) => (a.start || "").localeCompare(b.start || ""));
+function TechnicianRouteView({ orders, technician, selectedDate, onDateChange, onOpen, onCycleStatus, onReorder, onChangeTechnician, onRefresh, refreshing }) {
+  const myOrders = orders.filter((s) => s.montorId === technician.id && s.dato === selectedDate).sort(dailyOrderCompare);
   const done = myOrders.filter((s) => s.status === "afsluttet").length;
 
   return (
@@ -250,15 +280,28 @@ function TechnicianRouteView({ orders, technician, selectedDate, onDateChange, o
       {myOrders.length === 0 ? (
         <p className="text-sm text-muted italic">Ingen sager booket på din bil denne dag endnu.</p>
       ) : (
-        <div className="relative pl-8">
-          <div className="absolute left-[7px] top-2 bottom-2 w-[2px] bg-line" />
-          {myOrders.map((s) => (
-            <div key={s.id} className="relative mb-4">
-              <div className="absolute -left-8 top-5 w-4 h-4 rounded-full border-2 bg-paper" style={{ borderColor: STATUS_META[s.status].color }} />
-              <OrderStopCard order={s} onOpen={onOpen} onCycleStatus={onCycleStatus} />
-            </div>
-          ))}
-        </div>
+        <>
+          {myOrders.length > 1 && onReorder && (
+            <p className="text-[11px] text-muted mb-3 flex items-center gap-1.5"><ChevronUp size={11} /><ChevronDown size={11} /> Brug pilene på et kort til at ændre besøgsrækkefølgen.</p>
+          )}
+          <div className="relative pl-8">
+            <div className="absolute left-[7px] top-2 bottom-2 w-[2px] bg-line" />
+            {myOrders.map((s, i) => (
+              <div key={s.id} className="relative mb-4">
+                <div className="absolute -left-8 top-5 w-4 h-4 rounded-full border-2 bg-paper" style={{ borderColor: STATUS_META[s.status].color }} />
+                <OrderStopCard
+                  order={s}
+                  onOpen={onOpen}
+                  onCycleStatus={onCycleStatus}
+                  onMoveUp={onReorder ? () => onReorder(technician.id, selectedDate, s.id, -1) : undefined}
+                  onMoveDown={onReorder ? () => onReorder(technician.id, selectedDate, s.id, 1) : undefined}
+                  canMoveUp={i > 0}
+                  canMoveDown={i < myOrders.length - 1}
+                />
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
