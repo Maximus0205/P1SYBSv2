@@ -233,6 +233,25 @@ const STATUS_META = {
   afsluttet: { label: "Afsluttet", color: "#3D7A5C" },
 };
 
+// Rækkefølge for sager hos SAMME montør SAMME dag (montørens besøgs-
+// rækkefølge). Bookinger sker kun med grove tidsrum (hel dag/formiddag/
+// eftermiddag), ikke præcise klokkeslæt - derfor har flere sager for samme
+// montør ofte identisk start/slut-tid, og den viste rækkefølge ville uden
+// dette felt reelt være tilfældig (bestemt af oprettelsestidspunkt). Feltet
+// `raekkefolge` (et helt tal) sættes KUN når nogen aktivt har omfordelt
+// rækkefølgen (se reorderOrder i App.jsx) - før det, sorteres der som
+// hidtil efter tidsrummets starttid. Når rækkefølgen først er sat manuelt
+// for en montørs dag, normaliseres HELE gruppen (alle sager samme montør+
+// dag) til fortløbende tal 0,1,2... så sorteringen forbliver entydig.
+const dailyOrderCompare = (a, b) => {
+  const ar = typeof a.raekkefolge === "number" ? a.raekkefolge : null;
+  const br = typeof b.raekkefolge === "number" ? b.raekkefolge : null;
+  if (ar !== null && br !== null) return ar - br;
+  if (ar !== null) return -1;
+  if (br !== null) return 1;
+  return (a.start || "").localeCompare(b.start || "");
+};
+
 // Kørsel er fusioneret ind i Planlægning (august 2026) - de to sider
 // dækkede reelt samme arbejdsopgave. "koersel" findes derfor ikke længere
 // som selvstændig fane, se PlanningPage.jsx.
@@ -257,5 +276,5 @@ export {
   DEFAULT_PRODUCT_CATEGORIES, DEFAULT_PRODUCT_TYPES, DEFAULT_PRIMARY_SERVICES, DEFAULT_ADD_ON_SERVICES, availableAddOns,
   createLineItem, lineItemLabel, lineItemMinutes, orderExpectedMinutes, normalizeAddress, buildingKey, areaKey,
   weekDays, buildTitle, keyAccessText, TIME_SLOTS, timeSlotById, timeSlotText, KEY_ACCESS_TYPES, TECHNICIAN_COLORS, technicianColor,
-  DEFAULT_VEHICLES, vehicleLabel, vehicleBlockedByTimeOff, emptyCustomer, emptyKeyAccess, STATUS_META, PAGES, PAGES_FOR_ROLE,
+  DEFAULT_VEHICLES, vehicleLabel, vehicleBlockedByTimeOff, emptyCustomer, emptyKeyAccess, STATUS_META, dailyOrderCompare, PAGES, PAGES_FOR_ROLE,
 };
