@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from "react";
-import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, Users, RefreshCw, Pencil, KeyRound, Clock, Check, Maximize2, CheckCheck } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, Users, RefreshCw, Pencil, KeyRound, Clock, Check, Maximize2, CheckCheck, Car, Loader2 } from "lucide-react";
 import { orderExpectedMinutes, todayISO, addDays, weekDays, vehicleLabel, vehicleBlockedByTimeOff, buildTitle, isToday, formatLongDate, formatDuration, technicianColor, STATUS_META, dailyOrderCompare } from "../data/domain";
 import { getAiRouteSuggestion } from "../lib/dataStore";
+import { geocodeAddresses, routeDrivingTime } from "../lib/geocoding";
 import { DateSelector } from "../components/common";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 
@@ -441,7 +442,16 @@ const toMinutes = (hhmm) => {
   return h * 60 + m;
 };
 
-function TimelineRowHeader({ r, loadMinutes, vehicles, technicians, timeOff, selectedDate, onUpdateTechnician }) {
+// Rækkehovedet viser nu BÅDE forventet arbejdstid (varelinjer) OG estimeret
+// KØRETID mellem dagens stop, lagt sammen til ét realistisk "i alt" for
+// montørens dag - det var netop det der manglede: arbejdstid alene giver et
+// for optimistisk billede, når stoppene reelt ligger spredt. Køretiden
+// beregnes ud fra dagens BESØGSRÆKKEFØLGE (samme rækkefølge som ellers
+// bruges i appen, se dailyOrderCompare) via ORS' distance-matrix - præcis
+// samme underliggende funktion (routeDrivingTime) som allerede bruges til
+// afstandsforslag i bookingflowet, nu bare anvendt på en hel dags rute i
+// stedet for én enkelt afstand.
+function TimelineRowHeader({ r, loadMinutes, driveMinutes, driveLoading, vehicles, technicians, timeOff, selectedDate, onUpdateTechnician }) {
   const [editing, setEditing] = useState(false);
   const [vehicleId, setVehicleId] = useState(r.bilId || "");
   const linkedVehicle = vehicles.find((b) => b.id === r.bilId);
@@ -452,6 +462,8 @@ function TimelineRowHeader({ r, loadMinutes, vehicles, technicians, timeOff, sel
   }
 
   const save = (newVehicleId) => { onUpdateTechnician(r.id, { bilId: newVehicleId || null }); setEditing(false); };
+  const total = loadMinutes + (driveMinutes || 0);
+  const overloaded = total > WORKDAY_MINUTES;
 
   return (
     <div className="min-w-0 flex-1">
@@ -474,7 +486,21 @@ function TimelineRowHeader({ r, loadMinutes, vehicles, technicians, timeOff, sel
           <Pencil size={9} className="shrink-0" />
         </button>
       )}
-      {loadMinutes > 0 && <p className="text-[10px] text-brand font-semibold flex items-center gap-1"><Clock size={9} /> {formatDuration(loadMinutes)} planlagt</p>}
+      {loadMinutes > 0 && (
+        <div className="mt-0.5">
+          <p className="text-[10px] text-muted flex items-center gap-1"><Clock size={9} className="shrink-0" /> {formatDuration(loadMinutes)} arbejde</p>
+          {driveLoading ? (
+            <p className="text-[10px] text-muted flex items-center gap-1"><Loader2 size={9} className="shrink-0 animate-spin" /> beregner kørsel...</p>
+          ) : driveMinutes != null ? (
+            <>
+              <p className="text-[10px] text-muted flex items-center gap-1"><Car size={9} className="shrink-0" /> ~{formatDuration(driveMinutes)} kørsel</p>
+              <p className={`text-[10px] font-bold flex items-center gap-1 ${overloaded ? "text-danger" : "text-brand"}`}>
+                I alt: ~{formatDuration(total)}{overloaded && <AlertCircle size={9} className="shrink-0" />}
+              </p>
+            </>
+          ) : null}
+        </div>
+      )}
       {linkedVehicle?.lukket && <p className="text-[10px] text-danger font-semibold flex items-center gap-1"><AlertCircle size={9} /> Bil lukket ({linkedVehicle.lukketAarsag || "værksted"})</p>}
       {!linkedVehicle?.lukket && timeOffBlock && <p className="text-[10px] text-danger font-semibold flex items-center gap-1"><AlertCircle size={9} /> {timeOffBlock.montor.navn} holder ferie</p>}
     </div>
@@ -483,6 +509,8 @@ function TimelineRowHeader({ r, loadMinutes, vehicles, technicians, timeOff, sel
 
 function DailyTimeline({ orders, technicians, vehicles, timeOff, selectedDate, onOpen, onUpdateTechnician }) {
   const [open, setOpen] = useState(true);
+  const [driveMinutesByTechnician, setDriveMinutesByTechnician] = useState({}); // { technicianId: minutes | null }
+  const [driveLoading, setDriveLoading] = useState(false);
   const dayStart = 7 * 60 + 30;
   const dayEnd = 16 * 60 + 30;
   const PX_PER_MIN = 3.6;
@@ -494,6 +522,45 @@ function DailyTimeline({ orders, technicians, vehicles, timeOff, selectedDate, o
   const rows = [{ id: null, navn: "Ikke tildelt", bil: "" }, ...technicians];
   const overlaps = (a, b) => toMinutes(a.start) < toMinutes(b.slut) && toMinutes(b.start) < toMinutes(a.slut);
 
+  // Dagens rute PR. MONTØR, i besøgsrækkefølge (dailyOrderCompare - samme
+  // rækkefølge man kan justere med op/ned-pilene andre steder i appen).
+  // Bruges til at beregne realistisk køretid MELLEM stoppene.
+  const technicianDayOrders = useMemo(
+    () => technicians.map((m) => ({
+      id: m.id,
+      orders: orders.filter((o) => o.montorId === m.id && o.dato === selectedDate && o.status !== "afsluttet").sort(dailyOrderCompare),
+    })),
+    [orders, technicians, selectedDate]
+  );
+
+  // Genberegnes kun når selve INDHOLDET (hvilke sager, i hvilken
+  // rækkefølge, med hvilke adresser) reelt ændrer sig - ikke ved hvert
+  // eneste render. Et enkelt kald pr. montør med >= 2 stop denne dag.
+  const signature = technicianDayOrders
+    .map((g) => `${g.id}:${g.orders.map((o) => `${o.id}|${o.kunde?.adresse || ""}`).join(",")}`)
+    .join(";");
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const relevant = technicianDayOrders.filter((g) => g.orders.length >= 2);
+      if (relevant.length === 0) { setDriveMinutesByTechnician({}); return; }
+      setDriveLoading(true);
+      const results = {};
+      for (const g of relevant) {
+        const addresses = g.orders.map((o) => o.kunde?.adresse).filter(Boolean);
+        if (addresses.length < 2) { results[g.id] = null; continue; }
+        const coordMap = await geocodeAddresses(addresses);
+        const points = addresses.map((a) => coordMap.get(a.trim().toLowerCase())).filter(Boolean);
+        results[g.id] = points.length >= 2 ? await routeDrivingTime(points) : null;
+      }
+      if (!cancelled) { setDriveMinutesByTechnician(results); setDriveLoading(false); }
+    };
+    run();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature]);
+
   return (
     <div className="rounded-xl border border-line bg-white mb-4 overflow-hidden">
       <button onClick={() => setOpen((v) => !v)} className="w-full p-3 flex items-center gap-2 text-left">
@@ -502,54 +569,68 @@ function DailyTimeline({ orders, technicians, vehicles, timeOff, selectedDate, o
         <ChevronDown size={16} className={`text-muted transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="border-t border-line overflow-x-auto">
-          <div style={{ width: width + 160, minWidth: "100%" }}>
-            <div className="flex sticky top-0 bg-white z-10 border-b border-line">
-              <div className="w-[140px] shrink-0 border-r border-line" />
-              <div className="relative" style={{ width, height: 24 }}>
-                {hourMarks.map((t) => (
-                  <div key={t} className="absolute top-0 bottom-0 border-l border-divider text-[10px] font-mono text-muted pl-1 pt-1" style={{ left: (t - dayStart) * PX_PER_MIN }}>
-                    {String(Math.floor(t / 60)).padStart(2, "0")}
-                  </div>
-                ))}
-              </div>
-            </div>
-            {rows.map((r) => {
-              const myOrders = validOrders.filter((s) => s.montorId === r.id);
-              const loadMinutes = myOrders.reduce((sum, s) => sum + orderExpectedMinutes(s), 0);
-              return (
-                <div key={r.id || "utildelt"} className="flex border-b border-divider">
-                  <div className="w-[140px] shrink-0 border-r border-line p-2 flex items-center gap-2 bg-panel">
-                    {r.id ? <span className="w-2 h-2 rounded-full shrink-0" style={{ background: technicianColor(r.id, technicians) }} /> : <span className="w-2 h-2 rounded-full shrink-0 border border-brand" />}
-                    <TimelineRowHeader r={r} loadMinutes={loadMinutes} vehicles={vehicles} technicians={technicians} timeOff={timeOff} selectedDate={selectedDate} onUpdateTechnician={onUpdateTechnician} />
-                  </div>
-                  <div className="relative" style={{ width, height: 64 }}>
-                    {hourMarks.map((t) => <div key={t} className="absolute top-0 bottom-0 border-l border-divider" style={{ left: (t - dayStart) * PX_PER_MIN }} />)}
-                    {myOrders.map((s) => {
-                      const left = (toMinutes(s.start) - dayStart) * PX_PER_MIN;
-                      const w = (toMinutes(s.slut) - toMinutes(s.start)) * PX_PER_MIN;
-                      const conflict = r.id && myOrders.some((a) => a.id !== s.id && overlaps(a, s));
-                      return (
-                        <div
-                          key={s.id} onClick={() => onOpen(s.id)}
-                          className="absolute top-1.5 bottom-1.5 px-2 py-1 rounded-md cursor-pointer overflow-hidden bg-white hover:z-10 hover:shadow-md transition-shadow"
-                          style={{ left, width: w, border: conflict ? "1px solid #B3261E" : "1px solid #DDDDDD", borderLeftWidth: 3, borderLeftColor: STATUS_META[s.status].color }}
-                          title={conflict ? "Overlapper med en anden sag på samme bil" : ""}
-                        >
-                          <p className="text-[10px] font-mono text-muted truncate">{s.start}–{s.slut}</p>
-                          <p className="text-xs font-semibold text-ink truncate">{buildTitle(s.varelinjer)}</p>
-                          <p className="text-[10px] text-muted truncate">{s.kunde.navn}</p>
-                          {s.noegle?.kraeves && <p className="text-[10px] text-brand truncate flex items-center gap-0.5"><KeyRound size={9} /> nøgle</p>}
-                          {conflict && <p className="text-[10px] text-danger font-semibold">Overlap!</p>}
-                        </div>
-                      );
-                    })}
-                  </div>
+        <>
+          <p className="text-[11px] text-muted px-3 pb-2 flex items-center gap-1.5"><Car size={11} className="shrink-0" /> "I alt" pr. montør inkluderer nu et estimat for kørsel mellem dagens stop, ikke kun arbejdstid.</p>
+          <div className="border-t border-line overflow-x-auto">
+            <div style={{ width: width + 160, minWidth: "100%" }}>
+              <div className="flex sticky top-0 bg-white z-10 border-b border-line">
+                <div className="w-[140px] shrink-0 border-r border-line" />
+                <div className="relative" style={{ width, height: 24 }}>
+                  {hourMarks.map((t) => (
+                    <div key={t} className="absolute top-0 bottom-0 border-l border-divider text-[10px] font-mono text-muted pl-1 pt-1" style={{ left: (t - dayStart) * PX_PER_MIN }}>
+                      {String(Math.floor(t / 60)).padStart(2, "0")}
+                    </div>
+                  ))}
                 </div>
-              );
-            })}
+              </div>
+              {rows.map((r) => {
+                const myOrders = validOrders.filter((s) => s.montorId === r.id);
+                const loadMinutes = myOrders.reduce((sum, s) => sum + orderExpectedMinutes(s), 0);
+                const stopCount = technicianDayOrders.find((g) => g.id === r.id)?.orders.length || 0;
+                return (
+                  <div key={r.id || "utildelt"} className="flex border-b border-divider">
+                    <div className="w-[140px] shrink-0 border-r border-line p-2 flex items-center gap-2 bg-panel">
+                      {r.id ? <span className="w-2 h-2 rounded-full shrink-0" style={{ background: technicianColor(r.id, technicians) }} /> : <span className="w-2 h-2 rounded-full shrink-0 border border-brand" />}
+                      <TimelineRowHeader
+                        r={r}
+                        loadMinutes={loadMinutes}
+                        driveMinutes={driveMinutesByTechnician[r.id]}
+                        driveLoading={driveLoading && stopCount >= 2 && driveMinutesByTechnician[r.id] === undefined}
+                        vehicles={vehicles}
+                        technicians={technicians}
+                        timeOff={timeOff}
+                        selectedDate={selectedDate}
+                        onUpdateTechnician={onUpdateTechnician}
+                      />
+                    </div>
+                    <div className="relative" style={{ width, height: 64 }}>
+                      {hourMarks.map((t) => <div key={t} className="absolute top-0 bottom-0 border-l border-divider" style={{ left: (t - dayStart) * PX_PER_MIN }} />)}
+                      {myOrders.map((s) => {
+                        const left = (toMinutes(s.start) - dayStart) * PX_PER_MIN;
+                        const w = (toMinutes(s.slut) - toMinutes(s.start)) * PX_PER_MIN;
+                        const conflict = r.id && myOrders.some((a) => a.id !== s.id && overlaps(a, s));
+                        return (
+                          <div
+                            key={s.id} onClick={() => onOpen(s.id)}
+                            className="absolute top-1.5 bottom-1.5 px-2 py-1 rounded-md cursor-pointer overflow-hidden bg-white hover:z-10 hover:shadow-md transition-shadow"
+                            style={{ left, width: w, border: conflict ? "1px solid #B3261E" : "1px solid #DDDDDD", borderLeftWidth: 3, borderLeftColor: STATUS_META[s.status].color }}
+                            title={conflict ? "Overlapper med en anden sag på samme bil" : ""}
+                          >
+                            <p className="text-[10px] font-mono text-muted truncate">{s.start}–{s.slut}</p>
+                            <p className="text-xs font-semibold text-ink truncate">{buildTitle(s.varelinjer)}</p>
+                            <p className="text-[10px] text-muted truncate">{s.kunde.navn}</p>
+                            {s.noegle?.kraeves && <p className="text-[10px] text-brand truncate flex items-center gap-0.5"><KeyRound size={9} /> nøgle</p>}
+                            {conflict && <p className="text-[10px] text-danger font-semibold">Overlap!</p>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
