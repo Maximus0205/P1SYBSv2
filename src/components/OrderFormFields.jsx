@@ -1,19 +1,38 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin, Sparkles, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, ExternalLink, Check, Loader2 } from "lucide-react";
+import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin, Sparkles, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Check, Loader2 } from "lucide-react";
 import { OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID, KEY_ACCESS_TYPES, buildingKey, formatLongDate, formatDuration, lineItemMinutes, availableAddOns, serviceIcon, todayISO, addDays, weekDays, orderExpectedMinutes } from "../data/domain";
 import { getAiRouteSuggestion, lookupPunkt1Product } from "../lib/dataStore";
 import { geocodeAddress, geocodeAddresses, drivingDistances } from "../lib/geocoding";
 
+// Forsøger at splitte en punkt1.dk-produkttitel (fx "Point 5-Series
+// PODW56042W opvaskemaskine") op i mærke + modelnummer. Mærket antages at
+// være FØRSTE ord i titlen (konsistent mønster i punkt1.dk's egne titler).
+// Modelnummeret findes ved at lede efter det "kode-agtige" ord i resten af
+// titlen (store bogstaver/tal, mindst 4 tegn) - foretrækker ord der
+// indeholder tal (undgår fx "Series"), og vælger det længste hvis flere
+// matcher. Ikke 100% ufejlbarligt på atypiske titler, men rammer rigtigt
+// på punkt1.dk's konsekvente titelformat.
+function guessBrandAndModel(title) {
+  const words = (title || "").trim().split(/\s+/);
+  if (words.length === 0) return { brand: "", model: "" };
+  const brand = words[0];
+  const rest = words.slice(1).join(" ");
+  const candidates = rest.match(/\b[A-Z][A-Z0-9]{3,}\b/g) || [];
+  const withDigits = candidates.filter((c) => /\d/.test(c));
+  const pool = withDigits.length > 0 ? withDigits : candidates;
+  const model = pool.length > 0 ? pool.reduce((best, c) => (c.length > best.length ? c : best)) : "";
+  return { brand, model };
+}
+
 // Modelnummer-opslag mod punkt1.dk's EGET, offentlige søge-API (fundet og
-// bekræftet via Chrome DevTools Network-fanen - se
-// /Umbraco/Api/-research-samtalen). Kører live mens sælgeren skriver
-// (med lidt forsinkelse), og udfylder mærke-feltet automatisk HVIS der er
-// ét entydigt mærke blandt træfferne - ellers vises produkterne blot til
-// selv at vurdere ud fra. Kaldes gennem en edge function (punkt1-
-// produktopslag), som proxy'er kaldet server-side for at undgå CORS.
-function ModelNumberLookup({ model, onUseBrand }) {
+// bekræftet via Chrome DevTools Network-fanen). Kører live mens sælgeren
+// skriver (med lidt forsinkelse). Et klik på et forslag udfylder BÅDE
+// mærke- og modelnummer-feltet direkte, ud fra selve det matchede produkt
+// - ingen ekstern fane, ingen mellemtrin. Kaldes gennem en edge function
+// (punkt1-produktopslag), som proxy'er kaldet server-side for at undgå CORS.
+function ModelNumberLookup({ model, onSelectProduct }) {
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null); // { matchCount, brand, products } | null
+  const [result, setResult] = useState(null); // { matchCount, products } | null
   const [error, setError] = useState(null);
   const [checkedTerm, setCheckedTerm] = useState("");
   const timerRef = useRef(null);
@@ -45,24 +64,16 @@ function ModelNumberLookup({ model, onUseBrand }) {
       {!loading && !error && result && result.matchCount > 0 && (
         <div className="space-y-1">
           {result.products.slice(0, 3).map((p, i) => (
-            <div key={i} className="flex items-center justify-between gap-2 rounded-lg border border-line bg-panel px-2 py-1">
-              {p.url ? (
-                <a href={p.url} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 text-[11px] text-ink hover:text-brand truncate flex items-center gap-1">
-                  <span className="truncate">{p.title}</span> <ExternalLink size={9} className="shrink-0" />
-                </a>
-              ) : (
-                <span className="min-w-0 flex-1 text-[11px] text-ink truncate">{p.title}</span>
-              )}
-              {result.brand && (
-                <button onClick={() => onUseBrand(result.brand)} className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-success hover:text-brand flex items-center gap-1">
-                  <Check size={11} /> Brug "{result.brand}"
-                </button>
-              )}
-            </div>
+            <button
+              key={i}
+              type="button"
+              onClick={() => onSelectProduct(guessBrandAndModel(p.title))}
+              className="w-full flex items-center justify-between gap-2 rounded-lg border border-line bg-panel hover:border-success hover:bg-success/10 transition-colors px-2 py-1.5 text-left"
+            >
+              <span className="min-w-0 flex-1 text-[11px] text-ink truncate">{p.title}</span>
+              <Check size={13} className="text-success shrink-0" />
+            </button>
           ))}
-          {!result.brand && (
-            <p className="text-[10px] text-muted">Flere mærker matcher — vælg selv mærke ud fra produkterne ovenfor.</p>
-          )}
         </div>
       )}
     </div>
@@ -146,10 +157,13 @@ function LineItemEditor({ lineItem, productTypes, productCategories, primaryServ
         <input value={lineItem.maerke} onChange={(e) => onChange({ ...lineItem, maerke: e.target.value })} placeholder="Mærke, fx 'Bosch'" className="rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand" />
         <div>
           <input value={lineItem.model} onChange={(e) => onChange({ ...lineItem, model: e.target.value })} placeholder="Modelnummer" className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand" />
-          <ModelNumberLookup model={lineItem.model} onUseBrand={(brand) => onChange({ ...lineItem, maerke: brand })} />
+          <ModelNumberLookup
+            model={lineItem.model}
+            onSelectProduct={({ brand, model: matchedModel }) => onChange({ ...lineItem, maerke: brand || lineItem.maerke, model: matchedModel || lineItem.model })}
+          />
         </div>
       </div>
-      <p className="text-[10px] text-muted mb-2">Modelnummer tjekkes automatisk mod punkt1.dk's varekartotek — tryk "Brug mærke", når det rigtige produkt vises.</p>
+      <p className="text-[10px] text-muted mb-2">Modelnummer tjekkes automatisk mod punkt1.dk's varekartotek — vælg et forslag for at udfylde mærke og modelnummer.</p>
 
       <label className="flex items-center gap-2 mb-2 text-xs text-muted">
         <Clock size={12} className="shrink-0" />
