@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, Users, RefreshCw, Pencil, KeyRound, Clock, Check, Maximize2, CheckCheck, Car, Loader2, Building2 } from "lucide-react";
-import { orderExpectedMinutes, todayISO, addDays, weekDays, vehicleLabel, vehicleBlockedByTimeOff, buildTitle, isToday, formatLongDate, formatDuration, technicianColor, STATUS_META, dailyOrderCompare } from "../data/domain";
+import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, Users, RefreshCw, KeyRound, Clock, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid } from "lucide-react";
+import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatDuration, technicianColor, dailyOrderCompare } from "../data/domain";
 import { getAiRouteSuggestion } from "../lib/dataStore";
 import { geocodeAddresses, routeDrivingTime } from "../lib/geocoding";
 import { DateSelector } from "../components/common";
@@ -8,11 +8,14 @@ import { OrderCardCompact } from "../components/OrderCardCompact";
 
 // ---------------------------------------------------------------------------
 // Planlægning + Kørsel er fusioneret til ÉN fane (august 2026). Siden er
-// bygget med ÉT primært formål for øje: gøre det hurtigt at OMFORDELE
-// sager, når en montør bliver syg, eller et besøg var forgæves - den
-// hyppigste, mest tidskritiske opgave i den daglige planlægning. Se
-// WeekBoardModal, en fuldskærms ugekalender med alle sager som kort,
-// grupperet på montør, med indbygget omfordeling OG besøgsrækkefølge.
+// bygget med ÉT primært formål for øje: gøre det hurtigt at få OVERBLIK
+// over ugen og OMFORDELE sager, når en montør bliver syg, eller et besøg
+// var forgæves - den hyppigste, mest tidskritiske opgave i den daglige
+// planlægning. Se WeekOverview: én samlet, altid-synlig ugekalender
+// (rækker = montører, kolonner = dage), med tidsestimat (arbejde+kørsel)
+// pr. dag/montør, indbygget omfordeling og besøgsrækkefølge - erstatter
+// både den tidligere separate "Dagens tidslinje" og "Omfordel hurtigt"-
+// modalen, som nu er slået sammen til ét sted.
 // ---------------------------------------------------------------------------
 
 function daysLate(dato, today) {
@@ -101,11 +104,6 @@ function ReasonLine({ order }) {
 }
 
 // ---------------- AI-forslag til løsning på "Kræver handling" ----------------
-// Foreslår, PR. SAG i listen, hvilken montør der bedst kan tage den. Grupperet
-// PR. FORESLÅET MONTØR (i stedet for en flad liste) - med op til 80 sager i
-// spil på én gang giver en flad liste intet overblik; grupperingen gør det
-// muligt at se "Peter får 12 sager, Anne får 8" på ét blik, og tildele hele
-// gruppen på én gang med "Tildel alle".
 const AI_BATCH_LIMIT = 80;
 
 function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
@@ -266,7 +264,7 @@ function hoursLabel(minutes) {
 function shortDayLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { weekday: "short" }); }
 function shortDateLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "short" }); }
 
-// ---------------- Ugekalender (fuldskærm): alle sager som kort, pr. montør, pr. dag ----------------
+// ---------------- Overblik: ugekalender med tid, kort og omfordeling ----------------
 function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnicianId, color, onLeave, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
   return (
     <div
@@ -306,250 +304,70 @@ function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnician
   );
 }
 
-function WeekBoardModal({ orders, technicians, timeOff, onAssign, onReorder, onOpen, onClose }) {
+// Erstatter BÅDE den tidligere "Dagens tidslinje" OG "Omfordel hurtigt"-
+// modalen: ÉT altid-synligt ugeoverblik, der starter UDFOLDET (kan
+// minimeres med pilen i headeren, samme mønster som "Kræver handling").
+// Rækker = montører, kolonner = ugedage - hver celle viser et samlet
+// tidsestimat (arbejde + kørsel, inkl. turen ud fra firmaets adresse, se
+// TimelineRowHeader-kommentaren tidligere i filens historik) OVER dagens
+// sagskort, så man kan se belastningen på hele ugen på ét blik, ikke kun
+// den valgte dag.
+function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder, onOpen }) {
+  const [open, setOpen] = useState(true); // starter UDFOLDET
   const [weekAnchor, setWeekAnchor] = useState(todayISO());
+  const [driveMinutes, setDriveMinutes] = useState({}); // { "montorId|dato": minutter | null }
+  const [driveLoading, setDriveLoading] = useState(false);
+
   const week = weekDays(weekAnchor);
   const today = todayISO();
   const rows = [...technicians, { id: null, navn: "Ikke tildelt" }];
 
-  const ordersFor = (technicianId, day) =>
-    orders.filter((o) => o.montorId === technicianId && o.dato === day && o.status !== "afsluttet")
-      .sort(dailyOrderCompare);
-
-  const isOnLeave = (technicianId, day) => !!technicianId && (timeOff || []).some((f) => f.montorId === technicianId && day >= f.startDato && day <= f.slutDato);
-
-  const openAndClose = (id) => { onClose(); onOpen(id); };
-
-  return (
-    <div className="fixed inset-0 z-50 bg-paper flex flex-col">
-      <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-line bg-white shrink-0">
-        <div className="flex items-center gap-2">
-          <button onClick={() => setWeekAnchor((w) => addDays(w, -7))} className="p-1.5 rounded-lg border border-line text-muted hover:text-brand hover:border-brand transition-colors" title="Forrige uge">
-            <ChevronLeft size={16} />
-          </button>
-          <div className="text-center min-w-[130px]">
-            <p className="text-sm font-semibold text-ink">{shortDateLabel(week[0])} – {shortDateLabel(week[6])}</p>
-            {weekAnchor !== today && <button onClick={() => setWeekAnchor(today)} className="text-[10px] font-semibold uppercase tracking-wide text-brand hover:underline">Gå til denne uge</button>}
-          </div>
-          <button onClick={() => setWeekAnchor((w) => addDays(w, 7))} className="p-1.5 rounded-lg border border-line text-muted hover:text-brand hover:border-brand transition-colors" title="Næste uge">
-            <ChevronRight size={16} />
-          </button>
-        </div>
-        <div className="flex items-center gap-3">
-          <p className="text-xs text-muted hidden md:block">Pilene ændrer besøgsrækkefølgen — vælgeren omfordeler til en anden montør — klik kortet åbner sagen.</p>
-          <button onClick={onClose} className="p-2 rounded-lg text-muted hover:text-brand hover:bg-panel transition-colors" title="Luk"><X size={20} /></button>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-auto">
-        <div style={{ minWidth: 150 + 152 * 7 }}>
-          <div className="grid sticky top-0 z-20 bg-panel border-b border-line" style={{ gridTemplateColumns: "150px repeat(7, minmax(150px, 1fr))" }}>
-            <div className="p-2 text-[10px] font-semibold uppercase tracking-wide text-muted sticky left-0 bg-panel z-10 border-r border-line">Montør</div>
-            {week.map((d) => (
-              <div key={d} className={`p-2 text-center border-l border-divider ${d === today ? "bg-brand/10" : ""}`}>
-                <p className={`text-[10px] font-semibold uppercase tracking-wide ${d === today ? "text-brand" : "text-muted"}`}>{shortDayLabel(d)}</p>
-                <p className={`text-sm font-semibold ${d === today ? "text-brand" : "text-ink"}`}>{new Date(d + "T00:00:00").getDate()}</p>
-              </div>
-            ))}
-          </div>
-
-          {rows.map((r) => (
-            <div key={r.id || "utildelt"} className="grid border-b border-divider" style={{ gridTemplateColumns: "150px repeat(7, minmax(150px, 1fr))" }}>
-              <div className="p-2 sticky left-0 bg-white z-10 border-r border-line flex items-center gap-1.5">
-                {r.id && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: technicianColor(r.id, technicians) }} />}
-                <span className="text-xs font-semibold text-ink truncate">{r.navn}</span>
-              </div>
-              {week.map((d) => {
-                const dayOrders = ordersFor(r.id, d);
-                const onLeave = isOnLeave(r.id, d);
-                return (
-                  <div key={d} className={`p-1.5 border-l border-divider min-h-[64px] ${d === today ? "bg-brand/5" : ""}`}>
-                    {onLeave && <p className="text-[9px] font-semibold uppercase tracking-wide text-danger mb-1 flex items-center gap-0.5"><AlertCircle size={9} /> Fraværende</p>}
-                    {dayOrders.length === 0 ? (
-                      <p className="text-[10px] text-line text-center pt-2">–</p>
-                    ) : (
-                      dayOrders.map((o, i) => (
-                        <MiniOrderCard
-                          key={o.id}
-                          order={o}
-                          onOpen={openAndClose}
-                          onAssign={onAssign}
-                          technicians={technicians}
-                          currentTechnicianId={r.id}
-                          color={r.id ? technicianColor(r.id, technicians) : "#C8232E"}
-                          onLeave={onLeave}
-                          onMoveUp={r.id && onReorder ? () => onReorder(r.id, d, o.id, -1) : undefined}
-                          onMoveDown={r.id && onReorder ? () => onReorder(r.id, d, o.id, 1) : undefined}
-                          canMoveUp={i > 0}
-                          canMoveDown={i < dayOrders.length - 1}
-                        />
-                      ))
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function QuickReassign({ orders, technicians, timeOff, onAssign, onReorder, onOpen }) {
-  const [boardOpen, setBoardOpen] = useState(false);
-  const week = weekDays(todayISO());
   const weekOrders = orders.filter((o) => week.includes(o.dato) && o.status !== "afsluttet");
   const unassignedThisWeek = weekOrders.filter((o) => !o.montorId).length;
 
-  return (
-    <>
-      <button
-        onClick={() => setBoardOpen(true)}
-        className="w-full text-left rounded-xl border border-brand bg-brand/5 hover:bg-brand/10 transition-colors p-4 mb-4 flex items-center justify-between gap-3"
-      >
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-ink flex items-center gap-1.5"><Users size={15} className="text-brand shrink-0" /> Omfordel hurtigt</p>
-          <p className="text-xs text-muted mt-0.5">{weekOrders.length} sager denne uge{unassignedThisWeek > 0 ? ` · ${unassignedThisWeek} ikke tildelt` : ""} — åbn ugekalenderen for at se fordelingen, omfordele og justere besøgsrækkefølgen.</p>
-        </div>
-        <span className="shrink-0 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-white bg-ink group-hover:bg-brand px-3 py-2 rounded-lg">
-          <Maximize2 size={13} /> Åbn ugekalender
-        </span>
-      </button>
-      {boardOpen && (
-        <WeekBoardModal orders={orders} technicians={technicians} timeOff={timeOff} onAssign={onAssign} onReorder={onReorder} onOpen={onOpen} onClose={() => setBoardOpen(false)} />
-      )}
-    </>
-  );
-}
+  const ordersFor = (technicianId, day) =>
+    orders.filter((o) => o.montorId === technicianId && o.dato === day && o.status !== "afsluttet").sort(dailyOrderCompare);
 
-// ---------------- Dagens tidslinje ----------------
+  const isOnLeave = (technicianId, day) => !!technicianId && (timeOff || []).some((f) => f.montorId === technicianId && day >= f.startDato && day <= f.slutDato);
 
-const toMinutes = (hhmm) => {
-  if (!/^\d{2}:\d{2}$/.test(hhmm || "")) return null;
-  const [h, m] = hhmm.split(":").map(Number);
-  return h * 60 + m;
-};
-
-// Rækkehovedet viser forventet arbejdstid (varelinjer) + estimeret KØRETID
-// - nu inklusive strækningen FRA FIRMAET og ud til første stop (ikke kun
-// mellem stoppene undervejs), da montøren jo altid kører ud hjemmefra
-// firmaet, ikke fra det første kundebesøg. Køretiden beregnes langs dagens
-// BESØGSRÆKKEFØLGE (samme rækkefølge man kan justere med op/ned-pilene
-// andre steder i appen) via ORS' distance-matrix.
-function TimelineRowHeader({ r, loadMinutes, driveMinutes, driveLoading, vehicles, technicians, timeOff, selectedDate, onUpdateTechnician }) {
-  const [editing, setEditing] = useState(false);
-  const [vehicleId, setVehicleId] = useState(r.bilId || "");
-  const linkedVehicle = vehicles.find((b) => b.id === r.bilId);
-  const timeOffBlock = vehicleBlockedByTimeOff(r.bilId, selectedDate, technicians, timeOff);
-
-  if (!r.id) {
-    return <div className="min-w-0"><p className="text-xs font-semibold text-ink truncate">{r.navn}</p></div>;
-  }
-
-  const save = (newVehicleId) => { onUpdateTechnician(r.id, { bilId: newVehicleId || null }); setEditing(false); };
-  const total = loadMinutes + (driveMinutes || 0);
-  const overloaded = total > WORKDAY_MINUTES;
-
-  return (
-    <div className="min-w-0 flex-1">
-      <p className="text-xs font-semibold text-ink truncate">{r.navn}</p>
-      {editing ? (
-        <select
-          autoFocus value={vehicleId}
-          onChange={(e) => { setVehicleId(e.target.value); save(e.target.value); }}
-          onBlur={() => setEditing(false)}
-          className="w-full min-w-0 rounded-md border border-line bg-white px-1 py-0.5 text-[10px] text-ink focus:outline-none focus:border-brand mt-0.5"
-        >
-          <option value="">Ingen bil</option>
-          {vehicles.map((b) => (
-            <option key={b.id} value={b.id} disabled={b.lukket && b.id !== r.bilId}>{vehicleLabel(b)}{b.lukket ? " (lukket)" : ""}</option>
-          ))}
-        </select>
-      ) : (
-        <button onClick={() => { setVehicleId(r.bilId || ""); setEditing(true); }} className="flex items-center gap-1 text-[10px] text-muted hover:text-brand border-b border-dashed border-line hover:border-brand w-fit" title="Klik for at skifte bil">
-          <span className="truncate">{linkedVehicle ? vehicleLabel(linkedVehicle) : "Ingen bil"}</span>
-          <Pencil size={9} className="shrink-0" />
-        </button>
-      )}
-      {loadMinutes > 0 && (
-        <div className="mt-0.5">
-          <p className="text-[10px] text-muted flex items-center gap-1"><Clock size={9} className="shrink-0" /> {formatDuration(loadMinutes)} arbejde</p>
-          {driveLoading ? (
-            <p className="text-[10px] text-muted flex items-center gap-1"><Loader2 size={9} className="shrink-0 animate-spin" /> beregner kørsel...</p>
-          ) : driveMinutes != null ? (
-            <>
-              <p className="text-[10px] text-muted flex items-center gap-1"><Car size={9} className="shrink-0" /> ~{formatDuration(driveMinutes)} kørsel</p>
-              <p className={`text-[10px] font-bold flex items-center gap-1 ${overloaded ? "text-danger" : "text-brand"}`}>
-                I alt: ~{formatDuration(total)}{overloaded && <AlertCircle size={9} className="shrink-0" />}
-              </p>
-            </>
-          ) : null}
-        </div>
-      )}
-      {linkedVehicle?.lukket && <p className="text-[10px] text-danger font-semibold flex items-center gap-1"><AlertCircle size={9} /> Bil lukket ({linkedVehicle.lukketAarsag || "værksted"})</p>}
-      {!linkedVehicle?.lukket && timeOffBlock && <p className="text-[10px] text-danger font-semibold flex items-center gap-1"><AlertCircle size={9} /> {timeOffBlock.montor.navn} holder ferie</p>}
-    </div>
-  );
-}
-
-function DailyTimeline({ orders, technicians, vehicles, timeOff, store, selectedDate, onOpen, onUpdateTechnician }) {
-  const [open, setOpen] = useState(true);
-  const [driveMinutesByTechnician, setDriveMinutesByTechnician] = useState({}); // { technicianId: minutes | null }
-  const [driveLoading, setDriveLoading] = useState(false);
-  const dayStart = 7 * 60 + 30;
-  const dayEnd = 16 * 60 + 30;
-  const PX_PER_MIN = 3.6;
-  const width = (dayEnd - dayStart) * PX_PER_MIN;
-  const todaysOrders = orders.filter((s) => s.dato === selectedDate);
-  const validOrders = todaysOrders.filter((s) => toMinutes(s.start) !== null && toMinutes(s.slut) !== null);
-  const hourMarks = [];
-  for (let t = Math.ceil(dayStart / 60) * 60; t <= dayEnd; t += 60) hourMarks.push(t);
-  const rows = [{ id: null, navn: "Ikke tildelt", bil: "" }, ...technicians];
-  const overlaps = (a, b) => toMinutes(a.start) < toMinutes(b.slut) && toMinutes(b.start) < toMinutes(a.slut);
-
-  // Firmaets adresse (allerede geokodet - se App.jsx/getStore) bruges som
-  // FAST STARTPUNKT for hver montørs rute, siden dagen jo altid begynder
-  // med at køre ud fra firmaet, ikke fra den første kundeadresse.
+  // Firmaets adresse (allerede geokodet, se App.jsx/getStore) bruges som
+  // FAST STARTPUNKT for hver montørs rute hver dag - dagen begynder jo med
+  // at køre ud fra firmaet, ikke fra det første kundebesøg.
   const storeCoord = store?.lat != null && store?.lon != null ? { lat: store.lat, lon: store.lon } : null;
-  // Uden en kendt firmaadresse kræves stadig mindst 2 stop for overhovedet
-  // at kunne regne noget (kørsel MELLEM stop) - med en kendt firmaadresse
-  // kan selv ÉT stop få et estimat (kørsel firma -> det ene stop).
   const minStopsForEstimate = storeCoord ? 1 : 2;
 
-  // Dagens rute PR. MONTØR, i besøgsrækkefølge (dailyOrderCompare - samme
-  // rækkefølge man kan justere med op/ned-pilene andre steder i appen).
-  const technicianDayOrders = useMemo(
-    () => technicians.map((m) => ({
-      id: m.id,
-      orders: orders.filter((o) => o.montorId === m.id && o.dato === selectedDate && o.status !== "afsluttet").sort(dailyOrderCompare),
-    })),
-    [orders, technicians, selectedDate]
-  );
+  const dayGroups = useMemo(() => {
+    const map = {};
+    technicians.forEach((m) => {
+      weekDays(weekAnchor).forEach((d) => {
+        map[`${m.id}|${d}`] = orders.filter((o) => o.montorId === m.id && o.dato === d && o.status !== "afsluttet").sort(dailyOrderCompare);
+      });
+    });
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders, technicians, weekAnchor]);
 
-  // Genberegnes kun når selve INDHOLDET reelt ændrer sig (hvilke sager, i
-  // hvilken rækkefølge, med hvilke adresser, eller firmaets koordinater
-  // ændrer sig) - ikke ved hvert eneste render.
-  const signature = technicianDayOrders
-    .map((g) => `${g.id}:${g.orders.map((o) => `${o.id}|${o.kunde?.adresse || ""}`).join(",")}`)
+  const signature = Object.entries(dayGroups)
+    .map(([key, list]) => `${key}:${list.map((o) => `${o.id}|${o.kunde?.adresse || ""}`).join(",")}`)
     .join(";") + `|firma:${storeCoord ? `${storeCoord.lat},${storeCoord.lon}` : "ukendt"}`;
 
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      const relevant = technicianDayOrders.filter((g) => g.orders.length >= minStopsForEstimate);
-      if (relevant.length === 0) { setDriveMinutesByTechnician({}); return; }
+      const relevantKeys = Object.keys(dayGroups).filter((k) => dayGroups[k].length >= minStopsForEstimate);
+      if (relevantKeys.length === 0) { setDriveMinutes({}); return; }
       setDriveLoading(true);
-      const results = {};
-      for (const g of relevant) {
-        const addresses = g.orders.map((o) => o.kunde?.adresse).filter(Boolean);
-        if (addresses.length === 0) { results[g.id] = null; continue; }
+      const entries = await Promise.all(relevantKeys.map(async (key) => {
+        const list = dayGroups[key];
+        const addresses = list.map((o) => o.kunde?.adresse).filter(Boolean);
+        if (addresses.length === 0) return [key, null];
         const coordMap = await geocodeAddresses(addresses);
         const stopPoints = addresses.map((a) => coordMap.get(a.trim().toLowerCase())).filter(Boolean);
         const points = storeCoord ? [storeCoord, ...stopPoints] : stopPoints;
-        results[g.id] = points.length >= 2 ? await routeDrivingTime(points) : null;
-      }
-      if (!cancelled) { setDriveMinutesByTechnician(results); setDriveLoading(false); }
+        const minutes = points.length >= 2 ? await routeDrivingTime(points) : null;
+        return [key, minutes];
+      }));
+      if (!cancelled) { setDriveMinutes(Object.fromEntries(entries)); setDriveLoading(false); }
     };
     run();
     return () => { cancelled = true; };
@@ -557,80 +375,102 @@ function DailyTimeline({ orders, technicians, vehicles, timeOff, store, selected
   }, [signature]);
 
   return (
-    <div className="rounded-xl border border-line bg-white mb-4 overflow-hidden">
+    <div className="rounded-xl border border-brand bg-white mb-4 overflow-hidden">
       <button onClick={() => setOpen((v) => !v)} className="w-full p-3 flex items-center gap-2 text-left">
-        <Clock size={15} className="text-muted shrink-0" />
-        <span className="text-sm font-semibold uppercase tracking-wide text-ink flex-1">Dagens tidslinje</span>
-        <ChevronDown size={16} className={`text-muted transition-transform ${open ? "rotate-180" : ""}`} />
+        <LayoutGrid size={15} className="text-brand shrink-0" />
+        <div className="flex-1 min-w-0">
+          <span className="text-sm font-semibold uppercase tracking-wide text-ink">Overblik</span>
+          <span className="text-xs text-muted ml-2">{weekOrders.length} sager denne uge{unassignedThisWeek > 0 ? ` · ${unassignedThisWeek} ikke tildelt` : ""}</span>
+        </div>
+        <ChevronDown size={16} className={`text-muted transition-transform shrink-0 ${open ? "rotate-180" : ""}`} />
       </button>
+
       {open && (
-        <>
-          <p className="text-[11px] text-muted px-3 pb-2 flex items-center gap-1.5">
+        <div className="border-t border-line">
+          <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-divider">
+            <button onClick={() => setWeekAnchor((w) => addDays(w, -7))} className="p-1.5 rounded-lg border border-line text-muted hover:text-brand hover:border-brand transition-colors" title="Forrige uge">
+              <ChevronLeft size={15} />
+            </button>
+            <div className="text-center">
+              <p className="text-sm font-semibold text-ink">{shortDateLabel(week[0])} – {shortDateLabel(week[6])}</p>
+              {weekAnchor !== today && <button onClick={() => setWeekAnchor(today)} className="text-[10px] font-semibold uppercase tracking-wide text-brand hover:underline">Gå til denne uge</button>}
+            </div>
+            <button onClick={() => setWeekAnchor((w) => addDays(w, 7))} className="p-1.5 rounded-lg border border-line text-muted hover:text-brand hover:border-brand transition-colors" title="Næste uge">
+              <ChevronRight size={15} />
+            </button>
+          </div>
+
+          <p className="text-[11px] text-muted px-3 py-2 flex items-center gap-1.5 border-b border-divider">
             {storeCoord ? <Building2 size={11} className="shrink-0" /> : <Car size={11} className="shrink-0" />}
             {storeCoord
-              ? "\"I alt\" inkluderer kørsel fra firmaets adresse og ud til første stop, samt kørsel mellem dagens øvrige stop."
-              : "\"I alt\" inkluderer kørsel mellem dagens stop. Sæt butikkens adresse op under Admin for også at medregne turen ud fra firmaet."}
+              ? "Tidstal pr. dag inkluderer kørsel fra firmaets adresse og mellem dagens stop, samt arbejdstid. Pilene ændrer besøgsrækkefølgen, vælgeren omfordeler til en anden montør."
+              : "Tidstal pr. dag inkluderer kørsel mellem dagens stop og arbejdstid (sæt butikkens adresse op under Admin for også at medregne turen ud fra firmaet). Pilene ændrer besøgsrækkefølgen, vælgeren omfordeler til en anden montør."}
           </p>
-          <div className="border-t border-line overflow-x-auto">
-            <div style={{ width: width + 160, minWidth: "100%" }}>
-              <div className="flex sticky top-0 bg-white z-10 border-b border-line">
-                <div className="w-[140px] shrink-0 border-r border-line" />
-                <div className="relative" style={{ width, height: 24 }}>
-                  {hourMarks.map((t) => (
-                    <div key={t} className="absolute top-0 bottom-0 border-l border-divider text-[10px] font-mono text-muted pl-1 pt-1" style={{ left: (t - dayStart) * PX_PER_MIN }}>
-                      {String(Math.floor(t / 60)).padStart(2, "0")}
-                    </div>
-                  ))}
-                </div>
-              </div>
-              {rows.map((r) => {
-                const myOrders = validOrders.filter((s) => s.montorId === r.id);
-                const loadMinutes = myOrders.reduce((sum, s) => sum + orderExpectedMinutes(s), 0);
-                const stopCount = technicianDayOrders.find((g) => g.id === r.id)?.orders.length || 0;
-                return (
-                  <div key={r.id || "utildelt"} className="flex border-b border-divider">
-                    <div className="w-[140px] shrink-0 border-r border-line p-2 flex items-center gap-2 bg-panel">
-                      {r.id ? <span className="w-2 h-2 rounded-full shrink-0" style={{ background: technicianColor(r.id, technicians) }} /> : <span className="w-2 h-2 rounded-full shrink-0 border border-brand" />}
-                      <TimelineRowHeader
-                        r={r}
-                        loadMinutes={loadMinutes}
-                        driveMinutes={driveMinutesByTechnician[r.id]}
-                        driveLoading={driveLoading && stopCount >= minStopsForEstimate && driveMinutesByTechnician[r.id] === undefined}
-                        vehicles={vehicles}
-                        technicians={technicians}
-                        timeOff={timeOff}
-                        selectedDate={selectedDate}
-                        onUpdateTechnician={onUpdateTechnician}
-                      />
-                    </div>
-                    <div className="relative" style={{ width, height: 64 }}>
-                      {hourMarks.map((t) => <div key={t} className="absolute top-0 bottom-0 border-l border-divider" style={{ left: (t - dayStart) * PX_PER_MIN }} />)}
-                      {myOrders.map((s) => {
-                        const left = (toMinutes(s.start) - dayStart) * PX_PER_MIN;
-                        const w = (toMinutes(s.slut) - toMinutes(s.start)) * PX_PER_MIN;
-                        const conflict = r.id && myOrders.some((a) => a.id !== s.id && overlaps(a, s));
-                        return (
-                          <div
-                            key={s.id} onClick={() => onOpen(s.id)}
-                            className="absolute top-1.5 bottom-1.5 px-2 py-1 rounded-md cursor-pointer overflow-hidden bg-white hover:z-10 hover:shadow-md transition-shadow"
-                            style={{ left, width: w, border: conflict ? "1px solid #B3261E" : "1px solid #DDDDDD", borderLeftWidth: 3, borderLeftColor: STATUS_META[s.status].color }}
-                            title={conflict ? "Overlapper med en anden sag på samme bil" : ""}
-                          >
-                            <p className="text-[10px] font-mono text-muted truncate">{s.start}–{s.slut}</p>
-                            <p className="text-xs font-semibold text-ink truncate">{buildTitle(s.varelinjer)}</p>
-                            <p className="text-[10px] text-muted truncate">{s.kunde.navn}</p>
-                            {s.noegle?.kraeves && <p className="text-[10px] text-brand truncate flex items-center gap-0.5"><KeyRound size={9} /> nøgle</p>}
-                            {conflict && <p className="text-[10px] text-danger font-semibold">Overlap!</p>}
-                          </div>
-                        );
-                      })}
-                    </div>
+
+          <div className="overflow-x-auto">
+            <div style={{ minWidth: 150 + 152 * 7 }}>
+              <div className="grid sticky top-0 z-20 bg-panel border-b border-line" style={{ gridTemplateColumns: "150px repeat(7, minmax(150px, 1fr))" }}>
+                <div className="p-2 text-[10px] font-semibold uppercase tracking-wide text-muted sticky left-0 bg-panel z-10 border-r border-line">Montør</div>
+                {week.map((d) => (
+                  <div key={d} className={`p-2 text-center border-l border-divider ${d === today ? "bg-brand/10" : ""}`}>
+                    <p className={`text-[10px] font-semibold uppercase tracking-wide ${d === today ? "text-brand" : "text-muted"}`}>{shortDayLabel(d)}</p>
+                    <p className={`text-sm font-semibold ${d === today ? "text-brand" : "text-ink"}`}>{new Date(d + "T00:00:00").getDate()}</p>
                   </div>
-                );
-              })}
+                ))}
+              </div>
+
+              {rows.map((r) => (
+                <div key={r.id || "utildelt"} className="grid border-b border-divider">
+                  <div className="p-2 sticky left-0 bg-white z-10 border-r border-line flex items-center gap-1.5">
+                    {r.id && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: technicianColor(r.id, technicians) }} />}
+                    <span className="text-xs font-semibold text-ink truncate">{r.navn}</span>
+                  </div>
+                  {week.map((d) => {
+                    const dayOrders = ordersFor(r.id, d);
+                    const onLeave = isOnLeave(r.id, d);
+                    const key = `${r.id}|${d}`;
+                    const loadMinutes = dayOrders.reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
+                    const drive = r.id ? driveMinutes[key] : undefined;
+                    const total = loadMinutes + (drive || 0);
+                    const overloaded = total > WORKDAY_MINUTES;
+                    const stillLoading = r.id && driveLoading && dayOrders.length >= minStopsForEstimate && drive === undefined;
+                    return (
+                      <div key={d} className={`p-1.5 border-l border-divider min-h-[64px] ${d === today ? "bg-brand/5" : ""}`}>
+                        {r.id && loadMinutes > 0 && (
+                          <div className={`text-[9px] font-bold rounded-md px-1.5 py-0.5 mb-1 text-center flex items-center justify-center gap-1 ${overloaded ? "bg-danger text-white" : "bg-panel text-ink"}`}>
+                            {stillLoading ? <Loader2 size={9} className="animate-spin shrink-0" /> : null}
+                            {stillLoading ? "beregner..." : hoursLabel(total)}
+                          </div>
+                        )}
+                        {onLeave && <p className="text-[9px] font-semibold uppercase tracking-wide text-danger mb-1 flex items-center gap-0.5"><AlertCircle size={9} /> Fraværende</p>}
+                        {dayOrders.length === 0 ? (
+                          <p className="text-[10px] text-line text-center pt-2">–</p>
+                        ) : (
+                          dayOrders.map((o, i) => (
+                            <MiniOrderCard
+                              key={o.id}
+                              order={o}
+                              onOpen={onOpen}
+                              onAssign={onAssign}
+                              technicians={technicians}
+                              currentTechnicianId={r.id}
+                              color={r.id ? technicianColor(r.id, technicians) : "#C8232E"}
+                              onLeave={onLeave}
+                              onMoveUp={r.id && onReorder ? () => onReorder(r.id, d, o.id, -1) : undefined}
+                              onMoveDown={r.id && onReorder ? () => onReorder(r.id, d, o.id, 1) : undefined}
+                              canMoveUp={i > 0}
+                              canMoveDown={i < dayOrders.length - 1}
+                            />
+                          ))
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
@@ -687,7 +527,7 @@ function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedD
         </div>
       ) : (
         <>
-          <QuickReassign orders={orders} technicians={technicians} timeOff={timeOff} onAssign={onAssign} onReorder={onReorder} onOpen={onOpen} />
+          <WeekOverview orders={orders} technicians={technicians} timeOff={timeOff} store={store} onAssign={onAssign} onReorder={onReorder} onOpen={onOpen} />
 
           <div className="rounded-xl bg-white border border-line mb-4 overflow-hidden" style={{ borderTopWidth: 4, borderTopColor: ACTION_RED }}>
             <div className="p-3 border-b border-line flex items-center gap-2">
@@ -723,8 +563,6 @@ function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedD
               </div>
             </div>
           )}
-
-          <DailyTimeline orders={orders} technicians={technicians} vehicles={vehicles} timeOff={timeOff} store={store} selectedDate={selectedDate} onOpen={onOpen} onUpdateTechnician={onUpdateTechnician} />
 
           <div className="space-y-2">
             <CollapsibleSection title="Planlagt fremad" icon={CalendarClock} colorClass="text-muted" items={upcoming} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} emptyText="Ingen kommende planlagte sager." />
