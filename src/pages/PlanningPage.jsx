@@ -10,12 +10,12 @@ import { OrderCardCompact } from "../components/OrderCardCompact";
 // Planlægning + Kørsel er fusioneret til ÉN fane (august 2026). Siden er
 // bygget med ÉT primært formål for øje: gøre det hurtigt at få OVERBLIK
 // over ugen og OMFORDELE sager, når en montør bliver syg, eller et besøg
-// var forgæves - den hyppigste, mest tidskritiske opgave i den daglige
-// planlægning. Se WeekOverview: én samlet, altid-synlig ugekalender
-// (rækker = montører, kolonner = dage), med tidsestimat (arbejde+kørsel)
-// pr. dag/montør, indbygget omfordeling og besøgsrækkefølge - erstatter
-// både den tidligere separate "Dagens tidslinje" og "Omfordel hurtigt"-
-// modalen, som nu er slået sammen til ét sted.
+// var forgæves. Se WeekOverview - RESPONSIVT: en dag-for-dag-liste i fuld
+// bredde på smalle skærme (mobil), og et rigtigt ugegitter (montør ×
+// ugedag) på brede skærme (pc/tablet) - samme data, to layout, valgt
+// automatisk ud fra skærmbredde via CSS-breakpoints (Tailwinds `md:`),
+// IKKE ved at gætte på enhedstype. Det betyder det tilpasser sig korrekt
+// også ved fx rotation eller et smalt browservindue på en bærbar.
 // ---------------------------------------------------------------------------
 
 function daysLate(dato, today) {
@@ -264,38 +264,41 @@ function hoursLabel(minutes) {
 function shortDayLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { weekday: "short" }); }
 function shortDateLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "short" }); }
 
-// ---------------- Overblik: ugekalender med tid, kort og omfordeling ----------------
+// ---------------- Overblik: responsiv ugekalender med tid, kort og omfordeling ----------------
+// Bruges i BEGGE layout (mobil-liste og pc-gitter) - lidt større tekst/
+// touch-mål end den oprindelige udgave, som var tunet for smalle 150px-
+// gitterkolonner og derfor virkede for spinkel/uoverskuelig generelt.
 function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnicianId, color, onLeave, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
   return (
     <div
-      className="rounded-lg bg-white border border-line hover:shadow-sm transition-shadow px-2 py-1.5 mb-1.5 last:mb-0"
+      className="rounded-lg bg-white border border-line hover:shadow-sm transition-shadow px-2.5 py-2 mb-1.5 last:mb-0"
       style={{ borderLeftWidth: 3, borderLeftColor: color }}
     >
-      <div className="flex items-start gap-1">
+      <div className="flex items-start gap-1.5">
         {(onMoveUp || onMoveDown) && (
-          <div className="flex flex-col shrink-0 -ml-0.5 -mt-0.5">
-            <button onClick={(e) => { e.stopPropagation(); onMoveUp(); }} disabled={!canMoveUp} className="p-0.5 rounded text-muted hover:text-brand disabled:opacity-20 disabled:pointer-events-none" title="Flyt tidligere i ruten">
-              <ChevronUp size={12} />
+          <div className="flex flex-col shrink-0 -ml-1 -mt-0.5">
+            <button onClick={(e) => { e.stopPropagation(); onMoveUp(); }} disabled={!canMoveUp} className="p-1 rounded text-muted hover:text-brand disabled:opacity-20 disabled:pointer-events-none" title="Flyt tidligere i ruten">
+              <ChevronUp size={14} />
             </button>
-            <button onClick={(e) => { e.stopPropagation(); onMoveDown(); }} disabled={!canMoveDown} className="p-0.5 rounded text-muted hover:text-brand disabled:opacity-20 disabled:pointer-events-none" title="Flyt senere i ruten">
-              <ChevronDown size={12} />
+            <button onClick={(e) => { e.stopPropagation(); onMoveDown(); }} disabled={!canMoveDown} className="p-1 rounded text-muted hover:text-brand disabled:opacity-20 disabled:pointer-events-none" title="Flyt senere i ruten">
+              <ChevronDown size={14} />
             </button>
           </div>
         )}
         <div onClick={() => onOpen(order.id)} className="cursor-pointer min-w-0 flex-1">
           <div className="flex items-center justify-between gap-1">
-            <span className="text-[10px] font-mono text-muted">{order.start}–{order.slut}</span>
-            {order.noegle?.kraeves && <KeyRound size={9} className="text-brand shrink-0" />}
+            <span className="text-[11px] font-mono text-muted">{order.start}–{order.slut}</span>
+            {order.noegle?.kraeves && <KeyRound size={10} className="text-brand shrink-0" />}
           </div>
-          <p className="text-xs font-semibold text-ink truncate">{order.kunde?.navn}</p>
-          <p className="text-[10px] text-muted truncate">{buildTitle(order.varelinjer)}</p>
+          <p className="text-sm font-semibold text-ink truncate">{order.kunde?.navn}</p>
+          <p className="text-xs text-muted truncate">{buildTitle(order.varelinjer)}</p>
         </div>
       </div>
       <select
         value={currentTechnicianId || ""}
         onChange={(e) => onAssign(order.id, e.target.value || null)}
         onClick={(e) => e.stopPropagation()}
-        className={`w-full mt-1 rounded-md border px-1 py-0.5 text-[9px] focus:outline-none ${onLeave ? "border-danger text-danger font-semibold" : "border-line bg-panel text-muted focus:border-brand"}`}
+        className={`w-full mt-1.5 rounded-md border px-1.5 py-1 text-[11px] focus:outline-none ${onLeave ? "border-danger text-danger font-semibold" : "border-line bg-panel text-muted focus:border-brand"}`}
       >
         <option value="">Ikke tildelt</option>
         {technicians.map((m) => <option key={m.id} value={m.id}>{m.navn}</option>)}
@@ -304,23 +307,40 @@ function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnician
   );
 }
 
+// Lille badge til dag/montør-tidstotal (arbejde+kørsel) - genbruges i begge
+// layout så visningen af belastning er ens uanset skærmbredde.
+function DayTimeBadge({ minutes, overloaded, loading }) {
+  return (
+    <span className={`text-[11px] font-bold rounded-md px-2 py-0.5 flex items-center gap-1 shrink-0 ${overloaded ? "bg-danger text-white" : "bg-panel text-ink"}`}>
+      {loading ? <Loader2 size={11} className="animate-spin shrink-0" /> : null}
+      {loading ? "beregner..." : hoursLabel(minutes)}
+    </span>
+  );
+}
+
 // Erstatter BÅDE den tidligere "Dagens tidslinje" OG "Omfordel hurtigt"-
 // modalen: ÉT altid-synligt ugeoverblik, der starter UDFOLDET (kan
-// minimeres med pilen i headeren, samme mønster som "Kræver handling").
-// Rækker = montører, kolonner = ugedage - hver celle viser et samlet
-// tidsestimat (arbejde + kørsel, inkl. turen ud fra firmaets adresse, se
-// TimelineRowHeader-kommentaren tidligere i filens historik) OVER dagens
-// sagskort, så man kan se belastningen på hele ugen på ét blik, ikke kun
-// den valgte dag.
+// minimeres med pilen i headeren). RESPONSIVT (se filens toppo-kommentar):
+// på smalle skærme vises dagene ét ad gangen som en fuld-bredde liste
+// (dag-faner øverst); på brede skærme vises hele ugen som et gitter
+// (montør × ugedag). Samme underliggende data og tidsberegning i begge.
 function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder, onOpen }) {
   const [open, setOpen] = useState(true); // starter UDFOLDET
   const [weekAnchor, setWeekAnchor] = useState(todayISO());
+  const [selectedDay, setSelectedDay] = useState(todayISO()); // kun brugt i mobil-layoutet
   const [driveMinutes, setDriveMinutes] = useState({}); // { "montorId|dato": minutter | null }
   const [driveLoading, setDriveLoading] = useState(false);
 
   const week = weekDays(weekAnchor);
   const today = todayISO();
   const rows = [...technicians, { id: null, navn: "Ikke tildelt" }];
+
+  // Hold den valgte mobil-dag inden for den aktuelt viste uge, når man
+  // blader til en anden uge.
+  useEffect(() => {
+    if (!week.includes(selectedDay)) setSelectedDay(week[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekAnchor]);
 
   const weekOrders = orders.filter((o) => week.includes(o.dato) && o.status !== "afsluttet");
   const unassignedThisWeek = weekOrders.filter((o) => !o.montorId).length;
@@ -331,8 +351,7 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
   const isOnLeave = (technicianId, day) => !!technicianId && (timeOff || []).some((f) => f.montorId === technicianId && day >= f.startDato && day <= f.slutDato);
 
   // Firmaets adresse (allerede geokodet, se App.jsx/getStore) bruges som
-  // FAST STARTPUNKT for hver montørs rute hver dag - dagen begynder jo med
-  // at køre ud fra firmaet, ikke fra det første kundebesøg.
+  // FAST STARTPUNKT for hver montørs rute hver dag.
   const storeCoord = store?.lat != null && store?.lon != null ? { lat: store.lat, lon: store.lon } : null;
   const minStopsForEstimate = storeCoord ? 1 : 2;
 
@@ -374,6 +393,16 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature]);
 
+  const timeFor = (technicianId, day, dayOrdersForCell) => {
+    const key = `${technicianId}|${day}`;
+    const loadMinutes = dayOrdersForCell.reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
+    const drive = technicianId ? driveMinutes[key] : undefined;
+    const total = loadMinutes + (drive || 0);
+    const overloaded = total > WORKDAY_MINUTES;
+    const stillLoading = !!technicianId && driveLoading && dayOrdersForCell.length >= minStopsForEstimate && drive === undefined;
+    return { loadMinutes, total, overloaded, stillLoading };
+  };
+
   return (
     <div className="rounded-xl border border-brand bg-white mb-4 overflow-hidden">
       <button onClick={() => setOpen((v) => !v)} className="w-full p-3 flex items-center gap-2 text-left">
@@ -402,12 +431,72 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
 
           <p className="text-[11px] text-muted px-3 py-2 flex items-center gap-1.5 border-b border-divider">
             {storeCoord ? <Building2 size={11} className="shrink-0" /> : <Car size={11} className="shrink-0" />}
-            {storeCoord
-              ? "Tidstal pr. dag inkluderer kørsel fra firmaets adresse og mellem dagens stop, samt arbejdstid. Pilene ændrer besøgsrækkefølgen, vælgeren omfordeler til en anden montør."
-              : "Tidstal pr. dag inkluderer kørsel mellem dagens stop og arbejdstid (sæt butikkens adresse op under Admin for også at medregne turen ud fra firmaet). Pilene ændrer besøgsrækkefølgen, vælgeren omfordeler til en anden montør."}
+            <span className="hidden sm:inline">
+              {storeCoord
+                ? "Tidstal inkluderer kørsel fra firmaets adresse og mellem dagens stop, samt arbejdstid."
+                : "Tidstal inkluderer kørsel mellem dagens stop og arbejdstid (sæt butikkens adresse op under Admin for turen ud fra firmaet)."}
+            </span>
+            <span className="sm:hidden">Tal = arbejde + estimeret kørsel.</span>
           </p>
 
-          <div className="overflow-x-auto">
+          {/* ------- MOBIL: dag-faner + fuld-bredde liste (< md) ------- */}
+          <div className="md:hidden">
+            <div className="flex gap-1.5 overflow-x-auto px-3 py-2 border-b border-divider">
+              {week.map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setSelectedDay(d)}
+                  className={`shrink-0 flex flex-col items-center px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${d === selectedDay ? "bg-brand text-white" : d === today ? "bg-panel text-brand" : "text-muted hover:bg-panel"}`}
+                >
+                  <span className="text-[9px] uppercase">{shortDayLabel(d)}</span>
+                  <span>{new Date(d + "T00:00:00").getDate()}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="p-3 space-y-4">
+              {rows.map((r) => {
+                const dayOrders = ordersFor(r.id, selectedDay);
+                if (dayOrders.length === 0) return null;
+                const onLeave = isOnLeave(r.id, selectedDay);
+                const { loadMinutes, total, overloaded, stillLoading } = timeFor(r.id, selectedDay, dayOrders);
+                return (
+                  <div key={r.id || "utildelt"}>
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <p className="text-sm font-semibold text-ink flex items-center gap-1.5 min-w-0 truncate">
+                        {r.id && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: technicianColor(r.id, technicians) }} />}
+                        {r.navn}
+                      </p>
+                      {r.id && loadMinutes > 0 && <DayTimeBadge minutes={total} overloaded={overloaded} loading={stillLoading} />}
+                    </div>
+                    {onLeave && <p className="text-[11px] font-semibold uppercase tracking-wide text-danger mb-1.5 flex items-center gap-1"><AlertCircle size={11} /> Fraværende denne dag</p>}
+                    {dayOrders.map((o, i) => (
+                      <MiniOrderCard
+                        key={o.id}
+                        order={o}
+                        onOpen={onOpen}
+                        onAssign={onAssign}
+                        technicians={technicians}
+                        currentTechnicianId={r.id}
+                        color={r.id ? technicianColor(r.id, technicians) : "#C8232E"}
+                        onLeave={onLeave}
+                        onMoveUp={r.id && onReorder ? () => onReorder(r.id, selectedDay, o.id, -1) : undefined}
+                        onMoveDown={r.id && onReorder ? () => onReorder(r.id, selectedDay, o.id, 1) : undefined}
+                        canMoveUp={i > 0}
+                        canMoveDown={i < dayOrders.length - 1}
+                      />
+                    ))}
+                  </div>
+                );
+              })}
+              {rows.every((r) => ordersFor(r.id, selectedDay).length === 0) && (
+                <p className="text-sm text-muted italic text-center py-6">Ingen sager denne dag.</p>
+              )}
+            </div>
+          </div>
+
+          {/* ------- PC/TABLET: ugegitter (md og bredere) ------- */}
+          <div className="hidden md:block overflow-x-auto">
             <div style={{ minWidth: 150 + 152 * 7 }}>
               <div className="grid sticky top-0 z-20 bg-panel border-b border-line" style={{ gridTemplateColumns: "150px repeat(7, minmax(150px, 1fr))" }}>
                 <div className="p-2 text-[10px] font-semibold uppercase tracking-wide text-muted sticky left-0 bg-panel z-10 border-r border-line">Montør</div>
@@ -428,18 +517,12 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
                   {week.map((d) => {
                     const dayOrders = ordersFor(r.id, d);
                     const onLeave = isOnLeave(r.id, d);
-                    const key = `${r.id}|${d}`;
-                    const loadMinutes = dayOrders.reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
-                    const drive = r.id ? driveMinutes[key] : undefined;
-                    const total = loadMinutes + (drive || 0);
-                    const overloaded = total > WORKDAY_MINUTES;
-                    const stillLoading = r.id && driveLoading && dayOrders.length >= minStopsForEstimate && drive === undefined;
+                    const { loadMinutes, total, overloaded, stillLoading } = timeFor(r.id, d, dayOrders);
                     return (
                       <div key={d} className={`p-1.5 border-l border-divider min-h-[64px] ${d === today ? "bg-brand/5" : ""}`}>
                         {r.id && loadMinutes > 0 && (
-                          <div className={`text-[9px] font-bold rounded-md px-1.5 py-0.5 mb-1 text-center flex items-center justify-center gap-1 ${overloaded ? "bg-danger text-white" : "bg-panel text-ink"}`}>
-                            {stillLoading ? <Loader2 size={9} className="animate-spin shrink-0" /> : null}
-                            {stillLoading ? "beregner..." : hoursLabel(total)}
+                          <div className="mb-1 flex justify-center">
+                            <DayTimeBadge minutes={total} overloaded={overloaded} loading={stillLoading} />
                           </div>
                         )}
                         {onLeave && <p className="text-[9px] font-semibold uppercase tracking-wide text-danger mb-1 flex items-center gap-0.5"><AlertCircle size={9} /> Fraværende</p>}
