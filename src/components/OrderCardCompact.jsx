@@ -1,6 +1,6 @@
 import React from "react";
-import { Clock } from "lucide-react";
-import { TIME_SLOTS, buildTitle, formatDuration, orderExpectedMinutes } from "../data/domain";
+import { Clock, CalendarCheck2 } from "lucide-react";
+import { TIME_SLOTS, buildTitle, formatDuration, orderExpectedMinutes, formatShortDate, isToday } from "../data/domain";
 import { StatusBadge, LineItemPills } from "../components/common";
 
 // accent: valgfri venstre-kantfarve (fx rød ved "kræver handling"), så
@@ -13,6 +13,12 @@ import { StatusBadge, LineItemPills } from "../components/common";
 // adresse - til lister hvor pointen er et hurtigt overblik (fx dagens
 // sager på Salg), ikke alle detaljer på forhånd. Klik åbner stadig fuld
 // sagsdetalje uanset minimal eller ej.
+//
+// Datoen vises nu ALTID (kort format, fx "18. aug") - kortet bruges ofte i
+// lister der spænder over flere dage (Kræver handling, Arkiv, Planlagt
+// fremad, Afsluttet), hvor det ellers ikke var til at se, hvilken dag en
+// given sag rent faktisk lå på uden at åbne den. Er sagen afsluttet, og
+// tidspunktet for det er kendt, vises det som en ekstra lille linje.
 //
 // VIGTIGT om min-w-0: Kortet ligger som CSS grid/flex-element i sine
 // forældre (fx grid'et i PlanningPage). Grid- og flex-elementer har som
@@ -31,13 +37,17 @@ function OrderCardCompact({ order, technicians, onOpen, onCycleStatus, onAssign,
       {reason && <div className="mb-2">{reason}</div>}
       <div className="flex items-start justify-between gap-3">
         <div onClick={() => onOpen(order.id)} className="cursor-pointer min-w-0 flex-1">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="font-mono text-sm text-ink">{order.start}–{order.slut}</span>
+            <span className={`font-mono text-[11px] font-semibold ${isToday(order.dato) ? "text-brand" : "text-muted"}`}>{formatShortDate(order.dato)}</span>
             <span className="font-mono text-[10px] text-faint">#{order.nr}</span>
           </div>
           <p className="font-semibold text-sm text-ink truncate">{buildTitle(order.varelinjer)}</p>
           <p className="text-xs text-muted truncate">{order.kunde.navn} · {order.kunde.adresse}</p>
           {!minimal && <p className="text-[10px] text-muted flex items-center gap-1 mt-0.5"><Clock size={10} /> {formatDuration(orderExpectedMinutes(order))} forventet</p>}
+          {order.status === "afsluttet" && order.afsluttetTidspunkt && (
+            <p className="text-[10px] text-success flex items-center gap-1 mt-0.5"><CalendarCheck2 size={10} /> Afsluttet {formatShortDate(order.afsluttetTidspunkt.slice(0, 10))}</p>
+          )}
         </div>
         <button onClick={() => onCycleStatus(order.id)} className="shrink-0"><StatusBadge status={order.status} /></button>
       </div>
