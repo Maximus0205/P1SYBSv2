@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin, Sparkles, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Check, Loader2 } from "lucide-react";
+import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin, Sparkles, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Check, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID, KEY_ACCESS_TYPES, buildingKey, formatLongDate, formatDuration, lineItemMinutes, availableAddOns, serviceIcon, todayISO, addDays, weekDays, orderExpectedMinutes } from "../data/domain";
 import { getAiRouteSuggestion, lookupPunkt1Product } from "../lib/dataStore";
 import { geocodeAddress, geocodeAddresses, drivingDistances } from "../lib/geocoding";
@@ -24,32 +24,33 @@ function guessBrandAndModel(title) {
   return { brand, model };
 }
 
-// Modelnummer-opslag mod punkt1.dk's EGET, offentlige søge-API (fundet og
-// bekræftet via Chrome DevTools Network-fanen). Kører live mens sælgeren
-// skriver (med lidt forsinkelse). Et klik på et forslag udfylder BÅDE
-// mærke- og modelnummer-feltet direkte, ud fra selve det matchede produkt
-// - ingen ekstern fane, ingen mellemtrin. Kaldes gennem en edge function
-// (punkt1-produktopslag), som proxy'er kaldet server-side for at undgå CORS.
+// Modelnummer-opslag mod punkt1.dk's EGET, offentlige søge-API. Kører live
+// mens sælgeren skriver ELLER indsætter (paste) et modelnummer, og giver et
+// TYDELIGT, definitivt svar - ikke kun en liste af forslag:
+//  - GRØNT flueben: det indtastede modelnummer matcher PRÆCIS ét kendt
+//    produkt på punkt1.dk (uanset om det blev skrevet i hånden, indsat, eller
+//    valgt fra et forslag).
+//  - RØDT kryds: søgningen gav slet ingen træffere - modelnummeret findes
+//    formentlig ikke (eller er stavet forkert).
+//  - Hverken/eller (kun forslagsliste, intet ikon): der ER træffere, men
+//    ingen af dem matcher PRÆCIS det indtastede - typisk fordi man er ved
+//    at skrive, eller har fat i den forkerte variant. Her vises forslagene
+//    i stedet for at påstå noget definitivt.
 //
-// VIGTIGT: confirmedRef husker det modelnummer, der lige er valgt fra et
-// forslag. Uden den ville selve VALGET (som ændrer lineItem.model til fx
-// "PODW56042W") trigge endnu et automatisk opslag på det nye, allerede
-// bekræftede modelnummer - unødvendigt (vi ved jo allerede at det er et
-// gyldigt match, det var netop det brugeren klikkede på), og var årsagen
-// til en forbigående fejlmeddelelse lige efter et valgt forslag. Opslaget
-// springes nu helt over, når feltet lige er sat via et valgt forslag.
+// Et klik på et forslag udfylder BÅDE mærke- og modelnummer-feltet, og
+// markerer det med det samme som bekræftet.
 function ModelNumberLookup({ model, onSelectProduct }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null); // { matchCount, products } | null
   const [error, setError] = useState(null);
   const [checkedTerm, setCheckedTerm] = useState("");
   const timerRef = useRef(null);
-  const confirmedRef = useRef("");
+  const confirmedRef = useRef(""); // sidst bekræftede modelnummer via et valgt forslag - undgår unødvendigt genopslag
 
   useEffect(() => {
     const term = (model || "").trim();
     if (term.length < 3) { setResult(null); setError(null); return; }
-    if (term === confirmedRef.current) { setResult(null); setError(null); return; }
+    if (term === confirmedRef.current) return; // allerede bekræftet, "result" er sat af selectProduct - lad den stå
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(async () => {
       setLoading(true); setError(null);
@@ -58,27 +59,45 @@ function ModelNumberLookup({ model, onSelectProduct }) {
       setCheckedTerm(term);
       if (!res.ok) { setError(res.fejl || "Kunne ikke slå op lige nu."); setResult(null); return; }
       setResult(res);
-    }, 600);
+    }, 500);
     return () => clearTimeout(timerRef.current);
   }, [model]);
 
   const selectProduct = (product) => {
     const guess = guessBrandAndModel(product.title);
     confirmedRef.current = guess.model;
-    setResult(null);
+    setCheckedTerm(guess.model);
+    setResult({ matchCount: 1, products: [product] }); // synteser et "bekræftet" resultat - ingen genopslag nødvendigt
     onSelectProduct(guess);
   };
 
   if (!model || model.trim().length < 3) return null;
 
+  // Er der ét produkt blandt træfferne, hvis udledte modelnummer PRÆCIS
+  // matcher det, brugeren har tastet/indsat lige nu? Så er det bekræftet.
+  const exactMatch = result?.products?.find((p) => {
+    const guess = guessBrandAndModel(p.title);
+    return guess.model && checkedTerm && guess.model.toUpperCase() === checkedTerm.toUpperCase();
+  });
+
   return (
     <div className="mt-1">
       {loading && <p className="text-[10px] text-muted flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Tjekker punkt1.dk...</p>}
       {error && <p className="text-[10px] text-danger">{error}</p>}
-      {!loading && !error && result && result.matchCount === 0 && (
-        <p className="text-[10px] text-muted">Intet fundet på punkt1.dk for "{checkedTerm}".</p>
+
+      {!loading && !error && result && exactMatch && (
+        <p className="text-[11px] text-success font-semibold flex items-center gap-1.5">
+          <CheckCircle2 size={13} className="shrink-0" /> Bekræftet på punkt1.dk: {exactMatch.title}
+        </p>
       )}
-      {!loading && !error && result && result.matchCount > 0 && (
+
+      {!loading && !error && result && !exactMatch && result.matchCount === 0 && (
+        <p className="text-[11px] text-danger font-semibold flex items-center gap-1.5">
+          <XCircle size={13} className="shrink-0" /> Intet fundet på punkt1.dk for "{checkedTerm}" — tjek stavning.
+        </p>
+      )}
+
+      {!loading && !error && result && !exactMatch && result.matchCount > 0 && (
         <div className="space-y-1">
           {result.products.slice(0, 3).map((p, i) => (
             <button
@@ -180,7 +199,7 @@ function LineItemEditor({ lineItem, productTypes, productCategories, primaryServ
           />
         </div>
       </div>
-      <p className="text-[10px] text-muted mb-2">Modelnummer tjekkes automatisk mod punkt1.dk's varekartotek — vælg et forslag for at udfylde mærke og modelnummer.</p>
+      <p className="text-[10px] text-muted mb-2">Modelnummer tjekkes automatisk mod punkt1.dk's varekartotek — grønt flueben = bekræftet, rødt kryds = ikke fundet.</p>
 
       <label className="flex items-center gap-2 mb-2 text-xs text-muted">
         <Clock size={12} className="shrink-0" />
