@@ -180,11 +180,24 @@ const weekDays = (iso) => {
   });
 };
 
+// Sagsoverskrift til lister (Planlægning, Montør, Arkiv, Kræver handling
+// m.fl.): viser YDELSE + VAREKATEGORI + evt. TILLÆGSYDELSER pr. varelinje,
+// så man kan danne sig et overblik over selve ARBEJDET uden at åbne sagen
+// først. Mærke/model hører til varelinje-detaljerne (se lineItemLabel,
+// bruges bl.a. på Montør- og Lager-siden) og gentages bevidst ikke her.
 const buildTitle = (lineItems) => {
   if (!lineItems || lineItems.length === 0) return "Ny opgave";
-  const names = lineItems.map(lineItemLabel).filter(Boolean);
-  if (names.length === 0) return "Ny opgave";
-  return `Levering: ${names.join(" + ")}`;
+  const parts = lineItems
+    .map((v) => {
+      const category = v.varetypeId === OTHER_PRODUCT_TYPE_ID ? (v.varetypeTekst || "Speciel opgave") : (v.varetypeNavn || "Ukendt vare");
+      const service = v.primaerYdelse?.navn;
+      const addOns = (v.tillaeg || []).map((y) => y.navn).filter(Boolean);
+      let text = service ? `${service} – ${category}` : category;
+      if (addOns.length > 0) text += ` (+ ${addOns.join(", ")})`;
+      return text;
+    })
+    .filter(Boolean);
+  return parts.length > 0 ? parts.join(" + ") : "Ny opgave";
 };
 
 const keyAccessText = (n) => {
