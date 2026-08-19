@@ -21,6 +21,12 @@ const addDays = (iso, days) => {
 };
 const formatLongDate = (iso) =>
   new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { weekday: "long", day: "numeric", month: "long" });
+// Kort datoformat ("18. aug") - til brug på sagskort, hvor der ikke er
+// plads til den lange udgave (ugedag + fuld måned), men datoen stadig skal
+// være synlig - fx i lister der spænder over flere dage (Kræver handling,
+// Arkiv, Planlagt fremad/Afsluttet).
+const formatShortDate = (iso) =>
+  new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "short" });
 const isToday = (iso) => iso === todayISO();
 
 const formatDuration = (min) => {
@@ -271,7 +277,7 @@ const PAGES_FOR_ROLE = {
 };
 
 export {
-  uid, now, todayISO, addDays, formatLongDate, isToday, formatDuration, formatTime, totalMinutes, serviceIcon,
+  uid, now, todayISO, addDays, formatLongDate, formatShortDate, isToday, formatDuration, formatTime, totalMinutes, serviceIcon,
   DEFAULT_SERVICE_MINUTES, createAddOn, OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID,
   DEFAULT_PRODUCT_CATEGORIES, DEFAULT_PRODUCT_TYPES, DEFAULT_PRIMARY_SERVICES, DEFAULT_ADD_ON_SERVICES, availableAddOns,
   createLineItem, lineItemLabel, lineItemMinutes, orderExpectedMinutes, normalizeAddress, buildingKey, areaKey,
