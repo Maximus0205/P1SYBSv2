@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, Users, RefreshCw, KeyRound, Clock, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid } from "lucide-react";
+import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, Users, RefreshCw, KeyRound, Clock, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid, MapPin, Phone } from "lucide-react";
 import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatDuration, technicianColor, dailyOrderCompare } from "../data/domain";
 import { getAiRouteSuggestion } from "../lib/dataStore";
 import { geocodeAddresses, routeDrivingTime } from "../lib/geocoding";
@@ -292,6 +292,16 @@ function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnician
           </div>
           <p className="text-sm font-semibold text-ink truncate">{order.kunde?.navn}</p>
           <p className="text-xs text-muted truncate">{buildTitle(order.varelinjer)}</p>
+          {order.kunde?.adresse && (
+            <p className="text-[11px] text-muted truncate flex items-center gap-1">
+              <MapPin size={10} className="shrink-0" /> {order.kunde.adresse}
+            </p>
+          )}
+          {order.kunde?.telefon && (
+            <p className="text-[11px] text-muted truncate flex items-center gap-1">
+              <Phone size={10} className="shrink-0" /> {order.kunde.telefon}
+            </p>
+          )}
         </div>
       </div>
       <select
