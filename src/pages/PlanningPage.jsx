@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, Users, RefreshCw, Pencil, KeyRound, Clock, Check, Maximize2, CheckCheck, Car, Loader2 } from "lucide-react";
+import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, Users, RefreshCw, Pencil, KeyRound, Clock, Check, Maximize2, CheckCheck, Car, Loader2, Building2 } from "lucide-react";
 import { orderExpectedMinutes, todayISO, addDays, weekDays, vehicleLabel, vehicleBlockedByTimeOff, buildTitle, isToday, formatLongDate, formatDuration, technicianColor, STATUS_META, dailyOrderCompare } from "../data/domain";
 import { getAiRouteSuggestion } from "../lib/dataStore";
 import { geocodeAddresses, routeDrivingTime } from "../lib/geocoding";
@@ -267,13 +267,6 @@ function shortDayLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateStr
 function shortDateLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "short" }); }
 
 // ---------------- Ugekalender (fuldskærm): alle sager som kort, pr. montør, pr. dag ----------------
-// Det egentlige omfordelingsværktøj. Rækker = montører (+ "Ikke tildelt"),
-// kolonner = ugedage - en rigtig ressourcekalender, ikke bare et talskema.
-// Hvert kort viser tid, kunde og opgave, kan omfordeles til en anden montør
-// direkte fra kortet, og kan flyttes op/ned i BESØGSRÆKKEFØLGEN for den
-// dag/montør (se dailyOrderCompare i domain.js). Klik på selve kortteksten
-// åbner sagen i fuld visning (lukker kalenderen, samme mønster som resten
-// af appen).
 function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnicianId, color, onLeave, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
   return (
     <div
@@ -403,10 +396,6 @@ function WeekBoardModal({ orders, technicians, timeOff, onAssign, onReorder, onO
   );
 }
 
-// Lille "launcher"-kort på selve siden - viser et hurtigt pulstjek (denne
-// uges samlede antal sager) og åbner den fulde ugekalender (WeekBoardModal)
-// ved klik. Selve omfordelingen sker i modalen, ikke her - det er bevidst
-// holdt til ÉT sted, i stedet for at have to delvist overlappende versioner.
 function QuickReassign({ orders, technicians, timeOff, onAssign, onReorder, onOpen }) {
   const [boardOpen, setBoardOpen] = useState(false);
   const week = weekDays(todayISO());
@@ -442,15 +431,12 @@ const toMinutes = (hhmm) => {
   return h * 60 + m;
 };
 
-// Rækkehovedet viser nu BÅDE forventet arbejdstid (varelinjer) OG estimeret
-// KØRETID mellem dagens stop, lagt sammen til ét realistisk "i alt" for
-// montørens dag - det var netop det der manglede: arbejdstid alene giver et
-// for optimistisk billede, når stoppene reelt ligger spredt. Køretiden
-// beregnes ud fra dagens BESØGSRÆKKEFØLGE (samme rækkefølge som ellers
-// bruges i appen, se dailyOrderCompare) via ORS' distance-matrix - præcis
-// samme underliggende funktion (routeDrivingTime) som allerede bruges til
-// afstandsforslag i bookingflowet, nu bare anvendt på en hel dags rute i
-// stedet for én enkelt afstand.
+// Rækkehovedet viser forventet arbejdstid (varelinjer) + estimeret KØRETID
+// - nu inklusive strækningen FRA FIRMAET og ud til første stop (ikke kun
+// mellem stoppene undervejs), da montøren jo altid kører ud hjemmefra
+// firmaet, ikke fra det første kundebesøg. Køretiden beregnes langs dagens
+// BESØGSRÆKKEFØLGE (samme rækkefølge man kan justere med op/ned-pilene
+// andre steder i appen) via ORS' distance-matrix.
 function TimelineRowHeader({ r, loadMinutes, driveMinutes, driveLoading, vehicles, technicians, timeOff, selectedDate, onUpdateTechnician }) {
   const [editing, setEditing] = useState(false);
   const [vehicleId, setVehicleId] = useState(r.bilId || "");
@@ -507,7 +493,7 @@ function TimelineRowHeader({ r, loadMinutes, driveMinutes, driveLoading, vehicle
   );
 }
 
-function DailyTimeline({ orders, technicians, vehicles, timeOff, selectedDate, onOpen, onUpdateTechnician }) {
+function DailyTimeline({ orders, technicians, vehicles, timeOff, store, selectedDate, onOpen, onUpdateTechnician }) {
   const [open, setOpen] = useState(true);
   const [driveMinutesByTechnician, setDriveMinutesByTechnician] = useState({}); // { technicianId: minutes | null }
   const [driveLoading, setDriveLoading] = useState(false);
@@ -522,9 +508,17 @@ function DailyTimeline({ orders, technicians, vehicles, timeOff, selectedDate, o
   const rows = [{ id: null, navn: "Ikke tildelt", bil: "" }, ...technicians];
   const overlaps = (a, b) => toMinutes(a.start) < toMinutes(b.slut) && toMinutes(b.start) < toMinutes(a.slut);
 
+  // Firmaets adresse (allerede geokodet - se App.jsx/getStore) bruges som
+  // FAST STARTPUNKT for hver montørs rute, siden dagen jo altid begynder
+  // med at køre ud fra firmaet, ikke fra den første kundeadresse.
+  const storeCoord = store?.lat != null && store?.lon != null ? { lat: store.lat, lon: store.lon } : null;
+  // Uden en kendt firmaadresse kræves stadig mindst 2 stop for overhovedet
+  // at kunne regne noget (kørsel MELLEM stop) - med en kendt firmaadresse
+  // kan selv ÉT stop få et estimat (kørsel firma -> det ene stop).
+  const minStopsForEstimate = storeCoord ? 1 : 2;
+
   // Dagens rute PR. MONTØR, i besøgsrækkefølge (dailyOrderCompare - samme
   // rækkefølge man kan justere med op/ned-pilene andre steder i appen).
-  // Bruges til at beregne realistisk køretid MELLEM stoppene.
   const technicianDayOrders = useMemo(
     () => technicians.map((m) => ({
       id: m.id,
@@ -533,25 +527,26 @@ function DailyTimeline({ orders, technicians, vehicles, timeOff, selectedDate, o
     [orders, technicians, selectedDate]
   );
 
-  // Genberegnes kun når selve INDHOLDET (hvilke sager, i hvilken
-  // rækkefølge, med hvilke adresser) reelt ændrer sig - ikke ved hvert
-  // eneste render. Et enkelt kald pr. montør med >= 2 stop denne dag.
+  // Genberegnes kun når selve INDHOLDET reelt ændrer sig (hvilke sager, i
+  // hvilken rækkefølge, med hvilke adresser, eller firmaets koordinater
+  // ændrer sig) - ikke ved hvert eneste render.
   const signature = technicianDayOrders
     .map((g) => `${g.id}:${g.orders.map((o) => `${o.id}|${o.kunde?.adresse || ""}`).join(",")}`)
-    .join(";");
+    .join(";") + `|firma:${storeCoord ? `${storeCoord.lat},${storeCoord.lon}` : "ukendt"}`;
 
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      const relevant = technicianDayOrders.filter((g) => g.orders.length >= 2);
+      const relevant = technicianDayOrders.filter((g) => g.orders.length >= minStopsForEstimate);
       if (relevant.length === 0) { setDriveMinutesByTechnician({}); return; }
       setDriveLoading(true);
       const results = {};
       for (const g of relevant) {
         const addresses = g.orders.map((o) => o.kunde?.adresse).filter(Boolean);
-        if (addresses.length < 2) { results[g.id] = null; continue; }
+        if (addresses.length === 0) { results[g.id] = null; continue; }
         const coordMap = await geocodeAddresses(addresses);
-        const points = addresses.map((a) => coordMap.get(a.trim().toLowerCase())).filter(Boolean);
+        const stopPoints = addresses.map((a) => coordMap.get(a.trim().toLowerCase())).filter(Boolean);
+        const points = storeCoord ? [storeCoord, ...stopPoints] : stopPoints;
         results[g.id] = points.length >= 2 ? await routeDrivingTime(points) : null;
       }
       if (!cancelled) { setDriveMinutesByTechnician(results); setDriveLoading(false); }
@@ -570,7 +565,12 @@ function DailyTimeline({ orders, technicians, vehicles, timeOff, selectedDate, o
       </button>
       {open && (
         <>
-          <p className="text-[11px] text-muted px-3 pb-2 flex items-center gap-1.5"><Car size={11} className="shrink-0" /> "I alt" pr. montør inkluderer nu et estimat for kørsel mellem dagens stop, ikke kun arbejdstid.</p>
+          <p className="text-[11px] text-muted px-3 pb-2 flex items-center gap-1.5">
+            {storeCoord ? <Building2 size={11} className="shrink-0" /> : <Car size={11} className="shrink-0" />}
+            {storeCoord
+              ? "\"I alt\" inkluderer kørsel fra firmaets adresse og ud til første stop, samt kørsel mellem dagens øvrige stop."
+              : "\"I alt\" inkluderer kørsel mellem dagens stop. Sæt butikkens adresse op under Admin for også at medregne turen ud fra firmaet."}
+          </p>
           <div className="border-t border-line overflow-x-auto">
             <div style={{ width: width + 160, minWidth: "100%" }}>
               <div className="flex sticky top-0 bg-white z-10 border-b border-line">
@@ -595,7 +595,7 @@ function DailyTimeline({ orders, technicians, vehicles, timeOff, selectedDate, o
                         r={r}
                         loadMinutes={loadMinutes}
                         driveMinutes={driveMinutesByTechnician[r.id]}
-                        driveLoading={driveLoading && stopCount >= 2 && driveMinutesByTechnician[r.id] === undefined}
+                        driveLoading={driveLoading && stopCount >= minStopsForEstimate && driveMinutesByTechnician[r.id] === undefined}
                         vehicles={vehicles}
                         technicians={technicians}
                         timeOff={timeOff}
@@ -636,7 +636,7 @@ function DailyTimeline({ orders, technicians, vehicles, timeOff, selectedDate, o
   );
 }
 
-function PlanningPage({ orders, technicians, vehicles, timeOff, selectedDate, onDateChange, onOpen, onCycleStatus, onAssign, onReorder, onUpdateTechnician, onRefresh, refreshing }) {
+function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedDate, onDateChange, onOpen, onCycleStatus, onAssign, onReorder, onUpdateTechnician, onRefresh, refreshing }) {
   const [search, setSearch] = useState("");
   const { needsAction, inProgressToday, upcoming, done } = useMemo(() => classify(orders, technicians, vehicles, timeOff), [orders, technicians, vehicles, timeOff]);
 
@@ -724,7 +724,7 @@ function PlanningPage({ orders, technicians, vehicles, timeOff, selectedDate, on
             </div>
           )}
 
-          <DailyTimeline orders={orders} technicians={technicians} vehicles={vehicles} timeOff={timeOff} selectedDate={selectedDate} onOpen={onOpen} onUpdateTechnician={onUpdateTechnician} />
+          <DailyTimeline orders={orders} technicians={technicians} vehicles={vehicles} timeOff={timeOff} store={store} selectedDate={selectedDate} onOpen={onOpen} onUpdateTechnician={onUpdateTechnician} />
 
           <div className="space-y-2">
             <CollapsibleSection title="Planlagt fremad" icon={CalendarClock} colorClass="text-muted" items={upcoming} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} emptyText="Ingen kommende planlagte sager." />
