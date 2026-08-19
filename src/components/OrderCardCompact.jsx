@@ -20,6 +20,10 @@ import { StatusBadge, LineItemPills } from "../components/common";
 // given sag rent faktisk lå på uden at åbne den. Er sagen afsluttet, og
 // tidspunktet for det er kendt, vises det som en ekstra lille linje.
 //
+// Kunde-/adresselinjen viser nu ALTID telefonnummer ud over navn og
+// adresse (når det findes) - kortet bruges ofte som eneste overblik i
+// lister, og telefonnummeret skal derfor være synligt uden at åbne sagen.
+//
 // VIGTIGT om min-w-0: Kortet ligger som CSS grid/flex-element i sine
 // forældre (fx grid'et i PlanningPage). Grid- og flex-elementer har som
 // standard en usynlig "min-width: auto", som betyder de IKKE må blive
@@ -43,7 +47,7 @@ function OrderCardCompact({ order, technicians, onOpen, onCycleStatus, onAssign,
             <span className="font-mono text-[10px] text-faint">#{order.nr}</span>
           </div>
           <p className="font-semibold text-sm text-ink truncate">{buildTitle(order.varelinjer)}</p>
-          <p className="text-xs text-muted truncate">{order.kunde.navn} · {order.kunde.adresse}</p>
+          <p className="text-xs text-muted truncate">{order.kunde.navn} · {order.kunde.adresse}{order.kunde.telefon ? ` · ${order.kunde.telefon}` : ""}</p>
           {!minimal && <p className="text-[10px] text-muted flex items-center gap-1 mt-0.5"><Clock size={10} /> {formatDuration(orderExpectedMinutes(order))} forventet</p>}
           {order.status === "afsluttet" && order.afsluttetTidspunkt && (
             <p className="text-[10px] text-success flex items-center gap-1 mt-0.5"><CalendarCheck2 size={10} /> Afsluttet {formatShortDate(order.afsluttetTidspunkt.slice(0, 10))}</p>
