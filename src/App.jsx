@@ -4,10 +4,6 @@ import { supabase } from "./lib/supabaseClient";
 import {
   getOrders, saveOrder, deleteOrder, getFreshOrder,
   getVehicles, saveVehicle, deleteVehicle, seedDefaultVehicles,
-  getProductTypes, saveProductType, deleteProductType, seedDefaultProductTypes,
-  getProductCategories, saveProductCategory, deleteProductCategory, seedDefaultProductCategories,
-  getPrimaryServices, savePrimaryService, deletePrimaryService, seedDefaultPrimaryServices,
-  getAddOnServices, saveAddOnService, deleteAddOnService, seedDefaultAddOnServices,
   getOwnProfile, getStoreUsers, updateProfile,
   createUserAsAdmin, resetPasswordAsAdmin,
   getTimeOff, addTimeOff as addTimeOffApi, deleteTimeOff as deleteTimeOffApi,
@@ -15,11 +11,10 @@ import {
 } from "./lib/dataStore";
 import {
   uid, todayISO, dailyOrderCompare, timeSlotById,
-  DEFAULT_PRODUCT_TYPES, DEFAULT_PRODUCT_CATEGORIES,
-  DEFAULT_PRIMARY_SERVICES, DEFAULT_ADD_ON_SERVICES,
   DEFAULT_VEHICLES,
   PAGES_FOR_ROLE,
 } from "./data/domain";
+import { useCatalog } from "./hooks/useCatalog";
 
 import { TopNav } from "./components/TopNav";
 import { LoginPage } from "./components/LoginPage";
@@ -43,14 +38,17 @@ export default function App() {
   const [vehicles, setVehicles] = useState([]);
   const [users, setUsers] = useState([]);
   const [timeOff, setTimeOff] = useState([]);
-  const [productTypes, setProductTypes] = useState([]);
-  const [productCategories, setProductCategories] = useState([]);
-  const [primaryServices, setPrimaryServices] = useState([]);
-  const [addOnServices, setAddOnServices] = useState([]);
   const [page, setPage] = useState("salg");
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [selectedTechnicianId, setSelectedTechnicianId] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
+
+  // FASE 1 af arkitektur-oprydningen (august 2026): varekataloget (varetyper,
+  // kategorier, primære ydelser, tillægsydelser) er udtrukket til sin egen
+  // hook - se hooks/useCatalog.js for selve state/CRUD-logikken og
+  // begrundelsen. App.jsx kalder den blot og videregiver dens data/
+  // funktioner, ligesom resten af siderne allerede modtager alt andet.
+  const catalog = useCatalog(profile?.butikId);
 
   // "Teknikere" er ikke længere en selvstændig ting i databasen — det er
   // brugere/profiler med rolle "montor". Vi udleder listen her, i samme form
@@ -62,32 +60,21 @@ export default function App() {
       return { id: b.id, navn: b.navn, bilId: b.bilId || null, bil: linkedVehicle ? linkedVehicle.nummerplade : "" };
     });
 
-  // Henter alt for den butik den indloggede bruger hører til.
+  // Henter det, der (indtil videre) stadig ligger direkte i App.jsx: ordrer,
+  // biler, brugere og fravær. Varekataloget håndteres nu af useCatalog
+  // ovenfor, og hentes/genindlæses automatisk uafhængigt af dette kald.
   const loadAll = async (storeId) => {
-    if (!storeId) { setOrders([]); setVehicles([]); setProductTypes([]); setProductCategories([]); setPrimaryServices([]); setAddOnServices([]); setUsers([]); setTimeOff([]); return; }
-    const [o, v, pt, pc, ps, aos, u, t] = await Promise.all([
+    if (!storeId) { setOrders([]); setVehicles([]); setUsers([]); setTimeOff([]); return; }
+    const [o, v, u, t] = await Promise.all([
       getOrders(storeId),
       getVehicles(storeId),
-      getProductTypes(storeId),
-      getProductCategories(storeId),
-      getPrimaryServices(storeId),
-      getAddOnServices(storeId),
       getStoreUsers(storeId),
       getTimeOff(storeId),
     ]);
-    // Første gang butikken bruges, er listerne tomme - sæt fornuftige standarder.
+    // Første gang butikken bruges, er bil-listen tom - sæt fornuftige standarder.
     const finalVehicles = v.length > 0 ? v : DEFAULT_VEHICLES;
-    const finalCategories = pc.length > 0 ? pc : DEFAULT_PRODUCT_CATEGORIES;
-    const finalProductTypes = pt.length > 0 ? pt : DEFAULT_PRODUCT_TYPES;
-    const finalPrimaryServices = ps.length > 0 ? ps : DEFAULT_PRIMARY_SERVICES;
-    const finalAddOnServices = aos.length > 0 ? aos : DEFAULT_ADD_ON_SERVICES;
     if (v.length === 0) seedDefaultVehicles(storeId, finalVehicles);
-    if (pc.length === 0) seedDefaultProductCategories(storeId, finalCategories);
-    if (pt.length === 0) seedDefaultProductTypes(storeId, finalProductTypes);
-    if (ps.length === 0) seedDefaultPrimaryServices(storeId, finalPrimaryServices);
-    if (aos.length === 0) seedDefaultAddOnServices(storeId, finalAddOnServices);
-    setOrders(o); setVehicles(finalVehicles); setProductCategories(finalCategories); setProductTypes(finalProductTypes);
-    setPrimaryServices(finalPrimaryServices); setAddOnServices(finalAddOnServices); setUsers(u); setTimeOff(t);
+    setOrders(o); setVehicles(finalVehicles); setUsers(u); setTimeOff(t);
   };
 
   const reloadProfile = async (userId) => {
@@ -133,7 +120,7 @@ export default function App() {
       } else {
         setProfile(null);
         setStore(null);
-        setOrders([]); setVehicles([]); setProductTypes([]); setProductCategories([]); setPrimaryServices([]); setAddOnServices([]); setUsers([]); setTimeOff([]);
+        setOrders([]); setVehicles([]); setUsers([]); setTimeOff([]);
         setSelectedId(null);
       }
     });
@@ -142,7 +129,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const refresh = async () => { setRefreshing(true); if (profile?.butikId) await loadAll(profile.butikId); setRefreshing(false); };
+  const refresh = async () => { setRefreshing(true); if (profile?.butikId) await Promise.all([loadAll(profile.butikId), catalog.reload()]); setRefreshing(false); };
 
   // ---------- Generiske hjælpere: gem/slet ÉT element lokalt + i databasen ----------
   // (Hver liste har sin egen sky-funktion, men mønsteret er ens: opdatér
@@ -152,18 +139,6 @@ export default function App() {
 
   const saveOneVehicle = (vehicle) => { setVehicles((prev) => (prev.some((b) => b.id === vehicle.id) ? prev.map((b) => (b.id === vehicle.id ? vehicle : b)) : [...prev, vehicle])); if (profile?.butikId) saveVehicle(profile.butikId, vehicle); };
   const removeOneVehicle = (id) => { setVehicles((prev) => prev.filter((b) => b.id !== id)); if (profile?.butikId) deleteVehicle(profile.butikId, id); };
-
-  const saveOneProductCategory = (k) => { setProductCategories((prev) => (prev.some((x) => x.id === k.id) ? prev.map((x) => (x.id === k.id ? k : x)) : [...prev, k])); if (profile?.butikId) saveProductCategory(profile.butikId, k); };
-  const removeOneProductCategory = (id) => { setProductCategories((prev) => prev.filter((x) => x.id !== id)); if (profile?.butikId) deleteProductCategory(profile.butikId, id); };
-
-  const saveOneProductType = (v) => { setProductTypes((prev) => (prev.some((x) => x.id === v.id) ? prev.map((x) => (x.id === v.id ? v : x)) : [...prev, v])); if (profile?.butikId) saveProductType(profile.butikId, v); };
-  const removeOneProductType = (id) => { setProductTypes((prev) => prev.filter((x) => x.id !== id)); if (profile?.butikId) deleteProductType(profile.butikId, id); };
-
-  const saveOnePrimaryService = (p) => { setPrimaryServices((prev) => (prev.some((x) => x.id === p.id) ? prev.map((x) => (x.id === p.id ? p : x)) : [...prev, p])); if (profile?.butikId) savePrimaryService(profile.butikId, p); };
-  const removeOnePrimaryService = (id) => { setPrimaryServices((prev) => prev.filter((x) => x.id !== id)); if (profile?.butikId) deletePrimaryService(profile.butikId, id); };
-
-  const saveOneAddOnService = (t) => { setAddOnServices((prev) => (prev.some((x) => x.id === t.id) ? prev.map((x) => (x.id === t.id ? t : x)) : [...prev, t])); if (profile?.butikId) saveAddOnService(profile.butikId, t); };
-  const removeOneAddOnService = (id) => { setAddOnServices((prev) => prev.filter((x) => x.id !== id)); if (profile?.butikId) deleteAddOnService(profile.butikId, id); };
 
   const addVehicle = (navn, nummerplade) => saveOneVehicle({ id: uid(), navn, nummerplade, lukket: false, lukketAarsag: "" });
   const updateVehicle = (id, fields) => { const b = vehicles.find((x) => x.id === id); if (b) saveOneVehicle({ ...b, ...fields }); };
@@ -266,44 +241,6 @@ export default function App() {
     if (profile?.butikId) await loadAll(profile.butikId);
   };
   const resetPassword = (userId, newPassword) => resetPasswordAsAdmin(userId, newPassword);
-
-  // ---------- Varer & ydelser ----------
-  // Relationerne (hvilke tillægsydelser der gælder for hvilke varetyper/
-  // primære ydelser) ligger udelukkende på addOnServices selv (se
-  // domain.js) - derfor rydder vi op i addOnServices, når en varetype eller
-  // primær ydelse slettes, så der ikke bliver hængende referencer til noget
-  // der ikke findes mere. Der sættes IKKE noget tidsestimat her - det tastes
-  // udelukkende manuelt for den enkelte booking i sælgerens flow.
-  const addProductCategory = (navn) => saveOneProductCategory({ id: uid(), navn });
-  const updateProductCategory = (id, navn) => { const k = productCategories.find((x) => x.id === id); if (k) saveOneProductCategory({ ...k, navn }); };
-  const deleteProductCategory = (id) => {
-    const inUse = productTypes.filter((v) => v.kategoriId === id).length;
-    if (inUse > 0 && !window.confirm(`${inUse} varetype(r) hører til denne kategori. Slet alligevel? (Varetyperne beholdes, men mister kategori-tilknytningen.)`)) return;
-    removeOneProductCategory(id);
-  };
-
-  const addProductType = (navn, kategoriId) => saveOneProductType({ id: uid(), navn, kategoriId: kategoriId || null });
-  const updateProductType = (id, fields) => { const v = productTypes.find((x) => x.id === id); if (v) saveOneProductType({ ...v, ...fields }); };
-  const deleteProductType = (id) => {
-    if (!window.confirm("Slet denne varetype? Allerede bookede sager beholder deres oplysninger uændret.")) return;
-    removeOneProductType(id);
-    addOnServices.filter((t) => (t.varetyper || []).includes(id)).forEach((t) => saveOneAddOnService({ ...t, varetyper: t.varetyper.filter((vid) => vid !== id) }));
-  };
-
-  const addPrimaryService = (navn) => saveOnePrimaryService({ id: uid(), navn });
-  const updatePrimaryService = (id, fields) => { const p = primaryServices.find((x) => x.id === id); if (p) saveOnePrimaryService({ ...p, ...fields }); };
-  const deletePrimaryService = (id) => {
-    if (!window.confirm("Slet denne primære ydelse? Allerede bookede sager beholder deres oplysninger uændret.")) return;
-    removeOnePrimaryService(id);
-    addOnServices.filter((t) => (t.primaerYdelser || []).includes(id)).forEach((t) => saveOneAddOnService({ ...t, primaerYdelser: t.primaerYdelser.filter((pid) => pid !== id) }));
-  };
-
-  const addAddOnService = (navn) => saveOneAddOnService({ id: uid(), navn, primaerYdelser: [], varetyper: [] });
-  const updateAddOnService = (id, fields) => { const t = addOnServices.find((x) => x.id === id); if (t) saveOneAddOnService({ ...t, ...fields }); };
-  const deleteAddOnService = (id) => {
-    if (!window.confirm("Slet denne tillægsydelse? Allerede bookede sager beholder deres oplysninger uændret.")) return;
-    removeOneAddOnService(id);
-  };
 
   const assignTechnician = (orderId, technicianId) => { const s = orders.find((x) => x.id === orderId); if (s) saveOneOrder({ ...s, montorId: technicianId }); };
   const updateTimeSlot = (orderId, timeSlotId) => { const s = orders.find((x) => x.id === orderId); if (s) saveOneOrder({ ...s, tidsrumId: timeSlotId }); };
@@ -461,7 +398,7 @@ export default function App() {
             onDuplicate={(selectedLineItems) => duplicateOrder(selected, selectedLineItems)}
           />
         ) : page === "salg" ? (
-          <SalesPage orders={orders} technicians={technicians} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onAdd={addOrder} onImport={importOrders} storeFocus={store?.lat && store?.lon ? { lat: store.lat, lon: store.lon } : null} />
+          <SalesPage orders={orders} technicians={technicians} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onAdd={addOrder} onImport={importOrders} storeFocus={store?.lat && store?.lon ? { lat: store.lat, lon: store.lon } : null} />
         ) : page === "planlaegning" ? (
           <PlanningPage
             orders={orders} technicians={technicians} vehicles={vehicles} timeOff={timeOff}
@@ -488,13 +425,13 @@ export default function App() {
         ) : (
           <AdminPage
             technicians={technicians} vehicles={vehicles} users={users} timeOff={timeOff} currentUserId={profile.id}
-            productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices}
+            productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices}
             onUpdateTechnicianVehicle={updateTechnicianVehicle} onAddVehicle={addVehicle} onUpdateVehicle={updateVehicle} onDeleteVehicle={deleteVehicleWithConfirm} onToggleVehicleClosed={toggleVehicleClosed}
             onAddUser={addUser} onUpdateUser={updateUser} onDeleteUser={deleteUser} onResetPassword={resetPassword}
-            onAddProductCategory={addProductCategory} onUpdateProductCategory={updateProductCategory} onDeleteProductCategory={deleteProductCategory}
-            onAddProductType={addProductType} onUpdateProductType={updateProductType} onDeleteProductType={deleteProductType}
-            onAddPrimaryService={addPrimaryService} onUpdatePrimaryService={updatePrimaryService} onDeletePrimaryService={deletePrimaryService}
-            onAddAddOnService={addAddOnService} onUpdateAddOnService={updateAddOnService} onDeleteAddOnService={deleteAddOnService}
+            onAddProductCategory={catalog.addProductCategory} onUpdateProductCategory={catalog.updateProductCategory} onDeleteProductCategory={catalog.deleteProductCategory}
+            onAddProductType={catalog.addProductType} onUpdateProductType={catalog.updateProductType} onDeleteProductType={catalog.deleteProductType}
+            onAddPrimaryService={catalog.addPrimaryService} onUpdatePrimaryService={catalog.updatePrimaryService} onDeletePrimaryService={catalog.deletePrimaryService}
+            onAddAddOnService={catalog.addAddOnService} onUpdateAddOnService={catalog.updateAddOnService} onDeleteAddOnService={catalog.deleteAddOnService}
             onAddTimeOff={addTimeOff} onDeleteTimeOff={deleteTimeOff}
           />
         )}
