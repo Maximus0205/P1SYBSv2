@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
+import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from "react-router-dom";
 
 import { todayISO, PAGES_FOR_ROLE } from "./data/domain";
 import { useSession } from "./hooks/useSession";
@@ -21,33 +22,101 @@ import { AdminPage } from "./pages/AdminPage";
 import { SystemAdminPage } from "./pages/SystemAdminPage";
 
 // ---------------------------------------------------------------------------
-// ARKITEKTUR-OPRYDNING FULDFØRT (august 2026, 4 faser): App.jsx var ved at
-// blive for stor og blande for mange ansvarsområder (se rapport 22. august
-// 2026: ~750 linjer, al state/CRUD for hele appen ét sted). Al domænelogik
-// er nu udtrukket til dedikerede hooks (se hooks/-mappen):
-//   useSession  - login/session/profil/butik (den mest følsomme del,
-//                 indeholder en kendt onAuthStateChange-fælde - se der)
-//   useCatalog  - varekatalog (varetyper/kategorier/ydelser/tillæg)
-//   useVehicles - biler
-//   useTimeOff  - fravær
-//   useUsers    - brugere
-//   useOrders   - ordrer (booking, status, pluk, rækkefølge, dupliker,
-//                 noter/billeder/rapporter/tid/underskrift)
-// App.jsx's tilbageværende ansvar er nu udelukkende: kalde disse hooks,
-// håndtere den lille smule NAVIGATIONS-UI-state der krydser flere hooks
-// (page, selectedId osv.), og selve routing/visningen. Ren komposition,
-// ikke selve forretningslogikken.
+// ARKITEKTUR-OPRYDNING FULDFØRT (august 2026, 4 faser) + RIGTIG URL-ROUTING
+// (samme måned): App.jsx var ved at blive for stor og blande for mange
+// ansvarsområder (se rapport 22. august 2026). Al domænelogik er udtrukket
+// til dedikerede hooks (se hooks/-mappen: useSession, useCatalog,
+// useVehicles, useTimeOff, useUsers, useOrders). Navigation er nu en RIGTIG
+// URL (via react-router-dom, HashRouter - se main.jsx for hvorfor hash), i
+// stedet for kun React-state - det var den håndrullede hash-parsing
+// FØRSTE forsøg på at løse, men en rigtig routing-løsning håndterer det
+// robust for hele appen på én gang: fane-refresh, en åben sags egen URL
+// (/sag/:id), browser-historik (tilbage/frem), og rolle-baseret adgang -
+// i stedet for at hver ny slags "hvad skal huskes" skal håndkodes for sig.
+// App.jsx's tilbageværende ansvar er nu: kalde hooks, definere rute-
+// opsætningen, og komponere sider.
 // ---------------------------------------------------------------------------
 
-// Læser den aktuelle fane ud af URL'ens hash (fx "#planlaegning" -> "planlaegning").
-// HASH-baseret (ikke rigtige URL-stier) er bevidst: GitHub Pages serverer
-// kun statiske filer uden server-side rewrites, så et refresh på en "rigtig"
-// sti som /P1SYBSv2/planlaegning ville give en 404, medmindre der er sat en
-// særlig fallback op. Hash-delen af en URL sendes ALDRIG til serveren - et
-// refresh på "#planlaegning" indlæser altid den samme index.html, hvorefter
-// JavaScript blot læser hashet og viser den rigtige fane. Ingen ny
-// afhængighed nødvendig for noget så simpelt.
-const pageFromHash = () => window.location.hash.replace(/^#\/?/, "") || null;
+// Beskytter en rute mod roller der ikke må se den - sender videre til
+// brugerens egen standardfane i stedet for at vise noget forkert. Dette er
+// UI-bekvemmelighed, IKKE selve sikkerhedsgrænsen - den reelle beskyttelse
+// ligger i Supabase RLS, ligesom resten af appen.
+function Gate({ allowed, page, children }) {
+  if (!allowed.includes(page)) return <Navigate to={`/${allowed[0] || "salg"}`} replace />;
+  return children;
+}
+
+// Egen rute pr. sag (/sag/:id) - løser netop det problem der udløste hele
+// denne omlægning: et refresh mens en specifik sag var åben, mistede
+// tidligere hvilken sag man kiggede på. "Tilbage" bruger browserens egen
+// historik (navigate(-1)), så man vender tilbage til PRÆCIS den fane man
+// kom fra, uanset hvilken det var.
+function OrderRoute({ orders, technicians, ordersStore, duplicateOrder }) {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const order = orders.find((o) => o.id === id);
+
+  if (!order) {
+    return (
+      <div>
+        <p className="text-sm text-muted mb-3">Sagen blev ikke fundet — den er muligvis slettet, eller linket er forkert.</p>
+        <button onClick={() => navigate(-1)} className="text-sm text-brand hover:underline">← Tilbage</button>
+      </div>
+    );
+  }
+
+  return (
+    <OrderView
+      order={order}
+      technicians={technicians}
+      onBack={() => navigate(-1)}
+      addNote={(t) => ordersStore.addNote(order.id, t)}
+      addPhoto={(p) => ordersStore.addPhoto(order.id, p)}
+      addReport={(t, x) => ordersStore.addReport(order.id, t, x)}
+      onCycleStatus={ordersStore.cycleStatus}
+      onClockIn={() => ordersStore.clockIn(order.id)}
+      onClockOut={() => ordersStore.clockOut(order.id)}
+      onToggleAddOn={(lineItemId, addOnId) => ordersStore.toggleAddOn(order.id, lineItemId, addOnId)}
+      onAddAddOn={(lineItemId, navn) => ordersStore.addAddOn(order.id, lineItemId, navn)}
+      onRemoveAddOn={(lineItemId, addOnId) => ordersStore.removeAddOn(order.id, lineItemId, addOnId)}
+      onUpdateBooking={(fields) => ordersStore.updateBooking(order.id, fields)}
+      onSaveSignature={(payload) => ordersStore.saveSignature(order.id, payload)}
+      onDuplicate={(selectedLineItems) => duplicateOrder(order, selectedLineItems)}
+    />
+  );
+}
+
+// Montør-fanen: montører ser altid deres EGEN rute (ingen valg nødvendigt).
+// Admin/sælger vælger en montør at se - valget ligger nu i URL'en
+// (/montor/:technicianId), så det heller ikke går tabt ved et refresh.
+function MontorRoute({ profile, orders, technicians, ordersStore, refresh, refreshing, selectedDate, onDateChange, onOpen }) {
+  const { technicianId } = useParams();
+  const navigate = useNavigate();
+
+  if (profile.rolle === "montor") {
+    const own = technicians.find((m) => m.id === profile.id);
+    if (!own) return <p className="text-sm text-muted">Din bruger er ikke koblet til en montør/bil-profil endnu — kontakt en administrator.</p>;
+    return (
+      <TechnicianRouteView
+        orders={orders} technician={own} selectedDate={selectedDate} onDateChange={onDateChange}
+        onOpen={onOpen} onCycleStatus={ordersStore.cycleStatus} onReorder={ordersStore.reorderOrder}
+        onRefresh={refresh} refreshing={refreshing}
+      />
+    );
+  }
+
+  const technician = technicians.find((m) => m.id === technicianId);
+  if (!technician) {
+    return <TechnicianPicker technicians={technicians} onSelect={(id) => navigate(`/montor/${id}`)} />;
+  }
+  return (
+    <TechnicianRouteView
+      orders={orders} technician={technician} selectedDate={selectedDate} onDateChange={onDateChange}
+      onOpen={onOpen} onCycleStatus={ordersStore.cycleStatus} onReorder={ordersStore.reorderOrder}
+      onChangeTechnician={() => navigate("/montor")} onRefresh={refresh} refreshing={refreshing}
+    />
+  );
+}
 
 export default function App() {
   const { loading, session, profile, store, logOut } = useSession();
@@ -62,68 +131,11 @@ export default function App() {
   const { users } = usersStore;
   const { orders } = ordersStore;
 
-  const [page, setPage] = useState("salg");
   const [selectedDate, setSelectedDate] = useState(todayISO());
-  const [selectedTechnicianId, setSelectedTechnicianId] = useState(null);
-  const [selectedId, setSelectedId] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // De sider den indloggede bruger reelt må se, ud fra rolle - bruges til
-  // både at vælge en fornuftig standardfane OG til at afvise et evt.
-  // hash i URL'en der peger på noget der ikke er tilladt (fx et gammelt
-  // bogmærke til "#admin" for en sælger, der ikke længere er admin).
-  // BEMÆRK: dette er UI-bekvemmelighed, ikke selve sikkerhedsgrænsen -
-  // den reelle beskyttelse ligger i Supabase RLS, ligesom resten af appen.
-  const allowedPages = profile?.butikId ? (PAGES_FOR_ROLE[profile.rolle] || ["salg"]) : (profile?.erSystemadmin ? ["systemadmin"] : []);
-
-  // Skifter fane OG opdaterer URL'ens hash, så et refresh på en anden fane
-  // end Salg forbliver på samme fane i stedet for at hoppe tilbage til
-  // startsiden - det var netop det, der irriterede.
-  const navigateTo = (key) => {
-    setPage(key);
-    setSelectedId(null);
-    if (pageFromHash() !== key) window.location.hash = key;
-  };
-
-  // Ved FØRSTE indlæsning af en profil (login, rolle- eller butiksskift):
-  // brug et gyldigt hash fra URL'en hvis der er ét (fx efter et refresh),
-  // ellers den fornuftige standardfane for rollen. Afhænger bevidst kun af
-  // de PRIMITIVE felter (id/butikId/rolle/erSystemadmin), ikke selve
-  // profile-objektet - det undgår at nulstille fanen ved hver eneste
-  // baggrunds-token-fornyelse (som giver et NYT profile-objekt med samme
-  // indhold), kun ved reelle ændringer.
-  useEffect(() => {
-    if (!profile) return;
-    const hashPage = pageFromHash();
-    if (hashPage && allowedPages.includes(hashPage)) {
-      setPage(hashPage);
-    } else if (profile.butikId) {
-      setPage(allowedPages[0]);
-    } else if (profile.erSystemadmin) {
-      setPage("systemadmin");
-    }
-    if (profile.butikId && profile.rolle === "montor") setSelectedTechnicianId(profile.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.id, profile?.butikId, profile?.rolle, profile?.erSystemadmin]);
-
-  // Reagerer på browserens tilbage/frem-knapper og manuelle hash-ændringer
-  // (ikke selve navigateTo-kald herfra i appen, som allerede opdaterer
-  // "page" direkte - denne fanger de tilfælde hvor URL'en ændrer sig UDEN
-  // om et almindeligt fane-klik).
-  useEffect(() => {
-    const onHashChange = () => {
-      if (!profile) return;
-      const h = pageFromHash();
-      if (h && allowedPages.includes(h)) { setPage(h); setSelectedId(null); }
-    };
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.rolle, profile?.butikId, profile?.erSystemadmin]);
-
-  // Ryd valgt sag ved log ud (session forsvinder -> profile bliver null).
-  useEffect(() => {
-    if (!profile) setSelectedId(null);
-  }, [profile]);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // "Teknikere" er ikke længere en selvstændig ting i databasen — det er
   // brugere/profiler med rolle "montor". Vi udleder listen her, i samme form
@@ -139,10 +151,10 @@ export default function App() {
 
   const refresh = async () => {
     if (!profile?.butikId) return;
+    setRefreshing(true);
     await Promise.all([ordersStore.reload(), catalog.reload(), vehiclesStore.reload(), timeOffStore.reload(), usersStore.reload()]);
+    setRefreshing(false);
   };
-  const [refreshing, setRefreshing] = useState(false);
-  const refreshWithSpinner = async () => { setRefreshing(true); await refresh(); setRefreshing(false); };
 
   // Sletning af en bil kræver en bekræftelse hvis den er tildelt en montør
   // - det tjek krydser vehicles OG users (technicians), og hører derfor
@@ -155,19 +167,15 @@ export default function App() {
   // Skifter hvilken bil en tekniker (bruger med rolle "montor") er tilknyttet.
   const updateTechnicianVehicle = (technicianId, vehicleId) => usersStore.updateUser(technicianId, { bilId: vehicleId || null });
 
-  const selected = orders.find((s) => s.id === selectedId);
-
-  // Dupliker/opfølgning - se OrderView.jsx. Åbner den nyoprettede sag med
-  // det samme, så dato/montør kan vælges - selve oprettelsen sker i
-  // useOrders-hooken, men hvilken sag der er "åben" (selectedId) er
-  // UI-state der hører hjemme her i App.jsx.
+  // Dupliker/opfølgning - se OrderView.jsx og OrderRoute ovenfor. Åbner den
+  // nyoprettede sag med det samme (rigtig navigation til dens egen URL), så
+  // dato/montør kan vælges.
   const duplicateOrder = async (sourceOrder, selectedLineItems) => {
     const newId = await ordersStore.duplicateOrder(sourceOrder, selectedLineItems);
-    if (newId) setSelectedId(newId);
+    if (newId) navigate(`/sag/${newId}`);
   };
 
-  const technician = technicians.find((m) => m.id === selectedTechnicianId);
-  const narrowPage = page === "montor" || !!selected;
+  const onOpen = (id) => navigate(`/sag/${id}`);
 
   if (loading) {
     return <div className="min-h-screen w-full flex items-center justify-center bg-paper"><p className="text-sm text-muted">Indlæser...</p></div>;
@@ -207,6 +215,11 @@ export default function App() {
     );
   }
 
+  // De sider den indloggede bruger reelt må se, ud fra rolle - se Gate ovenfor.
+  const allowedPages = PAGES_FOR_ROLE[profile.rolle] || ["salg"];
+  const currentPage = location.pathname.replace(/^\//, "").split("/")[0] || allowedPages[0];
+  const narrowPage = currentPage === "montor" || currentPage === "sag";
+
   return (
     <div className="min-h-screen w-full bg-paper" style={{ fontFamily: "Inter, sans-serif" }}>
       <style>{`
@@ -214,65 +227,75 @@ export default function App() {
         .font-mono { font-family: 'JetBrains Mono', monospace; }
       `}</style>
 
-      <TopNav page={page} onChange={navigateTo} user={profile} onLogOut={logOut} />
+      <TopNav page={currentPage} onChange={(key) => navigate(`/${key}`)} user={profile} onLogOut={logOut} />
 
       <div className={`${narrowPage ? "max-w-2xl" : "max-w-6xl"} mx-auto px-4 pb-10`}>
-        {selected ? (
-          <OrderView
-            order={selected}
-            technicians={technicians}
-            onBack={() => setSelectedId(null)}
-            addNote={(t) => ordersStore.addNote(selected.id, t)}
-            addPhoto={(p) => ordersStore.addPhoto(selected.id, p)}
-            addReport={(t, x) => ordersStore.addReport(selected.id, t, x)}
-            onCycleStatus={ordersStore.cycleStatus}
-            onClockIn={() => ordersStore.clockIn(selected.id)}
-            onClockOut={() => ordersStore.clockOut(selected.id)}
-            onToggleAddOn={(lineItemId, addOnId) => ordersStore.toggleAddOn(selected.id, lineItemId, addOnId)}
-            onAddAddOn={(lineItemId, navn) => ordersStore.addAddOn(selected.id, lineItemId, navn)}
-            onRemoveAddOn={(lineItemId, addOnId) => ordersStore.removeAddOn(selected.id, lineItemId, addOnId)}
-            onUpdateBooking={(fields) => ordersStore.updateBooking(selected.id, fields)}
-            onSaveSignature={(payload) => ordersStore.saveSignature(selected.id, payload)}
-            onDuplicate={(selectedLineItems) => duplicateOrder(selected, selectedLineItems)}
-          />
-        ) : page === "salg" ? (
-          <SalesPage orders={orders} technicians={technicians} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onAdd={ordersStore.addOrder} onImport={ordersStore.importOrders} storeFocus={store?.lat && store?.lon ? { lat: store.lat, lon: store.lon } : null} />
-        ) : page === "planlaegning" ? (
-          <PlanningPage
-            orders={orders} technicians={technicians} vehicles={vehicles} timeOff={timeOff}
-            store={store}
-            selectedDate={selectedDate} onDateChange={setSelectedDate}
-            onOpen={setSelectedId} onCycleStatus={ordersStore.cycleStatus} onAssign={ordersStore.assignTechnician} onReorder={ordersStore.reorderOrder}
-            onUpdateTechnician={(technicianId, fields) => updateTechnicianVehicle(technicianId, fields.bilId)}
-            onRefresh={refreshWithSpinner} refreshing={refreshing}
-          />
-        ) : page === "montor" ? (
-          profile.rolle === "montor" ? (
-            technician ? <TechnicianRouteView orders={orders} technician={technician} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onCycleStatus={ordersStore.cycleStatus} onReorder={ordersStore.reorderOrder} onRefresh={refreshWithSpinner} refreshing={refreshing} /> : <p className="text-sm text-muted">Din bruger er ikke koblet til en montør/bil-profil endnu — kontakt en administrator.</p>
-          ) : technician ? (
-            <TechnicianRouteView orders={orders} technician={technician} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onCycleStatus={ordersStore.cycleStatus} onReorder={ordersStore.reorderOrder} onChangeTechnician={() => setSelectedTechnicianId(null)} onRefresh={refreshWithSpinner} refreshing={refreshing} />
-          ) : (
-            <TechnicianPicker technicians={technicians} onSelect={setSelectedTechnicianId} />
-          )
-        ) : page === "lager" ? (
-          <WarehousePage orders={orders} technicians={technicians} vehicles={vehicles} selectedDate={selectedDate} onDateChange={setSelectedDate} onToggleLineItemPicked={ordersStore.toggleLineItemPicked} onOpen={setSelectedId} />
-        ) : page === "arkiv" ? (
-          <ArchivePage orders={orders} technicians={technicians} onOpen={setSelectedId} />
-        ) : page === "systemadmin" ? (
-          <SystemAdminPage />
-        ) : (
-          <AdminPage
-            technicians={technicians} vehicles={vehicles} users={users} timeOff={timeOff} currentUserId={profile.id}
-            productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices}
-            onUpdateTechnicianVehicle={updateTechnicianVehicle} onAddVehicle={vehiclesStore.addVehicle} onUpdateVehicle={vehiclesStore.updateVehicle} onDeleteVehicle={deleteVehicleWithConfirm} onToggleVehicleClosed={vehiclesStore.toggleVehicleClosed}
-            onAddUser={usersStore.addUser} onUpdateUser={usersStore.updateUser} onDeleteUser={usersStore.deleteUser} onResetPassword={usersStore.resetPassword}
-            onAddProductCategory={catalog.addProductCategory} onUpdateProductCategory={catalog.updateProductCategory} onDeleteProductCategory={catalog.deleteProductCategory}
-            onAddProductType={catalog.addProductType} onUpdateProductType={catalog.updateProductType} onDeleteProductType={catalog.deleteProductType}
-            onAddPrimaryService={catalog.addPrimaryService} onUpdatePrimaryService={catalog.updatePrimaryService} onDeletePrimaryService={catalog.deletePrimaryService}
-            onAddAddOnService={catalog.addAddOnService} onUpdateAddOnService={catalog.updateAddOnService} onDeleteAddOnService={catalog.deleteAddOnService}
-            onAddTimeOff={timeOffStore.addTimeOff} onDeleteTimeOff={timeOffStore.deleteTimeOff}
-          />
-        )}
+        <Routes>
+          <Route path="/sag/:id" element={<OrderRoute orders={orders} technicians={technicians} ordersStore={ordersStore} duplicateOrder={duplicateOrder} />} />
+
+          <Route path="/salg" element={
+            <Gate allowed={allowedPages} page="salg">
+              <SalesPage orders={orders} technicians={technicians} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={ordersStore.addOrder} onImport={ordersStore.importOrders} storeFocus={store?.lat && store?.lon ? { lat: store.lat, lon: store.lon } : null} />
+            </Gate>
+          } />
+
+          <Route path="/planlaegning" element={
+            <Gate allowed={allowedPages} page="planlaegning">
+              <PlanningPage
+                orders={orders} technicians={technicians} vehicles={vehicles} timeOff={timeOff}
+                store={store}
+                selectedDate={selectedDate} onDateChange={setSelectedDate}
+                onOpen={onOpen} onCycleStatus={ordersStore.cycleStatus} onAssign={ordersStore.assignTechnician} onReorder={ordersStore.reorderOrder}
+                onUpdateTechnician={(technicianId, fields) => updateTechnicianVehicle(technicianId, fields.bilId)}
+                onRefresh={refresh} refreshing={refreshing}
+              />
+            </Gate>
+          } />
+
+          <Route path="/montor" element={
+            <Gate allowed={allowedPages} page="montor">
+              <MontorRoute profile={profile} orders={orders} technicians={technicians} ordersStore={ordersStore} refresh={refresh} refreshing={refreshing} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} />
+            </Gate>
+          } />
+          <Route path="/montor/:technicianId" element={
+            <Gate allowed={allowedPages} page="montor">
+              <MontorRoute profile={profile} orders={orders} technicians={technicians} ordersStore={ordersStore} refresh={refresh} refreshing={refreshing} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} />
+            </Gate>
+          } />
+
+          <Route path="/lager" element={
+            <Gate allowed={allowedPages} page="lager">
+              <WarehousePage orders={orders} technicians={technicians} vehicles={vehicles} selectedDate={selectedDate} onDateChange={setSelectedDate} onToggleLineItemPicked={ordersStore.toggleLineItemPicked} onOpen={onOpen} />
+            </Gate>
+          } />
+
+          <Route path="/arkiv" element={
+            <Gate allowed={allowedPages} page="arkiv">
+              <ArchivePage orders={orders} technicians={technicians} onOpen={onOpen} />
+            </Gate>
+          } />
+
+          <Route path="/admin" element={
+            <Gate allowed={allowedPages} page="admin">
+              <AdminPage
+                technicians={technicians} vehicles={vehicles} users={users} timeOff={timeOff} currentUserId={profile.id}
+                productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices}
+                onUpdateTechnicianVehicle={updateTechnicianVehicle} onAddVehicle={vehiclesStore.addVehicle} onUpdateVehicle={vehiclesStore.updateVehicle} onDeleteVehicle={deleteVehicleWithConfirm} onToggleVehicleClosed={vehiclesStore.toggleVehicleClosed}
+                onAddUser={usersStore.addUser} onUpdateUser={usersStore.updateUser} onDeleteUser={usersStore.deleteUser} onResetPassword={usersStore.resetPassword}
+                onAddProductCategory={catalog.addProductCategory} onUpdateProductCategory={catalog.updateProductCategory} onDeleteProductCategory={catalog.deleteProductCategory}
+                onAddProductType={catalog.addProductType} onUpdateProductType={catalog.updateProductType} onDeleteProductType={catalog.deleteProductType}
+                onAddPrimaryService={catalog.addPrimaryService} onUpdatePrimaryService={catalog.updatePrimaryService} onDeletePrimaryService={catalog.deletePrimaryService}
+                onAddAddOnService={catalog.addAddOnService} onUpdateAddOnService={catalog.updateAddOnService} onDeleteAddOnService={catalog.deleteAddOnService}
+                onAddTimeOff={timeOffStore.addTimeOff} onDeleteTimeOff={timeOffStore.deleteTimeOff}
+              />
+            </Gate>
+          } />
+
+          {/* Ukendte/manglende ruter (inkl. "/" ved første besøg) sendes til
+              brugerens egen standardfane - ikke nogen "404-side", da hele
+              app'en jo kun har det her faste sæt fritstående faner. */}
+          <Route path="*" element={<Navigate to={`/${allowedPages[0]}`} replace />} />
+        </Routes>
       </div>
     </div>
   );
