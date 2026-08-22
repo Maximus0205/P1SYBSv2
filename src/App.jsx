@@ -14,7 +14,7 @@ import {
   getStore,
 } from "./lib/dataStore";
 import {
-  uid, todayISO, dailyOrderCompare,
+  uid, todayISO, dailyOrderCompare, timeSlotById,
   DEFAULT_PRODUCT_TYPES, DEFAULT_PRODUCT_CATEGORIES,
   DEFAULT_PRIMARY_SERVICES, DEFAULT_ADD_ON_SERVICES,
   DEFAULT_VEHICLES,
@@ -202,6 +202,42 @@ export default function App() {
     if (fresh) setOrders((prev) => prev.map((s) => (s.id === fresh.id ? fresh : s)));
   };
 
+  // Opretter en ny sag ud fra en EKSISTERENDE (dupliker/opfølgning) - se
+  // "Dupliker / Opfølgning" i OrderView.jsx. Bruges fx til service-/
+  // reklamationsbesøg efter en montering, eller når en levering skal deles
+  // op i flere separate besøg. Kunde/køber/nøgleoplysninger og adresse
+  // kopieres, men datoen, tidsrummet og montøren NULSTILLES bevidst - det
+  // er jo netop noget nyt der skal planlægges, ikke en kopi af den gamle
+  // booking. Sagsnummer, status, noter, billeder, rapporter, tidsregistrering
+  // og plukket-status starter alle helt friske - denne sag er reelt ny og
+  // adskilt fra kilden, ikke bare en reference til den. Varelinjerne der
+  // vælges med, klones med NYE id'er (og nulstillet plukket/udført-status),
+  // så de to sager aldrig deler tilstand.
+  const duplicateOrder = async (sourceOrder, selectedLineItems) => {
+    if (!profile?.butikId || !selectedLineItems || selectedLineItems.length === 0) return;
+    const t = timeSlotById("heldag");
+    const clonedLineItems = selectedLineItems.map((v) => ({
+      ...v,
+      id: uid(),
+      plukket: false,
+      tillaeg: (v.tillaeg || []).map((y) => ({ ...y, udfoert: false })),
+    }));
+    const newOrder = {
+      id: uid(), nr: "...", ordrenummer: "",
+      kunde: { ...sourceOrder.kunde },
+      koeber: sourceOrder.koeber ? { ...sourceOrder.koeber } : null,
+      noegle: sourceOrder.noegle ? { ...sourceOrder.noegle } : {},
+      dato: todayISO(), tidsrumId: "heldag", start: t.start, slut: t.slut, montorId: null,
+      status: "planlagt", plukket: false, varelinjer: clonedLineItems,
+      noter: [], billeder: [], rapporter: [], stemplerInd: null, logs: [],
+    };
+    setOrders((prev) => [...prev, newOrder]);
+    await saveOrder(profile.butikId, newOrder);
+    const fresh = await getFreshOrder(profile.butikId, newOrder.id);
+    if (fresh) { setOrders((prev) => prev.map((s) => (s.id === fresh.id ? fresh : s))); setSelectedId(fresh.id); }
+    else setSelectedId(newOrder.id);
+  };
+
   // Hurtig-redigering af en booket ordre (dato/tidsrum/montør/adresse) - se
   // BookingEditor i OrderView.jsx.
   const updateBooking = (id, fields) => { const s = orders.find((x) => x.id === id); if (s) saveOneOrder({ ...s, ...fields }); };
@@ -306,11 +342,19 @@ export default function App() {
     saveOneOrder({ ...s, varelinjer, plukket: allPicked });
   };
 
+  // Cirkulerer status planlagt -> i gang -> afsluttet -> planlagt. Sætter
+  // (eller nulstiller) afsluttetTidspunkt sammen med selve status-skiftet,
+  // så sagskort kan vise HVORNÅR en sag reelt blev afsluttet, ikke kun AT
+  // den er det - se OrderCardCompact.jsx.
   const cycleStatus = (id) => {
     const s = orders.find((x) => x.id === id);
     if (!s) return;
     const order = ["planlagt", "igang", "afsluttet"];
-    saveOneOrder({ ...s, status: order[(order.indexOf(s.status) + 1) % order.length] });
+    const newStatus = order[(order.indexOf(s.status) + 1) % order.length];
+    const extra = {};
+    if (newStatus === "afsluttet") extra.afsluttetTidspunkt = new Date().toISOString();
+    else if (s.status === "afsluttet") extra.afsluttetTidspunkt = null;
+    saveOneOrder({ ...s, status: newStatus, ...extra });
   };
 
   const addNote = (id, text) => { const s = orders.find((x) => x.id === id); if (s) saveOneOrder({ ...s, noter: [...s.noter, { id: uid(), tekst: text, tid: new Date().toLocaleString("da-DK") }] }); };
@@ -414,6 +458,7 @@ export default function App() {
             onRemoveAddOn={(lineItemId, addOnId) => removeAddOn(selected.id, lineItemId, addOnId)}
             onUpdateBooking={(fields) => updateBooking(selected.id, fields)}
             onSaveSignature={(payload) => saveSignature(selected.id, payload)}
+            onDuplicate={(selectedLineItems) => duplicateOrder(selected, selectedLineItems)}
           />
         ) : page === "salg" ? (
           <SalesPage orders={orders} technicians={technicians} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onAdd={addOrder} onImport={importOrders} storeFocus={store?.lat && store?.lon ? { lat: store.lat, lon: store.lon } : null} />
