@@ -39,6 +39,16 @@ import { SystemAdminPage } from "./pages/SystemAdminPage";
 // ikke selve forretningslogikken.
 // ---------------------------------------------------------------------------
 
+// Læser den aktuelle fane ud af URL'ens hash (fx "#planlaegning" -> "planlaegning").
+// HASH-baseret (ikke rigtige URL-stier) er bevidst: GitHub Pages serverer
+// kun statiske filer uden server-side rewrites, så et refresh på en "rigtig"
+// sti som /P1SYBSv2/planlaegning ville give en 404, medmindre der er sat en
+// særlig fallback op. Hash-delen af en URL sendes ALDRIG til serveren - et
+// refresh på "#planlaegning" indlæser altid den samme index.html, hvorefter
+// JavaScript blot læser hashet og viser den rigtige fane. Ingen ny
+// afhængighed nødvendig for noget så simpelt.
+const pageFromHash = () => window.location.hash.replace(/^#\/?/, "") || null;
+
 export default function App() {
   const { loading, session, profile, store, logOut } = useSession();
 
@@ -57,23 +67,58 @@ export default function App() {
   const [selectedTechnicianId, setSelectedTechnicianId] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
 
-  // Navigations-reaktion på profil-ændringer (login, rolle- eller
-  // butiksskift): sæt startsiden ud fra rollen, og forudvælg egen
-  // montør-visning hvis man selv ER montør. Afhænger bevidst kun af de
-  // PRIMITIVE felter (id/butikId/rolle/erSystemadmin), ikke selve
-  // profile-objektet - det undgår at nulstille siden ved hver eneste
+  // De sider den indloggede bruger reelt må se, ud fra rolle - bruges til
+  // både at vælge en fornuftig standardfane OG til at afvise et evt.
+  // hash i URL'en der peger på noget der ikke er tilladt (fx et gammelt
+  // bogmærke til "#admin" for en sælger, der ikke længere er admin).
+  // BEMÆRK: dette er UI-bekvemmelighed, ikke selve sikkerhedsgrænsen -
+  // den reelle beskyttelse ligger i Supabase RLS, ligesom resten af appen.
+  const allowedPages = profile?.butikId ? (PAGES_FOR_ROLE[profile.rolle] || ["salg"]) : (profile?.erSystemadmin ? ["systemadmin"] : []);
+
+  // Skifter fane OG opdaterer URL'ens hash, så et refresh på en anden fane
+  // end Salg forbliver på samme fane i stedet for at hoppe tilbage til
+  // startsiden - det var netop det, der irriterede.
+  const navigateTo = (key) => {
+    setPage(key);
+    setSelectedId(null);
+    if (pageFromHash() !== key) window.location.hash = key;
+  };
+
+  // Ved FØRSTE indlæsning af en profil (login, rolle- eller butiksskift):
+  // brug et gyldigt hash fra URL'en hvis der er ét (fx efter et refresh),
+  // ellers den fornuftige standardfane for rollen. Afhænger bevidst kun af
+  // de PRIMITIVE felter (id/butikId/rolle/erSystemadmin), ikke selve
+  // profile-objektet - det undgår at nulstille fanen ved hver eneste
   // baggrunds-token-fornyelse (som giver et NYT profile-objekt med samme
   // indhold), kun ved reelle ændringer.
   useEffect(() => {
     if (!profile) return;
-    if (profile.butikId) {
-      setPage((PAGES_FOR_ROLE[profile.rolle] || ["salg"])[0]);
-      if (profile.rolle === "montor") setSelectedTechnicianId(profile.id);
+    const hashPage = pageFromHash();
+    if (hashPage && allowedPages.includes(hashPage)) {
+      setPage(hashPage);
+    } else if (profile.butikId) {
+      setPage(allowedPages[0]);
     } else if (profile.erSystemadmin) {
       setPage("systemadmin");
     }
+    if (profile.butikId && profile.rolle === "montor") setSelectedTechnicianId(profile.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id, profile?.butikId, profile?.rolle, profile?.erSystemadmin]);
+
+  // Reagerer på browserens tilbage/frem-knapper og manuelle hash-ændringer
+  // (ikke selve navigateTo-kald herfra i appen, som allerede opdaterer
+  // "page" direkte - denne fanger de tilfælde hvor URL'en ændrer sig UDEN
+  // om et almindeligt fane-klik).
+  useEffect(() => {
+    const onHashChange = () => {
+      if (!profile) return;
+      const h = pageFromHash();
+      if (h && allowedPages.includes(h)) { setPage(h); setSelectedId(null); }
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.rolle, profile?.butikId, profile?.erSystemadmin]);
 
   // Ryd valgt sag ved log ud (session forsvinder -> profile bliver null).
   useEffect(() => {
@@ -169,7 +214,7 @@ export default function App() {
         .font-mono { font-family: 'JetBrains Mono', monospace; }
       `}</style>
 
-      <TopNav page={page} onChange={(k) => { setPage(k); setSelectedId(null); }} user={profile} onLogOut={logOut} />
+      <TopNav page={page} onChange={navigateTo} user={profile} onLogOut={logOut} />
 
       <div className={`${narrowPage ? "max-w-2xl" : "max-w-6xl"} mx-auto px-4 pb-10`}>
         {selected ? (
