@@ -1,7 +1,9 @@
 import React from "react";
-import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, Loader2, AlertTriangle, ChevronUp, ChevronDown } from "lucide-react";
+import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, Loader2, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash } from "lucide-react";
 import { buildTitle, isToday, formatLongDate, formatDuration, technicianColor, keyAccessText, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel, dailyOrderCompare } from "../data/domain";
 import { StatusBadge, AddOnPill, DateSelector } from "../components/common";
+import { LineItemDetails, Notes, Photos, Reports, TimeLog, ClockWidget, Signature } from "../components/OrderParts";
+import { BookingEditor, DuplicatePanel } from "../components/OrderView";
 import { sendArrivalSms } from "../lib/dataStore";
 
 // Universelt Google Maps-link: åbner Google Maps-appen hvis den er
@@ -307,4 +309,115 @@ function TechnicianRouteView({ orders, technician, selectedDate, onDateChange, o
   );
 }
 
-export { TechnicianPicker, TechnicianRouteView };
+// ---------------------------------------------------------------------------
+// MONTØR-SPECIFIK SAGSDETALJE (august 2026) - bevidst en HELT SEPARAT
+// visning fra den delte OrderView.jsx, som bruges af admin/sælger. Det er
+// et bevidst valg (ikke bare kopieret for sjov): den delte visning bygger
+// sin overskrift ved at sammenkoge ALLE varelinjer til én lang, versal
+// sætning (buildTitle) - fint med én varelinje, men bliver hurtigt et
+// ulæseligt tekstmur med flere, og gentager desuden information der
+// alligevel vises pænt struktureret i selve varelinje-sektionen længere
+// nede. Denne visning dropper den sammenkogte titel til fordel for et
+// kompakt, scanbart resumé, og lægger det operationelt vigtige (kunde,
+// adresse, nøgle, kontakt) tydeligere øverst - relevant når montøren
+// reelt står ved døren og skal orientere sig hurtigt.
+//
+// Selve funktionaliteten (redigér booking, dupliker/opfølgning, noter,
+// billeder, rapporter, tid, underskrift) er UÆNDRET og genbruger de exakt
+// samme, allerede fungerende komponenter som OrderView.jsx bruger
+// (BookingEditor/DuplicatePanel fra OrderView.jsx, resten fra
+// OrderParts.jsx) - kun HVORDAN det hele er bygget op og præsenteret er
+// nyt. At holde ændringen isoleret til denne fil betyder admin- og
+// sælger-visningen er 100% upåvirket.
+function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, addReport, onCycleStatus, onClockIn, onClockOut, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onSaveSignature, onDuplicate }) {
+  const [tab, setTab] = React.useState("noter");
+  const [editing, setEditing] = React.useState(false);
+  const [duplicating, setDuplicating] = React.useState(false);
+  const tabs = [
+    { key: "noter", label: "Noter", count: order.noter.length },
+    { key: "billeder", label: "Billeder", count: order.billeder.length },
+    { key: "rapporter", label: "Rapporter", count: order.rapporter.length },
+    { key: "tid", label: "Tid", count: order.logs.length },
+    { key: "underskrift", label: "Underskrift", count: order.underskrift ? 1 : 0 },
+  ];
+
+  return (
+    <div>
+      <button onClick={onBack} className="text-sm text-muted hover:text-brand mb-4 flex items-center gap-1">← Tilbage</button>
+
+      {editing ? (
+        <BookingEditor order={order} technicians={technicians} onCancel={() => setEditing(false)} onSave={(fields) => { onUpdateBooking(fields); setEditing(false); }} />
+      ) : duplicating ? (
+        <DuplicatePanel order={order} onCancel={() => setDuplicating(false)} onDuplicate={(items) => { onDuplicate?.(items); setDuplicating(false); }} />
+      ) : (
+        <div className="rounded-xl bg-white border border-line p-4 mb-4 shadow-sm">
+          {/* Kompakt header - INGEN sammenkogt kæmpetitel, kun det du reelt
+              skal vide, når du står med sagen foran dig. */}
+          <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+            <p className="font-mono text-xs text-muted">
+              #{order.nr} · {formatLongDate(order.dato)} · {order.start}–{order.slut}
+              {order.ordrenummer && <span className="ml-2 inline-flex items-center gap-0.5"><Hash size={10} /> {order.ordrenummer}</span>}
+            </p>
+            <button onClick={() => onCycleStatus(order.id)} className="shrink-0"><StatusBadge status={order.status} /></button>
+          </div>
+          <p className="text-lg font-semibold text-ink leading-snug">{order.varelinjer.length} {order.varelinjer.length === 1 ? "vare" : "varer"} til {order.kunde.navn}</p>
+          {order.kunde.leveringsnote && (
+            <p className="text-sm text-brand font-semibold mt-1.5 flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" /> {order.kunde.leveringsnote}</p>
+          )}
+          {order.noegle?.kraeves && (
+            <p className="text-sm text-brand font-semibold mt-1.5 flex items-center gap-1.5"><KeyRound size={14} className="shrink-0" /> {keyAccessText(order.noegle)}</p>
+          )}
+          <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-divider">
+            <button onClick={() => setEditing(true)} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand flex items-center gap-1"><Pencil size={13} /> Redigér booking</button>
+            {onDuplicate && (
+              <button onClick={() => setDuplicating(true)} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand flex items-center gap-1"><Copy size={13} /> Dupliker / opfølgning</button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Kontakt: samme mønster som listekortet (OrderStopCard) - adresse
+          + naviger, telefon + ring/sms, genkendeligt fra dagens rute. */}
+      <div className="rounded-xl bg-white border border-line p-4 mb-4 shadow-sm space-y-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-sm text-ink truncate min-w-0">{order.kunde.adresse}</p>
+          <a href={mapsUrl(order.kunde.adresse)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors" title="Åbn adressen i Google Maps">
+            <Navigation size={13} /> Naviger
+          </a>
+        </div>
+        {order.kunde.telefon && (
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <a href={telHref(order.kunde.telefon)} className="font-mono text-sm text-muted hover:text-brand transition-colors" title="Ring til kunden">{order.kunde.telefon}</a>
+            <div className="flex items-center gap-2">
+              <a href={telHref(order.kunde.telefon)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors" title="Ring til kunden">
+                <Phone size={13} /> Ring
+              </a>
+              <ArrivalSmsButton phone={order.kunde.telefon} customerName={order.kunde.navn} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Varelinjer - genbruger den allerede velstrukturerede
+          LineItemDetails (samme som OrderView.jsx bruger), i stedet for at
+          gentage varenavnene i overskriften. */}
+      <LineItemDetails order={order} onToggleAddOn={onToggleAddOn} onAddAddOn={onAddAddOn} onRemoveAddOn={onRemoveAddOn} />
+      <ClockWidget order={order} onClockIn={onClockIn} onClockOut={onClockOut} />
+
+      <div className="flex border-b border-line mb-5 overflow-x-auto">
+        {tabs.map((t) => (
+          <button key={t.key} onClick={() => setTab(t.key)} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors shrink-0 ${tab === t.key ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
+            {t.label} <span className="font-mono text-xs">({t.count})</span>
+          </button>
+        ))}
+      </div>
+      {tab === "noter" && <Notes order={order} onAdd={addNote} />}
+      {tab === "billeder" && <Photos order={order} onAdd={addPhoto} />}
+      {tab === "rapporter" && <Reports order={order} onAdd={addReport} />}
+      {tab === "tid" && <TimeLog order={order} />}
+      {tab === "underskrift" && <Signature order={order} onSave={onSaveSignature} />}
+    </div>
+  );
+}
+
+export { TechnicianPicker, TechnicianRouteView, TechnicianOrderDetail };
