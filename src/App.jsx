@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
 
-import { supabase } from "./lib/supabaseClient";
-import { getOwnProfile, getStore } from "./lib/dataStore";
 import { todayISO, PAGES_FOR_ROLE } from "./data/domain";
+import { useSession } from "./hooks/useSession";
 import { useCatalog } from "./hooks/useCatalog";
 import { useVehicles } from "./hooks/useVehicles";
 import { useTimeOff } from "./hooks/useTimeOff";
@@ -21,25 +20,28 @@ import { ArchivePage } from "./pages/ArchivePage";
 import { AdminPage } from "./pages/AdminPage";
 import { SystemAdminPage } from "./pages/SystemAdminPage";
 
-export default function App() {
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [session, setSession] = useState(null); // Supabase Auth-session (null = ikke logget ind)
-  const [profile, setProfile] = useState(null); // { id, navn, rolle, bilId, butikId, erSystemadmin }
-  const [store, setStore] = useState(null); // { id, navn, adresse, lat, lon } - egen butiks koordinater
-  const [page, setPage] = useState("salg");
-  const [selectedDate, setSelectedDate] = useState(todayISO());
-  const [selectedTechnicianId, setSelectedTechnicianId] = useState(null);
-  const [selectedId, setSelectedId] = useState(null);
+// ---------------------------------------------------------------------------
+// ARKITEKTUR-OPRYDNING FULDFØRT (august 2026, 4 faser): App.jsx var ved at
+// blive for stor og blande for mange ansvarsområder (se rapport 22. august
+// 2026: ~750 linjer, al state/CRUD for hele appen ét sted). Al domænelogik
+// er nu udtrukket til dedikerede hooks (se hooks/-mappen):
+//   useSession  - login/session/profil/butik (den mest følsomme del,
+//                 indeholder en kendt onAuthStateChange-fælde - se der)
+//   useCatalog  - varekatalog (varetyper/kategorier/ydelser/tillæg)
+//   useVehicles - biler
+//   useTimeOff  - fravær
+//   useUsers    - brugere
+//   useOrders   - ordrer (booking, status, pluk, rækkefølge, dupliker,
+//                 noter/billeder/rapporter/tid/underskrift)
+// App.jsx's tilbageværende ansvar er nu udelukkende: kalde disse hooks,
+// håndtere den lille smule NAVIGATIONS-UI-state der krydser flere hooks
+// (page, selectedId osv.), og selve routing/visningen. Ren komposition,
+// ikke selve forretningslogikken.
+// ---------------------------------------------------------------------------
 
-  // FASE 1-3 af arkitektur-oprydningen (august 2026): varekatalog, biler,
-  // fravær, brugere og nu ORDRER (den suverænt største og mest centrale
-  // del) er alle udtrukket til hver sin hook - se hooks/-mappen for selve
-  // state/CRUD-logikken og begrundelsen. App.jsx kalder dem blot og
-  // videregiver deres data/funktioner. Kun SESSION/BUTIK-laget ligger
-  // tilbage direkte i App.jsx, som fase 4 (sidste) af samme oprydning -
-  // den flyttes for sig, da den indeholder den kendte, følsomme fælde med
-  // onAuthStateChange (se kommentar nedenfor).
+export default function App() {
+  const { loading, session, profile, store, logOut } = useSession();
+
   const catalog = useCatalog(profile?.butikId);
   const vehiclesStore = useVehicles(profile?.butikId);
   const timeOffStore = useTimeOff(profile?.butikId);
@@ -49,6 +51,34 @@ export default function App() {
   const { timeOff } = timeOffStore;
   const { users } = usersStore;
   const { orders } = ordersStore;
+
+  const [page, setPage] = useState("salg");
+  const [selectedDate, setSelectedDate] = useState(todayISO());
+  const [selectedTechnicianId, setSelectedTechnicianId] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
+
+  // Navigations-reaktion på profil-ændringer (login, rolle- eller
+  // butiksskift): sæt startsiden ud fra rollen, og forudvælg egen
+  // montør-visning hvis man selv ER montør. Afhænger bevidst kun af de
+  // PRIMITIVE felter (id/butikId/rolle/erSystemadmin), ikke selve
+  // profile-objektet - det undgår at nulstille siden ved hver eneste
+  // baggrunds-token-fornyelse (som giver et NYT profile-objekt med samme
+  // indhold), kun ved reelle ændringer.
+  useEffect(() => {
+    if (!profile) return;
+    if (profile.butikId) {
+      setPage((PAGES_FOR_ROLE[profile.rolle] || ["salg"])[0]);
+      if (profile.rolle === "montor") setSelectedTechnicianId(profile.id);
+    } else if (profile.erSystemadmin) {
+      setPage("systemadmin");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id, profile?.butikId, profile?.rolle, profile?.erSystemadmin]);
+
+  // Ryd valgt sag ved log ud (session forsvinder -> profile bliver null).
+  useEffect(() => {
+    if (!profile) setSelectedId(null);
+  }, [profile]);
 
   // "Teknikere" er ikke længere en selvstændig ting i databasen — det er
   // brugere/profiler med rolle "montor". Vi udleder listen her, i samme form
@@ -62,67 +92,12 @@ export default function App() {
       return { id: b.id, navn: b.navn, bilId: b.bilId || null, bil: linkedVehicle ? linkedVehicle.nummerplade : "" };
     });
 
-  const reloadProfile = async (userId) => {
-    const p = await getOwnProfile(userId);
-    if (!p) { setProfile(null); return null; }
-    const normalized = { id: p.id, navn: p.navn, rolle: p.rolle, bilId: p.bil_id, butikId: p.butik_id, erSystemadmin: !!p.er_systemadmin };
-    setProfile(normalized);
-    if (normalized.butikId) {
-      setPage((PAGES_FOR_ROLE[normalized.rolle] || ["salg"])[0]);
-      if (normalized.rolle === "montor") setSelectedTechnicianId(normalized.id);
-      const storeData = await getStore(normalized.butikId);
-      setStore(storeData);
-      // Ordrer/biler/fravær/brugere/varekatalog hentes automatisk af deres
-      // respektive hooks, når profile.butikId (deres storeId-parameter)
-      // sættes ovenfor og komponenten genrenderer - intet ekstra load-kald
-      // nødvendigt her længere.
-    } else if (normalized.erSystemadmin) {
-      setPage("systemadmin");
-    }
-    return normalized;
-  };
-
-  useEffect(() => {
-    // Første indlæsning: tjek om der allerede er en session.
-    supabase.auth.getSession().then(async ({ data }) => {
-      setSession(data.session);
-      if (data.session) await reloadProfile(data.session.user.id);
-      setLoading(false);
-    });
-
-    // Lyt løbende på login/logout (fra denne eller andre faner).
-    //
-    // VIGTIGT: denne callback må ikke selv "await"'e andre Supabase-kald
-    // (som fx reloadProfile -> supabase.from(...)). Supabase-auth-klienten
-    // holder en intern lås mens callbacken kører, så et synkront await her
-    // på et andet Supabase-kald fryser hele klienten (kendt supabase-js-
-    // fælde). setTimeout(..., 0) skubber arbejdet til næste "tick", uden for
-    // låsen, så login rent faktisk kan fuldføre.
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
-      if (newSession) {
-        setTimeout(() => { reloadProfile(newSession.user.id); }, 0);
-      } else {
-        setProfile(null);
-        setStore(null);
-        // Ordrer/biler/fravær/brugere/varekatalog rydder sig selv, når
-        // deres storeId (afledt af profile?.butikId) bliver null - se de
-        // enkelte hooks' egne useEffect.
-        setSelectedId(null);
-      }
-    });
-
-    return () => listener.subscription.unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const refresh = async () => {
-    setRefreshing(true);
-    if (profile?.butikId) {
-      await Promise.all([ordersStore.reload(), catalog.reload(), vehiclesStore.reload(), timeOffStore.reload(), usersStore.reload()]);
-    }
-    setRefreshing(false);
+    if (!profile?.butikId) return;
+    await Promise.all([ordersStore.reload(), catalog.reload(), vehiclesStore.reload(), timeOffStore.reload(), usersStore.reload()]);
   };
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshWithSpinner = async () => { setRefreshing(true); await refresh(); setRefreshing(false); };
 
   // Sletning af en bil kræver en bekræftelse hvis den er tildelt en montør
   // - det tjek krydser vehicles OG users (technicians), og hører derfor
@@ -133,19 +108,14 @@ export default function App() {
   };
 
   // Skifter hvilken bil en tekniker (bruger med rolle "montor") er tilknyttet.
-  // Fraværsperioder flytter automatisk med, fordi blokeringen beregnes ud fra
-  // denne tilknytning i stedet for at blive gemt fast på selve bilen.
   const updateTechnicianVehicle = (technicianId, vehicleId) => usersStore.updateUser(technicianId, { bilId: vehicleId || null });
-
-  const logOut = async () => { await supabase.auth.signOut(); };
 
   const selected = orders.find((s) => s.id === selectedId);
 
   // Dupliker/opfølgning - se OrderView.jsx. Åbner den nyoprettede sag med
-  // det samme, så dato/montør kan vælges (det er jo netop DET en
-  // opfølgning drejer sig om) - selve oprettelsen sker i useOrders-hooken,
-  // men hvilken sag der er "åben" (selectedId) er UI-state der hører
-  // hjemme her i App.jsx.
+  // det samme, så dato/montør kan vælges - selve oprettelsen sker i
+  // useOrders-hooken, men hvilken sag der er "åben" (selectedId) er
+  // UI-state der hører hjemme her i App.jsx.
   const duplicateOrder = async (sourceOrder, selectedLineItems) => {
     const newId = await ordersStore.duplicateOrder(sourceOrder, selectedLineItems);
     if (newId) setSelectedId(newId);
@@ -229,13 +199,13 @@ export default function App() {
             selectedDate={selectedDate} onDateChange={setSelectedDate}
             onOpen={setSelectedId} onCycleStatus={ordersStore.cycleStatus} onAssign={ordersStore.assignTechnician} onReorder={ordersStore.reorderOrder}
             onUpdateTechnician={(technicianId, fields) => updateTechnicianVehicle(technicianId, fields.bilId)}
-            onRefresh={refresh} refreshing={refreshing}
+            onRefresh={refreshWithSpinner} refreshing={refreshing}
           />
         ) : page === "montor" ? (
           profile.rolle === "montor" ? (
-            technician ? <TechnicianRouteView orders={orders} technician={technician} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onCycleStatus={ordersStore.cycleStatus} onReorder={ordersStore.reorderOrder} onRefresh={refresh} refreshing={refreshing} /> : <p className="text-sm text-muted">Din bruger er ikke koblet til en montør/bil-profil endnu — kontakt en administrator.</p>
+            technician ? <TechnicianRouteView orders={orders} technician={technician} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onCycleStatus={ordersStore.cycleStatus} onReorder={ordersStore.reorderOrder} onRefresh={refreshWithSpinner} refreshing={refreshing} /> : <p className="text-sm text-muted">Din bruger er ikke koblet til en montør/bil-profil endnu — kontakt en administrator.</p>
           ) : technician ? (
-            <TechnicianRouteView orders={orders} technician={technician} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onCycleStatus={ordersStore.cycleStatus} onReorder={ordersStore.reorderOrder} onChangeTechnician={() => setSelectedTechnicianId(null)} onRefresh={refresh} refreshing={refreshing} />
+            <TechnicianRouteView orders={orders} technician={technician} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={setSelectedId} onCycleStatus={ordersStore.cycleStatus} onReorder={ordersStore.reorderOrder} onChangeTechnician={() => setSelectedTechnicianId(null)} onRefresh={refreshWithSpinner} refreshing={refreshing} />
           ) : (
             <TechnicianPicker technicians={technicians} onSelect={setSelectedTechnicianId} />
           )
