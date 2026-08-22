@@ -1,20 +1,15 @@
 import React, { useState, useEffect } from "react";
 
 import { supabase } from "./lib/supabaseClient";
-import {
-  getOrders, saveOrder, deleteOrder, getFreshOrder,
-  getVehicles, saveVehicle, deleteVehicle, seedDefaultVehicles,
-  getOwnProfile, getStoreUsers, updateProfile,
-  createUserAsAdmin, resetPasswordAsAdmin,
-  getTimeOff, addTimeOff as addTimeOffApi, deleteTimeOff as deleteTimeOffApi,
-  getStore,
-} from "./lib/dataStore";
+import { getOrders, saveOrder, getFreshOrder, getStore } from "./lib/dataStore";
 import {
   uid, todayISO, dailyOrderCompare, timeSlotById,
-  DEFAULT_VEHICLES,
   PAGES_FOR_ROLE,
 } from "./data/domain";
 import { useCatalog } from "./hooks/useCatalog";
+import { useVehicles } from "./hooks/useVehicles";
+import { useTimeOff } from "./hooks/useTimeOff";
+import { useUsers } from "./hooks/useUsers";
 
 import { TopNav } from "./components/TopNav";
 import { LoginPage } from "./components/LoginPage";
@@ -35,24 +30,31 @@ export default function App() {
   const [profile, setProfile] = useState(null); // { id, navn, rolle, bilId, butikId, erSystemadmin }
   const [store, setStore] = useState(null); // { id, navn, adresse, lat, lon } - egen butiks koordinater
   const [orders, setOrders] = useState([]);
-  const [vehicles, setVehicles] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [timeOff, setTimeOff] = useState([]);
   const [page, setPage] = useState("salg");
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [selectedTechnicianId, setSelectedTechnicianId] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
 
-  // FASE 1 af arkitektur-oprydningen (august 2026): varekataloget (varetyper,
-  // kategorier, primære ydelser, tillægsydelser) er udtrukket til sin egen
-  // hook - se hooks/useCatalog.js for selve state/CRUD-logikken og
-  // begrundelsen. App.jsx kalder den blot og videregiver dens data/
-  // funktioner, ligesom resten af siderne allerede modtager alt andet.
+  // FASE 1+2 af arkitektur-oprydningen (august 2026): varekatalog, biler,
+  // fravær og brugere er udtrukket til hver sin hook - se hooks/-mappen.
+  // App.jsx kalder dem blot og videregiver deres data/funktioner, ligesom
+  // resten af siderne allerede modtager alt andet. Kun ORDRER (den
+  // suverænt største og mest centrale del - booking, status, pluk,
+  // rækkefølge, dupliker) og selve SESSION/BUTIK-laget ligger tilbage
+  // direkte i App.jsx, som fase 3 og 4 af samme oprydning.
   const catalog = useCatalog(profile?.butikId);
+  const vehiclesStore = useVehicles(profile?.butikId);
+  const timeOffStore = useTimeOff(profile?.butikId);
+  const usersStore = useUsers(profile?.butikId);
+  const { vehicles } = vehiclesStore;
+  const { timeOff } = timeOffStore;
+  const { users } = usersStore;
 
   // "Teknikere" er ikke længere en selvstændig ting i databasen — det er
   // brugere/profiler med rolle "montor". Vi udleder listen her, i samme form
-  // som resten af appen altid har forventet ({ id, navn, bil, bilId }).
+  // som resten af appen altid har forventet ({ id, navn, bil, bilId }) -
+  // krydser BÅDE users og vehicles, derfor hører den til i App.jsx
+  // (kompositionslaget) og ikke i én enkelt hook.
   const technicians = users
     .filter((b) => b.rolle === "montor")
     .map((b) => {
@@ -60,32 +62,23 @@ export default function App() {
       return { id: b.id, navn: b.navn, bilId: b.bilId || null, bil: linkedVehicle ? linkedVehicle.nummerplade : "" };
     });
 
-  // Henter det, der (indtil videre) stadig ligger direkte i App.jsx: ordrer,
-  // biler, brugere og fravær. Varekataloget håndteres nu af useCatalog
-  // ovenfor, og hentes/genindlæses automatisk uafhængigt af dette kald.
-  const loadAll = async (storeId) => {
-    if (!storeId) { setOrders([]); setVehicles([]); setUsers([]); setTimeOff([]); return; }
-    const [o, v, u, t] = await Promise.all([
-      getOrders(storeId),
-      getVehicles(storeId),
-      getStoreUsers(storeId),
-      getTimeOff(storeId),
-    ]);
-    // Første gang butikken bruges, er bil-listen tom - sæt fornuftige standarder.
-    const finalVehicles = v.length > 0 ? v : DEFAULT_VEHICLES;
-    if (v.length === 0) seedDefaultVehicles(storeId, finalVehicles);
-    setOrders(o); setVehicles(finalVehicles); setUsers(u); setTimeOff(t);
+  // Henter det, der (indtil videre) stadig ligger direkte i App.jsx: kun
+  // ordrer nu. Resten (varekatalog, biler, fravær, brugere) hentes/
+  // genindlæses automatisk af deres respektive hooks uafhængigt af dette.
+  const loadOrders = async (storeId) => {
+    if (!storeId) { setOrders([]); return; }
+    setOrders(await getOrders(storeId));
   };
 
   const reloadProfile = async (userId) => {
-    const p = await getOwnProfile(userId);
+    const p = await getOwnProfileSafe(userId);
     if (!p) { setProfile(null); return null; }
     const normalized = { id: p.id, navn: p.navn, rolle: p.rolle, bilId: p.bil_id, butikId: p.butik_id, erSystemadmin: !!p.er_systemadmin };
     setProfile(normalized);
     if (normalized.butikId) {
       setPage((PAGES_FOR_ROLE[normalized.rolle] || ["salg"])[0]);
       if (normalized.rolle === "montor") setSelectedTechnicianId(normalized.id);
-      await loadAll(normalized.butikId);
+      await loadOrders(normalized.butikId);
       const storeData = await getStore(normalized.butikId);
       setStore(storeData);
     } else if (normalized.erSystemadmin) {
@@ -93,9 +86,6 @@ export default function App() {
     }
     return normalized;
   };
-
-  const addTimeOff = async (fields) => { if (profile?.butikId) { await addTimeOffApi(profile.butikId, fields); await loadAll(profile.butikId); } };
-  const deleteTimeOff = async (id) => { if (profile?.butikId) { await deleteTimeOffApi(id); await loadAll(profile.butikId); } };
 
   useEffect(() => {
     // Første indlæsning: tjek om der allerede er en session.
@@ -120,7 +110,10 @@ export default function App() {
       } else {
         setProfile(null);
         setStore(null);
-        setOrders([]); setVehicles([]); setUsers([]); setTimeOff([]);
+        setOrders([]);
+        // Biler/fravær/brugere/varekatalog rydder sig selv, når deres
+        // storeId (afledt af profile?.butikId) bliver null - se de
+        // enkelte hooks' egne useEffect.
         setSelectedId(null);
       }
     });
@@ -129,32 +122,29 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const refresh = async () => { setRefreshing(true); if (profile?.butikId) await Promise.all([loadAll(profile.butikId), catalog.reload()]); setRefreshing(false); };
+  const refresh = async () => {
+    setRefreshing(true);
+    if (profile?.butikId) {
+      await Promise.all([loadOrders(profile.butikId), catalog.reload(), vehiclesStore.reload(), timeOffStore.reload(), usersStore.reload()]);
+    }
+    setRefreshing(false);
+  };
 
   // ---------- Generiske hjælpere: gem/slet ÉT element lokalt + i databasen ----------
-  // (Hver liste har sin egen sky-funktion, men mønsteret er ens: opdatér
-  // React-state for præcis dét element, og send KUN det element videre til
-  // databasen - se den vigtige note øverst i dataStore.js om hvorfor.)
   const saveOneOrder = (order) => { setOrders((prev) => (prev.some((s) => s.id === order.id) ? prev.map((s) => (s.id === order.id ? order : s)) : [...prev, order])); if (profile?.butikId) saveOrder(profile.butikId, order); };
 
-  const saveOneVehicle = (vehicle) => { setVehicles((prev) => (prev.some((b) => b.id === vehicle.id) ? prev.map((b) => (b.id === vehicle.id ? vehicle : b)) : [...prev, vehicle])); if (profile?.butikId) saveVehicle(profile.butikId, vehicle); };
-  const removeOneVehicle = (id) => { setVehicles((prev) => prev.filter((b) => b.id !== id)); if (profile?.butikId) deleteVehicle(profile.butikId, id); };
-
-  const addVehicle = (navn, nummerplade) => saveOneVehicle({ id: uid(), navn, nummerplade, lukket: false, lukketAarsag: "" });
-  const updateVehicle = (id, fields) => { const b = vehicles.find((x) => x.id === id); if (b) saveOneVehicle({ ...b, ...fields }); };
-  const toggleVehicleClosed = (id, reason) => {
-    const b = vehicles.find((x) => x.id === id);
-    if (b) saveOneVehicle({ ...b, lukket: !b.lukket, lukketAarsag: !b.lukket ? (reason || "Værksted") : "" });
-  };
+  // Sletning af en bil kræver en bekræftelse hvis den er tildelt en montør
+  // - det tjek krydser vehicles OG users (technicians), og hører derfor
+  // hjemme her i App.jsx, ikke inde i selve useVehicles-hooken.
   const deleteVehicleWithConfirm = (id) => {
     if (technicians.some((m) => m.bilId === id) && !window.confirm("Denne bil er tildelt en montør. Slet alligevel?")) return;
-    removeOneVehicle(id);
+    vehiclesStore.deleteVehicle(id);
   };
 
   // Skifter hvilken bil en tekniker (bruger med rolle "montor") er tilknyttet.
   // Fraværsperioder flytter automatisk med, fordi blokeringen beregnes ud fra
   // denne tilknytning i stedet for at blive gemt fast på selve bilen.
-  const updateTechnicianVehicle = (technicianId, vehicleId) => updateUser(technicianId, { bilId: vehicleId || null });
+  const updateTechnicianVehicle = (technicianId, vehicleId) => usersStore.updateUser(technicianId, { bilId: vehicleId || null });
 
   const logOut = async () => { await supabase.auth.signOut(); };
 
@@ -178,16 +168,7 @@ export default function App() {
   };
 
   // Opretter en ny sag ud fra en EKSISTERENDE (dupliker/opfølgning) - se
-  // "Dupliker / Opfølgning" i OrderView.jsx. Bruges fx til service-/
-  // reklamationsbesøg efter en montering, eller når en levering skal deles
-  // op i flere separate besøg. Kunde/køber/nøgleoplysninger og adresse
-  // kopieres, men datoen, tidsrummet og montøren NULSTILLES bevidst - det
-  // er jo netop noget nyt der skal planlægges, ikke en kopi af den gamle
-  // booking. Sagsnummer, status, noter, billeder, rapporter, tidsregistrering
-  // og plukket-status starter alle helt friske - denne sag er reelt ny og
-  // adskilt fra kilden, ikke bare en reference til den. Varelinjerne der
-  // vælges med, klones med NYE id'er (og nulstillet plukket/udført-status),
-  // så de to sager aldrig deler tilstand.
+  // "Dupliker / Opfølgning" i OrderView.jsx.
   const duplicateOrder = async (sourceOrder, selectedLineItems) => {
     if (!profile?.butikId || !selectedLineItems || selectedLineItems.length === 0) return;
     const t = timeSlotById("heldag");
@@ -219,38 +200,12 @@ export default function App() {
 
   const importOrders = (newOrders) => newOrders.forEach((s) => saveOneOrder(s));
 
-  // Brugere oprettes rigtigt (Supabase Auth) via en edge function, som selv
-  // tjekker at kalderen er admin (eller systemadmin, som skal angive
-  // butikId eksplicit) - se admin-opret-bruger.
-  const addUser = async (fields) => {
-    const result = await createUserAsAdmin(fields);
-    if (result.ok && profile?.butikId) await loadAll(profile.butikId);
-    return result;
-  };
-  const updateUser = async (id, fields) => {
-    const dbFields = {};
-    if ("rolle" in fields) dbFields.rolle = fields.rolle;
-    if ("bilId" in fields) dbFields.bil_id = fields.bilId;
-    if ("navn" in fields) dbFields.navn = fields.navn;
-    const ok = await updateProfile(id, dbFields);
-    if (ok && profile?.butikId) await loadAll(profile.butikId);
-  };
-  const deleteUser = async (id) => {
-    if (!window.confirm("Fjern denne brugers adgang til butikken?")) return;
-    await updateProfile(id, { butik_id: null, rolle: "saelger" });
-    if (profile?.butikId) await loadAll(profile.butikId);
-  };
-  const resetPassword = (userId, newPassword) => resetPasswordAsAdmin(userId, newPassword);
-
   const assignTechnician = (orderId, technicianId) => { const s = orders.find((x) => x.id === orderId); if (s) saveOneOrder({ ...s, montorId: technicianId }); };
   const updateTimeSlot = (orderId, timeSlotId) => { const s = orders.find((x) => x.id === orderId); if (s) saveOneOrder({ ...s, tidsrumId: timeSlotId }); };
 
   // Ændrer besøgs-RÆKKEFØLGEN for sager hos samme montør, samme dag (fx ved
   // sygdom, forgæves besøg, eller bare fordi en anden rute giver mere
   // mening). Direction er -1 (flyt op/tidligere) eller +1 (flyt ned/senere).
-  // Normaliserer HELE dagens gruppe for den montør til fortløbende tal
-  // (0,1,2...) hver gang - se dailyOrderCompare i domain.js for hvorfor.
-  // Kun de sager hvis raekkefolge rent faktisk ændrer sig bliver gemt.
   const reorderOrder = (technicianId, date, orderId, direction) => {
     const group = orders
       .filter((o) => o.montorId === technicianId && o.dato === date && o.status !== "afsluttet")
@@ -266,11 +221,7 @@ export default function App() {
     });
   };
 
-  // Slår plukket til/fra for ÉN varelinje (se WarehousePage.jsx: dér er 1
-  // varelinje = 1 pluk-punkt på lagerlisten, i stedet for 1 punkt pr. hele
-  // ordren). Ordrens samlede "plukket"-flag holdes synkroniseret som et
-  // afledt "alle varelinjer på ordren er plukket"-flag, til brug de steder i
-  // appen der stadig kigger på hele ordren under ét.
+  // Slår plukket til/fra for ÉN varelinje.
   const toggleLineItemPicked = (orderId, lineItemId) => {
     const s = orders.find((x) => x.id === orderId);
     if (!s) return;
@@ -279,10 +230,7 @@ export default function App() {
     saveOneOrder({ ...s, varelinjer, plukket: allPicked });
   };
 
-  // Cirkulerer status planlagt -> i gang -> afsluttet -> planlagt. Sætter
-  // (eller nulstiller) afsluttetTidspunkt sammen med selve status-skiftet,
-  // så sagskort kan vise HVORNÅR en sag reelt blev afsluttet, ikke kun AT
-  // den er det - se OrderCardCompact.jsx.
+  // Cirkulerer status planlagt -> i gang -> afsluttet -> planlagt.
   const cycleStatus = (id) => {
     const s = orders.find((x) => x.id === id);
     if (!s) return;
@@ -320,9 +268,7 @@ export default function App() {
     if (s) saveOneOrder({ ...s, varelinjer: s.varelinjer.map((v) => (v.id === lineItemId ? { ...v, tillaeg: v.tillaeg.filter((y) => y.id !== addOnId) } : v)) });
   };
 
-  // Kundeunderskrift ved aflevering - se Signature-komponenten i
-  // OrderParts.jsx. Gemmes som ét felt på ordren (navn + billeddata +
-  // tidspunkt), ligesom noter/billeder/rapporter.
+  // Kundeunderskrift ved aflevering.
   const saveSignature = (orderId, { navn, data }) => {
     const s = orders.find((x) => x.id === orderId);
     if (s) saveOneOrder({ ...s, underskrift: { navn, data, tid: new Date().toLocaleString("da-DK") } });
@@ -426,16 +372,23 @@ export default function App() {
           <AdminPage
             technicians={technicians} vehicles={vehicles} users={users} timeOff={timeOff} currentUserId={profile.id}
             productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices}
-            onUpdateTechnicianVehicle={updateTechnicianVehicle} onAddVehicle={addVehicle} onUpdateVehicle={updateVehicle} onDeleteVehicle={deleteVehicleWithConfirm} onToggleVehicleClosed={toggleVehicleClosed}
-            onAddUser={addUser} onUpdateUser={updateUser} onDeleteUser={deleteUser} onResetPassword={resetPassword}
+            onUpdateTechnicianVehicle={updateTechnicianVehicle} onAddVehicle={vehiclesStore.addVehicle} onUpdateVehicle={vehiclesStore.updateVehicle} onDeleteVehicle={deleteVehicleWithConfirm} onToggleVehicleClosed={vehiclesStore.toggleVehicleClosed}
+            onAddUser={usersStore.addUser} onUpdateUser={usersStore.updateUser} onDeleteUser={usersStore.deleteUser} onResetPassword={usersStore.resetPassword}
             onAddProductCategory={catalog.addProductCategory} onUpdateProductCategory={catalog.updateProductCategory} onDeleteProductCategory={catalog.deleteProductCategory}
             onAddProductType={catalog.addProductType} onUpdateProductType={catalog.updateProductType} onDeleteProductType={catalog.deleteProductType}
             onAddPrimaryService={catalog.addPrimaryService} onUpdatePrimaryService={catalog.updatePrimaryService} onDeletePrimaryService={catalog.deletePrimaryService}
             onAddAddOnService={catalog.addAddOnService} onUpdateAddOnService={catalog.updateAddOnService} onDeleteAddOnService={catalog.deleteAddOnService}
-            onAddTimeOff={addTimeOff} onDeleteTimeOff={deleteTimeOff}
+            onAddTimeOff={timeOffStore.addTimeOff} onDeleteTimeOff={timeOffStore.deleteTimeOff}
           />
         )}
       </div>
     </div>
   );
+}
+
+// Lille lokal wrapper omkring getOwnProfile, så importlisten øverst ikke
+// skal bære endnu et navn - se lib/dataStore.js for selve implementeringen.
+async function getOwnProfileSafe(userId) {
+  const { getOwnProfile } = await import("./lib/dataStore");
+  return getOwnProfile(userId);
 }
