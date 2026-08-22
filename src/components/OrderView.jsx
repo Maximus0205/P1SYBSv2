@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { KeyRound, Building2, Hash, Pencil, X, Check } from "lucide-react";
-import { TIME_SLOTS, buildTitle, keyAccessText, timeSlotById, timeSlotText } from "../data/domain";
+import { KeyRound, Building2, Hash, Pencil, X, Check, Copy } from "lucide-react";
+import { TIME_SLOTS, buildTitle, keyAccessText, timeSlotById, timeSlotText, lineItemLabel } from "../data/domain";
 import { StatusBadge } from "../components/common";
 import { LineItemDetails, Notes, Photos, Reports, TimeLog, ClockWidget, Signature } from "../components/OrderParts";
 import { AddressInput } from "../components/AddressInput";
@@ -59,9 +59,53 @@ function BookingEditor({ order, technicians, onSave, onCancel }) {
   );
 }
 
-function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, onCycleStatus, onClockIn, onClockOut, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onSaveSignature }) {
+// Opretter en NY sag ud fra denne (dupliker/opfølgning) - fx et service-/
+// reklamationsbesøg efter en montering, eller når en levering skal deles
+// op i flere separate besøg. Kunde, adresse og nøgleoplysninger følger
+// automatisk med til den nye sag; dato og montør skal derimod vælges på
+// ny (det er jo netop en ny planlægning) - det gøres normalt bagefter, ved
+// at åbne den nyoprettede sag og redigere bookingen. Man vælger selv,
+// hvilke varelinjer der skal med - fx kun én af flere ved et enkelt
+// service-besøg, eller alle ved en ren kopi/opdeling af en levering.
+function DuplicatePanel({ order, onDuplicate, onCancel }) {
+  const [selected, setSelected] = useState(() => new Set(order.varelinjer.map((v) => v.id)));
+  const toggle = (id) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const submit = () => {
+    const chosen = order.varelinjer.filter((v) => selected.has(v.id));
+    if (chosen.length === 0) return;
+    onDuplicate(chosen);
+  };
+
+  return (
+    <div className="rounded-xl bg-white border border-brand p-4 mb-5 shadow-sm">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-1.5"><Copy size={14} /> Dupliker / opret opfølgning</h3>
+      <p className="text-xs text-muted mb-3">Opretter en ny sag med samme kunde, adresse og nøgleoplysninger — dato og montør er ikke sat endnu og skal vælges bagefter. Vælg hvilke varelinjer der skal med.</p>
+      <div className="space-y-1.5 mb-3">
+        {order.varelinjer.map((v) => (
+          <label key={v.id} className="flex items-center gap-2 rounded-lg border border-line px-3 py-2 cursor-pointer hover:border-brand transition-colors">
+            <input type="checkbox" checked={selected.has(v.id)} onChange={() => toggle(v.id)} className="w-4 h-4 accent-brand shrink-0" />
+            <span className="text-sm text-ink">{lineItemLabel(v)}</span>
+          </label>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <button onClick={submit} disabled={selected.size === 0} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none">
+          <Copy size={14} /> Opret ny sag
+        </button>
+        <button onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted transition-colors flex items-center gap-1.5"><X size={14} /> Annuller</button>
+      </div>
+    </div>
+  );
+}
+
+function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, onCycleStatus, onClockIn, onClockOut, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onSaveSignature, onDuplicate }) {
   const [tab, setTab] = useState("noter");
   const [editing, setEditing] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const technician = technicians.find((m) => m.id === order.montorId);
   const tabs = [
     { key: "noter", label: "Noter", count: order.noter.length },
@@ -81,6 +125,12 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
           technicians={technicians}
           onCancel={() => setEditing(false)}
           onSave={(fields) => { onUpdateBooking(fields); setEditing(false); }}
+        />
+      ) : duplicating ? (
+        <DuplicatePanel
+          order={order}
+          onCancel={() => setDuplicating(false)}
+          onDuplicate={(selectedLineItems) => { onDuplicate?.(selectedLineItems); setDuplicating(false); }}
         />
       ) : (
         <div className="rounded-xl bg-white border border-line p-5 mb-5 shadow-sm">
@@ -109,6 +159,9 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
             <div className="flex flex-col items-end gap-2">
               <button onClick={() => onCycleStatus(order.id)}><StatusBadge status={order.status} /></button>
               <button onClick={() => setEditing(true)} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand flex items-center gap-1"><Pencil size={13} /> Redigér booking</button>
+              {onDuplicate && (
+                <button onClick={() => setDuplicating(true)} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand flex items-center gap-1"><Copy size={13} /> Dupliker / opfølgning</button>
+              )}
             </div>
           </div>
         </div>
