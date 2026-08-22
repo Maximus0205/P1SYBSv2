@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 
 import { supabase } from "./lib/supabaseClient";
-import { getOrders, saveOrder, getFreshOrder, getStore } from "./lib/dataStore";
+import { getOrders, saveOrder, getFreshOrder, getOwnProfile, getStore } from "./lib/dataStore";
 import {
   uid, todayISO, dailyOrderCompare, timeSlotById,
   PAGES_FOR_ROLE,
@@ -71,7 +71,7 @@ export default function App() {
   };
 
   const reloadProfile = async (userId) => {
-    const p = await getOwnProfileSafe(userId);
+    const p = await getOwnProfile(userId);
     if (!p) { setProfile(null); return null; }
     const normalized = { id: p.id, navn: p.navn, rolle: p.rolle, bilId: p.bil_id, butikId: p.butik_id, erSystemadmin: !!p.er_systemadmin };
     setProfile(normalized);
@@ -384,11 +384,4 @@ export default function App() {
       </div>
     </div>
   );
-}
-
-// Lille lokal wrapper omkring getOwnProfile, så importlisten øverst ikke
-// skal bære endnu et navn - se lib/dataStore.js for selve implementeringen.
-async function getOwnProfileSafe(userId) {
-  const { getOwnProfile } = await import("./lib/dataStore");
-  return getOwnProfile(userId);
 }
