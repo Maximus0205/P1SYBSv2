@@ -185,4 +185,4 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
   );
 }
 
-export { OrderView };
+export { OrderView, BookingEditor, DuplicatePanel };
