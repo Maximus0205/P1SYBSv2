@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, Users, RefreshCw, KeyRound, Clock, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid, MapPin, Phone } from "lucide-react";
 import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatDuration, technicianColor, dailyOrderCompare } from "../data/domain";
 import { getAiRouteSuggestion } from "../lib/dataStore";
@@ -104,6 +104,18 @@ function ReasonLine({ order }) {
 }
 
 // ---------------- AI-forslag til løsning på "Kræver handling" ----------------
+// PROAKTIV (august 2026): kører nu AUTOMATISK, ligesom booking-flowets
+// datoforslag allerede gjorde - ingen grund til at kræve et klik for
+// noget, der lige så godt kan være klar, når man ser siden. Genkører
+// automatisk, hvis selve GRUPPEN af "kræver handling"-sager reelt ændrer
+// sig (nye sager kommer til, eller nogen bliver løst) - men IKKE bare
+// fordi man navigerer til siden igen med uændrede data, eller fordi noget
+// andet på siden opdaterer sig. Det er bevidst: hvert kald koster et
+// rigtigt Gemini-kald, og der er ingen grund til at betale for det samme
+// spørgsmål igen og igen. "signature" er et fingeraftryk af PRÆCIS hvilke
+// sagsnumre der indgår - kun når den ændrer sig, kører AI'en igen af sig
+// selv. Opdater-knappen (ikonet) tvinger stadig et nyt kald, hvis man
+// aktivt vil have et frisk forslag på samme gruppe.
 const AI_BATCH_LIMIT = 80;
 
 function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
@@ -111,14 +123,16 @@ function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
   const [solutions, setSolutions] = useState(null);
   const [error, setError] = useState(null);
   const [applied, setApplied] = useState({});
-
-  if (needsAction.length === 0) return null;
+  const fetchedSignatureRef = useRef(null);
 
   const aiTargets = needsAction.slice(0, AI_BATCH_LIMIT);
   const truncated = needsAction.length > AI_BATCH_LIMIT;
+  const signature = aiTargets.map((s) => s.nr).sort().join(",");
 
   const ask = async () => {
+    if (aiTargets.length === 0) return;
     setLoading(true); setError(null); setSolutions(null); setApplied({});
+    fetchedSignatureRef.current = signature;
     const kraeverHandling = aiTargets.map((s) => ({
       sag: s.nr,
       dato: s.dato,
@@ -139,6 +153,13 @@ function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
     setSolutions(result.loesninger || []);
   };
 
+  useEffect(() => {
+    if (aiTargets.length === 0) return;
+    if (fetchedSignatureRef.current === signature) return; // uændret gruppe - intet nyt at spørge om
+    ask();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature]);
+
   const apply = (sagNr, orderId, technicianId) => {
     onAssign(orderId, technicianId);
     setApplied((prev) => ({ ...prev, [sagNr]: true }));
@@ -154,6 +175,8 @@ function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
       return next;
     });
   };
+
+  if (needsAction.length === 0) return null;
 
   const visible = (solutions || []).filter((s) => !applied[s.sag]);
   const groups = [];
@@ -174,12 +197,15 @@ function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
     <div className="rounded-xl border border-ink bg-panel p-3 mb-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <p className="text-xs font-semibold uppercase tracking-wide text-ink flex items-center gap-1.5"><Sparkles size={13} /> AI-forslag til løsning</p>
-        <button onClick={ask} disabled={loading} className="text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors px-3 py-1.5 rounded-lg disabled:opacity-50">
-          {loading ? "Analyserer..." : "Bed AI om forslag"}
+        <button onClick={() => { fetchedSignatureRef.current = null; ask(); }} disabled={loading} className="text-muted hover:text-brand disabled:opacity-50" title="Kør forslagene igen">
+          <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
         </button>
       </div>
 
-      {!solutions && !error && !loading && (
+      {loading && !solutions && (
+        <p className="text-[11px] text-muted mt-1.5 flex items-center gap-1.5"><Loader2 size={11} className="animate-spin shrink-0" /> Analyserer automatisk...</p>
+      )}
+      {!loading && !solutions && !error && (
         <p className="text-[11px] text-muted mt-1.5">Foreslår en montør til hver sag, grupperet så du kan se og tildele en hel gruppe ad gangen. Rådgivende — retter kun montør; forsinkede sager kan stadig kræve, du selv retter datoen.{truncated ? ` Kun de ${AI_BATCH_LIMIT} mest kritiske sager (ud af ${needsAction.length}) sendes ad gangen.` : ""}</p>
       )}
       {error && <p className="text-xs text-danger mt-2">{error}</p>}
@@ -190,7 +216,7 @@ function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
         ) : (
           <div className="space-y-2 mt-2">
             {truncated && (
-              <p className="text-[11px] text-muted">Kun de {AI_BATCH_LIMIT} mest kritiske sager (ud af {needsAction.length}) fik et forslag denne omgang - kør igen bagefter for de næste.</p>
+              <p className="text-[11px] text-muted">Kun de {AI_BATCH_LIMIT} mest kritiske sager (ud af {needsAction.length}) fik et forslag denne omgang - opdater bagefter for de næste.</p>
             )}
             {groups.map((g) => {
               const technician = g.navn && technicians.find((m) => m.navn === g.navn);
