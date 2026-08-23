@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin, Sparkles, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Check, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID, KEY_ACCESS_TYPES, buildingKey, formatLongDate, formatDuration, lineItemMinutes, availableAddOns, serviceIcon, todayISO, addDays, weekDays, orderExpectedMinutes } from "../data/domain";
-import { getAiRouteSuggestion, lookupPunkt1Product } from "../lib/dataStore";
+import { lookupPunkt1Product } from "../lib/dataStore";
 import { geocodeAddress, geocodeAddresses, drivingDistances } from "../lib/geocoding";
+import { suggestBookingDates } from "../lib/scheduling";
 
 // Forsøger at splitte en punkt1.dk-produkttitel (fx "Point 5-Series
 // PODW56042W opvaskemaskine") op i mærke + modelnummer. Mærket antages at
@@ -501,19 +502,21 @@ function InteractiveWeekPicker({ orders, technicians, date, onSelectDate }) {
   );
 }
 
-// ÉT samlet, AI-prioriteret forslag til levering/montering - erstatter det
-// der FØR var 3-4 separate bokse (samme opgang, køreafstand, AI-tekst,
-// ugekapacitet), som alle konkurrerede om opmærksomheden samtidig. Formålet
-// er at gøre det hurtigt og enkelt for en sælger, der står hos kunden og
-// skal aftale en dato der og da: ÉT sæt klikbare forslag, ikke fire ting at
-// læse og selv sammenligne.
+// ÉT samlet, PRIORITERET forslag til levering/montering - erstatter det
+// der FØR var 3-4 separate bokse (samme opgang, køreafstand, ugekapacitet),
+// som alle konkurrerede om opmærksomheden samtidig. Formålet er at gøre det
+// hurtigt og enkelt for en sælger, der står hos kunden og skal aftale en
+// dato der og da: ÉT sæt klikbare forslag, ikke fire ting at læse og selv
+// sammenligne.
+//
+// INGEN AI (rettet august 2026): "samme opgang" og "køreafstand" beregnes
+// stadig via rigtige adresseopslag/ORS, men RANGERINGEN og valget af
+// endeligt forslag sker nu med en ren, forklarlig scoring-algoritme (se
+// lib/scheduling.js) i stedet for et Gemini-kald - hurtigere, gratis, og
+// fejler aldrig fordi en sprogmodel er overbelastet.
 //
 // Kører automatisk når trinnet vises (kræver adresse udfyldt fra kunde-
-// trinnet) - ingen knap man skal huske at trykke først. "Samme opgang" og
-// "køreafstand" beregnes stadig (samme logik som før), men vises IKKE som
-// egne bokse - de sendes i stedet med som en del af grundlaget til AI'en,
-// som selv vejer dem sammen med ugens kapacitet og returnerer 1-3 konkrete,
-// klikbare forslag. Et klik sætter dato (og evt. montør) med det samme.
+// trinnet) - ingen knap man skal huske at trykke først.
 //
 // Forslagene er RÅDGIVENDE, ikke en automatisk booking - sælgeren skal
 // stadig trykke "Book sag" til sidst, og kan altid vælge en helt anden
@@ -521,7 +524,6 @@ function InteractiveWeekPicker({ orders, technicians, date, onSelectDate }) {
 function SuggestedDates({ orders, technicians, date, address, jobSummary, onSelectDate }) {
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState(null);
-  const [note, setNote] = useState("");
   const [error, setError] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
   const ranRef = useRef(false);
@@ -544,8 +546,9 @@ function SuggestedDates({ orders, technicians, date, address, jobSummary, onSele
       : [];
 
     // Nærliggende sager (køreafstand) - kræver geokodning. Fejler den
-    // stille (fx ingen ORS-nøgle sat op), fortsætter vi bare uden det
-    // signal - resten af forslaget bygger stadig på kapacitet+samme opgang.
+    // stille (fx ORS-tjenesten midlertidigt utilgængelig), fortsætter vi
+    // bare uden det signal - resten af forslaget bygger stadig på
+    // kapacitet+samme opgang.
     let nearbyDates = [];
     try {
       const source = await geocodeAddress(address);
@@ -567,18 +570,9 @@ function SuggestedDates({ orders, technicians, date, address, jobSummary, onSele
       // Stille - se kommentar ovenfor.
     }
 
-    const grundlag = weekOrders.map((s) => ({
-      sag: s.nr, dato: s.dato, adresse: s.kunde.adresse,
-      bil: technicians.find((m) => m.id === s.montorId)?.navn || "ikke tildelt",
-    }));
-    const montorTekst = technicians.map((m) => `${m.navn} (${m.bil})`).join(", ");
-    const nyOpgave = { ...jobSummary, sammeOpgangDatoer: sameBuildingDates, naerliggendeDatoer: nearbyDates };
-
-    const result = await getAiRouteSuggestion({ grundlag, montorTekst, valgtDato: anchor, nyOpgave });
+    const result = suggestBookingDates({ week, orders: orders || [], technicians: technicians || [], sameBuildingDates, nearbyDates });
     setLoading(false);
-    if (!result.ok) { setError(result.fejl || "Kunne ikke hente forslag lige nu."); return; }
-    setSuggestions(result.forslag || []);
-    setNote(result.generelKommentar || "");
+    setSuggestions(result);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address]);
 
@@ -598,7 +592,7 @@ function SuggestedDates({ orders, technicians, date, address, jobSummary, onSele
         </button>
       </div>
 
-      {loading && <p className="text-xs text-muted">Analyserer ugens ruter og adresser...</p>}
+      {loading && <p className="text-xs text-muted">Beregner ud fra opgang, afstand og kapacitet...</p>}
       {error && <p className="text-xs text-danger">{error}</p>}
 
       {!loading && !error && suggestions?.length > 0 && (
@@ -624,7 +618,6 @@ function SuggestedDates({ orders, technicians, date, address, jobSummary, onSele
       {!loading && !error && suggestions?.length === 0 && (
         <p className="text-xs text-muted">Intet specifikt forslag ud fra ugens data — vælg selv nedenfor.</p>
       )}
-      {note && <p className="text-[11px] text-muted italic mt-2">{note}</p>}
 
       <button onClick={() => setShowDetails((v) => !v)} className="w-full flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-muted hover:text-ink mt-3 pt-2 border-t border-divider">
         Se ugens kapacitet i detaljer
