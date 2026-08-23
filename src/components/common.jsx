@@ -9,11 +9,17 @@ import { isToday, addDays, keyAccessText, STATUS_META, todayISO, lineItemLabel, 
 // Farver her kommer fra STATUS_META (domain.js), som er uafhængig af
 // brand-temaet (status skal ikke skifte farve hvis vi rebrander) - resten
 // af filen bruger de centrale semantiske temaklasser fra tailwind.config.js.
+//
+// Boble-knap-temaet (rounded-full) er RETTET (august 2026) til samme
+// afrundet-firkantede stil (rounded-lg) som resten af appens knapper og
+// kort, konsekvent i hele systemet - kun de helt små farvede prik-
+// indikatorer (fx statuspunktet inde i StatusBadge) er bevidst bevaret
+// runde, da de er indikatorer, ikke klikbare/valgbare knapper.
 
 function StatusBadge({ status }) {
   const m = STATUS_META[status];
   return (
-    <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide uppercase px-2.5 py-1 rounded-full" style={{ color: m.color, border: `1.5px solid ${m.color}` }}>
+    <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide uppercase px-2.5 py-1 rounded-lg" style={{ color: m.color, border: `1.5px solid ${m.color}` }}>
       <span className="w-1.5 h-1.5 rounded-full" style={{ background: m.color }} />
       {m.label}
     </span>
@@ -23,7 +29,7 @@ function StatusBadge({ status }) {
 function AddOnPill({ addOn }) {
   const Icon = serviceIcon(addOn.navn);
   return (
-    <span className={`inline-flex items-center text-[11px] px-2.5 py-1 gap-1 border rounded-full font-medium ${addOn.udfoert ? "border-success text-success bg-success/10 line-through" : "border-brand text-brand bg-brand/10"}`}>
+    <span className={`inline-flex items-center text-[11px] px-2.5 py-1 gap-1 border rounded-lg font-medium ${addOn.udfoert ? "border-success text-success bg-success/10 line-through" : "border-brand text-brand bg-brand/10"}`}>
       <Icon size={11} strokeWidth={2.5} />
       {addOn.navn}
     </span>
@@ -33,7 +39,7 @@ function AddOnPill({ addOn }) {
 function KeyAccessPill({ keyAccess }) {
   if (!keyAccess || !keyAccess.kraeves) return null;
   return (
-    <span className="inline-flex items-center text-[11px] px-2.5 py-1 gap-1 rounded-full border font-semibold border-brand text-brand bg-brand/10">
+    <span className="inline-flex items-center text-[11px] px-2.5 py-1 gap-1 rounded-lg border font-semibold border-brand text-brand bg-brand/10">
       <KeyRound size={11} strokeWidth={2.5} />
       {keyAccessText(keyAccess)}
     </span>
@@ -54,7 +60,7 @@ function LineItemPills({ order }) {
       )}
       {order.varelinjer.map((v) => (
         <div key={v.id} className="flex flex-wrap items-center gap-1.5">
-          {showLineLabel && <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border border-muted text-muted">{lineItemLabel(v)}</span>}
+          {showLineLabel && <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-lg border border-muted text-muted">{lineItemLabel(v)}</span>}
           {(v.tillaeg || []).map((y) => <AddOnPill key={y.id} addOn={y} />)}
         </div>
       ))}
@@ -76,7 +82,7 @@ function DateSelector({ date, onChange }) {
         <ChevronRight size={15} />
       </button>
       {!isToday(date) && (
-        <button onClick={() => onChange(todayISO())} className="px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wide text-brand border border-brand hover:bg-brand hover:text-white transition-colors">
+        <button onClick={() => onChange(todayISO())} className="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-brand border border-brand hover:bg-brand hover:text-white transition-colors">
           I dag
         </button>
       )}
