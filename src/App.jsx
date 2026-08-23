@@ -15,7 +15,7 @@ import { OrderView } from "./components/OrderView";
 
 import { SalesPage } from "./pages/SalesPage";
 import { PlanningPage } from "./pages/PlanningPage";
-import { TechnicianPicker, TechnicianRouteView } from "./pages/TechnicianPage";
+import { TechnicianPicker, TechnicianRouteView, TechnicianOrderDetail } from "./pages/TechnicianPage";
 import { WarehousePage } from "./pages/WarehousePage";
 import { ArchivePage } from "./pages/ArchivePage";
 import { AdminPage } from "./pages/AdminPage";
@@ -51,7 +51,14 @@ function Gate({ allowed, page, children }) {
 // tidligere hvilken sag man kiggede på. "Tilbage" bruger browserens egen
 // historik (navigate(-1)), så man vender tilbage til PRÆCIS den fane man
 // kom fra, uanset hvilken det var.
-function OrderRoute({ orders, technicians, ordersStore, duplicateOrder }) {
+//
+// VIGTIGT: montør-rollen ser en HELT ANDEN, dedikeret sagsdetalje
+// (TechnicianOrderDetail i TechnicianPage.jsx) end admin/sælger (OrderView
+// i components/OrderView.jsx) - bevidst holdt isoleret, så en ombygning af
+// montør-visningen aldrig kan påvirke de andre roller. Selve dataene og
+// handlerne (props) er identiske til begge - kun HVILKEN komponent der
+// rammes afhænger af rollen.
+function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const order = orders.find((o) => o.id === id);
@@ -65,25 +72,25 @@ function OrderRoute({ orders, technicians, ordersStore, duplicateOrder }) {
     );
   }
 
-  return (
-    <OrderView
-      order={order}
-      technicians={technicians}
-      onBack={() => navigate(-1)}
-      addNote={(t) => ordersStore.addNote(order.id, t)}
-      addPhoto={(p) => ordersStore.addPhoto(order.id, p)}
-      addReport={(t, x) => ordersStore.addReport(order.id, t, x)}
-      onCycleStatus={ordersStore.cycleStatus}
-      onClockIn={() => ordersStore.clockIn(order.id)}
-      onClockOut={() => ordersStore.clockOut(order.id)}
-      onToggleAddOn={(lineItemId, addOnId) => ordersStore.toggleAddOn(order.id, lineItemId, addOnId)}
-      onAddAddOn={(lineItemId, navn) => ordersStore.addAddOn(order.id, lineItemId, navn)}
-      onRemoveAddOn={(lineItemId, addOnId) => ordersStore.removeAddOn(order.id, lineItemId, addOnId)}
-      onUpdateBooking={(fields) => ordersStore.updateBooking(order.id, fields)}
-      onSaveSignature={(payload) => ordersStore.saveSignature(order.id, payload)}
-      onDuplicate={(selectedLineItems) => duplicateOrder(order, selectedLineItems)}
-    />
-  );
+  const sharedProps = {
+    order,
+    technicians,
+    onBack: () => navigate(-1),
+    addNote: (t) => ordersStore.addNote(order.id, t),
+    addPhoto: (p) => ordersStore.addPhoto(order.id, p),
+    addReport: (t, x) => ordersStore.addReport(order.id, t, x),
+    onCycleStatus: ordersStore.cycleStatus,
+    onClockIn: () => ordersStore.clockIn(order.id),
+    onClockOut: () => ordersStore.clockOut(order.id),
+    onToggleAddOn: (lineItemId, addOnId) => ordersStore.toggleAddOn(order.id, lineItemId, addOnId),
+    onAddAddOn: (lineItemId, navn) => ordersStore.addAddOn(order.id, lineItemId, navn),
+    onRemoveAddOn: (lineItemId, addOnId) => ordersStore.removeAddOn(order.id, lineItemId, addOnId),
+    onUpdateBooking: (fields) => ordersStore.updateBooking(order.id, fields),
+    onSaveSignature: (payload) => ordersStore.saveSignature(order.id, payload),
+    onDuplicate: (selectedLineItems) => duplicateOrder(order, selectedLineItems),
+  };
+
+  return profile.rolle === "montor" ? <TechnicianOrderDetail {...sharedProps} /> : <OrderView {...sharedProps} />;
 }
 
 // Montør-fanen: montører ser altid deres EGEN rute (ingen valg nødvendigt).
@@ -167,9 +174,9 @@ export default function App() {
   // Skifter hvilken bil en tekniker (bruger med rolle "montor") er tilknyttet.
   const updateTechnicianVehicle = (technicianId, vehicleId) => usersStore.updateUser(technicianId, { bilId: vehicleId || null });
 
-  // Dupliker/opfølgning - se OrderView.jsx og OrderRoute ovenfor. Åbner den
-  // nyoprettede sag med det samme (rigtig navigation til dens egen URL), så
-  // dato/montør kan vælges.
+  // Dupliker/opfølgning - se OrderRoute ovenfor. Åbner den nyoprettede sag
+  // med det samme (rigtig navigation til dens egen URL), så dato/montør
+  // kan vælges.
   const duplicateOrder = async (sourceOrder, selectedLineItems) => {
     const newId = await ordersStore.duplicateOrder(sourceOrder, selectedLineItems);
     if (newId) navigate(`/sag/${newId}`);
@@ -231,7 +238,7 @@ export default function App() {
 
       <div className={`${narrowPage ? "max-w-2xl" : "max-w-6xl"} mx-auto px-4 pb-10`}>
         <Routes>
-          <Route path="/sag/:id" element={<OrderRoute orders={orders} technicians={technicians} ordersStore={ordersStore} duplicateOrder={duplicateOrder} />} />
+          <Route path="/sag/:id" element={<OrderRoute profile={profile} orders={orders} technicians={technicians} ordersStore={ordersStore} duplicateOrder={duplicateOrder} />} />
 
           <Route path="/salg" element={
             <Gate allowed={allowedPages} page="salg">
