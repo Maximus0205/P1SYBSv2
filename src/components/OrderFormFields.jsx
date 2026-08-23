@@ -225,7 +225,7 @@ function LineItemEditor({ lineItem, productTypes, productCategories, primaryServ
                 <button
                   key={t.id}
                   onClick={() => toggleAddOn(t)}
-                  className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border transition-colors ${selected ? "border-success bg-success/10 text-success" : "border-line text-muted hover:border-brand hover:text-brand"}`}
+                  className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border transition-colors ${selected ? "border-success bg-success/10 text-success" : "border-line text-muted hover:border-brand hover:text-brand"}`}
                 >
                   <Icon size={12} strokeWidth={2.5} />
                   {t.navn}
