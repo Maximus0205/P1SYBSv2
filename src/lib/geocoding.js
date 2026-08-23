@@ -170,6 +170,48 @@ export async function routeDrivingTime(orderedPoints) {
   return Math.round(totalSeconds / 60);
 }
 
+// Ægte RÆKKEFØLGE-optimering (ikke bare et estimat på en given rækkefølge,
+// se routeDrivingTime ovenfor) - beregner den bedste besøgsrækkefølge for
+// en montørs stop, med points[0] som FAST udgangspunkt (typisk firmaets
+// adresse). Bruger den fulde afstandsmatrix fra ÉT enkelt ORS-kald (samme
+// underliggende kald som routeDrivingTime, bare udnyttet fuldt ud i
+// stedet for kun de "kronologiske" nabo-afstande), og kører derefter en
+// "nærmeste nabo"-algoritme lokalt: fra det aktuelle punkt, vælg altid det
+// nærmeste ubesøgte punkt. Ikke matematisk bevist optimal for mange stop
+// (det er et NP-svært problem, "rejsende sælger"-problemet) - men for de
+// typisk 2-8 stop en montør har på én dag, giver det et solidt, hurtigt og
+// forklarligt forslag uden nogen AI involveret.
+//
+// Returnerer et array af INDEKSER ind i `points` i den foreslåede
+// rækkefølge (altid startende med 0), eller null hvis kaldet fejlede.
+export async function optimalVisitOrder(points) {
+  const valid = (points || []).filter((p) => p && p.lat != null && p.lon != null);
+  if (valid.length < 3) return valid.map((_, i) => i); // 0-1 stop udover startpunktet - intet at optimere
+  const data = await callProxy({ handling: "matrix", punkter: valid });
+  const durations = data?.durations;
+  if (!durations) return null;
+
+  const n = valid.length;
+  const visited = new Array(n).fill(false);
+  visited[0] = true;
+  const order = [0];
+  let current = 0;
+  for (let step = 1; step < n; step++) {
+    let best = -1;
+    let bestTime = Infinity;
+    for (let j = 1; j < n; j++) {
+      if (visited[j]) continue;
+      const t = durations[current]?.[j];
+      if (t != null && t < bestTime) { bestTime = t; best = j; }
+    }
+    if (best === -1) break; // manglende data for resten - stop, det vi har er stadig gyldigt
+    visited[best] = true;
+    order.push(best);
+    current = best;
+  }
+  return order;
+}
+
 // Still here for backwards compatibility - now always "true" for logged-in
 // users, since the key no longer depends on a local .env. Keep the calls in
 // the components (AdresseInput.jsx, AfstandsForslag.jsx) - they just fail
