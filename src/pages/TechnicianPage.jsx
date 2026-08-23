@@ -1,8 +1,8 @@
 import React from "react";
-import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, Loader2, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash } from "lucide-react";
-import { buildTitle, isToday, formatLongDate, formatDuration, technicianColor, keyAccessText, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel, dailyOrderCompare } from "../data/domain";
+import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, Loader2, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash, Package, X, Plus } from "lucide-react";
+import { buildTitle, isToday, formatLongDate, formatDuration, technicianColor, keyAccessText, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel, serviceIcon, dailyOrderCompare } from "../data/domain";
 import { StatusBadge, AddOnPill, DateSelector } from "../components/common";
-import { LineItemDetails, Notes, Photos, Reports, TimeLog, ClockWidget, Signature } from "../components/OrderParts";
+import { Notes, Photos, Reports, TimeLog, ClockWidget, Signature } from "../components/OrderParts";
 import { BookingEditor, DuplicatePanel } from "../components/OrderView";
 import { sendArrivalSms } from "../lib/dataStore";
 
@@ -309,32 +309,127 @@ function TechnicianRouteView({ orders, technician, selectedDate, onDateChange, o
   );
 }
 
+// Montørens egen, FORENKLEDE varelinje-visning - viser kun det man reelt
+// skal gøre (afkryds tillægsydelser), IKKE muligheden for at tilføje nye
+// tillægsydelser til sagen (det hører til i sælgerens/adminens opsætning,
+// ikke i marken - se OrderParts.jsx's LineItemDetails, som admin/sælger
+// stadig bruger uændret). Lidt større afkrydsningsfelter end normalt
+// (touch-mål), da det her er det, montøren rører oftest.
+function TechnicianLineItems({ order, onToggleAddOn }) {
+  return (
+    <div className="rounded-xl bg-white border border-line p-4 mb-4 shadow-sm">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Varer &amp; opgaver</h3>
+      <div className="space-y-3">
+        {order.varelinjer.map((v, i) => {
+          const addOns = v.tillaeg || [];
+          const missing = addOns.filter((y) => !y.udfoert).length;
+          return (
+            <div key={v.id} className={i < order.varelinjer.length - 1 ? "pb-3 border-b border-divider" : ""}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-ink">{lineItemLabel(v)}</p>
+                  {v.primaerYdelse && <p className="text-[11px] text-muted">{v.primaerYdelse.navn}</p>}
+                </div>
+                {missing > 0 && <span className="font-mono text-[11px] text-brand shrink-0">{missing} mangler</span>}
+              </div>
+              {addOns.length > 0 && (
+                <div className="space-y-0.5 mt-1.5">
+                  {addOns.map((y) => {
+                    const Icon = serviceIcon(y.navn);
+                    return (
+                      <label key={y.id} className="flex items-center gap-2.5 px-1.5 py-2 rounded-lg hover:bg-panel cursor-pointer">
+                        <input type="checkbox" checked={y.udfoert} onChange={() => onToggleAddOn(v.id, y.id)} className="w-5 h-5 accent-success shrink-0" />
+                        <Icon size={15} className="text-muted shrink-0" strokeWidth={2.5} />
+                        <span className={`text-sm flex-1 ${y.udfoert ? "line-through text-muted" : "text-ink"}`}>{y.navn}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Materialeforbrug UD OVER det oprindeligt planlagte - fx "der skulle
+// bruges en længere vandslange" opdaget hos kunden. Bevidst en EGEN fane,
+// adskilt fra "Noter" (fri tekst) og selve varelinjerne (det der blev
+// solgt/booket) - så det senere er let at finde igen, fx til fakturering
+// af ekstraforbrug. Kun tilgængelig i montør-visningen indtil videre.
+function Materials({ order, onAdd, onRemove }) {
+  const [navn, setNavn] = React.useState("");
+  const [antal, setAntal] = React.useState(1);
+  const materialer = order.materialer || [];
+
+  const submit = () => {
+    if (!navn.trim()) return;
+    onAdd({ navn, antal });
+    setNavn(""); setAntal(1);
+  };
+
+  return (
+    <div>
+      <div className="flex gap-2 mb-4">
+        <input
+          value={navn} onChange={(e) => setNavn(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+          placeholder="Fx 'Vandslange 3m'"
+          className="flex-1 rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
+        />
+        <input
+          type="number" min="1" value={antal}
+          onChange={(e) => setAntal(e.target.value)}
+          className="w-16 rounded-lg border border-line bg-white px-2 py-2 text-sm text-ink text-center focus:outline-none focus:border-brand"
+        />
+        <button onClick={submit} className="px-3 rounded-lg text-ink border border-line hover:border-brand hover:text-brand transition-colors shrink-0"><Plus size={16} /></button>
+      </div>
+      {materialer.length === 0 ? (
+        <p className="text-sm text-muted italic">Intet ekstra materialeforbrug registreret for denne sag.</p>
+      ) : (
+        <div className="space-y-2">
+          {[...materialer].reverse().map((m) => (
+            <div key={m.id} className="flex items-center justify-between gap-2 rounded-lg border-l-2 border-brand bg-white px-3 py-2 shadow-sm">
+              <div className="min-w-0">
+                <p className="text-sm text-ink truncate">{m.antal > 1 ? `${m.antal}× ` : ""}{m.navn}</p>
+                <p className="font-mono text-[11px] text-muted mt-0.5">{m.tid}</p>
+              </div>
+              <button onClick={() => onRemove(m.id)} className="text-muted hover:text-danger shrink-0"><X size={16} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="text-[11px] text-muted mt-3">Til ekstra materiale brugt udover det planlagte, fx en længere slange eller ekstra beslag - til senere brug ved fakturering.</p>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
-// MONTØR-SPECIFIK SAGSDETALJE (august 2026) - bevidst en HELT SEPARAT
-// visning fra den delte OrderView.jsx, som bruges af admin/sælger. Det er
-// et bevidst valg (ikke bare kopieret for sjov): den delte visning bygger
-// sin overskrift ved at sammenkoge ALLE varelinjer til én lang, versal
-// sætning (buildTitle) - fint med én varelinje, men bliver hurtigt et
-// ulæseligt tekstmur med flere, og gentager desuden information der
-// alligevel vises pænt struktureret i selve varelinje-sektionen længere
-// nede. Denne visning dropper den sammenkogte titel til fordel for et
-// kompakt, scanbart resumé, og lægger det operationelt vigtige (kunde,
-// adresse, nøgle, kontakt) tydeligere øverst - relevant når montøren
-// reelt står ved døren og skal orientere sig hurtigt.
+// MONTØR-SPECIFIK SAGSDETALJE (august 2026, opdateret) - bevidst en HELT
+// SEPARAT visning fra den delte OrderView.jsx, som bruges af admin/sælger.
+// Det er et bevidst valg (ikke bare kopieret for sjov): den delte visning
+// bygger sin overskrift ved at sammenkoge ALLE varelinjer til én lang,
+// versal sætning (buildTitle), og lader hvem som helst tilføje nye
+// tillægsydelser - begge dele er relevant for sælgeren, der sætter sagen
+// op, men er blot støj for montøren, der bare skal have et hurtigt,
+// overskueligt overblik i marken. Denne visning bruger derfor sin EGEN,
+// forenklede varelinje-liste (TechnicianLineItems, ingen "tilføj
+// tillægsydelse") og har en ekstra fane til materialeforbrug (Materials).
 //
-// Selve funktionaliteten (redigér booking, dupliker/opfølgning, noter,
+// Resten af funktionaliteten (redigér booking, dupliker/opfølgning, noter,
 // billeder, rapporter, tid, underskrift) er UÆNDRET og genbruger de exakt
-// samme, allerede fungerende komponenter som OrderView.jsx bruger
-// (BookingEditor/DuplicatePanel fra OrderView.jsx, resten fra
-// OrderParts.jsx) - kun HVORDAN det hele er bygget op og præsenteret er
-// nyt. At holde ændringen isoleret til denne fil betyder admin- og
-// sælger-visningen er 100% upåvirket.
-function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, addReport, onCycleStatus, onClockIn, onClockOut, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onSaveSignature, onDuplicate }) {
+// samme, allerede fungerende komponenter som OrderView.jsx bruger. At
+// holde ændringen isoleret til denne fil betyder admin- og sælger-
+// visningen er 100% upåvirket.
+function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, addReport, onCycleStatus, onClockIn, onClockOut, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onSaveSignature, onDuplicate, onAddMaterial, onRemoveMaterial }) {
   const [tab, setTab] = React.useState("noter");
   const [editing, setEditing] = React.useState(false);
   const [duplicating, setDuplicating] = React.useState(false);
   const tabs = [
     { key: "noter", label: "Noter", count: order.noter.length },
+    { key: "materialer", label: "Materialer", count: (order.materialer || []).length },
     { key: "billeder", label: "Billeder", count: order.billeder.length },
     { key: "rapporter", label: "Rapporter", count: order.rapporter.length },
     { key: "tid", label: "Tid", count: order.logs.length },
@@ -398,10 +493,9 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
         )}
       </div>
 
-      {/* Varelinjer - genbruger den allerede velstrukturerede
-          LineItemDetails (samme som OrderView.jsx bruger), i stedet for at
-          gentage varenavnene i overskriften. */}
-      <LineItemDetails order={order} onToggleAddOn={onToggleAddOn} onAddAddOn={onAddAddOn} onRemoveAddOn={onRemoveAddOn} />
+      {/* Varelinjer - montørens EGEN, forenklede visning (kun afkrydsning,
+          ingen "tilføj tillægsydelse") - se kommentaren ovenfor. */}
+      <TechnicianLineItems order={order} onToggleAddOn={onToggleAddOn} />
       <ClockWidget order={order} onClockIn={onClockIn} onClockOut={onClockOut} />
 
       <div className="flex border-b border-line mb-5 overflow-x-auto">
@@ -412,6 +506,7 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
         ))}
       </div>
       {tab === "noter" && <Notes order={order} onAdd={addNote} />}
+      {tab === "materialer" && <Materials order={order} onAdd={(m) => onAddMaterial?.(m)} onRemove={(id) => onRemoveMaterial?.(id)} />}
       {tab === "billeder" && <Photos order={order} onAdd={addPhoto} />}
       {tab === "rapporter" && <Reports order={order} onAdd={addReport} />}
       {tab === "tid" && <TimeLog order={order} />}
