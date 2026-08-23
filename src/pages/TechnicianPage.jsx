@@ -1,7 +1,7 @@
 import React from "react";
 import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, Loader2, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash, Package, X, Plus } from "lucide-react";
 import { buildTitle, isToday, formatLongDate, formatDuration, technicianColor, keyAccessText, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel, dailyOrderCompare } from "../data/domain";
-import { StatusBadge, AddOnPill, DateSelector } from "../components/common";
+import { StatusBadge, DateSelector } from "../components/common";
 import { Notes, Photos, Reports, TimeLog, ClockWidget, Signature } from "../components/OrderParts";
 import { BookingEditor, DuplicatePanel } from "../components/OrderView";
 import { sendArrivalSms } from "../lib/dataStore";
@@ -148,6 +148,12 @@ function ReorderButtons({ onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
 // stak tekstlinjer - det gør kortet hurtigere at skimme i marken, og
 // undgår at samme oplysning (nøgleadgang, varenavn) optræder to gange i
 // forskellig form (tekst ét sted, pille et andet).
+//
+// Tillæg vises som REN TEKST, ikke som farvede "pille/boble"-mærker (se
+// TechnicianLineItems længere nede for den fulde begrundelse) - og
+// telefonnummeret har fuld tekstkontrast (text-ink), ikke den dæmpede
+// muted-farve, siden det er noget du reelt skal handle på, ikke baggrunds-
+// information.
 function OrderStopCard({ order: s, onOpen, onCycleStatus, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
   const hasAlerts = Boolean(s.noegle?.kraeves || s.kunde.leveringsnote);
 
@@ -212,7 +218,7 @@ function OrderStopCard({ order: s, onOpen, onCycleStatus, onMoveUp, onMoveDown, 
             <a
               href={telHref(s.kunde.telefon)}
               onClick={(e) => e.stopPropagation()}
-              className="font-mono text-sm text-muted hover:text-brand transition-colors"
+              className="font-mono text-sm text-ink hover:text-brand transition-colors"
               title="Ring til kunden"
             >
               {s.kunde.telefon}
@@ -231,18 +237,19 @@ function OrderStopCard({ order: s, onOpen, onCycleStatus, onMoveUp, onMoveDown, 
         )}
       </div>
 
-      {/* Varelinjer: produkt + service som tekst, med evt. tillæg som pille
-          RET UD FOR den linje de hører til - ingen separat gentagelse af
-          varenavnet som pille længere nede. */}
+      {/* Varelinjer: produkt + service + tillæg som RENE TEKSTLINJER, ikke
+          farvede pille/boble-mærker (se begrundelse i TechnicianLineItems). */}
       {s.varelinjer && s.varelinjer.length > 0 && (
-        <div className="px-4 py-3 border-t border-divider space-y-1.5">
+        <div className="px-4 py-3 border-t border-divider space-y-2">
           {s.varelinjer.map((v) => (
-            <div key={v.id} className="flex flex-wrap items-center gap-1.5">
+            <div key={v.id}>
               <p className="text-xs text-ink">
                 <span className="font-medium">{lineItemLabel(v)}</span>
                 {v.primaerYdelse?.navn && <span className="text-muted"> · {v.primaerYdelse.navn}</span>}
               </p>
-              {(v.tillaeg || []).map((y) => <AddOnPill key={y.id} addOn={y} />)}
+              {(v.tillaeg || []).length > 0 && (
+                <p className="text-[11px] text-ink mt-0.5">{v.tillaeg.map((y) => y.navn).join(" · ")}</p>
+              )}
             </div>
           ))}
         </div>
@@ -309,16 +316,16 @@ function TechnicianRouteView({ orders, technician, selectedDate, onDateChange, o
   );
 }
 
-// Montørens egen, FORENKLEDE varelinje-visning. Tillæg er BEVIDST rent
-// INFORMATIVE her, ikke noget der skal afkrydses/markeres fuldført - en
-// tillægsydelse (fx "Afløbstilslutning") beskriver blot OMFANGET af
-// opgaven på den vare, ikke et selvstændigt deltrin man kan være "færdig"
-// eller "ikke færdig" med adskilt fra selve varen. Genbruger derfor
-// AddOnPill (samme stille, ikke-interaktive pille som allerede bruges i
-// ruteoversigten, OrderStopCard ovenfor) - ingen afkrydsning, ingen
-// "X mangler"-tæller, ingen mulighed for at tilføje nye (det hører til i
-// sælgerens/adminens opsætning, ikke i marken - se OrderParts.jsx's
-// LineItemDetails, som admin/sælger stadig bruger uændret).
+// Montørens egen, FORENKLEDE varelinje-visning. Tillæg er rent INFORMATIVE
+// her, ikke noget der skal afkrydses/markeres fuldført - en tillægsydelse
+// (fx "Afløbstilslutning") beskriver blot OMFANGET af opgaven på den vare.
+// Vises derfor som ALMINDELIG TEKST (ikke farvede pille/boble-mærker - det
+// var forvirrende og visuelt støjende at have "bobler" for noget der ikke
+// kan trykkes på eller ændres). Fuld tekstkontrast (text-ink), ikke
+// dæmpet/anonymt - det er information du reelt skal kende omfanget af.
+// Ingen mulighed for at tilføje nye tillæg (det hører til i sælgerens/
+// adminens opsætning, ikke i marken - se OrderParts.jsx's LineItemDetails,
+// som admin/sælger stadig bruger uændret).
 function TechnicianLineItems({ order }) {
   return (
     <div className="rounded-xl bg-white border border-line p-4 mb-4 shadow-sm">
@@ -327,11 +334,9 @@ function TechnicianLineItems({ order }) {
         {order.varelinjer.map((v, i) => (
           <div key={v.id} className={i < order.varelinjer.length - 1 ? "pb-3 border-b border-divider" : ""}>
             <p className="text-sm font-semibold text-ink">{lineItemLabel(v)}</p>
-            {v.primaerYdelse?.navn && <p className="text-[11px] text-muted">{v.primaerYdelse.navn}</p>}
+            {v.primaerYdelse?.navn && <p className="text-xs text-ink">{v.primaerYdelse.navn}</p>}
             {(v.tillaeg || []).length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-1.5">
-                {v.tillaeg.map((y) => <AddOnPill key={y.id} addOn={y} />)}
-              </div>
+              <p className="text-xs text-ink mt-0.5">{v.tillaeg.map((y) => y.navn).join(" · ")}</p>
             )}
           </div>
         ))}
@@ -393,14 +398,13 @@ function Materials({ order, onAdd, onRemove }) {
 }
 
 // ---------------------------------------------------------------------------
-// MONTØR-SPECIFIK SAGSDETALJE (august 2026, opdateret igen efter direkte
+// MONTØR-SPECIFIK SAGSDETALJE (august 2026, tredje omgang efter direkte
 // feedback) - bevidst en HELT SEPARAT visning fra den delte OrderView.jsx,
-// som bruges af admin/sælger. Header- og kontakt-information er nu SLÅET
-// SAMMEN til ét kort (adskilt internt med tynde streger i stedet for helt
-// nye bokse med egen kant/skygge) - tre-fire separate hvide bokse oven på
-// hinanden var i sig selv en del af det "rodede" indtryk, ikke kun
-// afkrydsningsfelterne. Se TechnicianLineItems ovenfor for hvorfor tillæg
-// nu er rent informative, ikke afkrydsbare.
+// som bruges af admin/sælger. Se TechnicianLineItems for hvorfor tillæg nu
+// er ren tekst, ikke pille/boble-mærker. Telefonnummeret og ydelses-navnet
+// har nu fuld tekstkontrast (text-ink) i stedet for den dæmpede
+// muted-farve - det er operationelt vigtig information, ikke baggrunds-
+// støj, og skal ikke se "anonym" ud.
 //
 // Resten af funktionaliteten (redigér booking, dupliker/opfølgning, noter,
 // billeder, rapporter, tid, underskrift, materialer) er UÆNDRET og
@@ -447,8 +451,7 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
             <p className="text-sm text-brand font-semibold mt-1.5 flex items-center gap-1.5"><KeyRound size={14} className="shrink-0" /> {keyAccessText(order.noegle)}</p>
           )}
 
-          {/* Kontakt - FLETTET IND i samme kort (tidligere en helt egen
-              hvid boks) - adskilt med en tynd streg, ikke en ny kant+skygge. */}
+          {/* Kontakt - flettet ind i samme kort, adskilt med en tynd streg. */}
           <div className="mt-3 pt-3 border-t border-divider space-y-2">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <p className="text-sm text-ink truncate min-w-0">{order.kunde.adresse}</p>
@@ -458,7 +461,7 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
             </div>
             {order.kunde.telefon && (
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <a href={telHref(order.kunde.telefon)} className="font-mono text-sm text-muted hover:text-brand transition-colors" title="Ring til kunden">{order.kunde.telefon}</a>
+                <a href={telHref(order.kunde.telefon)} className="font-mono text-sm text-ink hover:text-brand transition-colors" title="Ring til kunden">{order.kunde.telefon}</a>
                 <div className="flex items-center gap-2">
                   <a href={telHref(order.kunde.telefon)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors" title="Ring til kunden">
                     <Phone size={13} /> Ring
