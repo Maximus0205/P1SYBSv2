@@ -258,7 +258,7 @@ export default function App() {
                 orders={orders} technicians={technicians} vehicles={vehicles} timeOff={timeOff}
                 store={store}
                 selectedDate={selectedDate} onDateChange={setSelectedDate}
-                onOpen={onOpen} onCycleStatus={ordersStore.cycleStatus} onAssign={ordersStore.assignTechnician} onReorder={ordersStore.reorderOrder}
+                onOpen={onOpen} onCycleStatus={ordersStore.cycleStatus} onAssign={ordersStore.assignTechnician} onReorder={ordersStore.reorderOrder} onSetVisitOrder={ordersStore.setVisitOrder}
                 onUpdateTechnician={(technicianId, fields) => updateTechnicianVehicle(technicianId, fields.bilId)}
                 onRefresh={refresh} refreshing={refreshing}
               />
