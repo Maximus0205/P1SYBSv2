@@ -6,7 +6,7 @@ import { uid, todayISO, dailyOrderCompare, timeSlotById } from "../data/domain";
 // for den fulde begrundelse. Al state og CRUD for ORDRER - den suverænt
 // største og mest centrale del af appen (booking, status, pluk, besøgs-
 // rækkefølge, dupliker/opfølgning, noter/billeder/rapporter/tid/
-// underskrift) - er samlet her.
+// underskrift/materialeforbrug) - er samlet her.
 //
 // VIGTIGT (uændret fra da denne logik boede i App.jsx): saveOneOrder
 // gemmer/opdaterer ALTID ét enkelt element ad gangen, aldrig "gem hele
@@ -36,7 +36,7 @@ export function useOrders(storeId) {
     const newOrder = {
       id: uid(), nr: "...", ordrenummer: ordrenummer?.trim() || "",
       kunde, koeber: koeber || null, noegle: noegle || {}, dato: dato || todayISO(), tidsrumId, start, slut, montorId,
-      status: "planlagt", plukket: false, varelinjer, noter: [], billeder: [], rapporter: [], stemplerInd: null, logs: [],
+      status: "planlagt", plukket: false, varelinjer, noter: [], billeder: [], rapporter: [], materialer: [], stemplerInd: null, logs: [],
     };
     setOrders((prev) => [...prev, newOrder]);
     await saveOrder(storeId, newOrder);
@@ -49,9 +49,9 @@ export function useOrders(storeId) {
   // "Dupliker / Opfølgning" i OrderView.jsx. Kunde/køber/nøgleoplysninger
   // og adresse kopieres, men datoen, tidsrummet og montøren NULSTILLES
   // bevidst - det er jo netop noget nyt der skal planlægges. Sagsnummer,
-  // status, noter, billeder, rapporter, tidsregistrering og plukket-status
-  // starter alle helt friske. Returnerer det nye sags-id, så den kaldende
-  // side kan åbne den nyoprettede sag med det samme.
+  // status, noter, billeder, rapporter, tidsregistrering, materialeforbrug
+  // og plukket-status starter alle helt friske. Returnerer det nye sags-id,
+  // så den kaldende side kan åbne den nyoprettede sag med det samme.
   const duplicateOrder = async (sourceOrder, selectedLineItems) => {
     if (!storeId || !selectedLineItems || selectedLineItems.length === 0) return null;
     const t = timeSlotById("heldag");
@@ -68,7 +68,7 @@ export function useOrders(storeId) {
       noegle: sourceOrder.noegle ? { ...sourceOrder.noegle } : {},
       dato: todayISO(), tidsrumId: "heldag", start: t.start, slut: t.slut, montorId: null,
       status: "planlagt", plukket: false, varelinjer: clonedLineItems,
-      noter: [], billeder: [], rapporter: [], stemplerInd: null, logs: [],
+      noter: [], billeder: [], rapporter: [], materialer: [], stemplerInd: null, logs: [],
     };
     setOrders((prev) => [...prev, newOrder]);
     await saveOrder(storeId, newOrder);
@@ -169,12 +169,29 @@ export function useOrders(storeId) {
     if (s) saveOneOrder({ ...s, underskrift: { navn, data, tid: new Date().toLocaleString("da-DK") } });
   };
 
+  // Materialeforbrug UD OVER det oprindeligt planlagte - fx "vi skulle
+  // bruge en længere vandslange" opdaget hos kunden. Adskilt fra noter
+  // (fri tekst) og varelinjer (det der blev SOLGT/booket) - dette er en
+  // logget liste over ekstra ting brugt undervejs, til senere brug ved
+  // evt. fakturering/lageropfølgning. Bevidst simpelt (navn + antal), ikke
+  // koblet til det rigtige varekatalog endnu.
+  const addMaterial = (orderId, { navn, antal }) => {
+    const s = findOrder(orders, orderId);
+    if (!s || !navn?.trim()) return;
+    saveOneOrder({ ...s, materialer: [...(s.materialer || []), { id: uid(), navn: navn.trim(), antal: Number(antal) || 1, tid: new Date().toLocaleString("da-DK") }] });
+  };
+  const removeMaterial = (orderId, materialId) => {
+    const s = findOrder(orders, orderId);
+    if (s) saveOneOrder({ ...s, materialer: (s.materialer || []).filter((m) => m.id !== materialId) });
+  };
+
   return {
     orders,
     addOrder, duplicateOrder, updateBooking, importOrders,
     assignTechnician, updateTimeSlot, reorderOrder, toggleLineItemPicked, cycleStatus,
     addNote, addPhoto, addReport, clockIn, clockOut,
     toggleAddOn, addAddOn, removeAddOn, saveSignature,
+    addMaterial, removeMaterial,
     reload: () => load(storeId),
   };
 }
