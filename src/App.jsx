@@ -28,13 +28,8 @@ import { SystemAdminPage } from "./pages/SystemAdminPage";
 // til dedikerede hooks (se hooks/-mappen: useSession, useCatalog,
 // useVehicles, useTimeOff, useUsers, useOrders). Navigation er nu en RIGTIG
 // URL (via react-router-dom, HashRouter - se main.jsx for hvorfor hash), i
-// stedet for kun React-state - det var den håndrullede hash-parsing
-// FØRSTE forsøg på at løse, men en rigtig routing-løsning håndterer det
-// robust for hele appen på én gang: fane-refresh, en åben sags egen URL
-// (/sag/:id), browser-historik (tilbage/frem), og rolle-baseret adgang -
-// i stedet for at hver ny slags "hvad skal huskes" skal håndkodes for sig.
-// App.jsx's tilbageværende ansvar er nu: kalde hooks, definere rute-
-// opsætningen, og komponere sider.
+// stedet for kun React-state. App.jsx's tilbageværende ansvar er nu: kalde
+// hooks, definere rute-opsætningen, og komponere sider.
 // ---------------------------------------------------------------------------
 
 // Beskytter en rute mod roller der ikke må se den - sender videre til
@@ -89,10 +84,6 @@ function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder 
     onUpdateBooking: (fields) => ordersStore.updateBooking(order.id, fields),
     onSaveSignature: (payload) => ordersStore.saveSignature(order.id, payload),
     onDuplicate: (selectedLineItems) => duplicateOrder(order, selectedLineItems),
-    // Materialeforbrug - kun brugt af TechnicianOrderDetail lige nu (se
-    // TechnicianPage.jsx), men sendt med til begge for enkelthedens skyld -
-    // OrderView (admin/sælger) destrukturerer dem blot ikke, og ignorerer
-    // dem derfor harmløst.
     onAddMaterial: (fields) => ordersStore.addMaterial(order.id, fields),
     onRemoveMaterial: (materialId) => ordersStore.removeMaterial(order.id, materialId),
   };
@@ -234,6 +225,14 @@ export default function App() {
   const currentPage = location.pathname.replace(/^\//, "").split("/")[0] || allowedPages[0];
   const narrowPage = currentPage === "montor" || currentPage === "sag";
 
+  // Topnavigationen skjules bevidst KUN for montører, KUN mens en specifik
+  // sag er åben (currentPage === "sag") - montøren har jo kun én fane at
+  // navigere til alligevel (sin egen rute), og "← Tilbage" i selve sagen
+  // dækker allerede navigationsbehovet. En fast bjælke der reelt intet
+  // tilbyder i den situation er blot spildt lodret plads midt i marken.
+  // Admin/sælger beholder den uændret på alle sider, inkl. sagsdetaljer.
+  const hideTopNav = currentPage === "sag" && profile.rolle === "montor";
+
   return (
     <div className="min-h-screen w-full bg-paper" style={{ fontFamily: "Inter, sans-serif" }}>
       <style>{`
@@ -241,9 +240,9 @@ export default function App() {
         .font-mono { font-family: 'JetBrains Mono', monospace; }
       `}</style>
 
-      <TopNav page={currentPage} onChange={(key) => navigate(`/${key}`)} user={profile} onLogOut={logOut} />
+      {!hideTopNav && <TopNav page={currentPage} onChange={(key) => navigate(`/${key}`)} user={profile} onLogOut={logOut} />}
 
-      <div className={`${narrowPage ? "max-w-2xl" : "max-w-6xl"} mx-auto px-4 pb-10`}>
+      <div className={`${narrowPage ? "max-w-2xl" : "max-w-6xl"} mx-auto px-4 pb-10 ${hideTopNav ? "pt-4" : ""}`}>
         <Routes>
           <Route path="/sag/:id" element={<OrderRoute profile={profile} orders={orders} technicians={technicians} ordersStore={ordersStore} duplicateOrder={duplicateOrder} />} />
 
