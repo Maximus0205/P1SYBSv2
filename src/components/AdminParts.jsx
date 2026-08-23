@@ -98,7 +98,7 @@ function VehicleRow({ vehicle, usedBy, onUpdate, onDelete, onToggleClosed }) {
   return (
     <div className={`rounded-xl bg-white border p-2.5 flex items-center gap-2 flex-wrap shadow-sm ${vehicle.lukket ? "border-brand opacity-70" : "border-line"}`}>
       <p className="text-sm text-ink flex-1 truncate min-w-[80px]">{vehicleLabel(vehicle)}</p>
-      {vehicle.lukket && <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full border border-brand text-brand shrink-0">Lukket{vehicle.lukketAarsag ? ` · ${vehicle.lukketAarsag}` : ""}</span>}
+      {vehicle.lukket && <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md border border-brand text-brand shrink-0">Lukket{vehicle.lukketAarsag ? ` · ${vehicle.lukketAarsag}` : ""}</span>}
       {usedBy && <span className="text-[10px] text-muted shrink-0">kører af {usedBy}</span>}
       {showCloseReason ? (
         <div className="flex items-center gap-1 shrink-0">
@@ -107,7 +107,7 @@ function VehicleRow({ vehicle, usedBy, onUpdate, onDelete, onToggleClosed }) {
           <button onClick={() => setShowCloseReason(false)} className="text-[10px] text-muted">Fortryd</button>
         </div>
       ) : (
-        <button onClick={() => (vehicle.lukket ? onToggleClosed(vehicle.id) : setShowCloseReason(true))} className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full border shrink-0 ${vehicle.lukket ? "border-success text-success hover:bg-success hover:text-white" : "border-brand text-brand hover:bg-brand hover:text-white"} transition-colors`}>
+        <button onClick={() => (vehicle.lukket ? onToggleClosed(vehicle.id) : setShowCloseReason(true))} className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-md border shrink-0 ${vehicle.lukket ? "border-success text-success hover:bg-success hover:text-white" : "border-brand text-brand hover:bg-brand hover:text-white"} transition-colors`}>
           {vehicle.lukket ? "Åbn igen" : "Blokér (fx værksted)"}
         </button>
       )}
@@ -212,7 +212,7 @@ function NewUserForm({ onAdd }) {
   return (
     <div className="rounded-xl border border-line bg-white p-5 mb-6 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Opret ny bruger</h3>
-      <div className="flex rounded-full border border-line mb-3 text-xs font-semibold uppercase tracking-wide w-fit overflow-hidden">
+      <div className="flex rounded-lg border border-line mb-3 text-xs font-semibold uppercase tracking-wide w-fit overflow-hidden">
         <button onClick={() => setLoginType("brugernavn")} className={`px-3 py-1.5 transition-colors ${loginType === "brugernavn" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>Brugernavn</button>
         <button onClick={() => setLoginType("email")} className={`px-3 py-1.5 transition-colors ${loginType === "email" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>E-mail</button>
       </div>
@@ -392,6 +392,11 @@ function PrimaryServiceAdmin({ primaryServices, onAdd, onUpdate, onDelete }) {
 // gælder under (påkrævet), og valgfrit hvilke specifikke varetyper den er
 // begrænset til (tomt = gælder for alle varetyper). Heller ikke her sættes
 // et tidsestimat - det tastes manuelt pr. booking, se note ovenfor.
+//
+// Valg-mærkerne (primær ydelse / varetype) er RETTET (august 2026) fra
+// fuldt runde "boble"-knapper (rounded-full) til samme afrundet-firkantede
+// stil (rounded-lg) som resten af appens knapper og kort - det runde
+// boble-udseende var bevidst fjernet konsekvent i hele systemet.
 
 function AddOnServiceRow({ service, productTypes, primaryServices, onUpdate, onDelete }) {
   const togglePrimary = (pId) => {
@@ -420,7 +425,7 @@ function AddOnServiceRow({ service, productTypes, primaryServices, onUpdate, onD
                 primaryServices.map((p) => {
                   const selected = (service.primaerYdelser || []).includes(p.id);
                   return (
-                    <button key={p.id} onClick={() => togglePrimary(p.id)} className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${selected ? "border-success bg-success/10 text-success" : "border-line text-muted hover:border-brand hover:text-brand"}`}>
+                    <button key={p.id} onClick={() => togglePrimary(p.id)} className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${selected ? "border-success bg-success/10 text-success" : "border-line text-muted hover:border-brand hover:text-brand"}`}>
                       {p.navn}
                     </button>
                   );
@@ -436,7 +441,7 @@ function AddOnServiceRow({ service, productTypes, primaryServices, onUpdate, onD
               {productTypes.map((v) => {
                 const selected = (service.varetyper || []).includes(v.id);
                 return (
-                  <button key={v.id} onClick={() => toggleProductType(v.id)} className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${selected ? "border-brand bg-brand/10 text-brand" : "border-line text-muted hover:border-brand hover:text-brand"}`}>
+                  <button key={v.id} onClick={() => toggleProductType(v.id)} className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${selected ? "border-brand bg-brand/10 text-brand" : "border-line text-muted hover:border-brand hover:text-brand"}`}>
                     {v.navn}
                   </button>
                 );
