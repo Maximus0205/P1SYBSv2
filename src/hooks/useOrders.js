@@ -109,6 +109,21 @@ export function useOrders(storeId) {
     });
   };
 
+  // Sætter besøgs-RÆKKEFØLGEN for en montørs dag i ÉT hug, ud fra en
+  // færdigberegnet liste af sags-id'er i den ønskede rækkefølge - bruges af
+  // "Foreslå bedste rækkefølge" (se lib/geocoding.js: optimalVisitOrder,
+  // og PlanningPage.jsx), som beregner en hel ny rækkefølge på én gang, i
+  // modsætning til reorderOrder ovenfor, der kun flytter ÉT trin ad gangen.
+  // Kun de sager hvis raekkefolge rent faktisk ændrer sig bliver gemt.
+  const setVisitOrder = (technicianId, date, orderedIds) => {
+    orderedIds.forEach((id, i) => {
+      const o = findOrder(orders, id);
+      if (o && o.montorId === technicianId && o.dato === date && o.raekkefolge !== i) {
+        saveOneOrder({ ...o, raekkefolge: i });
+      }
+    });
+  };
+
   // Slår plukket til/fra for ÉN varelinje (se WarehousePage.jsx: dér er 1
   // varelinje = 1 pluk-punkt på lagerlisten, i stedet for 1 punkt pr. hele
   // ordren). Ordrens samlede "plukket"-flag holdes synkroniseret som et
@@ -188,7 +203,7 @@ export function useOrders(storeId) {
   return {
     orders,
     addOrder, duplicateOrder, updateBooking, importOrders,
-    assignTechnician, updateTimeSlot, reorderOrder, toggleLineItemPicked, cycleStatus,
+    assignTechnician, updateTimeSlot, reorderOrder, setVisitOrder, toggleLineItemPicked, cycleStatus,
     addNote, addPhoto, addReport, clockIn, clockOut,
     toggleAddOn, addAddOn, removeAddOn, saveSignature,
     addMaterial, removeMaterial,
