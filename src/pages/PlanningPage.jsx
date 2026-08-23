@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, Users, RefreshCw, KeyRound, Clock, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid, MapPin, Phone } from "lucide-react";
+import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, Users, RefreshCw, KeyRound, Clock, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid, MapPin, Phone, Route } from "lucide-react";
 import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatDuration, technicianColor, dailyOrderCompare } from "../data/domain";
-import { getAiRouteSuggestion } from "../lib/dataStore";
-import { geocodeAddresses, routeDrivingTime } from "../lib/geocoding";
+import { geocodeAddresses, routeDrivingTime, optimalVisitOrder } from "../lib/geocoding";
+import { suggestReassignments } from "../lib/scheduling";
 import { DateSelector } from "../components/common";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 
@@ -16,6 +16,11 @@ import { OrderCardCompact } from "../components/OrderCardCompact";
 // automatisk ud fra skærmbredde via CSS-breakpoints (Tailwinds `md:`),
 // IKKE ved at gætte på enhedstype. Det betyder det tilpasser sig korrekt
 // også ved fx rotation eller et smalt browservindue på en bærbar.
+//
+// INGEN AI (rettet august 2026): omfordelingsforslag og rækkefølge-
+// optimering bruger nu rene, forklarlige algoritmer (se lib/scheduling.js
+// og lib/geocoding.js: optimalVisitOrder) i stedet for Gemini - hurtigere,
+// gratis, og fejler aldrig fordi en sprogmodel er overbelastet.
 // ---------------------------------------------------------------------------
 
 function daysLate(dato, today) {
@@ -103,59 +108,46 @@ function ReasonLine({ order }) {
   );
 }
 
-// ---------------- AI-forslag til løsning på "Kræver handling" ----------------
-// PROAKTIV (august 2026): kører nu AUTOMATISK, ligesom booking-flowets
-// datoforslag allerede gjorde - ingen grund til at kræve et klik for
-// noget, der lige så godt kan være klar, når man ser siden. Genkører
-// automatisk, hvis selve GRUPPEN af "kræver handling"-sager reelt ændrer
-// sig (nye sager kommer til, eller nogen bliver løst) - men IKKE bare
-// fordi man navigerer til siden igen med uændrede data, eller fordi noget
-// andet på siden opdaterer sig. Det er bevidst: hvert kald koster et
-// rigtigt Gemini-kald, og der er ingen grund til at betale for det samme
-// spørgsmål igen og igen. "signature" er et fingeraftryk af PRÆCIS hvilke
-// sagsnumre der indgår - kun når den ændrer sig, kører AI'en igen af sig
-// selv. Opdater-knappen (ikonet) tvinger stadig et nyt kald, hvis man
-// aktivt vil have et frisk forslag på samme gruppe.
-const AI_BATCH_LIMIT = 80;
+// ---------------- Forslag til løsning på "Kræver handling" ----------------
+// PROAKTIV: kører automatisk, når "kræver handling"-listen vises eller
+// reelt ændrer sig (nye sager kommer til, eller nogen bliver løst) - ikke
+// bare fordi man navigerer til siden igen med uændrede data. "signature"
+// er et fingeraftryk af PRÆCIS hvilke sagsnumre der indgår.
+//
+// INGEN AI: bruger suggestReassignments (lib/scheduling.js) - en ren
+// scoring-algoritme baseret på ledig kapacitet og luftlinjeafstand til
+// montørens øvrige sager samme dag. Kræver kun geokodning (allerede
+// tilgængeligt, samme cache som resten af appen), intet Gemini-kald.
+const BATCH_LIMIT = 80;
 
-function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
+function ActionSuggestions({ needsAction, orders, technicians, timeOff, onAssign }) {
   const [loading, setLoading] = useState(false);
   const [solutions, setSolutions] = useState(null);
   const [error, setError] = useState(null);
   const [applied, setApplied] = useState({});
   const fetchedSignatureRef = useRef(null);
 
-  const aiTargets = needsAction.slice(0, AI_BATCH_LIMIT);
-  const truncated = needsAction.length > AI_BATCH_LIMIT;
-  const signature = aiTargets.map((s) => s.nr).sort().join(",");
+  const targets = needsAction.slice(0, BATCH_LIMIT);
+  const truncated = needsAction.length > BATCH_LIMIT;
+  const signature = targets.map((s) => s.nr).sort().join(",");
 
   const ask = async () => {
-    if (aiTargets.length === 0) return;
+    if (targets.length === 0) return;
     setLoading(true); setError(null); setSolutions(null); setApplied({});
     fetchedSignatureRef.current = signature;
-    const kraeverHandling = aiTargets.map((s) => ({
-      sag: s.nr,
-      dato: s.dato,
-      adresse: s.kunde?.adresse || "",
-      aarsag: actionReason(s).text,
-      forventetVarighed: formatDuration(orderExpectedMinutes(s)),
-    }));
-    const today = todayISO();
-    const horizon = addDays(today, 14);
-    const grundlag = orders
-      .filter((o) => o.status !== "afsluttet" && o.montorId && o.dato >= today && o.dato <= horizon)
-      .map((s) => ({ sag: s.nr, dato: s.dato, adresse: s.kunde?.adresse || "", bil: technicians.find((m) => m.id === s.montorId)?.navn || "ikke tildelt" }));
-    const montorTekst = technicians.map((m) => `${m.navn} (${m.bil})`).join(", ");
-
-    const result = await getAiRouteSuggestion({ grundlag, montorTekst, valgtDato: today, kraeverHandling });
+    const addresses = [
+      ...targets.map((s) => s.kunde?.adresse).filter(Boolean),
+      ...orders.filter((o) => o.status !== "afsluttet" && o.montorId).map((o) => o.kunde?.adresse).filter(Boolean),
+    ];
+    const coordMap = await geocodeAddresses(addresses);
+    const result = suggestReassignments({ needsAction: targets, orders, technicians, timeOff, coordMap });
     setLoading(false);
-    if (!result.ok) { setError(result.fejl || "Kunne ikke hente forslag lige nu."); return; }
-    setSolutions(result.loesninger || []);
+    setSolutions(result);
   };
 
   useEffect(() => {
-    if (aiTargets.length === 0) return;
-    if (fetchedSignatureRef.current === signature) return; // uændret gruppe - intet nyt at spørge om
+    if (targets.length === 0) return;
+    if (fetchedSignatureRef.current === signature) return; // uændret gruppe - intet nyt at beregne
     ask();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature]);
@@ -166,7 +158,7 @@ function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
   };
   const applyGroup = (items, technicianId) => {
     items.forEach((s) => {
-      const order = aiTargets.find((o) => o.nr === s.sag);
+      const order = targets.find((o) => o.nr === s.sag);
       if (order) onAssign(order.id, technicianId);
     });
     setApplied((prev) => {
@@ -196,17 +188,17 @@ function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
   return (
     <div className="rounded-xl border border-ink bg-panel p-3 mb-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink flex items-center gap-1.5"><Sparkles size={13} /> AI-forslag til løsning</p>
-        <button onClick={() => { fetchedSignatureRef.current = null; ask(); }} disabled={loading} className="text-muted hover:text-brand disabled:opacity-50" title="Kør forslagene igen">
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink flex items-center gap-1.5"><Sparkles size={13} /> Forslag til løsning</p>
+        <button onClick={() => { fetchedSignatureRef.current = null; ask(); }} disabled={loading} className="text-muted hover:text-brand disabled:opacity-50" title="Beregn forslagene igen">
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
         </button>
       </div>
 
       {loading && !solutions && (
-        <p className="text-[11px] text-muted mt-1.5 flex items-center gap-1.5"><Loader2 size={11} className="animate-spin shrink-0" /> Analyserer automatisk...</p>
+        <p className="text-[11px] text-muted mt-1.5 flex items-center gap-1.5"><Loader2 size={11} className="animate-spin shrink-0" /> Beregner automatisk...</p>
       )}
       {!loading && !solutions && !error && (
-        <p className="text-[11px] text-muted mt-1.5">Foreslår en montør til hver sag, grupperet så du kan se og tildele en hel gruppe ad gangen. Rådgivende — retter kun montør; forsinkede sager kan stadig kræve, du selv retter datoen.{truncated ? ` Kun de ${AI_BATCH_LIMIT} mest kritiske sager (ud af ${needsAction.length}) sendes ad gangen.` : ""}</p>
+        <p className="text-[11px] text-muted mt-1.5">Foreslår en montør til hver sag ud fra ledig kapacitet og afstand til deres øvrige sager samme dag, grupperet så du kan tildele en hel gruppe ad gangen. Rådgivende — retter kun montør; forsinkede sager kan stadig kræve, du selv retter datoen.{truncated ? ` Kun de ${BATCH_LIMIT} mest kritiske sager (ud af ${needsAction.length}) beregnes ad gangen.` : ""}</p>
       )}
       {error && <p className="text-xs text-danger mt-2">{error}</p>}
 
@@ -216,7 +208,7 @@ function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
         ) : (
           <div className="space-y-2 mt-2">
             {truncated && (
-              <p className="text-[11px] text-muted">Kun de {AI_BATCH_LIMIT} mest kritiske sager (ud af {needsAction.length}) fik et forslag denne omgang - opdater bagefter for de næste.</p>
+              <p className="text-[11px] text-muted">Kun de {BATCH_LIMIT} mest kritiske sager (ud af {needsAction.length}) fik et forslag denne omgang - opdater bagefter for de næste.</p>
             )}
             {groups.map((g) => {
               const technician = g.navn && technicians.find((m) => m.navn === g.navn);
@@ -235,7 +227,7 @@ function AiActionSuggestions({ needsAction, orders, technicians, onAssign }) {
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {g.items.map((s) => {
-                      const order = aiTargets.find((o) => o.nr === s.sag);
+                      const order = targets.find((o) => o.nr === s.sag);
                       if (!order) return null;
                       return (
                         <div key={s.sag} title={s.begrundelse || ""} className="flex items-center gap-1 rounded-full border border-line bg-panel pl-2 pr-1 py-0.5 text-[10px]">
@@ -360,12 +352,21 @@ function DayTimeBadge({ minutes, overloaded, loading }) {
 // på smalle skærme vises dagene ét ad gangen som en fuld-bredde liste
 // (dag-faner øverst); på brede skærme vises hele ugen som et gitter
 // (montør × ugedag). Samme underliggende data og tidsberegning i begge.
-function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder, onOpen }) {
+//
+// "Foreslå bedste rækkefølge" (Route-ikonet, vises pr. dag/montør med
+// mindst 2 stop): beregner den bedste besøgsrækkefølge ud fra ægte
+// køreafstande (optimalVisitOrder, lib/geocoding.js - nærmeste nabo på
+// den fulde ORS-afstandsmatrix, ikke AI), og skriver den direkte til
+// rækkefølgen (setVisitOrder). Anvendes med det samme, ligesom op/ned-
+// pilene allerede gør - ikke et forslag der først skal godkendes, da det
+// er let at fortryde manuelt bagefter.
+function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder, onSetVisitOrder, onOpen }) {
   const [open, setOpen] = useState(true); // starter UDFOLDET
   const [weekAnchor, setWeekAnchor] = useState(todayISO());
   const [selectedDay, setSelectedDay] = useState(todayISO()); // kun brugt i mobil-layoutet
   const [driveMinutes, setDriveMinutes] = useState({}); // { "montorId|dato": minutter | null }
   const [driveLoading, setDriveLoading] = useState(false);
+  const [optimizing, setOptimizing] = useState({}); // { "montorId|dato": boolean }
 
   const week = weekDays(weekAnchor);
   const today = todayISO();
@@ -439,6 +440,28 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
     return { loadMinutes, total, overloaded, stillLoading };
   };
 
+  const optimizeDay = async (technicianId, day, dayOrders) => {
+    if (!onSetVisitOrder || dayOrders.length < 2) return;
+    const key = `${technicianId}|${day}`;
+    setOptimizing((prev) => ({ ...prev, [key]: true }));
+    const addresses = dayOrders.map((o) => o.kunde?.adresse).filter(Boolean);
+    const coordMap = await geocodeAddresses(addresses);
+    const withCoords = dayOrders
+      .map((o) => ({ id: o.id, coord: o.kunde?.adresse ? coordMap.get(o.kunde.adresse.trim().toLowerCase()) : null }))
+      .filter((x) => x.coord);
+    if (withCoords.length >= 2) {
+      const points = storeCoord ? [storeCoord, ...withCoords.map((x) => x.coord)] : withCoords.map((x) => x.coord);
+      const order = await optimalVisitOrder(points);
+      if (order && order.length > 1) {
+        const offset = storeCoord ? 1 : 0;
+        const orderedIds = order.filter((idx) => idx >= offset).map((idx) => withCoords[idx - offset].id);
+        const withoutCoordIds = dayOrders.filter((o) => !withCoords.some((x) => x.id === o.id)).map((o) => o.id);
+        onSetVisitOrder(technicianId, day, [...orderedIds, ...withoutCoordIds]);
+      }
+    }
+    setOptimizing((prev) => ({ ...prev, [key]: false }));
+  };
+
   return (
     <div className="rounded-xl border border-brand bg-white mb-4 overflow-hidden">
       <button onClick={() => setOpen((v) => !v)} className="w-full p-3 flex items-center gap-2 text-left">
@@ -469,7 +492,7 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
             {storeCoord ? <Building2 size={11} className="shrink-0" /> : <Car size={11} className="shrink-0" />}
             <span className="hidden sm:inline">
               {storeCoord
-                ? "Tidstal inkluderer kørsel fra firmaets adresse og mellem dagens stop, samt arbejdstid."
+                ? "Tidstal inkluderer kørsel fra firmaets adresse og mellem dagens stop, samt arbejdstid. Rute-ikonet foreslår bedste besøgsrækkefølge."
                 : "Tidstal inkluderer kørsel mellem dagens stop og arbejdstid (sæt butikkens adresse op under Admin for turen ud fra firmaet)."}
             </span>
             <span className="sm:hidden">Tal = arbejde + estimeret kørsel.</span>
@@ -496,6 +519,7 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
                 if (dayOrders.length === 0) return null;
                 const onLeave = isOnLeave(r.id, selectedDay);
                 const { loadMinutes, total, overloaded, stillLoading } = timeFor(r.id, selectedDay, dayOrders);
+                const optKey = `${r.id}|${selectedDay}`;
                 return (
                   <div key={r.id || "utildelt"}>
                     <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -503,7 +527,14 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
                         {r.id && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: technicianColor(r.id, technicians) }} />}
                         {r.navn}
                       </p>
-                      {r.id && loadMinutes > 0 && <DayTimeBadge minutes={total} overloaded={overloaded} loading={stillLoading} />}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {r.id && dayOrders.length >= 2 && onSetVisitOrder && (
+                          <button onClick={() => optimizeDay(r.id, selectedDay, dayOrders)} disabled={optimizing[optKey]} className="p-1 rounded text-muted hover:text-brand disabled:opacity-50" title="Foreslå bedste besøgsrækkefølge">
+                            {optimizing[optKey] ? <Loader2 size={13} className="animate-spin" /> : <Route size={13} />}
+                          </button>
+                        )}
+                        {r.id && loadMinutes > 0 && <DayTimeBadge minutes={total} overloaded={overloaded} loading={stillLoading} />}
+                      </div>
                     </div>
                     {onLeave && <p className="text-[11px] font-semibold uppercase tracking-wide text-danger mb-1.5 flex items-center gap-1"><AlertCircle size={11} /> Fraværende denne dag</p>}
                     {dayOrders.map((o, i) => (
@@ -554,11 +585,17 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
                     const dayOrders = ordersFor(r.id, d);
                     const onLeave = isOnLeave(r.id, d);
                     const { loadMinutes, total, overloaded, stillLoading } = timeFor(r.id, d, dayOrders);
+                    const optKey = `${r.id}|${d}`;
                     return (
                       <div key={d} className={`p-1.5 border-l border-divider min-h-[64px] ${d === today ? "bg-brand/5" : ""}`}>
                         {r.id && loadMinutes > 0 && (
-                          <div className="mb-1 flex justify-center">
+                          <div className="mb-1 flex justify-center items-center gap-1">
                             <DayTimeBadge minutes={total} overloaded={overloaded} loading={stillLoading} />
+                            {dayOrders.length >= 2 && onSetVisitOrder && (
+                              <button onClick={() => optimizeDay(r.id, d, dayOrders)} disabled={optimizing[optKey]} className="p-0.5 rounded text-muted hover:text-brand disabled:opacity-50 shrink-0" title="Foreslå bedste besøgsrækkefølge">
+                                {optimizing[optKey] ? <Loader2 size={11} className="animate-spin" /> : <Route size={11} />}
+                              </button>
+                            )}
                           </div>
                         )}
                         {onLeave && <p className="text-[9px] font-semibold uppercase tracking-wide text-danger mb-1 flex items-center gap-0.5"><AlertCircle size={9} /> Fraværende</p>}
@@ -595,7 +632,7 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
   );
 }
 
-function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedDate, onDateChange, onOpen, onCycleStatus, onAssign, onReorder, onUpdateTechnician, onRefresh, refreshing }) {
+function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedDate, onDateChange, onOpen, onCycleStatus, onAssign, onReorder, onSetVisitOrder, onUpdateTechnician, onRefresh, refreshing }) {
   const [search, setSearch] = useState("");
   const { needsAction, inProgressToday, upcoming, done } = useMemo(() => classify(orders, technicians, vehicles, timeOff), [orders, technicians, vehicles, timeOff]);
 
@@ -646,7 +683,7 @@ function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedD
         </div>
       ) : (
         <>
-          <WeekOverview orders={orders} technicians={technicians} timeOff={timeOff} store={store} onAssign={onAssign} onReorder={onReorder} onOpen={onOpen} />
+          <WeekOverview orders={orders} technicians={technicians} timeOff={timeOff} store={store} onAssign={onAssign} onReorder={onReorder} onSetVisitOrder={onSetVisitOrder} onOpen={onOpen} />
 
           <div className="rounded-xl bg-white border border-line mb-4 overflow-hidden" style={{ borderTopWidth: 4, borderTopColor: ACTION_RED }}>
             <div className="p-3 border-b border-line flex items-center gap-2">
@@ -659,7 +696,7 @@ function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedD
                 <p className="text-sm text-success font-medium flex items-center gap-2 py-2"><Sparkles size={16} /> Intet hænger — alle sager er tildelt, gennemførbare og afsluttet til tiden.</p>
               ) : (
                 <>
-                  <AiActionSuggestions needsAction={needsAction} orders={orders} technicians={technicians} onAssign={onAssign} />
+                  <ActionSuggestions needsAction={needsAction} orders={orders} technicians={technicians} timeOff={timeOff} onAssign={onAssign} />
                   <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                     {needsAction.map((s) => (
                       <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} onAssign={onAssign} reason={<ReasonLine order={s} />} accent={actionReason(s).color} />
