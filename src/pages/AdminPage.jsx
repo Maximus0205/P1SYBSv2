@@ -103,7 +103,7 @@ function AdminPage({
           </p>
           <div className="flex gap-1.5 mb-4 flex-wrap">
             {[{ k: "kategorier", l: "Kategorier" }, { k: "varetyper", l: "Varetyper" }, { k: "primaer", l: "Primære ydelser" }, { k: "tillaeg", l: "Tillægsydelser" }].map((f) => (
-              <button key={f.k} onClick={() => setProductTab(f.k)} className={`px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wide border transition-colors ${productTab === f.k ? "bg-ink text-white border-ink" : "text-muted border-line hover:border-brand hover:text-brand"}`}>{f.l}</button>
+              <button key={f.k} onClick={() => setProductTab(f.k)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide border transition-colors ${productTab === f.k ? "bg-ink text-white border-ink" : "text-muted border-line hover:border-brand hover:text-brand"}`}>{f.l}</button>
             ))}
           </div>
           {productTab === "kategorier" && <ProductCategoryAdmin productCategories={productCategories} onAdd={onAddProductCategory} onUpdate={onUpdateProductCategory} onDelete={onDeleteProductCategory} />}
