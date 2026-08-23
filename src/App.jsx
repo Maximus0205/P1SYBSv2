@@ -56,8 +56,9 @@ function Gate({ allowed, page, children }) {
 // (TechnicianOrderDetail i TechnicianPage.jsx) end admin/sælger (OrderView
 // i components/OrderView.jsx) - bevidst holdt isoleret, så en ombygning af
 // montør-visningen aldrig kan påvirke de andre roller. Selve dataene og
-// handlerne (props) er identiske til begge - kun HVILKEN komponent der
-// rammes afhænger af rollen.
+// handlerne (props) er identiske til begge (OrderView ignorerer blot de
+// par ekstra handlere - onAddMaterial/onRemoveMaterial - som kun montør-
+// visningen bruger) - kun HVILKEN komponent der rammes afhænger af rollen.
 function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder }) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -88,6 +89,12 @@ function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder 
     onUpdateBooking: (fields) => ordersStore.updateBooking(order.id, fields),
     onSaveSignature: (payload) => ordersStore.saveSignature(order.id, payload),
     onDuplicate: (selectedLineItems) => duplicateOrder(order, selectedLineItems),
+    // Materialeforbrug - kun brugt af TechnicianOrderDetail lige nu (se
+    // TechnicianPage.jsx), men sendt med til begge for enkelthedens skyld -
+    // OrderView (admin/sælger) destrukturerer dem blot ikke, og ignorerer
+    // dem derfor harmløst.
+    onAddMaterial: (fields) => ordersStore.addMaterial(order.id, fields),
+    onRemoveMaterial: (materialId) => ordersStore.removeMaterial(order.id, materialId),
   };
 
   return profile.rolle === "montor" ? <TechnicianOrderDetail {...sharedProps} /> : <OrderView {...sharedProps} />;
