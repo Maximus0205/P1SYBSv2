@@ -19,7 +19,7 @@ function TopNav({ page, onChange, user, onLogOut }) {
               <button
                 key={s.key}
                 onClick={() => onChange(s.key)}
-                className={`flex items-center gap-1.5 px-3.5 py-2 shrink-0 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${
+                className={`flex items-center gap-1.5 px-3.5 py-2 shrink-0 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors ${
                   active ? "bg-white text-ink" : "bg-transparent text-[#C9C9C9] hover:text-white"
                 }`}
               >
