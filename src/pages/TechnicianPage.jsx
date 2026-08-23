@@ -1,6 +1,6 @@
 import React from "react";
 import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, Loader2, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash, Package, X, Plus } from "lucide-react";
-import { buildTitle, isToday, formatLongDate, formatDuration, technicianColor, keyAccessText, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel, serviceIcon, dailyOrderCompare } from "../data/domain";
+import { buildTitle, isToday, formatLongDate, formatDuration, technicianColor, keyAccessText, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel, dailyOrderCompare } from "../data/domain";
 import { StatusBadge, AddOnPill, DateSelector } from "../components/common";
 import { Notes, Photos, Reports, TimeLog, ClockWidget, Signature } from "../components/OrderParts";
 import { BookingEditor, DuplicatePanel } from "../components/OrderView";
@@ -309,46 +309,32 @@ function TechnicianRouteView({ orders, technician, selectedDate, onDateChange, o
   );
 }
 
-// Montørens egen, FORENKLEDE varelinje-visning - viser kun det man reelt
-// skal gøre (afkryds tillægsydelser), IKKE muligheden for at tilføje nye
-// tillægsydelser til sagen (det hører til i sælgerens/adminens opsætning,
-// ikke i marken - se OrderParts.jsx's LineItemDetails, som admin/sælger
-// stadig bruger uændret). Lidt større afkrydsningsfelter end normalt
-// (touch-mål), da det her er det, montøren rører oftest.
-function TechnicianLineItems({ order, onToggleAddOn }) {
+// Montørens egen, FORENKLEDE varelinje-visning. Tillæg er BEVIDST rent
+// INFORMATIVE her, ikke noget der skal afkrydses/markeres fuldført - en
+// tillægsydelse (fx "Afløbstilslutning") beskriver blot OMFANGET af
+// opgaven på den vare, ikke et selvstændigt deltrin man kan være "færdig"
+// eller "ikke færdig" med adskilt fra selve varen. Genbruger derfor
+// AddOnPill (samme stille, ikke-interaktive pille som allerede bruges i
+// ruteoversigten, OrderStopCard ovenfor) - ingen afkrydsning, ingen
+// "X mangler"-tæller, ingen mulighed for at tilføje nye (det hører til i
+// sælgerens/adminens opsætning, ikke i marken - se OrderParts.jsx's
+// LineItemDetails, som admin/sælger stadig bruger uændret).
+function TechnicianLineItems({ order }) {
   return (
     <div className="rounded-xl bg-white border border-line p-4 mb-4 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Varer &amp; opgaver</h3>
       <div className="space-y-3">
-        {order.varelinjer.map((v, i) => {
-          const addOns = v.tillaeg || [];
-          const missing = addOns.filter((y) => !y.udfoert).length;
-          return (
-            <div key={v.id} className={i < order.varelinjer.length - 1 ? "pb-3 border-b border-divider" : ""}>
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-ink">{lineItemLabel(v)}</p>
-                  {v.primaerYdelse && <p className="text-[11px] text-muted">{v.primaerYdelse.navn}</p>}
-                </div>
-                {missing > 0 && <span className="font-mono text-[11px] text-brand shrink-0">{missing} mangler</span>}
+        {order.varelinjer.map((v, i) => (
+          <div key={v.id} className={i < order.varelinjer.length - 1 ? "pb-3 border-b border-divider" : ""}>
+            <p className="text-sm font-semibold text-ink">{lineItemLabel(v)}</p>
+            {v.primaerYdelse?.navn && <p className="text-[11px] text-muted">{v.primaerYdelse.navn}</p>}
+            {(v.tillaeg || []).length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {v.tillaeg.map((y) => <AddOnPill key={y.id} addOn={y} />)}
               </div>
-              {addOns.length > 0 && (
-                <div className="space-y-0.5 mt-1.5">
-                  {addOns.map((y) => {
-                    const Icon = serviceIcon(y.navn);
-                    return (
-                      <label key={y.id} className="flex items-center gap-2.5 px-1.5 py-2 rounded-lg hover:bg-panel cursor-pointer">
-                        <input type="checkbox" checked={y.udfoert} onChange={() => onToggleAddOn(v.id, y.id)} className="w-5 h-5 accent-success shrink-0" />
-                        <Icon size={15} className="text-muted shrink-0" strokeWidth={2.5} />
-                        <span className={`text-sm flex-1 ${y.udfoert ? "line-through text-muted" : "text-ink"}`}>{y.navn}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -407,23 +393,21 @@ function Materials({ order, onAdd, onRemove }) {
 }
 
 // ---------------------------------------------------------------------------
-// MONTØR-SPECIFIK SAGSDETALJE (august 2026, opdateret) - bevidst en HELT
-// SEPARAT visning fra den delte OrderView.jsx, som bruges af admin/sælger.
-// Det er et bevidst valg (ikke bare kopieret for sjov): den delte visning
-// bygger sin overskrift ved at sammenkoge ALLE varelinjer til én lang,
-// versal sætning (buildTitle), og lader hvem som helst tilføje nye
-// tillægsydelser - begge dele er relevant for sælgeren, der sætter sagen
-// op, men er blot støj for montøren, der bare skal have et hurtigt,
-// overskueligt overblik i marken. Denne visning bruger derfor sin EGEN,
-// forenklede varelinje-liste (TechnicianLineItems, ingen "tilføj
-// tillægsydelse") og har en ekstra fane til materialeforbrug (Materials).
+// MONTØR-SPECIFIK SAGSDETALJE (august 2026, opdateret igen efter direkte
+// feedback) - bevidst en HELT SEPARAT visning fra den delte OrderView.jsx,
+// som bruges af admin/sælger. Header- og kontakt-information er nu SLÅET
+// SAMMEN til ét kort (adskilt internt med tynde streger i stedet for helt
+// nye bokse med egen kant/skygge) - tre-fire separate hvide bokse oven på
+// hinanden var i sig selv en del af det "rodede" indtryk, ikke kun
+// afkrydsningsfelterne. Se TechnicianLineItems ovenfor for hvorfor tillæg
+// nu er rent informative, ikke afkrydsbare.
 //
 // Resten af funktionaliteten (redigér booking, dupliker/opfølgning, noter,
-// billeder, rapporter, tid, underskrift) er UÆNDRET og genbruger de exakt
-// samme, allerede fungerende komponenter som OrderView.jsx bruger. At
-// holde ændringen isoleret til denne fil betyder admin- og sælger-
-// visningen er 100% upåvirket.
-function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, addReport, onCycleStatus, onClockIn, onClockOut, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onSaveSignature, onDuplicate, onAddMaterial, onRemoveMaterial }) {
+// billeder, rapporter, tid, underskrift, materialer) er UÆNDRET og
+// genbruger de samme, allerede fungerende komponenter som OrderView.jsx
+// bruger. At holde ændringen isoleret til denne fil betyder admin- og
+// sælger-visningen er 100% upåvirket.
+function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, addReport, onCycleStatus, onClockIn, onClockOut, onUpdateBooking, onSaveSignature, onDuplicate, onAddMaterial, onRemoveMaterial }) {
   const [tab, setTab] = React.useState("noter");
   const [editing, setEditing] = React.useState(false);
   const [duplicating, setDuplicating] = React.useState(false);
@@ -446,7 +430,7 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
         <DuplicatePanel order={order} onCancel={() => setDuplicating(false)} onDuplicate={(items) => { onDuplicate?.(items); setDuplicating(false); }} />
       ) : (
         <div className="rounded-xl bg-white border border-line p-4 mb-4 shadow-sm">
-          {/* Kompakt header - INGEN sammenkogt kæmpetitel, kun det du reelt
+          {/* Sag + status - INGEN sammenkogt kæmpetitel, kun det du reelt
               skal vide, når du står med sagen foran dig. */}
           <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
             <p className="font-mono text-xs text-muted">
@@ -462,6 +446,30 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
           {order.noegle?.kraeves && (
             <p className="text-sm text-brand font-semibold mt-1.5 flex items-center gap-1.5"><KeyRound size={14} className="shrink-0" /> {keyAccessText(order.noegle)}</p>
           )}
+
+          {/* Kontakt - FLETTET IND i samme kort (tidligere en helt egen
+              hvid boks) - adskilt med en tynd streg, ikke en ny kant+skygge. */}
+          <div className="mt-3 pt-3 border-t border-divider space-y-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-sm text-ink truncate min-w-0">{order.kunde.adresse}</p>
+              <a href={mapsUrl(order.kunde.adresse)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors" title="Åbn adressen i Google Maps">
+                <Navigation size={13} /> Naviger
+              </a>
+            </div>
+            {order.kunde.telefon && (
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <a href={telHref(order.kunde.telefon)} className="font-mono text-sm text-muted hover:text-brand transition-colors" title="Ring til kunden">{order.kunde.telefon}</a>
+                <div className="flex items-center gap-2">
+                  <a href={telHref(order.kunde.telefon)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors" title="Ring til kunden">
+                    <Phone size={13} /> Ring
+                  </a>
+                  <ArrivalSmsButton phone={order.kunde.telefon} customerName={order.kunde.navn} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Sekundære handlinger - lavest visuel vægt, nederst i kortet. */}
           <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-divider">
             <button onClick={() => setEditing(true)} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand flex items-center gap-1"><Pencil size={13} /> Redigér booking</button>
             {onDuplicate && (
@@ -471,31 +479,7 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
         </div>
       )}
 
-      {/* Kontakt: samme mønster som listekortet (OrderStopCard) - adresse
-          + naviger, telefon + ring/sms, genkendeligt fra dagens rute. */}
-      <div className="rounded-xl bg-white border border-line p-4 mb-4 shadow-sm space-y-2">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <p className="text-sm text-ink truncate min-w-0">{order.kunde.adresse}</p>
-          <a href={mapsUrl(order.kunde.adresse)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors" title="Åbn adressen i Google Maps">
-            <Navigation size={13} /> Naviger
-          </a>
-        </div>
-        {order.kunde.telefon && (
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <a href={telHref(order.kunde.telefon)} className="font-mono text-sm text-muted hover:text-brand transition-colors" title="Ring til kunden">{order.kunde.telefon}</a>
-            <div className="flex items-center gap-2">
-              <a href={telHref(order.kunde.telefon)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors" title="Ring til kunden">
-                <Phone size={13} /> Ring
-              </a>
-              <ArrivalSmsButton phone={order.kunde.telefon} customerName={order.kunde.navn} />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Varelinjer - montørens EGEN, forenklede visning (kun afkrydsning,
-          ingen "tilføj tillægsydelse") - se kommentaren ovenfor. */}
-      <TechnicianLineItems order={order} onToggleAddOn={onToggleAddOn} />
+      <TechnicianLineItems order={order} />
       <ClockWidget order={order} onClockIn={onClockIn} onClockOut={onClockOut} />
 
       <div className="flex border-b border-line mb-5 overflow-x-auto">
