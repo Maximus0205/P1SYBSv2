@@ -1,5 +1,5 @@
 import React from "react";
-import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, Loader2, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash, Package, X, Plus } from "lucide-react";
+import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, Loader2, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash, Package, X, Plus, User } from "lucide-react";
 import { buildTitle, isToday, formatLongDate, formatDuration, technicianColor, keyAccessText, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel, dailyOrderCompare } from "../data/domain";
 import { StatusBadge, DateSelector } from "../components/common";
 import { Notes, Photos, Reports, TimeLog, ClockWidget, Signature } from "../components/OrderParts";
@@ -181,6 +181,9 @@ function OrderStopCard({ order: s, onOpen, onCycleStatus, onMoveUp, onMoveDown, 
         </div>
         <p className="font-semibold text-ink truncate mt-1.5">{buildTitle(s.varelinjer)}</p>
         <p className="text-sm text-muted truncate">{s.kunde.navn}{s.koeber && <span className="text-muted"> · køber {s.koeber.navn}</span>}</p>
+        {s.problem && (
+          <p className="text-xs font-semibold text-danger flex items-center gap-1.5 mt-1"><AlertTriangle size={12} className="shrink-0" /> Markeret: kom ikke i mål</p>
+        )}
       </div>
 
       {/* Samlet alert-boks: nøgleadgang + leveringsnote/ring-før-ankomst ét sted,
@@ -397,24 +400,50 @@ function Materials({ order, onAdd, onRemove }) {
   );
 }
 
+// Panel til at markere sagen med et PROBLEM - fx kunden var ikke hjemme,
+// mangler dele, adgangsproblem. Bevidst UAFHÆNGIG af selve status-
+// cyklussen (se markProblem i useOrders.js) - montøren skal ikke tvinges
+// til at sætte status til "afsluttet" for at kunne flage et problem, og
+// kan lige så vel sætte begge dele samtidig. Sælgeren, der har booket
+// sagen, ser markeringen automatisk næste gang de logger ind (se
+// notifikationsklokken i TopNav.jsx).
+function ProblemPanel({ order, onSubmit, onCancel }) {
+  const [note, setNote] = React.useState("");
+  return (
+    <div className="rounded-xl bg-white border border-danger p-4 mb-4 shadow-sm">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-danger mb-1 flex items-center gap-1.5"><AlertTriangle size={14} /> Marker: kom ikke i mål</h3>
+      <p className="text-xs text-muted mb-3">Fx kunden ikke hjemme, mangler dele, adgangsproblem. Sælgeren der har booket sagen ({order.oprettetAf?.navn || "ukendt"}) får automatisk besked om det, næste gang de logger ind.</p>
+      <textarea
+        autoFocus value={note} onChange={(e) => setNote(e.target.value)} rows={3}
+        placeholder="Kort beskrivelse af hvad der gik galt..."
+        className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-danger mb-3"
+      />
+      <div className="flex gap-2">
+        <button onClick={() => note.trim() && onSubmit(note)} disabled={!note.trim()} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-danger hover:opacity-90 transition-opacity flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none">
+          <Check size={14} /> Gem markering
+        </button>
+        <button onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted transition-colors flex items-center gap-1.5"><X size={14} /> Annuller</button>
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
-// MONTØR-SPECIFIK SAGSDETALJE (august 2026, tredje omgang efter direkte
-// feedback) - bevidst en HELT SEPARAT visning fra den delte OrderView.jsx,
-// som bruges af admin/sælger. Se TechnicianLineItems for hvorfor tillæg nu
-// er ren tekst, ikke pille/boble-mærker. Telefonnummeret og ydelses-navnet
-// har nu fuld tekstkontrast (text-ink) i stedet for den dæmpede
-// muted-farve - det er operationelt vigtig information, ikke baggrunds-
-// støj, og skal ikke se "anonym" ud.
+// MONTØR-SPECIFIK SAGSDETALJE (august 2026, opdateret med problem-
+// markering + "booket af") - bevidst en HELT SEPARAT visning fra den delte
+// OrderView.jsx, som bruges af admin/sælger. Se TechnicianLineItems for
+// hvorfor tillæg er ren tekst, ikke pille/boble-mærker.
 //
 // Resten af funktionaliteten (redigér booking, dupliker/opfølgning, noter,
 // billeder, rapporter, tid, underskrift, materialer) er UÆNDRET og
 // genbruger de samme, allerede fungerende komponenter som OrderView.jsx
 // bruger. At holde ændringen isoleret til denne fil betyder admin- og
 // sælger-visningen er 100% upåvirket.
-function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, addReport, onCycleStatus, onClockIn, onClockOut, onUpdateBooking, onSaveSignature, onDuplicate, onAddMaterial, onRemoveMaterial }) {
+function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, addReport, onCycleStatus, onClockIn, onClockOut, onUpdateBooking, onSaveSignature, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem }) {
   const [tab, setTab] = React.useState("noter");
   const [editing, setEditing] = React.useState(false);
   const [duplicating, setDuplicating] = React.useState(false);
+  const [markingProblem, setMarkingProblem] = React.useState(false);
   const tabs = [
     { key: "noter", label: "Noter", count: order.noter.length },
     { key: "materialer", label: "Materialer", count: (order.materialer || []).length },
@@ -432,6 +461,8 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
         <BookingEditor order={order} technicians={technicians} onCancel={() => setEditing(false)} onSave={(fields) => { onUpdateBooking(fields); setEditing(false); }} />
       ) : duplicating ? (
         <DuplicatePanel order={order} onCancel={() => setDuplicating(false)} onDuplicate={(items) => { onDuplicate?.(items); setDuplicating(false); }} />
+      ) : markingProblem ? (
+        <ProblemPanel order={order} onCancel={() => setMarkingProblem(false)} onSubmit={(note) => { onMarkProblem?.(note); setMarkingProblem(false); }} />
       ) : (
         <div className="rounded-xl bg-white border border-line p-4 mb-4 shadow-sm">
           {/* Sag + status - INGEN sammenkogt kæmpetitel, kun det du reelt
@@ -443,12 +474,23 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
             </p>
             <button onClick={() => onCycleStatus(order.id)} className="shrink-0"><StatusBadge status={order.status} /></button>
           </div>
+          {order.oprettetAf?.navn && (
+            <p className="text-xs text-muted mb-1 flex items-center gap-1"><User size={11} className="shrink-0" /> Booket af {order.oprettetAf.navn}</p>
+          )}
           <p className="text-lg font-semibold text-ink leading-snug">{order.varelinjer.length} {order.varelinjer.length === 1 ? "vare" : "varer"} til {order.kunde.navn}</p>
           {order.kunde.leveringsnote && (
             <p className="text-sm text-brand font-semibold mt-1.5 flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" /> {order.kunde.leveringsnote}</p>
           )}
           {order.noegle?.kraeves && (
             <p className="text-sm text-brand font-semibold mt-1.5 flex items-center gap-1.5"><KeyRound size={14} className="shrink-0" /> {keyAccessText(order.noegle)}</p>
+          )}
+
+          {order.problem && (
+            <div className="mt-2.5 rounded-lg bg-danger/10 border border-danger px-3 py-2">
+              <p className="text-sm font-semibold text-danger flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" /> Markeret: kom ikke i mål</p>
+              <p className="text-xs text-danger mt-0.5">{order.problem.note} · {order.problem.tid}</p>
+              {onClearProblem && <button onClick={onClearProblem} className="text-[11px] text-danger underline hover:no-underline mt-1">Fjern markering</button>}
+            </div>
           )}
 
           {/* Kontakt - flettet ind i samme kort, adskilt med en tynd streg. */}
@@ -477,6 +519,9 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
             <button onClick={() => setEditing(true)} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand flex items-center gap-1"><Pencil size={13} /> Redigér booking</button>
             {onDuplicate && (
               <button onClick={() => setDuplicating(true)} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand flex items-center gap-1"><Copy size={13} /> Dupliker / opfølgning</button>
+            )}
+            {onMarkProblem && !order.problem && (
+              <button onClick={() => setMarkingProblem(true)} className="text-xs font-semibold uppercase tracking-wide text-danger hover:opacity-80 flex items-center gap-1"><AlertTriangle size={13} /> Marker: kom ikke i mål</button>
             )}
           </div>
         </div>
