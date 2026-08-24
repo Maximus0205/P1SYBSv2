@@ -174,7 +174,11 @@ export function useOrders(storeId) {
     saveOneOrder({ ...s, status: newStatus, ...extra });
   };
 
-  const addNote = (id, text) => { const s = findOrder(orders, id); if (s) saveOneOrder({ ...s, noter: [...s.noter, { id: uid(), tekst: text, tid: new Date().toLocaleString("da-DK") }] }); };
+  // "author" ({id, navn} for den, der SKRIVER noten, eller null) gemmes som
+  // forfatter på selve note-posten - så det altid er synligt, HVEM der har
+  // noteret hvad, når flere forskellige personer (sælger OG montør) kan
+  // skrive noter på samme sag. Se Notes-komponenten i OrderParts.jsx.
+  const addNote = (id, text, author) => { const s = findOrder(orders, id); if (s) saveOneOrder({ ...s, noter: [...s.noter, { id: uid(), tekst: text, tid: new Date().toLocaleString("da-DK"), forfatter: author || null }] }); };
   const addPhoto = (id, { src, navn }) => { const s = findOrder(orders, id); if (s) saveOneOrder({ ...s, billeder: [...s.billeder, { id: uid(), src, navn }] }); };
   const addReport = (id, title, text) => { const s = findOrder(orders, id); if (s) saveOneOrder({ ...s, rapporter: [...s.rapporter, { id: uid(), titel: title, tekst: text, tid: new Date().toLocaleString("da-DK") }] }); };
 
