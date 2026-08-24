@@ -271,6 +271,26 @@ const dailyOrderCompare = (a, b) => {
   return (a.start || "").localeCompare(b.start || "");
 };
 
+// Beregner, for en given bruger (profileId), hvilke af DERES EGNE bookede
+// sager (oprettetAf.id === profileId) der har en ULÆST notifikation:
+//  - materialer: nyt materialeforbrug tilføjet af montøren
+//  - problemer: montøren har markeret sagen med et problem/ikke gennemført
+//  - opfoelgninger: der er oprettet en opfølgningssag ud fra denne
+// En sag kan sagtens optræde i flere lister samtidig. Kun sagens EGEN
+// opretter tæller med - en admin der blot kigger på andres sager udløser
+// ingen notifikationer. Se useOrders.js: dismissNotifications for hvordan
+// en sag markeres som læst (sker automatisk når opretteren selv åbner den,
+// se App.jsx).
+const computeNotifications = (orders, profileId) => {
+  if (!profileId) return { materialer: [], problemer: [], opfoelgninger: [] };
+  const mine = (orders || []).filter((o) => o.oprettetAf?.id === profileId);
+  return {
+    materialer: mine.filter((o) => (o.materialer || []).length > 0 && !o.notifikationSet?.materialer),
+    problemer: mine.filter((o) => o.problem && !o.notifikationSet?.problem),
+    opfoelgninger: mine.filter((o) => o.harOpfoelgning && !o.notifikationSet?.opfoelgning),
+  };
+};
+
 // Kørsel er fusioneret ind i Planlægning (august 2026) - de to sider
 // dækkede reelt samme arbejdsopgave. "koersel" findes derfor ikke længere
 // som selvstændig fane, se PlanningPage.jsx.
@@ -295,5 +315,5 @@ export {
   DEFAULT_PRODUCT_CATEGORIES, DEFAULT_PRODUCT_TYPES, DEFAULT_PRIMARY_SERVICES, DEFAULT_ADD_ON_SERVICES, availableAddOns,
   createLineItem, lineItemLabel, lineItemMinutes, orderExpectedMinutes, normalizeAddress, buildingKey, areaKey,
   weekDays, buildTitle, keyAccessText, TIME_SLOTS, timeSlotById, timeSlotText, KEY_ACCESS_TYPES, TECHNICIAN_COLORS, technicianColor,
-  DEFAULT_VEHICLES, vehicleLabel, vehicleBlockedByTimeOff, emptyCustomer, emptyKeyAccess, STATUS_META, dailyOrderCompare, PAGES, PAGES_FOR_ROLE,
+  DEFAULT_VEHICLES, vehicleLabel, vehicleBlockedByTimeOff, emptyCustomer, emptyKeyAccess, STATUS_META, dailyOrderCompare, computeNotifications, PAGES, PAGES_FOR_ROLE,
 };
