@@ -6,7 +6,8 @@ import { uid, todayISO, dailyOrderCompare, timeSlotById } from "../data/domain";
 // for den fulde begrundelse. Al state og CRUD for ORDRER - den suverænt
 // største og mest centrale del af appen (booking, status, pluk, besøgs-
 // rækkefølge, dupliker/opfølgning, noter/billeder/rapporter/tid/
-// underskrift/materialeforbrug) - er samlet her.
+// underskrift/materialeforbrug/problem-markering/notifikationer) - er
+// samlet her.
 //
 // VIGTIGT (uændret fra da denne logik boede i App.jsx): saveOneOrder
 // gemmer/opdaterer ALTID ét enkelt element ad gangen, aldrig "gem hele
@@ -31,12 +32,20 @@ export function useOrders(storeId) {
   // samme), og henter den friske, database-tildelte version bagefter (se
   // assign_order_number-triggeren) - så det ENDELIGE, garanteret unikke
   // sagsnummer altid vises korrekt, uden gæt fra browseren.
-  const addOrder = async ({ kunde, koeber, noegle, dato, tidsrumId, start, slut, montorId, varelinjer, ordrenummer }) => {
+  //
+  // createdBy ({id, navn} for den indloggede bruger, eller null) gemmes
+  // som oprettetAf - så det altid er synligt, HVEM der har booket sagen
+  // (savnet funktion, se OrderView.jsx), og bruges desuden som grundlag
+  // for notifikationssystemet (kun sagens EGEN opretter får besked om
+  // materialeforbrug/problemer/opfølgninger på den, se dismissNotifications
+  // nedenfor).
+  const addOrder = async ({ kunde, koeber, noegle, dato, tidsrumId, start, slut, montorId, varelinjer, ordrenummer, createdBy }) => {
     if (!storeId) return;
     const newOrder = {
       id: uid(), nr: "...", ordrenummer: ordrenummer?.trim() || "",
       kunde, koeber: koeber || null, noegle: noegle || {}, dato: dato || todayISO(), tidsrumId, start, slut, montorId,
       status: "planlagt", plukket: false, varelinjer, noter: [], billeder: [], rapporter: [], materialer: [], stemplerInd: null, logs: [],
+      oprettetAf: createdBy || null,
     };
     setOrders((prev) => [...prev, newOrder]);
     await saveOrder(storeId, newOrder);
@@ -45,14 +54,20 @@ export function useOrders(storeId) {
     return newOrder.id;
   };
 
+  const findOrder = (orders_, id) => orders_.find((x) => x.id === id);
+
   // Opretter en ny sag ud fra en EKSISTERENDE (dupliker/opfølgning) - se
   // "Dupliker / Opfølgning" i OrderView.jsx. Kunde/køber/nøgleoplysninger
   // og adresse kopieres, men datoen, tidsrummet og montøren NULSTILLES
   // bevidst - det er jo netop noget nyt der skal planlægges. Sagsnummer,
   // status, noter, billeder, rapporter, tidsregistrering, materialeforbrug
-  // og plukket-status starter alle helt friske. Returnerer det nye sags-id,
-  // så den kaldende side kan åbne den nyoprettede sag med det samme.
-  const duplicateOrder = async (sourceOrder, selectedLineItems) => {
+  // og plukket-status starter alle helt friske. Returnerer det nye sags-id.
+  //
+  // Markerer desuden den OPRINDELIGE sag med harOpfoelgning (den nye sags
+  // id) og nulstiller dens opfølgnings-notifikation til "ulæst" - det er
+  // grundlaget for at kunne fortælle den oprindelige sags opretter "der er
+  // lavet en opfølgning på en af dine sager", se dismissNotifications.
+  const duplicateOrder = async (sourceOrder, selectedLineItems, createdBy) => {
     if (!storeId || !selectedLineItems || selectedLineItems.length === 0) return null;
     const t = timeSlotById("heldag");
     const clonedLineItems = selectedLineItems.map((v) => ({
@@ -69,15 +84,24 @@ export function useOrders(storeId) {
       dato: todayISO(), tidsrumId: "heldag", start: t.start, slut: t.slut, montorId: null,
       status: "planlagt", plukket: false, varelinjer: clonedLineItems,
       noter: [], billeder: [], rapporter: [], materialer: [], stemplerInd: null, logs: [],
+      oprettetAf: createdBy || null,
+      opfoelgningAf: sourceOrder.id,
     };
     setOrders((prev) => [...prev, newOrder]);
     await saveOrder(storeId, newOrder);
+
+    // Markér kilde-sagen med et forward-link + ulæst opfølgnings-notifikation.
+    const freshSource = findOrder(orders, sourceOrder.id) || sourceOrder;
+    saveOneOrder({
+      ...freshSource,
+      harOpfoelgning: newOrder.id,
+      notifikationSet: { ...(freshSource.notifikationSet || {}), opfoelgning: false },
+    });
+
     const fresh = await getFreshOrder(storeId, newOrder.id);
     if (fresh) { setOrders((prev) => prev.map((s) => (s.id === fresh.id ? fresh : s))); return fresh.id; }
     return newOrder.id;
   };
-
-  const findOrder = (orders_, id) => orders_.find((x) => x.id === id);
 
   // Hurtig-redigering af en booket ordre (dato/tidsrum/montør/adresse) - se
   // BookingEditor i OrderView.jsx.
@@ -188,16 +212,56 @@ export function useOrders(storeId) {
   // bruge en længere vandslange" opdaget hos kunden. Adskilt fra noter
   // (fri tekst) og varelinjer (det der blev SOLGT/booket) - dette er en
   // logget liste over ekstra ting brugt undervejs, til senere brug ved
-  // evt. fakturering/lageropfølgning. Bevidst simpelt (navn + antal), ikke
-  // koblet til det rigtige varekatalog endnu.
+  // evt. fakturering/lageropfølgning. Nulstiller notifikationen til
+  // "ulæst" hver gang - så sælgeren får besked igen, selv hvis de allerede
+  // havde set og afvist et TIDLIGERE materiale på samme sag.
   const addMaterial = (orderId, { navn, antal }) => {
     const s = findOrder(orders, orderId);
     if (!s || !navn?.trim()) return;
-    saveOneOrder({ ...s, materialer: [...(s.materialer || []), { id: uid(), navn: navn.trim(), antal: Number(antal) || 1, tid: new Date().toLocaleString("da-DK") }] });
+    saveOneOrder({
+      ...s,
+      materialer: [...(s.materialer || []), { id: uid(), navn: navn.trim(), antal: Number(antal) || 1, tid: new Date().toLocaleString("da-DK") }],
+      notifikationSet: { ...(s.notifikationSet || {}), materialer: false },
+    });
   };
   const removeMaterial = (orderId, materialId) => {
     const s = findOrder(orders, orderId);
     if (s) saveOneOrder({ ...s, materialer: (s.materialer || []).filter((m) => m.id !== materialId) });
+  };
+
+  // Markerer en sag som "afsluttet med et problem" - fx kunden var ikke
+  // hjemme, mangler dele, adgangsproblem osv. Bevidst UAFHÆNGIG af selve
+  // status-cyklussen (planlagt/i gang/afsluttet) - montøren kan stadig
+  // frit bruge status som normalt, "problem" er en selvstændig markering
+  // oveni, ikke en fjerde status. Nulstiller notifikationen til "ulæst".
+  const markProblem = (orderId, note) => {
+    const s = findOrder(orders, orderId);
+    if (!s || !note?.trim()) return;
+    saveOneOrder({
+      ...s,
+      problem: { note: note.trim(), tid: new Date().toLocaleString("da-DK") },
+      notifikationSet: { ...(s.notifikationSet || {}), problem: false },
+    });
+  };
+  const clearProblem = (orderId) => {
+    const s = findOrder(orders, orderId);
+    if (s) saveOneOrder({ ...s, problem: null });
+  };
+
+  // Markerer én eller flere notifikationstyper ("materialer", "problem",
+  // "opfoelgning") som SET (læst/afvist) for en given sag - se App.jsx,
+  // som kalder dette automatisk når sagens EGEN opretter åbner den. Se
+  // domain.js: computeNotifications for selve beregningen af, hvad der
+  // reelt vises som ulæst.
+  const dismissNotifications = (orderId, kinds) => {
+    const s = findOrder(orders, orderId);
+    if (!s || !kinds || kinds.length === 0) return;
+    const current = s.notifikationSet || {};
+    const hasChange = kinds.some((k) => !current[k]);
+    if (!hasChange) return;
+    const next = { ...current };
+    kinds.forEach((k) => { next[k] = true; });
+    saveOneOrder({ ...s, notifikationSet: next });
   };
 
   return {
@@ -207,6 +271,7 @@ export function useOrders(storeId) {
     addNote, addPhoto, addReport, clockIn, clockOut,
     toggleAddOn, addAddOn, removeAddOn, saveSignature,
     addMaterial, removeMaterial,
+    markProblem, clearProblem, dismissNotifications,
     reload: () => load(storeId),
   };
 }
