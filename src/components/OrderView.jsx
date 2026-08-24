@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { KeyRound, Building2, Hash, Pencil, X, Check, Copy } from "lucide-react";
+import { KeyRound, Building2, Hash, Pencil, X, Check, Copy, AlertTriangle, User } from "lucide-react";
 import { TIME_SLOTS, buildTitle, keyAccessText, timeSlotById, timeSlotText, lineItemLabel } from "../data/domain";
 import { StatusBadge } from "../components/common";
 import { LineItemDetails, Notes, Photos, Reports, TimeLog, ClockWidget, Signature } from "../components/OrderParts";
@@ -102,13 +102,14 @@ function DuplicatePanel({ order, onDuplicate, onCancel }) {
   );
 }
 
-function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, onCycleStatus, onClockIn, onClockOut, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onSaveSignature, onDuplicate }) {
+function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, onCycleStatus, onClockIn, onClockOut, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onSaveSignature, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder }) {
   const [tab, setTab] = useState("noter");
   const [editing, setEditing] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   const technician = technicians.find((m) => m.id === order.montorId);
   const tabs = [
     { key: "noter", label: "Noter", count: order.noter.length },
+    { key: "materialer", label: "Materialer", count: (order.materialer || []).length },
     { key: "billeder", label: "Billeder", count: order.billeder.length },
     { key: "rapporter", label: "Rapporter", count: order.rapporter.length },
     { key: "tid", label: "Tid", count: order.logs.length },
@@ -140,7 +141,25 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
                 #{order.nr} · {order.dato} · {order.start}–{order.slut}{technician ? ` · ${technician.navn}` : " · ikke tildelt"}
                 {order.ordrenummer && <span className="ml-2 inline-flex items-center gap-0.5"><Hash size={10} /> {order.ordrenummer}</span>}
               </p>
+              {order.oprettetAf?.navn && (
+                <p className="text-xs text-muted mb-1 flex items-center gap-1"><User size={11} className="shrink-0" /> Booket af {order.oprettetAf.navn}</p>
+              )}
               <h1 className="font-display text-3xl uppercase tracking-tight text-ink leading-none">{buildTitle(order.varelinjer)}</h1>
+
+              {order.problem && (
+                <div className="mt-2.5 rounded-lg bg-danger/10 border border-danger px-3 py-2">
+                  <p className="text-sm font-semibold text-danger flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" /> Sagen kom ikke i mål</p>
+                  <p className="text-xs text-danger mt-0.5">{order.problem.note} · {order.problem.tid}</p>
+                  {onClearProblem && <button onClick={onClearProblem} className="text-[11px] text-danger underline hover:no-underline mt-1">Ryd markering</button>}
+                </div>
+              )}
+              {followUpOrder && onOpenOrder && (
+                <button onClick={() => onOpenOrder(followUpOrder.id)} className="text-xs text-brand hover:underline mt-2 flex items-center gap-1"><Copy size={12} className="shrink-0" /> Opfølgning oprettet: sag #{followUpOrder.nr}</button>
+              )}
+              {originalOrder && onOpenOrder && (
+                <button onClick={() => onOpenOrder(originalOrder.id)} className="text-xs text-muted hover:text-brand mt-2 flex items-center gap-1"><Copy size={12} className="shrink-0" /> Opfølgning på sag #{originalOrder.nr}</button>
+              )}
+
               <p className="text-sm text-muted mt-2 font-semibold">Kunde (modtager)</p>
               <p className="text-sm text-muted">{order.kunde.navn}{order.kunde.telefon ? ` · ${order.kunde.telefon}` : ""}{order.kunde.email ? ` · ${order.kunde.email}` : ""}</p>
               <p className="text-sm text-muted">{order.kunde.adresse}</p>
@@ -177,6 +196,20 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
         ))}
       </div>
       {tab === "noter" && <Notes order={order} onAdd={addNote} />}
+      {tab === "materialer" && (
+        (order.materialer || []).length === 0 ? (
+          <p className="text-sm text-muted italic">Intet ekstra materialeforbrug registreret for denne sag.</p>
+        ) : (
+          <div className="space-y-2">
+            {[...order.materialer].reverse().map((m) => (
+              <div key={m.id} className="flex items-center justify-between gap-2 rounded-lg border-l-2 border-brand bg-white border border-line px-3 py-2 shadow-sm">
+                <p className="text-sm text-ink">{m.antal > 1 ? `${m.antal}× ` : ""}{m.navn}</p>
+                <p className="font-mono text-[11px] text-muted shrink-0">{m.tid}</p>
+              </div>
+            ))}
+          </div>
+        )
+      )}
       {tab === "billeder" && <Photos order={order} onAdd={addPhoto} />}
       {tab === "rapporter" && <Reports order={order} onAdd={addReport} />}
       {tab === "tid" && <TimeLog order={order} />}
