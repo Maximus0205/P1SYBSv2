@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from "react-router-dom";
 
-import { todayISO, PAGES_FOR_ROLE } from "./data/domain";
+import { todayISO, PAGES_FOR_ROLE, computeNotifications } from "./data/domain";
 import { useSession } from "./hooks/useSession";
 import { useCatalog } from "./hooks/useCatalog";
 import { useVehicles } from "./hooks/useVehicles";
@@ -51,13 +51,27 @@ function Gate({ allowed, page, children }) {
 // (TechnicianOrderDetail i TechnicianPage.jsx) end admin/sælger (OrderView
 // i components/OrderView.jsx) - bevidst holdt isoleret, så en ombygning af
 // montør-visningen aldrig kan påvirke de andre roller. Selve dataene og
-// handlerne (props) er identiske til begge (OrderView ignorerer blot de
-// par ekstra handlere - onAddMaterial/onRemoveMaterial - som kun montør-
-// visningen bruger) - kun HVILKEN komponent der rammes afhænger af rollen.
+// handlerne (props) er identiske til begge - kun HVILKEN komponent der
+// rammes afhænger af rollen.
+//
+// Denne rute AFVISER også automatisk notifikationer for sagens EGEN
+// opretter, når de selv åbner den - se computeNotifications i domain.js og
+// notifikationsklokken i TopNav.jsx. Kun opretteren selv udløser dette
+// (en admin der blot kigger på andres sager rydder ikke andres notifikationer).
 function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const order = orders.find((o) => o.id === id);
+
+  useEffect(() => {
+    if (!order || order.oprettetAf?.id !== profile.id) return;
+    const kinds = [];
+    if ((order.materialer || []).length > 0 && !order.notifikationSet?.materialer) kinds.push("materialer");
+    if (order.problem && !order.notifikationSet?.problem) kinds.push("problem");
+    if (order.harOpfoelgning && !order.notifikationSet?.opfoelgning) kinds.push("opfoelgning");
+    if (kinds.length > 0) ordersStore.dismissNotifications(order.id, kinds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order?.id, order?.materialer?.length, order?.problem, order?.harOpfoelgning, order?.notifikationSet]);
 
   if (!order) {
     return (
@@ -67,6 +81,9 @@ function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder 
       </div>
     );
   }
+
+  const followUpOrder = order.harOpfoelgning ? orders.find((o) => o.id === order.harOpfoelgning) : null;
+  const originalOrder = order.opfoelgningAf ? orders.find((o) => o.id === order.opfoelgningAf) : null;
 
   const sharedProps = {
     order,
@@ -86,6 +103,10 @@ function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder 
     onDuplicate: (selectedLineItems) => duplicateOrder(order, selectedLineItems),
     onAddMaterial: (fields) => ordersStore.addMaterial(order.id, fields),
     onRemoveMaterial: (materialId) => ordersStore.removeMaterial(order.id, materialId),
+    onMarkProblem: (note) => ordersStore.markProblem(order.id, note),
+    onClearProblem: () => ordersStore.clearProblem(order.id),
+    onOpenOrder: (targetId) => navigate(`/sag/${targetId}`),
+    followUpOrder, originalOrder,
   };
 
   return profile.rolle === "montor" ? <TechnicianOrderDetail {...sharedProps} /> : <OrderView {...sharedProps} />;
@@ -154,6 +175,13 @@ export default function App() {
       return { id: b.id, navn: b.navn, bilId: b.bilId || null, bil: linkedVehicle ? linkedVehicle.nummerplade : "" };
     });
 
+  // Notifikationsklokken (se TopNav.jsx): hvilke af DEN INDLOGGEDE BRUGERS
+  // EGNE bookede sager har noget ulæst (nyt materialeforbrug, et markeret
+  // problem, eller en oprettet opfølgning) - se computeNotifications i
+  // domain.js. Ryddes automatisk igen når man selv åbner den pågældende
+  // sag (se OrderRoute ovenfor).
+  const notifications = useMemo(() => computeNotifications(orders, profile?.id), [orders, profile?.id]);
+
   const refresh = async () => {
     if (!profile?.butikId) return;
     setRefreshing(true);
@@ -172,11 +200,16 @@ export default function App() {
   // Skifter hvilken bil en tekniker (bruger med rolle "montor") er tilknyttet.
   const updateTechnicianVehicle = (technicianId, vehicleId) => usersStore.updateUser(technicianId, { bilId: vehicleId || null });
 
+  // Opretter en ny sag - tilføjer HVEM der booker den (oprettetAf), så det
+  // altid er synligt bagefter, se OrderView.jsx/TechnicianPage.jsx.
+  const addOrder = (fields) => ordersStore.addOrder({ ...fields, createdBy: profile ? { id: profile.id, navn: profile.navn } : null });
+
   // Dupliker/opfølgning - se OrderRoute ovenfor. Åbner den nyoprettede sag
   // med det samme (rigtig navigation til dens egen URL), så dato/montør
-  // kan vælges.
+  // kan vælges. Tilføjer også HVEM der opretter opfølgningen.
   const duplicateOrder = async (sourceOrder, selectedLineItems) => {
-    const newId = await ordersStore.duplicateOrder(sourceOrder, selectedLineItems);
+    const createdBy = profile ? { id: profile.id, navn: profile.navn } : null;
+    const newId = await ordersStore.duplicateOrder(sourceOrder, selectedLineItems, createdBy);
     if (newId) navigate(`/sag/${newId}`);
   };
 
@@ -240,7 +273,7 @@ export default function App() {
         .font-mono { font-family: 'JetBrains Mono', monospace; }
       `}</style>
 
-      {!hideTopNav && <TopNav page={currentPage} onChange={(key) => navigate(`/${key}`)} user={profile} onLogOut={logOut} />}
+      {!hideTopNav && <TopNav page={currentPage} onChange={(key) => navigate(`/${key}`)} user={profile} onLogOut={logOut} notifications={notifications} onOpenOrder={onOpen} />}
 
       <div className={`${narrowPage ? "max-w-2xl" : "max-w-6xl"} mx-auto px-4 pb-10 ${hideTopNav ? "pt-4" : ""}`}>
         <Routes>
@@ -248,7 +281,7 @@ export default function App() {
 
           <Route path="/salg" element={
             <Gate allowed={allowedPages} page="salg">
-              <SalesPage orders={orders} technicians={technicians} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={ordersStore.addOrder} onImport={ordersStore.importOrders} storeFocus={store?.lat && store?.lon ? { lat: store.lat, lon: store.lon } : null} />
+              <SalesPage orders={orders} technicians={technicians} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={store?.lat && store?.lon ? { lat: store.lat, lon: store.lon } : null} />
             </Gate>
           } />
 
