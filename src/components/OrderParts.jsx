@@ -55,6 +55,11 @@ function LineItemDetails({ order, onToggleAddOn, onAddAddOn, onRemoveAddOn }) {
   );
 }
 
+// Hver note viser nu, HVEM der har skrevet den (forfatter.navn), ikke kun
+// tidspunktet - vigtigt når flere forskellige personer (sælger OG montør)
+// kan notere på samme sag, og det ellers ikke er til at se, hvem der har
+// sagt hvad. Ældre noter oprettet før dette blev tilføjet mangler
+// forfatter-feltet og viser derfor blot tidspunktet, som før.
 function Notes({ order, onAdd }) {
   const [text, setText] = useState("");
   return (
@@ -68,7 +73,7 @@ function Notes({ order, onAdd }) {
           {[...order.noter].reverse().map((n) => (
             <div key={n.id} className="rounded-lg border-l-2 border-brand bg-white px-3 py-2 shadow-sm">
               <p className="text-sm text-ink">{n.tekst}</p>
-              <p className="font-mono text-[11px] text-muted mt-1">{n.tid}</p>
+              <p className="font-mono text-[11px] text-muted mt-1">{n.forfatter?.navn ? `${n.forfatter.navn} · ` : ""}{n.tid}</p>
             </div>
           ))}
         </div>
