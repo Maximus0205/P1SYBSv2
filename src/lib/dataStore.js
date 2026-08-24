@@ -319,24 +319,6 @@ export async function updateProfile(userId, fields) {
   return true;
 }
 
-// ---------- AI route suggestion ----------
-// Calls an Edge Function instead of the Claude/Gemini API directly, so the
-// API key never lives in the frontend code. `nyOpgave` og `kraeverHandling`
-// er begge valgfrie, gensidigt udelukkende felter:
-//  - `nyOpgave`: returnerer STRUKTUREREDE forslag ({forslag: [...],
-//    generelKommentar}) til placering af ÉN ny sag - se SuggestedDates i
-//    OrderFormFields.jsx (bookingflowets sidste trin).
-//  - `kraeverHandling`: returnerer ÉT montør-forslag PR. sag i den givne
-//    liste ({loesninger: [...]}) - se AiActionSuggestions i
-//    PlanningPage.jsx ("Kræver handling").
-export async function getAiRouteSuggestion({ grundlag, montorTekst, valgtDato, nyOpgave, kraeverHandling }) {
-  const { data, error } = await supabase.functions.invoke("ai-ruteforslag", {
-    body: { grundlag, montorTekst, valgtDato, nyOpgave, kraeverHandling },
-  });
-  if (error || data?.fejl) return { ok: false, fejl: await readEdgeFunctionError(data, error, "Could not get an AI suggestion") };
-  return { ok: true, tekst: data.tekst, forslag: data.forslag, generelKommentar: data.generelKommentar, loesninger: data.loesninger };
-}
-
 // ---------- Ankomst-SMS til kunden ----------
 // Sendes via en Edge Function (se supabase/functions/send-ankomst-sms i
 // Supabase-projektet), som sender fra firmaets FÆLLES Twilio-afsender -
