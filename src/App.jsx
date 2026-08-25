@@ -89,7 +89,9 @@ function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder 
     order,
     technicians,
     onBack: () => navigate(-1),
-    addNote: (t) => ordersStore.addNote(order.id, t),
+    // Afsender (forfatter) gemmes på selve noten, ud fra hvem der ER
+    // logget ind LIGE NU (ikke sagens opretter) - se Notes i OrderParts.jsx.
+    addNote: (t) => ordersStore.addNote(order.id, t, { id: profile.id, navn: profile.navn }),
     addPhoto: (p) => ordersStore.addPhoto(order.id, p),
     addReport: (t, x) => ordersStore.addReport(order.id, t, x),
     onCycleStatus: ordersStore.cycleStatus,
