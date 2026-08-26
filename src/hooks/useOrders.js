@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { getOrders, saveOrder, getFreshOrder } from "../lib/dataStore";
-import { uid, todayISO, dailyOrderCompare, timeSlotById } from "../data/domain";
+import { uid, dailyOrderCompare } from "../data/domain";
 
 // FASE 3 af arkitektur-oprydningen (august 2026) - se hooks/useCatalog.js
 // for den fulde begrundelse. Al state og CRUD for ORDRER - den suverænt
@@ -13,6 +13,13 @@ import { uid, todayISO, dailyOrderCompare, timeSlotById } from "../data/domain";
 // gemmer/opdaterer ALTID ét enkelt element ad gangen, aldrig "gem hele
 // listen og slet resten" - se den oprindelige forklaring i dataStore.js
 // om hvorfor det er vigtigt ved flere samtidige brugere.
+//
+// DATO ER VALGFRI (august 2026): en sag kan oprettes/duplikeres UDEN dato
+// (og dermed uden tidsrum/montør) - den lander så i "Skal planlægges" i
+// PlanningPage.jsx (se needsPlanning i domain.js), som kan foreslå BÅDE
+// dato og montør for den. Der sættes bevidst IKKE en standarddato længere
+// (tidligere blev "i dag" altid gættet) - det var reelt en gætning, ikke
+// en beslutning, og skjulte at sagen endnu ikke var planlagt ordentligt.
 export function useOrders(storeId) {
   const [orders, setOrders] = useState([]);
 
@@ -43,7 +50,9 @@ export function useOrders(storeId) {
     if (!storeId) return;
     const newOrder = {
       id: uid(), nr: "...", ordrenummer: ordrenummer?.trim() || "",
-      kunde, koeber: koeber || null, noegle: noegle || {}, dato: dato || todayISO(), tidsrumId, start, slut, montorId,
+      kunde, koeber: koeber || null, noegle: noegle || {},
+      dato: dato || null, tidsrumId: dato ? tidsrumId : null, start: dato ? start : null, slut: dato ? slut : null,
+      montorId: montorId || null,
       status: "planlagt", plukket: false, varelinjer, noter: [], billeder: [], rapporter: [], materialer: [], stemplerInd: null, logs: [],
       oprettetAf: createdBy || null,
     };
@@ -59,9 +68,11 @@ export function useOrders(storeId) {
   // Opretter en ny sag ud fra en EKSISTERENDE (dupliker/opfølgning) - se
   // "Dupliker / Opfølgning" i OrderView.jsx. Kunde/køber/nøgleoplysninger
   // og adresse kopieres, men datoen, tidsrummet og montøren NULSTILLES
-  // bevidst - det er jo netop noget nyt der skal planlægges. Sagsnummer,
-  // status, noter, billeder, rapporter, tidsregistrering, materialeforbrug
-  // og plukket-status starter alle helt friske. Returnerer det nye sags-id.
+  // bevidst til INTET SAT (ikke længere "i dag") - opfølgningen lander i
+  // "Skal planlægges" og kan derfra få et rigtigt forslag til dato+montør,
+  // i stedet for at gætte på dags dato. Sagsnummer, status, noter,
+  // billeder, rapporter, tidsregistrering, materialeforbrug og
+  // plukket-status starter alle helt friske. Returnerer det nye sags-id.
   //
   // Markerer desuden den OPRINDELIGE sag med harOpfoelgning (den nye sags
   // id) og nulstiller dens opfølgnings-notifikation til "ulæst" - det er
@@ -69,7 +80,6 @@ export function useOrders(storeId) {
   // lavet en opfølgning på en af dine sager", se dismissNotifications.
   const duplicateOrder = async (sourceOrder, selectedLineItems, createdBy) => {
     if (!storeId || !selectedLineItems || selectedLineItems.length === 0) return null;
-    const t = timeSlotById("heldag");
     const clonedLineItems = selectedLineItems.map((v) => ({
       ...v,
       id: uid(),
@@ -81,7 +91,7 @@ export function useOrders(storeId) {
       kunde: { ...sourceOrder.kunde },
       koeber: sourceOrder.koeber ? { ...sourceOrder.koeber } : null,
       noegle: sourceOrder.noegle ? { ...sourceOrder.noegle } : {},
-      dato: todayISO(), tidsrumId: "heldag", start: t.start, slut: t.slut, montorId: null,
+      dato: null, tidsrumId: null, start: null, slut: null, montorId: null,
       status: "planlagt", plukket: false, varelinjer: clonedLineItems,
       noter: [], billeder: [], rapporter: [], materialer: [], stemplerInd: null, logs: [],
       oprettetAf: createdBy || null,
