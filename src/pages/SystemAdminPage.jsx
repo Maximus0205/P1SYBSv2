@@ -1,18 +1,47 @@
 import React, { useEffect, useState } from "react";
-import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus, X } from "lucide-react";
-import { getAllStores, createStoreAsSystemAdmin, updateStoreAsSystemAdmin, deleteStoreAsSystemAdmin, getAllUsersAsSystemAdmin, updateProfile, resetPasswordAsAdmin, createUserAsAdmin } from "../lib/dataStore";
+import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus, X, Bug, RefreshCw } from "lucide-react";
+import { getAllStores, createStoreAsSystemAdmin, updateStoreAsSystemAdmin, deleteStoreAsSystemAdmin, getAllUsersAsSystemAdmin, updateProfile, resetPasswordAsAdmin, createUserAsAdmin, getErrorLogs, deleteErrorLog, clearErrorLogs } from "../lib/dataStore";
 import { geocodeAddresses } from "../lib/geocoding";
 import { suggestUsername, isValidUsername } from "../lib/username";
 import { AddressInput } from "../components/AddressInput";
 
 const ROLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montør" };
 
-// Kun synlig for brugere med profiles.is_system_admin = true. Bruges til at
-// oprette/redigere/slette butikker, oprette brugere direkte til en
-// vilkårlig butik, og se/redigere/koble eksisterende brugere.
+// Kun synlig for brugere med profiles.is_system_admin = true. To faner:
+// "Butikker" (opret/redigér/slet butikker, opret/koble brugere - som før)
+// og "Fejl-log" (august 2026, ny) - automatisk opsamlede fejl fra hele
+// systemet, se lib/errorLog.js for selve indsamlingen.
 function SystemAdminPage() {
+  const [tab, setTab] = useState("butikker");
   const [stores, setStores] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const reloadStores = () => { setLoading(true); getAllStores().then((b) => { setStores(b); setLoading(false); }); };
+  useEffect(() => { reloadStores(); }, []);
+
+  return (
+    <div>
+      <div className="flex border-b border-line mb-6">
+        <button onClick={() => setTab("butikker")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "butikker" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
+          <Building2 size={15} /> Butikker
+        </button>
+        <button onClick={() => setTab("fejl")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "fejl" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
+          <Bug size={15} /> Fejl-log
+        </button>
+      </div>
+
+      {tab === "butikker" ? (
+        <StoresTab stores={stores} loading={loading} reload={reloadStores} />
+      ) : (
+        <ErrorLogTab stores={stores} />
+      )}
+    </div>
+  );
+}
+
+// Al den oprindelige butiks-/bruger-administration, uændret - kun flyttet
+// ind under sin egen fane (var tidligere hele SystemAdminPage's indhold).
+function StoresTab({ stores, loading, reload }) {
   const [editingId, setEditingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState("");
@@ -32,9 +61,6 @@ function SystemAdminPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-
-  const reload = () => { setLoading(true); getAllStores().then((b) => { setStores(b); setLoading(false); }); };
-  useEffect(() => { reload(); }, []);
 
   const changeAdminName = (val) => {
     setAdminName(val);
@@ -156,6 +182,87 @@ function SystemAdminPage() {
 
       <CreateUserDirect stores={stores} />
       <AllUsers stores={stores} />
+    </div>
+  );
+}
+
+// Ny fane (august 2026): fejl fanget automatisk fra HELE systemet (både
+// uventede JS-fejl/crashes OG mislykkede Supabase-kald der ellers kun stod
+// i browserens konsol) - se lib/errorLog.js for selve indsamlingen. Nyeste
+// øverst. Kan foldes ud pr. post for at se stack trace/kontekst/URL/enhed.
+function ErrorLogTab({ stores }) {
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState(null);
+
+  const reload = () => { setLoading(true); getErrorLogs(200).then((l) => { setLogs(l); setLoading(false); }); };
+  useEffect(() => { reload(); }, []);
+
+  const clearAll = async () => {
+    if (!window.confirm("Ryd hele fejl-loggen? Kan ikke fortrydes.")) return;
+    await clearErrorLogs();
+    reload();
+  };
+
+  const removeOne = async (id) => {
+    await deleteErrorLog(id);
+    reload();
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-ink flex items-center gap-2"><Bug size={16} /> Fejl-log</h3>
+          <p className="text-xs text-muted">Uventede fejl og mislykkede kald, fanget automatisk fra hele systemet — nyeste øverst.</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={reload} className="p-2 rounded-lg text-ink border border-line hover:border-brand hover:text-brand transition-colors" title="Opdater"><RefreshCw size={15} /></button>
+          {logs.length > 0 && (
+            <button onClick={clearAll} className="px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-danger border border-danger hover:bg-danger hover:text-white transition-colors">Ryd log</button>
+          )}
+        </div>
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-muted">Indlæser...</p>
+      ) : logs.length === 0 ? (
+        <p className="text-sm text-success italic flex items-center gap-1.5"><Check size={14} /> Ingen fejl registreret.</p>
+      ) : (
+        <div className="space-y-2">
+          {logs.map((l) => {
+            const store = stores.find((s) => s.id === l.butikId);
+            const open = expandedId === l.id;
+            return (
+              <div key={l.id} className="rounded-xl bg-white border border-line shadow-sm overflow-hidden">
+                <button onClick={() => setExpandedId(open ? null : l.id)} className="w-full text-left p-3 flex items-start gap-3">
+                  <AlertCircle size={15} className="text-danger shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-ink truncate">{l.besked}</p>
+                    <p className="text-[11px] text-muted mt-0.5">
+                      {new Date(l.tid).toLocaleString("da-DK")} · {l.kilde}
+                      {store ? ` · ${store.navn}` : ""}{l.rolle ? ` · ${l.rolle}` : ""}
+                    </p>
+                  </div>
+                </button>
+                {open && (
+                  <div className="border-t border-divider p-3 bg-panel text-xs space-y-2">
+                    {l.url && <p className="text-muted break-all"><span className="font-semibold text-ink">URL:</span> {l.url}</p>}
+                    {l.brugerAgent && <p className="text-muted break-all"><span className="font-semibold text-ink">Enhed:</span> {l.brugerAgent}</p>}
+                    {l.kontekst && (
+                      <pre className="text-muted whitespace-pre-wrap break-all bg-white border border-line rounded-lg p-2 max-h-48 overflow-y-auto">{JSON.stringify(l.kontekst, null, 2)}</pre>
+                    )}
+                    {l.stack && (
+                      <pre className="text-muted whitespace-pre-wrap break-all bg-white border border-line rounded-lg p-2 max-h-48 overflow-y-auto">{l.stack}</pre>
+                    )}
+                    <button onClick={() => removeOne(l.id)} className="text-danger underline hover:no-underline">Fjern denne post</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
