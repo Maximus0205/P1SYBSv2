@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, Users, RefreshCw, KeyRound, Clock, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid, MapPin, Phone, Route } from "lucide-react";
-import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatDuration, technicianColor, dailyOrderCompare } from "../data/domain";
-import { geocodeAddresses, routeDrivingTime, optimalVisitOrder } from "../lib/geocoding";
-import { suggestReassignments } from "../lib/scheduling";
+import React, { useEffect, useMemo, useState } from "react";
+import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, RefreshCw, KeyRound, Clock, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid, MapPin, Phone, Route, Stethoscope, CalendarX2, AlertTriangle } from "lucide-react";
+import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, dailyOrderCompare, needsPlanning, activeSickLeave, buildingKey, timeSlotById } from "../data/domain";
+import { geocodeAddress, geocodeAddresses, drivingDistances, routeDrivingTime, optimalVisitOrder } from "../lib/geocoding";
+import { suggestPlan, planningWindow } from "../lib/scheduling";
 import { DateSelector } from "../components/common";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 
@@ -12,29 +12,31 @@ import { OrderCardCompact } from "../components/OrderCardCompact";
 // over ugen og OMFORDELE sager, når en montør bliver syg, eller et besøg
 // var forgæves. Se WeekOverview - RESPONSIVT: en dag-for-dag-liste i fuld
 // bredde på smalle skærme (mobil), og et rigtigt ugegitter (montør ×
-// ugedag) på brede skærme (pc/tablet) - samme data, to layout, valgt
-// automatisk ud fra skærmbredde via CSS-breakpoints (Tailwinds `md:`),
-// IKKE ved at gætte på enhedstype. Det betyder det tilpasser sig korrekt
-// også ved fx rotation eller et smalt browservindue på en bærbar.
+// ugedag) på brede skærme (pc/tablet).
 //
-// INGEN AI (rettet august 2026): omfordelingsforslag og rækkefølge-
-// optimering bruger nu rene, forklarlige algoritmer (se lib/scheduling.js
-// og lib/geocoding.js: optimalVisitOrder) i stedet for Gemini - hurtigere,
-// gratis, og fejler aldrig fordi en sprogmodel er overbelastet.
+// "KRÆVER HANDLING" ER OMBYGGET (august 2026, efter direkte feedback: den
+// gamle udgave var én lang, uoverskuelig liste) til FIRE "dashboard-
+// fliser" - kun ÉN kan være foldet ud ad gangen, så man kan se ALVOREN på
+// et øjeblik uden at skulle scrolle igennem alt:
+//   1. Montørproblem  - montøren findes ikke længere, eller bilen er
+//                        blokeret
+//   2. Sygemelding     - sager for en AKTIVT sygemeldt montør, inden for
+//                        butikkens eget tidsvindue (se Admin)
+//   3. Skal planlægges - mangler dato ELLER montør (IKKE "dato passeret" -
+//                        er den passeret uden et markeret problem, antages
+//                        sagen gennemført, se needsPlanning i domain.js)
+//   4. Uafsluttet/fejl - sagen er markeret med et PROBLEM af montøren,
+//                        uafhængigt af selve status-tagget
+// Tile 1-3 bruger ALLE samme forslagsmotor (suggestPlan, lib/scheduling.js)
+// - INGEN AI - som altid har MULIGHED for at foreslå BÅDE ny dato og ny
+// montør, ikke kun "samme dag, anden montør". Tile 4 har bevidst intet
+// forslag - det kræver en menneskelig opfølgning.
 // ---------------------------------------------------------------------------
 
-function daysLate(dato, today) {
-  const d1 = new Date(dato + "T00:00:00");
-  const d2 = new Date(today + "T00:00:00");
-  return Math.round((d2 - d1) / 86400000);
-}
-
-function technicianIssue(order, technicians, vehicles, timeOff) {
+function technicianIssue(order, technicians, vehicles) {
   if (!order.montorId) return null;
   const technician = technicians.find((m) => m.id === order.montorId);
   if (!technician) return "Montøren findes ikke længere";
-  const onLeave = (timeOff || []).some((f) => f.montorId === order.montorId && order.dato >= f.startDato && order.dato <= f.slutDato);
-  if (onLeave) return "Montør fraværende denne dag";
   if (technician.bilId) {
     const vehicle = (vehicles || []).find((v) => v.id === technician.bilId);
     if (vehicle?.lukket) return "Montørens bil er ude af drift";
@@ -42,38 +44,52 @@ function technicianIssue(order, technicians, vehicles, timeOff) {
   return null;
 }
 
-function classify(orders, technicians, vehicles, timeOff) {
+// Fordeler sagerne i de fire (gensidigt udelukkende, prioriteret i denne
+// rækkefølge) kategorier + de almindelige lister (i gang i dag/planlagt
+// fremad/afsluttet). "Uafsluttet/fejlrapporter" er IKKE gensidigt
+// udelukkende med de øvrige - en sag kan sagtens optræde der OG i fx
+// "Skal planlægges" samtidig, da problem-markeringen er uafhængig af
+// resten (se domain.js).
+function classify(orders, technicians, vehicles, timeOff, windowHours) {
   const today = todayISO();
-  const needsAction = [];
+  const windowDays = Math.max(1, Math.ceil((windowHours || 48) / 24));
+  const windowEnd = addDays(today, windowDays);
+
+  const technicianProblem = [];
+  const sickLeave = [];
+  const needsPlan = [];
   const inProgressToday = [];
   const upcoming = [];
   const done = [];
+  const unresolved = orders.filter((s) => !!s.problem);
 
   for (const s of orders) {
     if (s.status === "afsluttet") { done.push(s); continue; }
-    const unassigned = !s.montorId;
-    const overdue = s.dato < today;
-    const issue = !unassigned ? technicianIssue(s, technicians, vehicles, timeOff) : null;
-    if (unassigned || overdue || issue) {
-      needsAction.push({ ...s, _unassigned: unassigned, _overdue: overdue, _issue: issue, _daysLate: overdue ? daysLate(s.dato, today) : 0 });
-      continue;
+
+    const issue = s.montorId ? technicianIssue(s, technicians, vehicles) : null;
+    if (issue) { technicianProblem.push({ ...s, _issue: issue }); continue; }
+
+    if (s.montorId && s.dato) {
+      const sick = activeSickLeave(s.montorId, timeOff);
+      if (sick && s.dato <= windowEnd) { sickLeave.push({ ...s, _sygemelding: sick }); continue; }
     }
+
+    if (needsPlanning(s)) { needsPlan.push(s); continue; }
+
     if (s.status === "igang" && s.dato === today) { inProgressToday.push(s); continue; }
     upcoming.push(s);
   }
 
-  needsAction.sort((a, b) => {
-    const score = (x) => (x._issue ? 2 : 0) + (x._unassigned ? 1 : 0) + (x._overdue ? 1 : 0);
-    if (score(b) !== score(a)) return score(b) - score(a);
-    if (b._daysLate !== a._daysLate) return b._daysLate - a._daysLate;
-    return (a.dato + a.start).localeCompare(b.dato + b.start);
-  });
-  const sortByDate = (a, b) => (a.dato + a.start).localeCompare(b.dato + b.start);
+  const sortByDate = (a, b) => (a.dato || "9999").localeCompare(b.dato || "9999") || (a.start || "").localeCompare(b.start || "");
+  technicianProblem.sort(sortByDate);
+  sickLeave.sort(sortByDate);
+  needsPlan.sort(sortByDate);
   inProgressToday.sort(sortByDate);
   upcoming.sort(sortByDate);
-  done.sort((a, b) => (b.dato + b.start).localeCompare(a.dato + a.start));
+  unresolved.sort((a, b) => (b.problem?.tid || "").localeCompare(a.problem?.tid || ""));
+  done.sort((a, b) => (b.dato || "").localeCompare(a.dato || ""));
 
-  return { needsAction, inProgressToday, upcoming, done };
+  return { technicianProblem, sickLeave, needsPlan, unresolved, inProgressToday, upcoming, done };
 }
 
 const norm = (s) => (s || "").toString().toLowerCase();
@@ -89,163 +105,157 @@ function matchesSearch(order, search) {
   );
 }
 
-const ACTION_RED = "#B3261E";
-const ACTION_BRAND = "#C8232E";
-
-function actionReason(order) {
-  if (order._issue) return { color: ACTION_RED, text: order._issue };
-  if (order._unassigned && order._overdue) return { color: ACTION_RED, text: `Ikke tildelt · ${order._daysLate} ${order._daysLate === 1 ? "dag" : "dage"} forsinket` };
-  if (order._unassigned) return { color: ACTION_BRAND, text: "Ikke tildelt montør" };
-  return { color: ACTION_RED, text: `${order._daysLate} ${order._daysLate === 1 ? "dag" : "dage"} forsinket` };
-}
-
-function ReasonLine({ order }) {
-  const { color, text } = actionReason(order);
+// ---------------- Ét kort pr. sag i en "skal handles"-flise ----------------
+// Viser ALTID de manuelle dato/montør-vælgere (fuld kontrol bevaret), PLUS
+// et automatisk beregnet forslag (hvis der er ét), som kan anvendes med ét
+// klik. Forslaget beregnes af den kaldende flise (ReplanTile), ikke her.
+function ReplanCard({ order, technicians, suggestion, loadingSuggestion, onApplySuggestion, onManualChange, onOpen }) {
   return (
-    <p className="text-[11px] font-semibold uppercase tracking-wide flex items-center gap-1" style={{ color }}>
-      <UserX size={12} /> {text}
-    </p>
+    <div className="rounded-lg bg-white border border-line p-3 mb-2 last:mb-0 shadow-sm">
+      <div className="flex items-start justify-between gap-2 mb-1.5">
+        <button onClick={() => onOpen(order.id)} className="text-left min-w-0 flex-1 hover:opacity-80">
+          <p className="text-sm font-semibold text-ink truncate">{order.kunde?.navn || "Ukendt kunde"} <span className="font-mono text-[11px] text-muted">#{order.nr}</span></p>
+          <p className="text-xs text-muted truncate">{buildTitle(order.varelinjer)}</p>
+        </button>
+        <span className="text-[11px] font-mono text-muted shrink-0 pt-0.5">{order.dato ? formatShortDate(order.dato) : "ingen dato"}</span>
+      </div>
+
+      {loadingSuggestion ? (
+        <p className="text-[11px] text-muted flex items-center gap-1.5 mb-2"><Loader2 size={11} className="animate-spin shrink-0" /> Beregner forslag...</p>
+      ) : suggestion ? (
+        <div className="flex items-center justify-between gap-2 rounded-lg bg-panel px-2.5 py-1.5 mb-2">
+          <p className="text-xs text-ink min-w-0 truncate">
+            <span className="font-semibold">{formatShortDate(suggestion.dato)}</span>
+            {suggestion.montorNavn && ` · ${suggestion.montorNavn}`}
+            <span className="text-muted"> — {suggestion.begrundelse}</span>
+          </p>
+          <button onClick={() => onApplySuggestion(order, suggestion)} className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors rounded-lg px-2.5 py-1 flex items-center gap-1"><Check size={11} /> Brug</button>
+        </div>
+      ) : null}
+
+      <div className="flex gap-1.5 flex-wrap">
+        <input
+          type="date"
+          value={order.dato || ""}
+          onChange={(e) => onManualChange(order.id, { dato: e.target.value || null })}
+          className="rounded-lg border border-line bg-panel px-2 py-1 text-[11px] text-ink font-mono focus:outline-none focus:border-brand"
+        />
+        <select
+          value={order.montorId || ""}
+          onChange={(e) => onManualChange(order.id, { montorId: e.target.value || null })}
+          className="flex-1 min-w-[100px] rounded-lg border border-line bg-panel px-2 py-1 text-[11px] text-ink focus:outline-none focus:border-brand"
+        >
+          <option value="">Ikke tildelt</option>
+          {technicians.map((m) => <option key={m.id} value={m.id}>{m.navn}</option>)}
+        </select>
+      </div>
+    </div>
   );
 }
 
-// ---------------- Forslag til løsning på "Kræver handling" ----------------
-// PROAKTIV: kører automatisk, når "kræver handling"-listen vises eller
-// reelt ændrer sig (nye sager kommer til, eller nogen bliver løst) - ikke
-// bare fordi man navigerer til siden igen med uændrede data. "signature"
-// er et fingeraftryk af PRÆCIS hvilke sagsnumre der indgår.
-//
-// INGEN AI: bruger suggestReassignments (lib/scheduling.js) - en ren
-// scoring-algoritme baseret på ledig kapacitet og luftlinjeafstand til
-// montørens øvrige sager samme dag. Kræver kun geokodning (allerede
-// tilgængeligt, samme cache som resten af appen), intet Gemini-kald.
-const BATCH_LIMIT = 80;
-
-function ActionSuggestions({ needsAction, orders, technicians, timeOff, onAssign }) {
+// ---------------- Fliens indhold: liste + automatisk beregnede forslag ----------------
+// excludeTechnicianIds: enten et fast array, eller en funktion pr. sag
+// (fx "udeluk den montør DENNE sag selv er ramt af problemet med").
+function ReplanTile({ items, orders, technicians, timeOff, excludeTechnicianIds, onUpdateBooking, onOpen }) {
+  const [suggestions, setSuggestions] = useState({});
   const [loading, setLoading] = useState(false);
-  const [solutions, setSolutions] = useState(null);
-  const [error, setError] = useState(null);
-  const [applied, setApplied] = useState({});
-  const fetchedSignatureRef = useRef(null);
-
-  const targets = needsAction.slice(0, BATCH_LIMIT);
-  const truncated = needsAction.length > BATCH_LIMIT;
-  const signature = targets.map((s) => s.nr).sort().join(",");
-
-  const ask = async () => {
-    if (targets.length === 0) return;
-    setLoading(true); setError(null); setSolutions(null); setApplied({});
-    fetchedSignatureRef.current = signature;
-    const addresses = [
-      ...targets.map((s) => s.kunde?.adresse).filter(Boolean),
-      ...orders.filter((o) => o.status !== "afsluttet" && o.montorId).map((o) => o.kunde?.adresse).filter(Boolean),
-    ];
-    const coordMap = await geocodeAddresses(addresses);
-    const result = suggestReassignments({ needsAction: targets, orders, technicians, timeOff, coordMap });
-    setLoading(false);
-    setSolutions(result);
-  };
+  const key = items.map((o) => o.id).join(",");
 
   useEffect(() => {
-    if (targets.length === 0) return;
-    if (fetchedSignatureRef.current === signature) return; // uændret gruppe - intet nyt at beregne
-    ask();
+    let cancelled = false;
+    const run = async () => {
+      if (items.length === 0) { setSuggestions({}); return; }
+      setLoading(true);
+      const dates = planningWindow(todayISO(), 14);
+      const results = {};
+      for (const order of items) {
+        if (!order.kunde?.adresse) continue;
+        const windowOrders = orders.filter((o) => o.id !== order.id && dates.includes(o.dato) && o.kunde?.adresse);
+        const bkey = buildingKey(order.kunde.adresse);
+        const sameBuildingDates = bkey ? [...new Set(windowOrders.filter((o) => buildingKey(o.kunde.adresse) === bkey).map((o) => o.dato))] : [];
+        let nearbyDates = [];
+        try {
+          const source = await geocodeAddress(order.kunde.adresse);
+          if (source && windowOrders.length > 0) {
+            const coordMap = await geocodeAddresses(windowOrders.map((o) => o.kunde.adresse));
+            const withCoords = windowOrders
+              .map((o) => ({ o, coord: coordMap.get(o.kunde.adresse.trim().toLowerCase()) }))
+              .filter((x) => x.coord);
+            if (withCoords.length > 0) {
+              const distances = await drivingDistances(source, withCoords.map((x) => x.coord));
+              nearbyDates = withCoords
+                .map((x, i) => ({ dato: x.o.dato, km: distances[i] != null ? distances[i] / 1000 : null }))
+                .filter((x) => x.km != null && x.km <= 5)
+                .map((x) => ({ dato: x.dato, km: Math.round(x.km * 10) / 10 }));
+            }
+          }
+        } catch (_) { /* stille - resten af forslaget bygger stadig på kapacitet/samme opgang */ }
+
+        const exclude = typeof excludeTechnicianIds === "function" ? excludeTechnicianIds(order) : excludeTechnicianIds;
+        const plan = suggestPlan({ dates, orders, technicians, timeOff, sameBuildingDates, nearbyDates, excludeTechnicianIds: exclude, originalDate: order.dato || null });
+        if (plan[0] && !cancelled) results[order.id] = plan[0];
+      }
+      if (!cancelled) { setSuggestions(results); setLoading(false); }
+    };
+    run();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature]);
+  }, [key]);
 
-  const apply = (sagNr, orderId, technicianId) => {
-    onAssign(orderId, technicianId);
-    setApplied((prev) => ({ ...prev, [sagNr]: true }));
+  const applySuggestion = (order, s) => {
+    const t = timeSlotById("heldag");
+    onUpdateBooking(order.id, { dato: s.dato, tidsrumId: order.tidsrumId || "heldag", start: order.start || t.start, slut: order.slut || t.slut, montorId: s.montorId || null });
   };
-  const applyGroup = (items, technicianId) => {
-    items.forEach((s) => {
-      const order = targets.find((o) => o.nr === s.sag);
-      if (order) onAssign(order.id, technicianId);
-    });
-    setApplied((prev) => {
-      const next = { ...prev };
-      items.forEach((s) => { next[s.sag] = true; });
-      return next;
-    });
-  };
-
-  if (needsAction.length === 0) return null;
-
-  const visible = (solutions || []).filter((s) => !applied[s.sag]);
-  const groups = [];
-  if (visible.length > 0) {
-    const byName = new Map();
-    for (const s of visible) {
-      const key = s.montorNavn && technicians.some((m) => m.navn === s.montorNavn) ? s.montorNavn : "";
-      if (!byName.has(key)) byName.set(key, []);
-      byName.get(key).push(s);
-    }
-    for (const [navn, items] of byName) if (navn) groups.push({ navn, items });
-    groups.sort((a, b) => b.items.length - a.items.length);
-    const none = byName.get("");
-    if (none && none.length > 0) groups.push({ navn: "", items: none });
-  }
 
   return (
-    <div className="rounded-xl border border-ink bg-panel p-3 mb-3">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink flex items-center gap-1.5"><Sparkles size={13} /> Forslag til løsning</p>
-        <button onClick={() => { fetchedSignatureRef.current = null; ask(); }} disabled={loading} className="text-muted hover:text-brand disabled:opacity-50" title="Beregn forslagene igen">
-          <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-        </button>
-      </div>
-
-      {loading && !solutions && (
-        <p className="text-[11px] text-muted mt-1.5 flex items-center gap-1.5"><Loader2 size={11} className="animate-spin shrink-0" /> Beregner automatisk...</p>
-      )}
-      {!loading && !solutions && !error && (
-        <p className="text-[11px] text-muted mt-1.5">Foreslår en montør til hver sag ud fra ledig kapacitet og afstand til deres øvrige sager samme dag, grupperet så du kan tildele en hel gruppe ad gangen. Rådgivende — retter kun montør; forsinkede sager kan stadig kræve, du selv retter datoen.{truncated ? ` Kun de ${BATCH_LIMIT} mest kritiske sager (ud af ${needsAction.length}) beregnes ad gangen.` : ""}</p>
-      )}
-      {error && <p className="text-xs text-danger mt-2">{error}</p>}
-
-      {solutions && (
-        groups.length === 0 ? (
-          <p className="text-xs text-success mt-2 flex items-center gap-1.5"><Check size={13} /> Alle forslag er anvendt.</p>
-        ) : (
-          <div className="space-y-2 mt-2">
-            {truncated && (
-              <p className="text-[11px] text-muted">Kun de {BATCH_LIMIT} mest kritiske sager (ud af {needsAction.length}) fik et forslag denne omgang - opdater bagefter for de næste.</p>
-            )}
-            {groups.map((g) => {
-              const technician = g.navn && technicians.find((m) => m.navn === g.navn);
-              return (
-                <div key={g.navn || "__none__"} className="rounded-lg bg-white border border-line p-2.5">
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <p className="text-xs font-semibold text-ink flex items-center gap-1.5">
-                      {technician && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: technicianColor(technician.id, technicians) }} />}
-                      {g.navn || "Intet klart forslag"} <span className="font-mono text-muted">({g.items.length})</span>
-                    </p>
-                    {technician && (
-                      <button onClick={() => applyGroup(g.items, technician.id)} className="text-[10px] font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors px-2.5 py-1 rounded-lg flex items-center gap-1 shrink-0">
-                        <CheckCheck size={12} /> Tildel alle
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {g.items.map((s) => {
-                      const order = targets.find((o) => o.nr === s.sag);
-                      if (!order) return null;
-                      return (
-                        <div key={s.sag} title={s.begrundelse || ""} className="flex items-center gap-1 rounded-full border border-line bg-panel pl-2 pr-1 py-0.5 text-[10px]">
-                          <span className="font-mono text-muted">#{s.sag}</span>
-                          {technician && (
-                            <button onClick={() => apply(s.sag, order.id, technician.id)} className="text-success hover:text-brand p-0.5" title="Tildel denne ene"><Check size={11} /></button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )
-      )}
+    <div>
+      {items.map((o) => (
+        <ReplanCard
+          key={o.id}
+          order={o}
+          technicians={technicians}
+          suggestion={suggestions[o.id]}
+          loadingSuggestion={loading && !suggestions[o.id]}
+          onApplySuggestion={applySuggestion}
+          onManualChange={onUpdateBooking}
+          onOpen={onOpen}
+        />
+      ))}
     </div>
+  );
+}
+
+// ---------------- Flise 4: Uafsluttet / fejlrapporter - ingen forslag ----------------
+function UnresolvedTile({ items, onClearProblem, onOpen }) {
+  return (
+    <div>
+      {items.map((o) => (
+        <div key={o.id} className="rounded-lg bg-white border border-danger p-3 mb-2 last:mb-0 shadow-sm">
+          <div className="flex items-start justify-between gap-2 mb-1">
+            <button onClick={() => onOpen(o.id)} className="text-left min-w-0 flex-1 hover:opacity-80">
+              <p className="text-sm font-semibold text-ink truncate">{o.kunde?.navn || "Ukendt kunde"} <span className="font-mono text-[11px] text-muted">#{o.nr}</span></p>
+              <p className="text-xs text-muted truncate">{buildTitle(o.varelinjer)}</p>
+            </button>
+            <span className="text-[11px] font-mono text-muted shrink-0 pt-0.5">{o.dato ? formatShortDate(o.dato) : "ingen dato"}</span>
+          </div>
+          <p className="text-xs text-danger flex items-start gap-1.5 mb-2"><AlertTriangle size={13} className="shrink-0 mt-0.5" /> {o.problem?.note} <span className="text-muted shrink-0">· {o.problem?.tid}</span></p>
+          <button onClick={() => onClearProblem(o.id)} className="text-[11px] font-semibold uppercase tracking-wide text-danger underline hover:no-underline">Marker som løst</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------- Selve flise-knappen (lukket tilstand) ----------------
+function TileButton({ icon: Icon, color, count, label, selected, onClick }) {
+  return (
+    <button onClick={onClick} className="rounded-xl border-2 p-3 text-left transition-colors bg-white hover:bg-panel" style={{ borderColor: selected ? color : "#ECECEC" }}>
+      <div className="flex items-center justify-between mb-1.5">
+        <Icon size={16} style={{ color }} className="shrink-0" />
+        <span className="text-2xl font-display leading-none" style={{ color: count > 0 ? color : "#C9C2AE" }}>{count}</span>
+      </div>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-ink leading-tight">{label}</p>
+    </button>
   );
 }
 
@@ -283,9 +293,6 @@ function shortDayLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateStr
 function shortDateLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "short" }); }
 
 // ---------------- Overblik: responsiv ugekalender med tid, kort og omfordeling ----------------
-// Bruges i BEGGE layout (mobil-liste og pc-gitter) - lidt større tekst/
-// touch-mål end den oprindelige udgave, som var tunet for smalle 150px-
-// gitterkolonner og derfor virkede for spinkel/uoverskuelig generelt.
 function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnicianId, color, onLeave, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
   return (
     <div
@@ -335,8 +342,6 @@ function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnician
   );
 }
 
-// Lille badge til dag/montør-tidstotal (arbejde+kørsel) - genbruges i begge
-// layout så visningen af belastning er ens uanset skærmbredde.
 function DayTimeBadge({ minutes, overloaded, loading }) {
   return (
     <span className={`text-[11px] font-bold rounded-md px-2 py-0.5 flex items-center gap-1 shrink-0 ${overloaded ? "bg-danger text-white" : "bg-panel text-ink"}`}>
@@ -346,34 +351,18 @@ function DayTimeBadge({ minutes, overloaded, loading }) {
   );
 }
 
-// Erstatter BÅDE den tidligere "Dagens tidslinje" OG "Omfordel hurtigt"-
-// modalen: ÉT altid-synligt ugeoverblik, der starter UDFOLDET (kan
-// minimeres med pilen i headeren). RESPONSIVT (se filens toppo-kommentar):
-// på smalle skærme vises dagene ét ad gangen som en fuld-bredde liste
-// (dag-faner øverst); på brede skærme vises hele ugen som et gitter
-// (montør × ugedag). Samme underliggende data og tidsberegning i begge.
-//
-// "Foreslå bedste rækkefølge" (Route-ikonet, vises pr. dag/montør med
-// mindst 2 stop): beregner den bedste besøgsrækkefølge ud fra ægte
-// køreafstande (optimalVisitOrder, lib/geocoding.js - nærmeste nabo på
-// den fulde ORS-afstandsmatrix, ikke AI), og skriver den direkte til
-// rækkefølgen (setVisitOrder). Anvendes med det samme, ligesom op/ned-
-// pilene allerede gør - ikke et forslag der først skal godkendes, da det
-// er let at fortryde manuelt bagefter.
 function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder, onSetVisitOrder, onOpen }) {
-  const [open, setOpen] = useState(true); // starter UDFOLDET
+  const [open, setOpen] = useState(true);
   const [weekAnchor, setWeekAnchor] = useState(todayISO());
-  const [selectedDay, setSelectedDay] = useState(todayISO()); // kun brugt i mobil-layoutet
-  const [driveMinutes, setDriveMinutes] = useState({}); // { "montorId|dato": minutter | null }
+  const [selectedDay, setSelectedDay] = useState(todayISO());
+  const [driveMinutes, setDriveMinutes] = useState({});
   const [driveLoading, setDriveLoading] = useState(false);
-  const [optimizing, setOptimizing] = useState({}); // { "montorId|dato": boolean }
+  const [optimizing, setOptimizing] = useState({});
 
   const week = weekDays(weekAnchor);
   const today = todayISO();
   const rows = [...technicians, { id: null, navn: "Ikke tildelt" }];
 
-  // Hold den valgte mobil-dag inden for den aktuelt viste uge, når man
-  // blader til en anden uge.
   useEffect(() => {
     if (!week.includes(selectedDay)) setSelectedDay(week[0]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -385,10 +374,8 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
   const ordersFor = (technicianId, day) =>
     orders.filter((o) => o.montorId === technicianId && o.dato === day && o.status !== "afsluttet").sort(dailyOrderCompare);
 
-  const isOnLeave = (technicianId, day) => !!technicianId && (timeOff || []).some((f) => f.montorId === technicianId && day >= f.startDato && day <= f.slutDato);
+  const isOnLeave = (technicianId, day) => !!technicianId && (timeOff || []).some((f) => f.montorId === technicianId && day >= f.startDato && (!f.slutDato || day <= f.slutDato));
 
-  // Firmaets adresse (allerede geokodet, se App.jsx/getStore) bruges som
-  // FAST STARTPUNKT for hver montørs rute hver dag.
   const storeCoord = store?.lat != null && store?.lon != null ? { lat: store.lat, lon: store.lon } : null;
   const minStopsForEstimate = storeCoord ? 1 : 2;
 
@@ -498,7 +485,6 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
             <span className="sm:hidden">Tal = arbejde + estimeret kørsel.</span>
           </p>
 
-          {/* ------- MOBIL: dag-faner + fuld-bredde liste (< md) ------- */}
           <div className="md:hidden">
             <div className="flex gap-1.5 overflow-x-auto px-3 py-2 border-b border-divider">
               {week.map((d) => (
@@ -562,7 +548,6 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
             </div>
           </div>
 
-          {/* ------- PC/TABLET: ugegitter (md og bredere) ------- */}
           <div className="hidden md:block overflow-x-auto">
             <div style={{ minWidth: 150 + 152 * 7 }}>
               <div className="grid sticky top-0 z-20 bg-panel border-b border-line" style={{ gridTemplateColumns: "150px repeat(7, minmax(150px, 1fr))" }}>
@@ -632,14 +617,20 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
   );
 }
 
-function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedDate, onDateChange, onOpen, onCycleStatus, onAssign, onReorder, onSetVisitOrder, onUpdateTechnician, onRefresh, refreshing }) {
+function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedDate, onDateChange, onOpen, onCycleStatus, onAssign, onReorder, onSetVisitOrder, onUpdateBooking, onClearProblem, onUpdateTechnician, onRefresh, refreshing }) {
   const [search, setSearch] = useState("");
-  const { needsAction, inProgressToday, upcoming, done } = useMemo(() => classify(orders, technicians, vehicles, timeOff), [orders, technicians, vehicles, timeOff]);
+  const [openTile, setOpenTile] = useState(null);
+  const { technicianProblem, sickLeave, needsPlan, unresolved, inProgressToday, upcoming, done } = useMemo(
+    () => classify(orders, technicians, vehicles, timeOff, store?.sygemeldingVindueTimer),
+    [orders, technicians, vehicles, timeOff, store?.sygemeldingVindueTimer]
+  );
 
   const searchResults = useMemo(() => {
     if (!search.trim()) return null;
     return [...orders].filter((s) => matchesSearch(s, search)).sort((a, b) => (b.dato + b.start).localeCompare(a.dato + a.start));
   }, [orders, search]);
+
+  const totalNeedsAction = technicianProblem.length + sickLeave.length + needsPlan.length + unresolved.length;
 
   return (
     <div>
@@ -648,7 +639,7 @@ function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedD
           <p className="font-mono text-[11px] tracking-widest uppercase text-brand mb-1">Overblik</p>
           <h1 className="font-display text-4xl uppercase tracking-tight text-ink">Planlægning</h1>
           <div className="flex items-center gap-3 mt-1">
-            <p className="text-sm text-muted">{needsAction.length} kræver handling</p>
+            <p className="text-sm text-muted">{totalNeedsAction} kræver handling</p>
             <DateSelector date={selectedDate} onChange={onDateChange} />
           </div>
         </div>
@@ -685,26 +676,48 @@ function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedD
         <>
           <WeekOverview orders={orders} technicians={technicians} timeOff={timeOff} store={store} onAssign={onAssign} onReorder={onReorder} onSetVisitOrder={onSetVisitOrder} onOpen={onOpen} />
 
-          <div className="rounded-xl bg-white border border-line mb-4 overflow-hidden" style={{ borderTopWidth: 4, borderTopColor: ACTION_RED }}>
-            <div className="p-3 border-b border-line flex items-center gap-2">
-              <AlertCircle size={17} className="text-danger shrink-0" />
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-ink flex-1">Kræver handling</h2>
-              <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-danger text-white">{needsAction.length}</span>
+          <div className="mb-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-ink mb-2 flex items-center gap-1.5"><AlertCircle size={15} className="text-danger" /> Kræver handling</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+              <TileButton icon={UserX} color="#B3261E" count={technicianProblem.length} label="Montørproblem" selected={openTile === "problem"} onClick={() => setOpenTile(openTile === "problem" ? null : "problem")} />
+              <TileButton icon={Stethoscope} color="#C8232E" count={sickLeave.length} label="Sygemelding" selected={openTile === "sygdom"} onClick={() => setOpenTile(openTile === "sygdom" ? null : "sygdom")} />
+              <TileButton icon={CalendarX2} color="#B36B1E" count={needsPlan.length} label="Skal planlægges" selected={openTile === "planlaeg"} onClick={() => setOpenTile(openTile === "planlaeg" ? null : "planlaeg")} />
+              <TileButton icon={AlertTriangle} color="#8B5E3C" count={unresolved.length} label="Uafsluttet / fejl" selected={openTile === "problemer"} onClick={() => setOpenTile(openTile === "problemer" ? null : "problemer")} />
             </div>
-            <div className="p-3">
-              {needsAction.length === 0 ? (
-                <p className="text-sm text-success font-medium flex items-center gap-2 py-2"><Sparkles size={16} /> Intet hænger — alle sager er tildelt, gennemførbare og afsluttet til tiden.</p>
-              ) : (
-                <>
-                  <ActionSuggestions needsAction={needsAction} orders={orders} technicians={technicians} timeOff={timeOff} onAssign={onAssign} />
-                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {needsAction.map((s) => (
-                      <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} onAssign={onAssign} reason={<ReasonLine order={s} />} accent={actionReason(s).color} />
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
+
+            {openTile && (
+              <div className="rounded-xl bg-panel border border-line p-3">
+                {openTile === "problem" && (
+                  technicianProblem.length === 0 ? <p className="text-sm text-muted italic">Ingen montørproblemer lige nu.</p> : (
+                    <ReplanTile
+                      items={technicianProblem} orders={orders} technicians={technicians} timeOff={timeOff}
+                      excludeTechnicianIds={(o) => [o.montorId]} onUpdateBooking={onUpdateBooking} onOpen={onOpen}
+                    />
+                  )
+                )}
+                {openTile === "sygdom" && (
+                  sickLeave.length === 0 ? <p className="text-sm text-muted italic">Ingen sager berørt af sygemelding lige nu.</p> : (
+                    <ReplanTile
+                      items={sickLeave} orders={orders} technicians={technicians} timeOff={timeOff}
+                      excludeTechnicianIds={(o) => [o.montorId]} onUpdateBooking={onUpdateBooking} onOpen={onOpen}
+                    />
+                  )
+                )}
+                {openTile === "planlaeg" && (
+                  needsPlan.length === 0 ? <p className="text-sm text-success italic flex items-center gap-1.5"><Sparkles size={14} /> Alle sager er planlagt.</p> : (
+                    <ReplanTile
+                      items={needsPlan} orders={orders} technicians={technicians} timeOff={timeOff}
+                      excludeTechnicianIds={[]} onUpdateBooking={onUpdateBooking} onOpen={onOpen}
+                    />
+                  )
+                )}
+                {openTile === "problemer" && (
+                  unresolved.length === 0 ? <p className="text-sm text-success italic flex items-center gap-1.5"><Sparkles size={14} /> Ingen uafsluttede/fejlmarkerede sager.</p> : (
+                    <UnresolvedTile items={unresolved} onClearProblem={onClearProblem} onOpen={onOpen} />
+                  )
+                )}
+              </div>
+            )}
           </div>
 
           {inProgressToday.length > 0 && (
