@@ -10,14 +10,18 @@ import { OrderCardCompact } from "../components/OrderCardCompact";
 // Planlægning + Kørsel er fusioneret til ÉN fane (august 2026). Siden er
 // bygget med ÉT primært formål for øje: gøre det hurtigt at få OVERBLIK
 // over ugen og OMFORDELE sager, når en montør bliver syg, eller et besøg
-// var forgæves. Se WeekOverview - RESPONSIVT: en dag-for-dag-liste i fuld
-// bredde på smalle skærme (mobil), og et rigtigt ugegitter (montør ×
-// ugedag) på brede skærme (pc/tablet).
+// var forgæves.
 //
-// "KRÆVER HANDLING" ER OMBYGGET (august 2026, efter direkte feedback: den
-// gamle udgave var én lang, uoverskuelig liste) til FIRE "dashboard-
-// fliser" - kun ÉN kan være foldet ud ad gangen, så man kan se ALVOREN på
-// et øjeblik uden at skulle scrolle igennem alt:
+// OVERBLIKKET ER OMBYGGET (august 2026, efter direkte feedback fra test):
+// KOLONNER = ugedage (mandag-fredag - bevidst ikke lørdag/søndag, se
+// WeekOverview), og INDEN I hver dag-kolonne er sagerne grupperet pr.
+// montør/bil, tydeligt visuelt adskilt (farvet venstre-kant + navn), i den
+// rækkefølge sagerne reelt ligger i montørens rute (dailyOrderCompare).
+// Det er den modsatte akse af den oprindelige udgave (montør som RÆKKE,
+// dag som KOLONNE), som viste sig uoverskuelig i praksis.
+//
+// "KRÆVER HANDLING" ER FIRE "dashboard-fliser" - kun ÉN kan være foldet ud
+// ad gangen:
 //   1. Montørproblem  - montøren findes ikke længere, eller bilen er
 //                        blokeret
 //   2. Sygemelding     - sager for en AKTIVT sygemeldt montør, inden for
@@ -28,8 +32,9 @@ import { OrderCardCompact } from "../components/OrderCardCompact";
 //   4. Uafsluttet/fejl - sagen er markeret med et PROBLEM af montøren,
 //                        uafhængigt af selve status-tagget
 // Tile 1-3 bruger ALLE samme forslagsmotor (suggestPlan, lib/scheduling.js)
-// - INGEN AI - som altid har MULIGHED for at foreslå BÅDE ny dato og ny
-// montør, ikke kun "samme dag, anden montør". Tile 4 har bevidst intet
+// - INGEN AI. RETTET (august 2026, fejl fundet ved test): forslagsmotoren
+// kunne tidligere "foreslå" ingen montør overhovedet, hvilket ikke løser
+// noget - se requireTechnician i scheduling.js. Tile 4 har bevidst intet
 // forslag - det kræver en menneskelig opfølgning.
 // ---------------------------------------------------------------------------
 
@@ -131,7 +136,9 @@ function ReplanCard({ order, technicians, suggestion, loadingSuggestion, onApply
           </p>
           <button onClick={() => onApplySuggestion(order, suggestion)} className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors rounded-lg px-2.5 py-1 flex items-center gap-1"><Check size={11} /> Brug</button>
         </div>
-      ) : null}
+      ) : (
+        <p className="text-[11px] text-muted italic mb-2">Intet forslag med en ledig montør fundet inden for de næste 14 dage — tildel manuelt nedenfor.</p>
+      )}
 
       <div className="flex gap-1.5 flex-wrap">
         <input
@@ -192,7 +199,9 @@ function ReplanTile({ items, orders, technicians, timeOff, excludeTechnicianIds,
         } catch (_) { /* stille - resten af forslaget bygger stadig på kapacitet/samme opgang */ }
 
         const exclude = typeof excludeTechnicianIds === "function" ? excludeTechnicianIds(order) : excludeTechnicianIds;
-        const plan = suggestPlan({ dates, orders, technicians, timeOff, sameBuildingDates, nearbyDates, excludeTechnicianIds: exclude, originalDate: order.dato || null });
+        // requireTechnician: true - se scheduling.js. Et forslag der ikke
+        // rent faktisk tildeler en montør er ikke en løsning her.
+        const plan = suggestPlan({ dates, orders, technicians, timeOff, sameBuildingDates, nearbyDates, excludeTechnicianIds: exclude, originalDate: order.dato || null, requireTechnician: true });
         if (plan[0] && !cancelled) results[order.id] = plan[0];
       }
       if (!cancelled) { setSuggestions(results); setLoading(false); }
@@ -204,7 +213,7 @@ function ReplanTile({ items, orders, technicians, timeOff, excludeTechnicianIds,
 
   const applySuggestion = (order, s) => {
     const t = timeSlotById("heldag");
-    onUpdateBooking(order.id, { dato: s.dato, tidsrumId: order.tidsrumId || "heldag", start: order.start || t.start, slut: order.slut || t.slut, montorId: s.montorId || null });
+    onUpdateBooking(order.id, { dato: s.dato, tidsrumId: order.tidsrumId || "heldag", start: order.start || t.start, slut: order.slut || t.slut, montorId: s.montorId });
   };
 
   return (
@@ -292,7 +301,7 @@ function hoursLabel(minutes) {
 function shortDayLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { weekday: "short" }); }
 function shortDateLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "short" }); }
 
-// ---------------- Overblik: responsiv ugekalender med tid, kort og omfordeling ----------------
+// ---------------- Overblik: ugekalender med kort og omfordeling ----------------
 function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnicianId, color, onLeave, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
   return (
     <div
@@ -351,6 +360,54 @@ function DayTimeBadge({ minutes, overloaded, loading }) {
   );
 }
 
+// ÉT teknikersegment inden for én dag-kolonne: farvet venstre-kant + navn
+// tydeligt adskiller det fra næste montørs sager i samme kolonne. Bruges
+// BÅDE i mobil- og pc-udgaven (kun selve kolonne-strukturen omkring det er
+// forskellig).
+function TechnicianDaySection({ row, day, dayOrders, technicians, onOpen, onAssign, onReorder, onSetVisitOrder, isOnLeave, timeInfo, optimizing, onOptimize }) {
+  const color = row.id ? technicianColor(row.id, technicians) : "#C8232E";
+  const optKey = `${row.id}|${day}`;
+  return (
+    <div style={{ borderLeft: `3px solid ${color}` }} className="pl-2">
+      <div className="flex items-center justify-between gap-1 mb-1">
+        <p className="text-xs font-semibold truncate min-w-0" style={{ color }}>{row.navn}</p>
+        <div className="flex items-center gap-1 shrink-0">
+          {row.id && dayOrders.length >= 2 && onSetVisitOrder && (
+            <button onClick={() => onOptimize(row.id, day, dayOrders)} disabled={optimizing[optKey]} className="p-0.5 rounded text-muted hover:text-brand disabled:opacity-50" title="Foreslå bedste besøgsrækkefølge">
+              {optimizing[optKey] ? <Loader2 size={11} className="animate-spin" /> : <Route size={11} />}
+            </button>
+          )}
+          {row.id && timeInfo.loadMinutes > 0 && <DayTimeBadge minutes={timeInfo.total} overloaded={timeInfo.overloaded} loading={timeInfo.stillLoading} />}
+        </div>
+      </div>
+      {isOnLeave && <p className="text-[10px] font-semibold uppercase tracking-wide text-danger mb-1 flex items-center gap-0.5"><AlertCircle size={9} /> Fraværende</p>}
+      {dayOrders.map((o, i) => (
+        <MiniOrderCard
+          key={o.id}
+          order={o}
+          onOpen={onOpen}
+          onAssign={onAssign}
+          technicians={technicians}
+          currentTechnicianId={row.id}
+          color={color}
+          onLeave={isOnLeave}
+          onMoveUp={row.id && onReorder ? () => onReorder(row.id, day, o.id, -1) : undefined}
+          onMoveDown={row.id && onReorder ? () => onReorder(row.id, day, o.id, 1) : undefined}
+          canMoveUp={i > 0}
+          canMoveDown={i < dayOrders.length - 1}
+        />
+      ))}
+    </div>
+  );
+}
+
+// KOLONNER = ugedage (mandag-fredag, bevidst IKKE lørdag/søndag - de
+// fleste sager ligger på hverdage, og fem faste kolonner giver et
+// forudsigeligt, roligt layout uden vagt "6-7 kolonner afhængig af uge").
+// INDEN I hver dag-kolonne grupperes sagerne pr. montør/bil (TekniskerDay-
+// Section ovenfor), i deres rigtige rækkefølge (dailyOrderCompare) - det
+// er den akse, der rent faktisk giver overblik: "hvad sker der på tirsdag"
+// er et langt hyppigere spørgsmål end "hvad laver Jens hele ugen".
 function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder, onSetVisitOrder, onOpen }) {
   const [open, setOpen] = useState(true);
   const [weekAnchor, setWeekAnchor] = useState(todayISO());
@@ -359,16 +416,16 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
   const [driveLoading, setDriveLoading] = useState(false);
   const [optimizing, setOptimizing] = useState({});
 
-  const week = weekDays(weekAnchor);
+  const weekdays5 = weekDays(weekAnchor).slice(0, 5); // mandag-fredag
   const today = todayISO();
   const rows = [...technicians, { id: null, navn: "Ikke tildelt" }];
 
   useEffect(() => {
-    if (!week.includes(selectedDay)) setSelectedDay(week[0]);
+    if (!weekdays5.includes(selectedDay)) setSelectedDay(weekdays5[0]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekAnchor]);
 
-  const weekOrders = orders.filter((o) => week.includes(o.dato) && o.status !== "afsluttet");
+  const weekOrders = orders.filter((o) => weekdays5.includes(o.dato) && o.status !== "afsluttet");
   const unassignedThisWeek = weekOrders.filter((o) => !o.montorId).length;
 
   const ordersFor = (technicianId, day) =>
@@ -382,7 +439,7 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
   const dayGroups = useMemo(() => {
     const map = {};
     technicians.forEach((m) => {
-      weekDays(weekAnchor).forEach((d) => {
+      weekDays(weekAnchor).slice(0, 5).forEach((d) => {
         map[`${m.id}|${d}`] = orders.filter((o) => o.montorId === m.id && o.dato === d && o.status !== "afsluttet").sort(dailyOrderCompare);
       });
     });
@@ -467,7 +524,7 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
               <ChevronLeft size={15} />
             </button>
             <div className="text-center">
-              <p className="text-sm font-semibold text-ink">{shortDateLabel(week[0])} – {shortDateLabel(week[6])}</p>
+              <p className="text-sm font-semibold text-ink">{shortDateLabel(weekdays5[0])} – {shortDateLabel(weekdays5[4])}</p>
               {weekAnchor !== today && <button onClick={() => setWeekAnchor(today)} className="text-[10px] font-semibold uppercase tracking-wide text-brand hover:underline">Gå til denne uge</button>}
             </div>
             <button onClick={() => setWeekAnchor((w) => addDays(w, 7))} className="p-1.5 rounded-lg border border-line text-muted hover:text-brand hover:border-brand transition-colors" title="Næste uge">
@@ -485,9 +542,10 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
             <span className="sm:hidden">Tal = arbejde + estimeret kørsel.</span>
           </p>
 
+          {/* ------- MOBIL: dag-faner (man-fre) + stak af montør-sektioner ------- */}
           <div className="md:hidden">
             <div className="flex gap-1.5 overflow-x-auto px-3 py-2 border-b border-divider">
-              {week.map((d) => (
+              {weekdays5.map((d) => (
                 <button
                   key={d}
                   onClick={() => setSelectedDay(d)}
@@ -503,43 +561,14 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
               {rows.map((r) => {
                 const dayOrders = ordersFor(r.id, selectedDay);
                 if (dayOrders.length === 0) return null;
-                const onLeave = isOnLeave(r.id, selectedDay);
-                const { loadMinutes, total, overloaded, stillLoading } = timeFor(r.id, selectedDay, dayOrders);
-                const optKey = `${r.id}|${selectedDay}`;
                 return (
-                  <div key={r.id || "utildelt"}>
-                    <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <p className="text-sm font-semibold text-ink flex items-center gap-1.5 min-w-0 truncate">
-                        {r.id && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: technicianColor(r.id, technicians) }} />}
-                        {r.navn}
-                      </p>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {r.id && dayOrders.length >= 2 && onSetVisitOrder && (
-                          <button onClick={() => optimizeDay(r.id, selectedDay, dayOrders)} disabled={optimizing[optKey]} className="p-1 rounded text-muted hover:text-brand disabled:opacity-50" title="Foreslå bedste besøgsrækkefølge">
-                            {optimizing[optKey] ? <Loader2 size={13} className="animate-spin" /> : <Route size={13} />}
-                          </button>
-                        )}
-                        {r.id && loadMinutes > 0 && <DayTimeBadge minutes={total} overloaded={overloaded} loading={stillLoading} />}
-                      </div>
-                    </div>
-                    {onLeave && <p className="text-[11px] font-semibold uppercase tracking-wide text-danger mb-1.5 flex items-center gap-1"><AlertCircle size={11} /> Fraværende denne dag</p>}
-                    {dayOrders.map((o, i) => (
-                      <MiniOrderCard
-                        key={o.id}
-                        order={o}
-                        onOpen={onOpen}
-                        onAssign={onAssign}
-                        technicians={technicians}
-                        currentTechnicianId={r.id}
-                        color={r.id ? technicianColor(r.id, technicians) : "#C8232E"}
-                        onLeave={onLeave}
-                        onMoveUp={r.id && onReorder ? () => onReorder(r.id, selectedDay, o.id, -1) : undefined}
-                        onMoveDown={r.id && onReorder ? () => onReorder(r.id, selectedDay, o.id, 1) : undefined}
-                        canMoveUp={i > 0}
-                        canMoveDown={i < dayOrders.length - 1}
-                      />
-                    ))}
-                  </div>
+                  <TechnicianDaySection
+                    key={r.id || "utildelt"}
+                    row={r} day={selectedDay} dayOrders={dayOrders} technicians={technicians}
+                    onOpen={onOpen} onAssign={onAssign} onReorder={onReorder} onSetVisitOrder={onSetVisitOrder}
+                    isOnLeave={isOnLeave(r.id, selectedDay)} timeInfo={timeFor(r.id, selectedDay, dayOrders)}
+                    optimizing={optimizing} onOptimize={optimizeDay}
+                  />
                 );
               })}
               {rows.every((r) => ordersFor(r.id, selectedDay).length === 0) && (
@@ -548,68 +577,34 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
             </div>
           </div>
 
-          <div className="hidden md:block overflow-x-auto">
-            <div style={{ minWidth: 150 + 152 * 7 }}>
-              <div className="grid sticky top-0 z-20 bg-panel border-b border-line" style={{ gridTemplateColumns: "150px repeat(7, minmax(150px, 1fr))" }}>
-                <div className="p-2 text-[10px] font-semibold uppercase tracking-wide text-muted sticky left-0 bg-panel z-10 border-r border-line">Montør</div>
-                {week.map((d) => (
-                  <div key={d} className={`p-2 text-center border-l border-divider ${d === today ? "bg-brand/10" : ""}`}>
+          {/* ------- PC/TABLET: fem dag-KOLONNER (md og bredere), montører grupperet inden i hver ------- */}
+          <div className="hidden md:grid gap-3 p-3" style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}>
+            {weekdays5.map((d) => {
+              const dayRows = rows.filter((r) => ordersFor(r.id, d).length > 0);
+              return (
+                <div key={d} className={`rounded-xl border overflow-hidden ${d === today ? "border-brand" : "border-line"}`}>
+                  <div className={`p-2 text-center border-b ${d === today ? "bg-brand/10 border-brand" : "bg-panel border-line"}`}>
                     <p className={`text-[10px] font-semibold uppercase tracking-wide ${d === today ? "text-brand" : "text-muted"}`}>{shortDayLabel(d)}</p>
-                    <p className={`text-sm font-semibold ${d === today ? "text-brand" : "text-ink"}`}>{new Date(d + "T00:00:00").getDate()}</p>
+                    <p className={`text-sm font-semibold ${d === today ? "text-brand" : "text-ink"}`}>{shortDateLabel(d)}</p>
                   </div>
-                ))}
-              </div>
-
-              {rows.map((r) => (
-                <div key={r.id || "utildelt"} className="grid border-b border-divider">
-                  <div className="p-2 sticky left-0 bg-white z-10 border-r border-line flex items-center gap-1.5">
-                    {r.id && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: technicianColor(r.id, technicians) }} />}
-                    <span className="text-xs font-semibold text-ink truncate">{r.navn}</span>
+                  <div className="p-2 space-y-3 max-h-[75vh] overflow-y-auto">
+                    {dayRows.length === 0 ? (
+                      <p className="text-[11px] text-line text-center py-8">Ingen sager</p>
+                    ) : (
+                      dayRows.map((r) => (
+                        <TechnicianDaySection
+                          key={r.id || "utildelt"}
+                          row={r} day={d} dayOrders={ordersFor(r.id, d)} technicians={technicians}
+                          onOpen={onOpen} onAssign={onAssign} onReorder={onReorder} onSetVisitOrder={onSetVisitOrder}
+                          isOnLeave={isOnLeave(r.id, d)} timeInfo={timeFor(r.id, d, ordersFor(r.id, d))}
+                          optimizing={optimizing} onOptimize={optimizeDay}
+                        />
+                      ))
+                    )}
                   </div>
-                  {week.map((d) => {
-                    const dayOrders = ordersFor(r.id, d);
-                    const onLeave = isOnLeave(r.id, d);
-                    const { loadMinutes, total, overloaded, stillLoading } = timeFor(r.id, d, dayOrders);
-                    const optKey = `${r.id}|${d}`;
-                    return (
-                      <div key={d} className={`p-1.5 border-l border-divider min-h-[64px] ${d === today ? "bg-brand/5" : ""}`}>
-                        {r.id && loadMinutes > 0 && (
-                          <div className="mb-1 flex justify-center items-center gap-1">
-                            <DayTimeBadge minutes={total} overloaded={overloaded} loading={stillLoading} />
-                            {dayOrders.length >= 2 && onSetVisitOrder && (
-                              <button onClick={() => optimizeDay(r.id, d, dayOrders)} disabled={optimizing[optKey]} className="p-0.5 rounded text-muted hover:text-brand disabled:opacity-50 shrink-0" title="Foreslå bedste besøgsrækkefølge">
-                                {optimizing[optKey] ? <Loader2 size={11} className="animate-spin" /> : <Route size={11} />}
-                              </button>
-                            )}
-                          </div>
-                        )}
-                        {onLeave && <p className="text-[9px] font-semibold uppercase tracking-wide text-danger mb-1 flex items-center gap-0.5"><AlertCircle size={9} /> Fraværende</p>}
-                        {dayOrders.length === 0 ? (
-                          <p className="text-[10px] text-line text-center pt-2">–</p>
-                        ) : (
-                          dayOrders.map((o, i) => (
-                            <MiniOrderCard
-                              key={o.id}
-                              order={o}
-                              onOpen={onOpen}
-                              onAssign={onAssign}
-                              technicians={technicians}
-                              currentTechnicianId={r.id}
-                              color={r.id ? technicianColor(r.id, technicians) : "#C8232E"}
-                              onLeave={onLeave}
-                              onMoveUp={r.id && onReorder ? () => onReorder(r.id, d, o.id, -1) : undefined}
-                              onMoveDown={r.id && onReorder ? () => onReorder(r.id, d, o.id, 1) : undefined}
-                              canMoveUp={i > 0}
-                              canMoveDown={i < dayOrders.length - 1}
-                            />
-                          ))
-                        )}
-                      </div>
-                    );
-                  })}
                 </div>
-              ))}
-            </div>
+              );
+            })}
           </div>
         </div>
       )}
