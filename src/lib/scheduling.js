@@ -1,17 +1,15 @@
-// Ren, forklarlig planlægningslogik - INGEN AI. Erstatter de tidligere
-// Gemini-kald til datoforslag og "kræver handling"-omfordeling. Grundene
-// er praktiske, ikke principielle: en scoring-algoritme, der regner
-// direkte på ægte køreafstande/kapacitet, er hurtigere, gratis (intet
-// API-forbrug pr. booking), fejler aldrig fordi en sprogmodel er
-// overbelastet eller udfaset, og giver et FORUDSIGELIGT resultat - samme
-// input giver altid samme forslag, og "hvorfor" kan altid vises præcist
-// (ikke en AI-genereret sætning der kan være opdigtet).
-//
-// Bruges af:
-//  - SuggestedDates (OrderFormFields.jsx) - datoforslag i bookingflowet
-//  - AiActionSuggestions (PlanningPage.jsx) - omfordeling i "Kræver handling"
+// Ren, forklarlig planlægningslogik - INGEN AI. Én samlet forslagsmotor
+// (suggestPlan) bruges til BÅDE nye bookinger og omlægning af eksisterende
+// sager (montørproblem/sygemelding/skal planlægges) - den søger altid på
+// tværs af BÅDE dato og montør samtidig, aldrig kun "find en anden montør
+// samme dag". Det betyder, systemet frit kan foreslå at rykke en sag et
+// par dage, hvis det giver en bedre plan (fx samler den med en
+// nærliggende sag, eller undgår en overbooket dag) - vigtigt fordi
+// butikken ikke har en dedikeret planlægger til manuelt at gennemgå
+// ruterne, så systemet skal kunne planlægge så meget som muligt selv
+// (aftalt eksplicit august 2026).
 
-import { orderExpectedMinutes } from "../data/domain";
+import { orderExpectedMinutes, isTechnicianAbsent, addDays } from "../data/domain";
 
 const WORKDAY_MINUTES = 450; // ~7,5 time
 
@@ -29,30 +27,48 @@ function haversineKm(a, b) {
   return R * 2 * Math.asin(Math.sqrt(h));
 }
 
-// Foreslår 1-3 dato/montør-kombinationer til en NY sag, ud fra tre
-// faktorer, vægtet efter hvor stærkt et signal de er:
-//  1. Samme opgang/bygning som en anden sag samme dag (stærkeste signal -
-//     kan spare en hel tur)
-//  2. Køreafstand til andre sager samme dag (allerede beregnet af den
-//     kaldende komponent via ORS, se sameBuildingDates/nearbyDates)
+function daysBetween(isoA, isoB) {
+  const a = new Date(isoA + "T00:00:00");
+  const b = new Date(isoB + "T00:00:00");
+  return Math.round((b - a) / 86400000);
+}
+
+// Genererer en simpel liste af "days" fortløbende datoer fra startIso -
+// bekvemmelighed for den kaldende komponent, som selv skal geokode
+// adresser for datoerne i vinduet (se sameBuildingDates/nearbyDates).
+export function planningWindow(startIso, days) {
+  return Array.from({ length: days }, (_, i) => addDays(startIso, i));
+}
+
+// Den samlede forslagsmotor. Scorer hver (dato, montør)-kombination inden
+// for det givne vindue af dates, ud fra:
+//  1. Samme opgang/bygning som en anden sag samme dag (stærkeste signal)
+//  2. Køreafstand til andre sager samme dag (forudberegnet af den
+//     kaldende komponent - se sameBuildingDates/nearbyDates)
 //  3. Ledig kapacitet den dag (undgå at overbooke en montør)
-// Springer fraværende montører og allerede overbelastede dage over.
-// Foreslår højst ÉN kombination pr. dato (den bedst scorende), så
-// forslagene ikke bare er "samme dato, forskellig montør" tre gange.
-export function suggestBookingDates({ week, orders, technicians, timeOff, sameBuildingDates, nearbyDates }) {
+//  4. Hvis originalDate er angivet: en MILD bias mod at blive tæt på den
+//     (så en triviel, ligegyldig flytning ikke sker uden grund) - men
+//     IKKE en hård begrænsning, en meget bedre kombination et par dage
+//     væk kan sagtens vinde over "uændret dato".
+// excludeTechnicianIds udelukker specifikke montører helt fra kandidat-
+// listen (fx den sygemeldte/defekte montør selv - der er jo netop
+// PROBLEMET, ikke løsningen). Springer fraværende montører og allerede
+// overbelastede dage over. Foreslår højst ÉN kombination pr. dato (den
+// bedst scorende), så forslagene ikke bare er "samme dato, anden montør"
+// tre gange.
+export function suggestPlan({ dates, orders, technicians, timeOff, sameBuildingDates, nearbyDates, excludeTechnicianIds, originalDate }) {
   const nearbyByDate = new Map();
   (nearbyDates || []).forEach(({ dato, km }) => {
     if (!nearbyByDate.has(dato) || nearbyByDate.get(dato) > km) nearbyByDate.set(dato, km);
   });
+  const exclude = new Set(excludeTechnicianIds || []);
+  const rows = [...(technicians || []).filter((t) => !exclude.has(t.id)), { id: null, navn: "" }];
 
-  const rows = [...(technicians || []), { id: null, navn: "" }];
   const candidates = [];
-
-  for (const dato of week || []) {
+  for (const dato of dates || []) {
     const dayOrders = (orders || []).filter((o) => o.dato === dato && o.status !== "afsluttet");
     for (const t of rows) {
-      const onLeave = t.id && (timeOff || []).some((f) => f.montorId === t.id && dato >= f.startDato && dato <= f.slutDato);
-      if (onLeave) continue;
+      if (t.id && isTechnicianAbsent(t.id, dato, timeOff)) continue;
       const loadMinutes = dayOrders.filter((o) => o.montorId === t.id).reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
       if (loadMinutes > WORKDAY_MINUTES) continue; // allerede en fyldt dag - ikke et godt forslag
 
@@ -69,6 +85,13 @@ export function suggestBookingDates({ week, orders, technicians, timeOff, sameBu
         begrundelse = `~${Math.round(km * 10) / 10} km fra en anden sag denne dag`;
       }
 
+      if (originalDate) {
+        const moved = daysBetween(originalDate, dato);
+        score -= Math.abs(moved) * 3; // mild bias - ikke en hård grænse
+        if (moved === 0) begrundelse += " · uændret dato";
+        else if (moved > 0) begrundelse += ` · ${moved} ${moved === 1 ? "dag" : "dage"} senere`;
+      }
+
       candidates.push({ dato, montorId: t.id, montorNavn: t.navn, score, begrundelse });
     }
   }
@@ -83,53 +106,6 @@ export function suggestBookingDates({ week, orders, technicians, timeOff, sameBu
     if (top.length >= 3) break;
   }
   return top;
-}
-
-// Foreslår, for HVER sag i "kræver handling", hvilken montør der bedst kan
-// tage den - ud fra ledig kapacitet den dag og (hvis koordinater kendes)
-// afstand til montørens øvrige sager samme dag. `coordMap` skal være
-// forudberegnet af den kaldende komponent (geocodeAddresses) - denne
-// funktion foretager INGEN netværkskald selv, kun ren beregning, og kan
-// derfor køre synkront og øjeblikkeligt, hver gang "kræver handling"-
-// listen ændrer sig.
-export function suggestReassignments({ needsAction, orders, technicians, timeOff, coordMap }) {
-  const normalize = (a) => (a || "").trim().toLowerCase();
-  const coordFor = (adresse) => (adresse ? coordMap?.get(normalize(adresse)) : null);
-
-  return (needsAction || []).map((s) => {
-    const dato = s.dato;
-    const sagCoord = coordFor(s.kunde?.adresse);
-    const dayOrders = (orders || []).filter((o) => o.dato === dato && o.status !== "afsluttet" && o.id !== s.id);
-
-    let best = null;
-    let bestScore = -Infinity;
-    for (const t of technicians || []) {
-      const onLeave = (timeOff || []).some((f) => f.montorId === t.id && dato >= f.startDato && dato <= f.slutDato);
-      if (onLeave) continue;
-      const techOrders = dayOrders.filter((o) => o.montorId === t.id);
-      const loadMinutes = techOrders.reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
-      if (loadMinutes > WORKDAY_MINUTES) continue;
-
-      let score = Math.max(0, (WORKDAY_MINUTES - loadMinutes) / 30);
-      let begrundelse = loadMinutes === 0 ? "Ledig denne dag" : `${Math.round((loadMinutes / 60) * 10) / 10}t booket denne dag`;
-
-      if (sagCoord && techOrders.length > 0) {
-        const distances = techOrders
-          .map((o) => coordFor(o.kunde?.adresse))
-          .filter(Boolean)
-          .map((c) => haversineKm(sagCoord, c));
-        if (distances.length > 0) {
-          const minKm = Math.min(...distances);
-          score += Math.max(0, 30 - minKm * 5);
-          begrundelse = `~${Math.round(minKm * 10) / 10} km fra en anden sag samme dag`;
-        }
-      }
-
-      if (score > bestScore) { bestScore = score; best = { montorNavn: t.navn, begrundelse }; }
-    }
-
-    return { sag: s.nr, montorNavn: best?.montorNavn || "", begrundelse: best?.begrundelse || "Ingen ledig kandidat fundet" };
-  });
 }
 
 export { haversineKm, WORKDAY_MINUTES };
