@@ -32,32 +32,11 @@ import { SystemAdminPage } from "./pages/SystemAdminPage";
 // hooks, definere rute-opsætningen, og komponere sider.
 // ---------------------------------------------------------------------------
 
-// Beskytter en rute mod roller der ikke må se den - sender videre til
-// brugerens egen standardfane i stedet for at vise noget forkert. Dette er
-// UI-bekvemmelighed, IKKE selve sikkerhedsgrænsen - den reelle beskyttelse
-// ligger i Supabase RLS, ligesom resten af appen.
 function Gate({ allowed, page, children }) {
   if (!allowed.includes(page)) return <Navigate to={`/${allowed[0] || "salg"}`} replace />;
   return children;
 }
 
-// Egen rute pr. sag (/sag/:id) - løser netop det problem der udløste hele
-// denne omlægning: et refresh mens en specifik sag var åben, mistede
-// tidligere hvilken sag man kiggede på. "Tilbage" bruger browserens egen
-// historik (navigate(-1)), så man vender tilbage til PRÆCIS den fane man
-// kom fra, uanset hvilken det var.
-//
-// VIGTIGT: montør-rollen ser en HELT ANDEN, dedikeret sagsdetalje
-// (TechnicianOrderDetail i TechnicianPage.jsx) end admin/sælger (OrderView
-// i components/OrderView.jsx) - bevidst holdt isoleret, så en ombygning af
-// montør-visningen aldrig kan påvirke de andre roller. Selve dataene og
-// handlerne (props) er identiske til begge - kun HVILKEN komponent der
-// rammes afhænger af rollen.
-//
-// Denne rute AFVISER også automatisk notifikationer for sagens EGEN
-// opretter, når de selv åbner den - se computeNotifications i domain.js og
-// notifikationsklokken i TopNav.jsx. Kun opretteren selv udløser dette
-// (en admin der blot kigger på andres sager rydder ikke andres notifikationer).
 function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder }) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -89,8 +68,6 @@ function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder 
     order,
     technicians,
     onBack: () => navigate(-1),
-    // Afsender (forfatter) gemmes på selve noten, ud fra hvem der ER
-    // logget ind LIGE NU (ikke sagens opretter) - se Notes i OrderParts.jsx.
     addNote: (t) => ordersStore.addNote(order.id, t, { id: profile.id, navn: profile.navn }),
     addPhoto: (p) => ordersStore.addPhoto(order.id, p),
     addReport: (t, x) => ordersStore.addReport(order.id, t, x),
@@ -114,9 +91,6 @@ function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder 
   return profile.rolle === "montor" ? <TechnicianOrderDetail {...sharedProps} /> : <OrderView {...sharedProps} />;
 }
 
-// Montør-fanen: montører ser altid deres EGEN rute (ingen valg nødvendigt).
-// Admin/sælger vælger en montør at se - valget ligger nu i URL'en
-// (/montor/:technicianId), så det heller ikke går tabt ved et refresh.
 function MontorRoute({ profile, orders, technicians, ordersStore, refresh, refreshing, selectedDate, onDateChange, onOpen }) {
   const { technicianId } = useParams();
   const navigate = useNavigate();
@@ -161,15 +135,16 @@ export default function App() {
 
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [refreshing, setRefreshing] = useState(false);
+  // Sygemeldingsvinduet (timer) kan rettes af butikkens admin (se
+  // AdminPage/SickLeaveWindowSetting) - useSession genindlæser ikke
+  // automatisk butikken efter det, så vi holder en lokal override her, der
+  // vinder over den oprindeligt indlæste værdi, indtil næste login/refresh.
+  const [sickLeaveWindowOverride, setSickLeaveWindowOverride] = useState(null);
+  const effectiveStore = store ? { ...store, sygemeldingVindueTimer: sickLeaveWindowOverride ?? store.sygemeldingVindueTimer } : store;
 
   const navigate = useNavigate();
   const location = useLocation();
 
-  // "Teknikere" er ikke længere en selvstændig ting i databasen — det er
-  // brugere/profiler med rolle "montor". Vi udleder listen her, i samme form
-  // som resten af appen altid har forventet ({ id, navn, bil, bilId }) -
-  // krydser BÅDE users og vehicles, derfor hører den til i App.jsx
-  // (kompositionslaget) og ikke i én enkelt hook.
   const technicians = users
     .filter((b) => b.rolle === "montor")
     .map((b) => {
@@ -177,11 +152,6 @@ export default function App() {
       return { id: b.id, navn: b.navn, bilId: b.bilId || null, bil: linkedVehicle ? linkedVehicle.nummerplade : "" };
     });
 
-  // Notifikationsklokken (se TopNav.jsx): hvilke af DEN INDLOGGEDE BRUGERS
-  // EGNE bookede sager har noget ulæst (nyt materialeforbrug, et markeret
-  // problem, eller en oprettet opfølgning) - se computeNotifications i
-  // domain.js. Ryddes automatisk igen når man selv åbner den pågældende
-  // sag (se OrderRoute ovenfor).
   const notifications = useMemo(() => computeNotifications(orders, profile?.id), [orders, profile?.id]);
 
   const refresh = async () => {
@@ -191,24 +161,15 @@ export default function App() {
     setRefreshing(false);
   };
 
-  // Sletning af en bil kræver en bekræftelse hvis den er tildelt en montør
-  // - det tjek krydser vehicles OG users (technicians), og hører derfor
-  // hjemme her i App.jsx, ikke inde i selve useVehicles-hooken.
   const deleteVehicleWithConfirm = (id) => {
     if (technicians.some((m) => m.bilId === id) && !window.confirm("Denne bil er tildelt en montør. Slet alligevel?")) return;
     vehiclesStore.deleteVehicle(id);
   };
 
-  // Skifter hvilken bil en tekniker (bruger med rolle "montor") er tilknyttet.
   const updateTechnicianVehicle = (technicianId, vehicleId) => usersStore.updateUser(technicianId, { bilId: vehicleId || null });
 
-  // Opretter en ny sag - tilføjer HVEM der booker den (oprettetAf), så det
-  // altid er synligt bagefter, se OrderView.jsx/TechnicianPage.jsx.
   const addOrder = (fields) => ordersStore.addOrder({ ...fields, createdBy: profile ? { id: profile.id, navn: profile.navn } : null });
 
-  // Dupliker/opfølgning - se OrderRoute ovenfor. Åbner den nyoprettede sag
-  // med det samme (rigtig navigation til dens egen URL), så dato/montør
-  // kan vælges. Tilføjer også HVEM der opretter opfølgningen.
   const duplicateOrder = async (sourceOrder, selectedLineItems) => {
     const createdBy = profile ? { id: profile.id, navn: profile.navn } : null;
     const newId = await ordersStore.duplicateOrder(sourceOrder, selectedLineItems, createdBy);
@@ -255,17 +216,9 @@ export default function App() {
     );
   }
 
-  // De sider den indloggede bruger reelt må se, ud fra rolle - se Gate ovenfor.
   const allowedPages = PAGES_FOR_ROLE[profile.rolle] || ["salg"];
   const currentPage = location.pathname.replace(/^\//, "").split("/")[0] || allowedPages[0];
   const narrowPage = currentPage === "montor" || currentPage === "sag";
-
-  // Topnavigationen skjules bevidst KUN for montører, KUN mens en specifik
-  // sag er åben (currentPage === "sag") - montøren har jo kun én fane at
-  // navigere til alligevel (sin egen rute), og "← Tilbage" i selve sagen
-  // dækker allerede navigationsbehovet. En fast bjælke der reelt intet
-  // tilbyder i den situation er blot spildt lodret plads midt i marken.
-  // Admin/sælger beholder den uændret på alle sider, inkl. sagsdetaljer.
   const hideTopNav = currentPage === "sag" && profile.rolle === "montor";
 
   return (
@@ -283,7 +236,7 @@ export default function App() {
 
           <Route path="/salg" element={
             <Gate allowed={allowedPages} page="salg">
-              <SalesPage orders={orders} technicians={technicians} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={store?.lat && store?.lon ? { lat: store.lat, lon: store.lon } : null} />
+              <SalesPage orders={orders} technicians={technicians} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={effectiveStore?.lat && effectiveStore?.lon ? { lat: effectiveStore.lat, lon: effectiveStore.lon } : null} />
             </Gate>
           } />
 
@@ -291,9 +244,10 @@ export default function App() {
             <Gate allowed={allowedPages} page="planlaegning">
               <PlanningPage
                 orders={orders} technicians={technicians} vehicles={vehicles} timeOff={timeOff}
-                store={store}
+                store={effectiveStore}
                 selectedDate={selectedDate} onDateChange={setSelectedDate}
                 onOpen={onOpen} onCycleStatus={ordersStore.cycleStatus} onAssign={ordersStore.assignTechnician} onReorder={ordersStore.reorderOrder} onSetVisitOrder={ordersStore.setVisitOrder}
+                onUpdateBooking={ordersStore.updateBooking} onClearProblem={ordersStore.clearProblem}
                 onUpdateTechnician={(technicianId, fields) => updateTechnicianVehicle(technicianId, fields.bilId)}
                 onRefresh={refresh} refreshing={refreshing}
               />
@@ -326,7 +280,7 @@ export default function App() {
           <Route path="/admin" element={
             <Gate allowed={allowedPages} page="admin">
               <AdminPage
-                technicians={technicians} vehicles={vehicles} users={users} timeOff={timeOff} currentUserId={profile.id}
+                technicians={technicians} vehicles={vehicles} users={users} timeOff={timeOff} currentUserId={profile.id} store={effectiveStore}
                 productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices}
                 onUpdateTechnicianVehicle={updateTechnicianVehicle} onAddVehicle={vehiclesStore.addVehicle} onUpdateVehicle={vehiclesStore.updateVehicle} onDeleteVehicle={deleteVehicleWithConfirm} onToggleVehicleClosed={vehiclesStore.toggleVehicleClosed}
                 onAddUser={usersStore.addUser} onUpdateUser={usersStore.updateUser} onDeleteUser={usersStore.deleteUser} onResetPassword={usersStore.resetPassword}
@@ -335,13 +289,11 @@ export default function App() {
                 onAddPrimaryService={catalog.addPrimaryService} onUpdatePrimaryService={catalog.updatePrimaryService} onDeletePrimaryService={catalog.deletePrimaryService}
                 onAddAddOnService={catalog.addAddOnService} onUpdateAddOnService={catalog.updateAddOnService} onDeleteAddOnService={catalog.deleteAddOnService}
                 onAddTimeOff={timeOffStore.addTimeOff} onDeleteTimeOff={timeOffStore.deleteTimeOff}
+                onSygemeld={timeOffStore.sygemeld} onRaskmeld={timeOffStore.raskmeld} onSickLeaveWindowUpdated={setSickLeaveWindowOverride}
               />
             </Gate>
           } />
 
-          {/* Ukendte/manglende ruter (inkl. "/" ved første besøg) sendes til
-              brugerens egen standardfane - ikke nogen "404-side", da hele
-              app'en jo kun har det her faste sæt fritstående faner. */}
           <Route path="*" element={<Navigate to={`/${allowedPages[0]}`} replace />} />
         </Routes>
       </div>
