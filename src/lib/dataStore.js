@@ -36,10 +36,19 @@ async function getList(table, storeId) {
 }
 
 // Creates or updates ONE specific row.
+//
+// onConflict: 'store_id,id' er EKSPLICIT sat (rettet august 2026) - disse
+// tabeller (vehicles, product_types, product_categories, primary_services,
+// add_on_services, orders) har en SAMMENSAT primærnøgle (store_id, id),
+// fordi faste standard-ID'er som "b1"/"vt1"/"p1" (se domain.js) seedes for
+// ENHVER ny butik. Uden dette ville et upsert uden eksplicit onConflict
+// stole på databasens PK-target - hvilket nu virker korrekt efter
+// migrationen, men er skrøbeligt at stole på implicit; med det eksplicit
+// sat her kan skemaet ikke stille og roligt komme ud af trit med koden.
 async function saveRow(table, storeId, item) {
   if (!storeId || !item) return false;
   const row = { id: String(item.id), store_id: storeId, data: item, updated_at: new Date().toISOString() };
-  const { error } = await supabase.from(table).upsert(row);
+  const { error } = await supabase.from(table).upsert(row, { onConflict: "store_id,id" });
   if (error) {
     logDbError(`dataStore:saveRow:${table}`, `Could not save to ${table}`, error);
     return false;
@@ -63,10 +72,15 @@ async function deleteRow(table, storeId, id) {
 // Seeds default values the FIRST time a store uses a given list (the list
 // is empty). Insert/upsert only - never deletes - so it's safe even if two
 // tabs/devices happened to start up on the same store at the same time.
+//
+// onConflict: 'store_id,id' er EKSPLICIT sat af samme grund som i saveRow
+// ovenfor - dette er netop stedet hvor kollisionen på tværs af butikker
+// ville opstå (to butikkers seedning af fx "b1" rammer nu bevidst hver sin
+// (store_id, id)-kombination i stedet for samme id-only-række).
 async function seedDefaults(table, storeId, list) {
   if (!storeId || !list || list.length === 0) return false;
   const rows = list.map((item) => ({ id: String(item.id), store_id: storeId, data: item, updated_at: new Date().toISOString() }));
-  const { error } = await supabase.from(table).upsert(rows);
+  const { error } = await supabase.from(table).upsert(rows, { onConflict: "store_id,id" });
   if (error) {
     logDbError(`dataStore:seedDefaults:${table}`, `Could not seed defaults in ${table}`, error);
     return false;
