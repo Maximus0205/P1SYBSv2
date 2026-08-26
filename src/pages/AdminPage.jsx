@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { Trash2, Plus } from "lucide-react";
-import { TechnicianRow, VehicleRow, UserRow, NewUserForm, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin } from "../components/AdminParts";
+import { TechnicianRow, SickLeaveWindowSetting, VehicleRow, UserRow, NewUserForm, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin } from "../components/AdminParts";
 
 function AdminPage({
-  technicians, vehicles, users, timeOff, currentUserId,
+  technicians, vehicles, users, timeOff, currentUserId, store,
   productTypes, productCategories, primaryServices, addOnServices,
   onUpdateTechnicianVehicle, onAddVehicle, onUpdateVehicle, onDeleteVehicle, onToggleVehicleClosed,
   onAddUser, onUpdateUser, onDeleteUser, onResetPassword,
@@ -11,7 +11,7 @@ function AdminPage({
   onAddProductType, onUpdateProductType, onDeleteProductType,
   onAddPrimaryService, onUpdatePrimaryService, onDeletePrimaryService,
   onAddAddOnService, onUpdateAddOnService, onDeleteAddOnService,
-  onAddTimeOff, onDeleteTimeOff,
+  onAddTimeOff, onDeleteTimeOff, onSygemeld, onRaskmeld, onSickLeaveWindowUpdated,
 }) {
   const [newName, setNewName] = useState("");
   const [newPlate, setNewPlate] = useState("");
@@ -32,8 +32,9 @@ function AdminPage({
       {tab === "montorer" && (
         <div>
           <p className="text-xs text-muted mb-4">
-            En montør er ikke noget man opretter her — det er en bruger med rollen "Montør" (se fanen "Brugere"). Her styrer du hvilken bil hver montør kører i lige nu, og registrerer ferieperioder. Den bil en montør er tilknyttet, vises automatisk som blokeret i kørselsoverblikket i de perioder montøren holder ferie.
+            En montør er ikke noget man opretter her — det er en bruger med rollen "Montør" (se fanen "Brugere"). Her styrer du hvilken bil hver montør kører i lige nu, registrerer ferieperioder, og kan sygemelde/raskmelde en montør akut. Den bil en montør er tilknyttet, vises automatisk som blokeret i kørselsoverblikket i de perioder montøren er fraværende (ferie eller sygdom).
           </p>
+          <SickLeaveWindowSetting store={store} onUpdated={onSickLeaveWindowUpdated} />
           <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Alle montører ({technicians.length})</h3>
           {technicians.length === 0 ? (
             <p className="text-sm text-muted italic">Ingen brugere med rollen "Montør" endnu — opret en under fanen "Brugere".</p>
@@ -48,6 +49,8 @@ function AdminPage({
                   onUpdateVehicle={onUpdateTechnicianVehicle}
                   onAddTimeOff={onAddTimeOff}
                   onDeleteTimeOff={onDeleteTimeOff}
+                  onSygemeld={onSygemeld}
+                  onRaskmeld={onRaskmeld}
                 />
               ))}
             </div>
@@ -67,7 +70,7 @@ function AdminPage({
               </button>
             </div>
           </div>
-          <p className="text-xs text-muted mb-3">"Blokér" bruges fx når en bil er på værksted. Bilen kan stadig ses, men kan ikke vælges som ny tilknytning for en montør, før den åbnes igen. Bliver bilens montør sendt på ferie, blokeres bilen automatisk i den periode — det kræver ikke noget manuelt her.</p>
+          <p className="text-xs text-muted mb-3">"Blokér" bruges fx når en bil er på værksted. Bilen kan stadig ses, men kan ikke vælges som ny tilknytning for en montør, før den åbnes igen. Bliver bilens montør fraværende (ferie eller sygdom), blokeres bilen automatisk i den periode — det kræver ikke noget manuelt her.</p>
           <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Alle biler ({vehicles.length})</h3>
           {vehicles.length === 0 ? (
             <p className="text-sm text-muted italic">Ingen biler oprettet endnu.</p>
