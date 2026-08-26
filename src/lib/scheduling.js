@@ -50,19 +50,33 @@ export function planningWindow(startIso, days) {
 //     (så en triviel, ligegyldig flytning ikke sker uden grund) - men
 //     IKKE en hård begrænsning, en meget bedre kombination et par dage
 //     væk kan sagtens vinde over "uændret dato".
+//
 // excludeTechnicianIds udelukker specifikke montører helt fra kandidat-
 // listen (fx den sygemeldte/defekte montør selv - der er jo netop
 // PROBLEMET, ikke løsningen). Springer fraværende montører og allerede
-// overbelastede dage over. Foreslår højst ÉN kombination pr. dato (den
-// bedst scorende), så forslagene ikke bare er "samme dato, anden montør"
-// tre gange.
-export function suggestPlan({ dates, orders, technicians, timeOff, sameBuildingDates, nearbyDates, excludeTechnicianIds, originalDate }) {
+// overbelastede dage over.
+//
+// requireTechnician (RETTET august 2026, fejl fundet ved test): når true,
+// udelader "ikke tildelt" HELT fra kandidatlisten - et forslag der ikke
+// rent faktisk tildeler en montør er ikke en løsning på "kræver handling",
+// det er bare en dato sat på en stadig utildelt sag, som blot ville blive
+// liggende i en ANDEN kræver-handling-kategori efter "Brug forslag" var
+// trykket. Bruges af ReplanTile i PlanningPage.jsx (montørproblem/
+// sygemelding/skal planlægges) - hvis INGEN rigtig montør kan tage sagen
+// inden for vinduet, returneres der nu ærligt INTET forslag, i stedet for
+// et der ser ud til at løse noget, men reelt ikke gør. Booking-flowets
+// egne datoforslag (SuggestedDates) beholder standardværdien false, da
+// "ikke tildelt" der er et legitimt, midlertidigt valg ved en ny booking.
+export function suggestPlan({ dates, orders, technicians, timeOff, sameBuildingDates, nearbyDates, excludeTechnicianIds, originalDate, requireTechnician }) {
   const nearbyByDate = new Map();
   (nearbyDates || []).forEach(({ dato, km }) => {
     if (!nearbyByDate.has(dato) || nearbyByDate.get(dato) > km) nearbyByDate.set(dato, km);
   });
   const exclude = new Set(excludeTechnicianIds || []);
-  const rows = [...(technicians || []).filter((t) => !exclude.has(t.id)), { id: null, navn: "" }];
+  const rows = [
+    ...(technicians || []).filter((t) => !exclude.has(t.id)),
+    ...(requireTechnician ? [] : [{ id: null, navn: "" }]),
+  ];
 
   const candidates = [];
   for (const dato of dates || []) {
