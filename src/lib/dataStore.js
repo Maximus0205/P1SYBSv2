@@ -133,14 +133,14 @@ async function readEdgeFunctionError(data, error, fallbackMessage) {
 
 export async function getStore(storeId) {
   if (!storeId) return null;
-  const { data, error } = await supabase.from("stores").select("id, name, address, lat, lon, store_number").eq("id", storeId).maybeSingle();
+  const { data, error } = await supabase.from("stores").select("id, name, address, lat, lon, store_number, sick_leave_window_hours").eq("id", storeId).maybeSingle();
   if (error) {
     console.error("Could not load store:", error.message);
     return null;
   }
   if (!data) return null;
   // Normalized to the camelCase field names the rest of the app (still) expects.
-  return { id: data.id, navn: data.name, adresse: data.address, lat: data.lat, lon: data.lon, butiksnummer: data.store_number };
+  return { id: data.id, navn: data.name, adresse: data.address, lat: data.lat, lon: data.lon, butiksnummer: data.store_number, sygemeldingVindueTimer: data.sick_leave_window_hours ?? 48 };
 }
 
 // All stores (only visible to a system admin, per RLS).
@@ -191,6 +191,23 @@ export async function deleteStoreAsSystemAdmin(storeId) {
   const { error } = await supabase.from("stores").delete().eq("id", storeId);
   if (error) {
     console.error("Could not delete store:", error.message);
+    return { ok: false, fejl: error.message };
+  }
+  return { ok: true };
+}
+
+// Butikkens EGEN admin (ikke kun systemadmin) må ændre PRÆCIS denne ene
+// indstilling - hvor mange timer frem en sygemeldt montørs sager vises,
+// mens sygemeldingen er aktiv. Kalder en snævert afgrænset SECURITY
+// DEFINER-funktion i databasen (se migrationen "allow_store_admin_
+// update_sick_leave_window", august 2026) - IKKE et almindeligt
+// tabel-opdateringskald, fordi almindelige butiks-admins i øvrigt ikke har
+// skriveadgang til stores-tabellen (kun systemadmin har), og det er
+// bevidst IKKE udvidet generelt her, kun for denne ene indstilling.
+export async function updateSickLeaveWindow(hours) {
+  const { error } = await supabase.rpc("update_sick_leave_window", { p_hours: hours });
+  if (error) {
+    console.error("Could not update sick leave window:", error.message);
     return { ok: false, fejl: error.message };
   }
   return { ok: true };
@@ -266,9 +283,15 @@ export async function getAllUsersAsSystemAdmin(search, showAll) {
 }
 
 // ---------- Time off (per technician) ----------
-// Used to determine whether a vehicle should show as blocked for booking in
-// a period: a vehicle is blocked on the days where the technician CURRENTLY
-// linked to it (profiles.vehicle_id) is on time off.
+// Bruges til at afgøre om en bil skal vises som blokeret i en periode
+// (en bil er blokeret de dage montøren der PT er tilknyttet den, har
+// fravær - se vehicleBlockedByTimeOff i domain.js), OG som grundlaget for
+// "Sygemelding"-fanen i Planlægning (august 2026).
+//
+// "type" skelner mellem "ferie" (altid begge datoer kendt på forhånd) og
+// "sygdom" (starter ÅBEN - slutDato er null indtil "Raskmeld" bruges, se
+// endSickLeave nedenfor). Samme underliggende tabel/forespørgsel for
+// begge - kun arbejdsgangen omkring dem er forskellig.
 
 export async function getTimeOff(storeId) {
   if (!storeId) return [];
@@ -277,11 +300,15 @@ export async function getTimeOff(storeId) {
     console.error("Could not load time off:", error.message);
     return [];
   }
-  return (data || []).map((f) => ({ id: f.id, montorId: f.technician_id, startDato: f.start_date, slutDato: f.end_date, note: f.note || "" }));
+  return (data || []).map((f) => ({ id: f.id, montorId: f.technician_id, startDato: f.start_date, slutDato: f.end_date, note: f.note || "", type: f.type || "ferie" }));
 }
 
-export async function addTimeOff(storeId, { montorId, startDato, slutDato, note }) {
-  const { error } = await supabase.from("time_off").insert({ store_id: storeId, technician_id: montorId, start_date: startDato, end_date: slutDato, note: note || null });
+// slutDato må nu være null/undefined (åben sygemelding) - se
+// beginSickLeave nedenfor for den forventede brug ved sygemelding.
+export async function addTimeOff(storeId, { montorId, startDato, slutDato, note, type }) {
+  const { error } = await supabase.from("time_off").insert({
+    store_id: storeId, technician_id: montorId, start_date: startDato, end_date: slutDato || null, note: note || null, type: type || "ferie",
+  });
   if (error) {
     console.error("Could not create time off:", error.message);
     return false;
@@ -293,6 +320,24 @@ export async function deleteTimeOff(timeOffId) {
   const { error } = await supabase.from("time_off").delete().eq("id", timeOffId);
   if (error) {
     console.error("Could not delete time off:", error.message);
+    return false;
+  }
+  return true;
+}
+
+// "Sygemeld": opretter en NY, ÅBEN sygdomsperiode for montøren fra i dag
+// (ingen slutdato endnu). Adskilt fra addTimeOff/ferie-flowet i UI'et (se
+// "Sygemeld"-knappen i AdminParts.jsx), men bruger samme tabel.
+export async function beginSickLeave(storeId, montorId, note) {
+  return addTimeOff(storeId, { montorId, startDato: new Date().toISOString().slice(0, 10), slutDato: null, note, type: "sygdom" });
+}
+
+// "Raskmeld": lukker en ÅBEN sygdomsperiode ved at sætte slutdatoen til i
+// dag. Opdaterer ét specifikt time_off-id, ikke en hel liste.
+export async function endSickLeave(timeOffId) {
+  const { error } = await supabase.from("time_off").update({ end_date: new Date().toISOString().slice(0, 10) }).eq("id", timeOffId);
+  if (error) {
+    console.error("Could not end sick leave:", error.message);
     return false;
   }
   return true;
