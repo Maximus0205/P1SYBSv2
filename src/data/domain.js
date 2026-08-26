@@ -19,15 +19,19 @@ const addDays = (iso, days) => {
   d.setDate(d.getDate() + days);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
+// formatLongDate/formatShortDate/isToday accepterer nu bevidst et TOMT
+// (null/undefined) dato-felt uden at gå ned - siden august 2026 kan en sag
+// oprettes/duplikeres UDEN dato (se "Skal planlægges" i PlanningPage.jsx),
+// og disse formateringsfunktioner bruges alle vegne en sags dato vises.
 const formatLongDate = (iso) =>
-  new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { weekday: "long", day: "numeric", month: "long" });
+  iso ? new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { weekday: "long", day: "numeric", month: "long" }) : "Ingen dato sat";
 // Kort datoformat ("18. aug") - til brug på sagskort, hvor der ikke er
 // plads til den lange udgave (ugedag + fuld måned), men datoen stadig skal
 // være synlig - fx i lister der spænder over flere dage (Kræver handling,
 // Arkiv, Planlagt fremad/Afsluttet).
 const formatShortDate = (iso) =>
-  new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "short" });
-const isToday = (iso) => iso === todayISO();
+  iso ? new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "short" }) : "Ingen dato";
+const isToday = (iso) => !!iso && iso === todayISO();
 
 const formatDuration = (min) => {
   if (min < 1) return "< 1 min";
@@ -234,13 +238,35 @@ const DEFAULT_VEHICLES = [
 
 const vehicleLabel = (vehicle) => (vehicle ? `${vehicle.navn || "(uden navn)"} · ${vehicle.nummerplade || "ingen nummerplade"}` : "Ingen bil");
 
+// RETTET (august 2026): en sygemelding kan have slutDato === null (åben,
+// endnu ikke raskmeldt) - den oprindelige `date <= f.slutDato` ville have
+// været FALSK for enhver dato, når slutDato er null (null-sammenligning i
+// JS), og en bil under en AKTIV sygemelding ville derfor fejlagtigt IKKE
+// være vist som blokeret. Håndterer nu begge typer (ferie har altid en
+// slutDato, sygdom kan mangle den).
 const vehicleBlockedByTimeOff = (vehicleId, date, technicians, timeOff) => {
   const onThisVehicle = technicians.filter((m) => m.bilId === vehicleId);
   if (onThisVehicle.length === 0) return null;
-  const entry = (timeOff || []).find((f) => onThisVehicle.some((m) => m.id === f.montorId) && date >= f.startDato && date <= f.slutDato);
+  const entry = (timeOff || []).find((f) => onThisVehicle.some((m) => m.id === f.montorId) && date >= f.startDato && (!f.slutDato || date <= f.slutDato));
   if (!entry) return null;
   const technician = onThisVehicle.find((m) => m.id === entry.montorId);
   return { ferie: entry, montor: technician };
+};
+
+// Er montøren fraværende (ferie ELLER sygdom, se ovenstående note om
+// null-slutDato) på en given dato - generel fraværs-tjek, bruges bl.a. til
+// at undgå at foreslå en fraværende montør i planlægningsforslag.
+const isTechnicianAbsent = (technicianId, date, timeOff) =>
+  (timeOff || []).some((f) => f.montorId === technicianId && date >= f.startDato && (!f.slutDato || date <= f.slutDato));
+
+// Er montøren AKTIVT sygemeldt lige nu (en sygdoms-periode der er startet
+// og enten stadig er åben, eller først slutter i fremtiden)? Bruges af
+// "Sygemelding"-fanen i Planlægning til at finde deres berørte sager. Kun
+// type "sygdom" tæller med her - almindelig ferie giver ikke denne
+// markering (den fanges i stedet under "Montørproblem", se PlanningPage.jsx).
+const activeSickLeave = (technicianId, timeOff) => {
+  const today = todayISO();
+  return (timeOff || []).find((f) => f.montorId === technicianId && f.type === "sygdom" && f.startDato <= today && (!f.slutDato || f.slutDato >= today)) || null;
 };
 
 const emptyCustomer = () => ({ navn: "", telefon: "", email: "", adresse: "", leveringsnote: "" });
@@ -271,6 +297,24 @@ const dailyOrderCompare = (a, b) => {
   return (a.start || "").localeCompare(b.start || "");
 };
 
+// En sag "MANGLER PLANLÆGNING", hvis den ikke har en dato ELLER ikke har
+// en montør sat (og ikke allerede er afsluttet). Bevidst IKKE inklusiv
+// "dato passeret" - er datoen passeret uden sagen er problem-markeret (se
+// order.problem), antages den at være gennemført; det er ikke noget
+// systemet selv skal foreslå at handle på (aftalt eksplicit august 2026).
+// Bruges af "Skal planlægges"-fanen i PlanningPage.jsx.
+const needsPlanning = (order) => order.status !== "afsluttet" && (!order.dato || !order.montorId);
+
+export {
+  uid, now, todayISO, addDays, formatLongDate, formatShortDate, isToday, formatDuration, formatTime, totalMinutes, serviceIcon,
+  DEFAULT_SERVICE_MINUTES, createAddOn, OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID,
+  DEFAULT_PRODUCT_CATEGORIES, DEFAULT_PRODUCT_TYPES, DEFAULT_PRIMARY_SERVICES, DEFAULT_ADD_ON_SERVICES, availableAddOns,
+  createLineItem, lineItemLabel, lineItemMinutes, orderExpectedMinutes, normalizeAddress, buildingKey, areaKey,
+  weekDays, buildTitle, keyAccessText, TIME_SLOTS, timeSlotById, timeSlotText, KEY_ACCESS_TYPES, TECHNICIAN_COLORS, technicianColor,
+  DEFAULT_VEHICLES, vehicleLabel, vehicleBlockedByTimeOff, isTechnicianAbsent, activeSickLeave, emptyCustomer, emptyKeyAccess, STATUS_META,
+  dailyOrderCompare, needsPlanning, computeNotifications, PAGES, PAGES_FOR_ROLE,
+};
+
 // Beregner, for en given bruger (profileId), hvilke af DERES EGNE bookede
 // sager (oprettetAf.id === profileId) der har en ULÆST notifikation:
 //  - materialer: nyt materialeforbrug tilføjet af montøren
@@ -281,7 +325,7 @@ const dailyOrderCompare = (a, b) => {
 // ingen notifikationer. Se useOrders.js: dismissNotifications for hvordan
 // en sag markeres som læst (sker automatisk når opretteren selv åbner den,
 // se App.jsx).
-const computeNotifications = (orders, profileId) => {
+function computeNotifications(orders, profileId) {
   if (!profileId) return { materialer: [], problemer: [], opfoelgninger: [] };
   const mine = (orders || []).filter((o) => o.oprettetAf?.id === profileId);
   return {
@@ -289,7 +333,7 @@ const computeNotifications = (orders, profileId) => {
     problemer: mine.filter((o) => o.problem && !o.notifikationSet?.problem),
     opfoelgninger: mine.filter((o) => o.harOpfoelgning && !o.notifikationSet?.opfoelgning),
   };
-};
+}
 
 // Kørsel er fusioneret ind i Planlægning (august 2026) - de to sider
 // dækkede reelt samme arbejdsopgave. "koersel" findes derfor ikke længere
@@ -307,13 +351,4 @@ const PAGES_FOR_ROLE = {
   admin: ["salg", "planlaegning", "montor", "lager", "arkiv", "admin"],
   saelger: ["salg", "planlaegning", "montor", "lager", "arkiv"],
   montor: ["montor"],
-};
-
-export {
-  uid, now, todayISO, addDays, formatLongDate, formatShortDate, isToday, formatDuration, formatTime, totalMinutes, serviceIcon,
-  DEFAULT_SERVICE_MINUTES, createAddOn, OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID,
-  DEFAULT_PRODUCT_CATEGORIES, DEFAULT_PRODUCT_TYPES, DEFAULT_PRIMARY_SERVICES, DEFAULT_ADD_ON_SERVICES, availableAddOns,
-  createLineItem, lineItemLabel, lineItemMinutes, orderExpectedMinutes, normalizeAddress, buildingKey, areaKey,
-  weekDays, buildTitle, keyAccessText, TIME_SLOTS, timeSlotById, timeSlotText, KEY_ACCESS_TYPES, TECHNICIAN_COLORS, technicianColor,
-  DEFAULT_VEHICLES, vehicleLabel, vehicleBlockedByTimeOff, emptyCustomer, emptyKeyAccess, STATUS_META, dailyOrderCompare, computeNotifications, PAGES, PAGES_FOR_ROLE,
 };
