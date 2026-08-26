@@ -294,6 +294,18 @@ export default function App() {
             </Gate>
           } />
 
+          {/* Systemadministration: styret af profiles.is_system_admin, IKKE af
+              PAGES_FOR_ROLE/allowedPages (som kun kender de almindelige
+              butiks-roller). Dækker den bruger, der er BÅDE systemadmin OG
+              koblet til sin egen butik - uden denne rute var "System"-fanen i
+              TopNav et dødt link for dem (RETTET august 2026, fejl fundet ved
+              test - se rapport 26. august 2026). Systemadmins UDEN egen butik
+              rammer aldrig denne rute, de får SystemAdminPage vist direkte
+              ovenfor (se "!profile.butikId"-grenen), før Routes overhovedet når at blive nået. */}
+          <Route path="/systemadmin" element={
+            profile.erSystemadmin ? <SystemAdminPage /> : <Navigate to={`/${allowedPages[0]}`} replace />
+          } />
+
           <Route path="*" element={<Navigate to={`/${allowedPages[0]}`} replace />} />
         </Routes>
       </div>
