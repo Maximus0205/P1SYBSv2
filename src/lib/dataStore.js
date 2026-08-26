@@ -13,12 +13,23 @@
 // concern.
 
 import { supabase } from "./supabaseClient";
+import { logError } from "./errorLog";
+
+// Fejl-logning (august 2026) VED SIDEN AF console.error (ikke i stedet
+// for - konsollen er stadig nyttig ved lokal udvikling). Uden dette
+// forsvinder en mislykket gem-/hente-handling stille i browserens
+// konsol, uden nogen i butikken nogensinde får det at vide - se
+// lib/errorLog.js og den nye fejl-log under fanen System.
+function logDbError(source, message, error) {
+  console.error(message, error?.message);
+  logError(source, error?.message || message, { detail: message });
+}
 
 async function getList(table, storeId) {
   if (!storeId) return [];
   const { data, error } = await supabase.from(table).select("data").eq("store_id", storeId);
   if (error) {
-    console.error(`Could not load ${table}:`, error.message);
+    logDbError(`dataStore:getList:${table}`, `Could not load ${table}`, error);
     return [];
   }
   return (data || []).map((r) => r.data);
@@ -30,7 +41,7 @@ async function saveRow(table, storeId, item) {
   const row = { id: String(item.id), store_id: storeId, data: item, updated_at: new Date().toISOString() };
   const { error } = await supabase.from(table).upsert(row);
   if (error) {
-    console.error(`Could not save to ${table}:`, error.message);
+    logDbError(`dataStore:saveRow:${table}`, `Could not save to ${table}`, error);
     return false;
   }
   return true;
@@ -43,7 +54,7 @@ async function deleteRow(table, storeId, id) {
   if (!storeId || !id) return false;
   const { error } = await supabase.from(table).delete().eq("store_id", storeId).eq("id", String(id));
   if (error) {
-    console.error(`Could not delete from ${table}:`, error.message);
+    logDbError(`dataStore:deleteRow:${table}`, `Could not delete from ${table}`, error);
     return false;
   }
   return true;
@@ -57,7 +68,7 @@ async function seedDefaults(table, storeId, list) {
   const rows = list.map((item) => ({ id: String(item.id), store_id: storeId, data: item, updated_at: new Date().toISOString() }));
   const { error } = await supabase.from(table).upsert(rows);
   if (error) {
-    console.error(`Could not seed defaults in ${table}:`, error.message);
+    logDbError(`dataStore:seedDefaults:${table}`, `Could not seed defaults in ${table}`, error);
     return false;
   }
   return true;
@@ -71,7 +82,7 @@ export async function getFreshOrder(storeId, id) {
   if (!storeId || !id) return null;
   const { data, error } = await supabase.from("orders").select("data").eq("store_id", storeId).eq("id", String(id)).maybeSingle();
   if (error) {
-    console.error("Could not re-fetch the order:", error.message);
+    logDbError("dataStore:getFreshOrder", "Could not re-fetch the order", error);
     return null;
   }
   return data?.data || null;
@@ -135,7 +146,7 @@ export async function getStore(storeId) {
   if (!storeId) return null;
   const { data, error } = await supabase.from("stores").select("id, name, address, lat, lon, store_number, sick_leave_window_hours").eq("id", storeId).maybeSingle();
   if (error) {
-    console.error("Could not load store:", error.message);
+    logDbError("dataStore:getStore", "Could not load store", error);
     return null;
   }
   if (!data) return null;
@@ -147,7 +158,7 @@ export async function getStore(storeId) {
 export async function getAllStores() {
   const { data, error } = await supabase.from("stores").select("id, name, address, lat, lon, store_number, created_at").order("created_at", { ascending: false });
   if (error) {
-    console.error("Could not load stores:", error.message);
+    logDbError("dataStore:getAllStores", "Could not load stores", error);
     return [];
   }
   return (data || []).map((s) => ({ id: s.id, navn: s.name, adresse: s.address, lat: s.lat, lon: s.lon, butiksnummer: s.store_number, oprettet: s.created_at }));
@@ -160,7 +171,11 @@ export async function getAllStores() {
 // (Edge Functions tab), not in this repo.
 export async function createStoreAsSystemAdmin(fields) {
   const { data, error } = await supabase.functions.invoke("systemadmin-opret-butik", { body: fields });
-  if (error || data?.fejl) return { ok: false, fejl: await readEdgeFunctionError(data, error, "Could not create the store") };
+  if (error || data?.fejl) {
+    const fejl = await readEdgeFunctionError(data, error, "Could not create the store");
+    logError("dataStore:createStoreAsSystemAdmin", fejl);
+    return { ok: false, fejl };
+  }
   return { ok: true };
 }
 
@@ -176,7 +191,7 @@ export async function updateStoreAsSystemAdmin(storeId, fields) {
   if ("lon" in fields) dbFields.lon = fields.lon;
   const { error } = await supabase.from("stores").update(dbFields).eq("id", storeId);
   if (error) {
-    console.error("Could not update store:", error.message);
+    logDbError("dataStore:updateStoreAsSystemAdmin", "Could not update store", error);
     return { ok: false, fejl: error.message };
   }
   return { ok: true };
@@ -190,7 +205,7 @@ export async function updateStoreAsSystemAdmin(storeId, fields) {
 export async function deleteStoreAsSystemAdmin(storeId) {
   const { error } = await supabase.from("stores").delete().eq("id", storeId);
   if (error) {
-    console.error("Could not delete store:", error.message);
+    logDbError("dataStore:deleteStoreAsSystemAdmin", "Could not delete store", error);
     return { ok: false, fejl: error.message };
   }
   return { ok: true };
@@ -207,7 +222,7 @@ export async function deleteStoreAsSystemAdmin(storeId) {
 export async function updateSickLeaveWindow(hours) {
   const { error } = await supabase.rpc("update_sick_leave_window", { p_hours: hours });
   if (error) {
-    console.error("Could not update sick leave window:", error.message);
+    logDbError("dataStore:updateSickLeaveWindow", "Could not update sick leave window", error);
     return { ok: false, fejl: error.message };
   }
   return { ok: true };
@@ -226,7 +241,11 @@ export async function createUserAsAdmin({ loginType, email, brugernavn, adgangsk
   const { data, error } = await supabase.functions.invoke("admin-opret-bruger", {
     body: { loginType, email, brugernavn, adgangskode, navn, rolle, bilId, butikId },
   });
-  if (error || data?.fejl) return { ok: false, fejl: await readEdgeFunctionError(data, error, "Could not create the user") };
+  if (error || data?.fejl) {
+    const fejl = await readEdgeFunctionError(data, error, "Could not create the user");
+    logError("dataStore:createUserAsAdmin", fejl);
+    return { ok: false, fejl };
+  }
   return { ok: true };
 }
 
@@ -236,14 +255,18 @@ export async function resetPasswordAsAdmin(userId, newPassword) {
   const { data, error } = await supabase.functions.invoke("admin-nulstil-adgangskode", {
     body: { brugerId: userId, nyAdgangskode: newPassword },
   });
-  if (error || data?.fejl) return { ok: false, fejl: await readEdgeFunctionError(data, error, "Could not reset the password") };
+  if (error || data?.fejl) {
+    const fejl = await readEdgeFunctionError(data, error, "Could not reset the password");
+    logError("dataStore:resetPasswordAsAdmin", fejl);
+    return { ok: false, fejl };
+  }
   return { ok: true };
 }
 
 export async function getOwnProfile(userId) {
   const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
   if (error) {
-    console.error("Could not load profile:", error.message);
+    logDbError("dataStore:getOwnProfile", "Could not load profile", error);
     return null;
   }
   if (!data) return null;
@@ -256,7 +279,7 @@ export async function getStoreUsers(storeId) {
   if (!storeId) return [];
   const { data, error } = await supabase.from("profiles").select("id, name, role, vehicle_id, username").eq("store_id", storeId);
   if (error) {
-    console.error("Could not load the store's users:", error.message);
+    logDbError("dataStore:getStoreUsers", "Could not load the store's users", error);
     return [];
   }
   return (data || []).map((p) => ({ id: p.id, navn: p.name, rolle: p.role, bilId: p.vehicle_id, brugernavn: p.username }));
@@ -276,7 +299,7 @@ export async function getAllUsersAsSystemAdmin(search, showAll) {
   }
   const { data, error } = await query;
   if (error) {
-    console.error("Could not load users (system admin):", error.message);
+    logDbError("dataStore:getAllUsersAsSystemAdmin", "Could not load users (system admin)", error);
     return [];
   }
   return (data || []).map((p) => ({ id: p.id, navn: p.name, rolle: p.role, butikId: p.store_id, brugernavn: p.username }));
@@ -297,7 +320,7 @@ export async function getTimeOff(storeId) {
   if (!storeId) return [];
   const { data, error } = await supabase.from("time_off").select("*").eq("store_id", storeId);
   if (error) {
-    console.error("Could not load time off:", error.message);
+    logDbError("dataStore:getTimeOff", "Could not load time off", error);
     return [];
   }
   return (data || []).map((f) => ({ id: f.id, montorId: f.technician_id, startDato: f.start_date, slutDato: f.end_date, note: f.note || "", type: f.type || "ferie" }));
@@ -310,7 +333,7 @@ export async function addTimeOff(storeId, { montorId, startDato, slutDato, note,
     store_id: storeId, technician_id: montorId, start_date: startDato, end_date: slutDato || null, note: note || null, type: type || "ferie",
   });
   if (error) {
-    console.error("Could not create time off:", error.message);
+    logDbError("dataStore:addTimeOff", "Could not create time off", error);
     return false;
   }
   return true;
@@ -319,7 +342,7 @@ export async function addTimeOff(storeId, { montorId, startDato, slutDato, note,
 export async function deleteTimeOff(timeOffId) {
   const { error } = await supabase.from("time_off").delete().eq("id", timeOffId);
   if (error) {
-    console.error("Could not delete time off:", error.message);
+    logDbError("dataStore:deleteTimeOff", "Could not delete time off", error);
     return false;
   }
   return true;
@@ -337,7 +360,7 @@ export async function beginSickLeave(storeId, montorId, note) {
 export async function endSickLeave(timeOffId) {
   const { error } = await supabase.from("time_off").update({ end_date: new Date().toISOString().slice(0, 10) }).eq("id", timeOffId);
   if (error) {
-    console.error("Could not end sick leave:", error.message);
+    logDbError("dataStore:endSickLeave", "Could not end sick leave", error);
     return false;
   }
   return true;
@@ -358,7 +381,7 @@ export async function updateProfile(userId, fields) {
   if ("butikId" in fields) dbFields.store_id = fields.butikId;
   const { error } = await supabase.from("profiles").update(dbFields).eq("id", userId);
   if (error) {
-    console.error("Could not update profile:", error.message);
+    logDbError("dataStore:updateProfile", "Could not update profile", error);
     return false;
   }
   return true;
@@ -375,7 +398,11 @@ export async function sendArrivalSms({ telefon, minutter, kundeNavn }) {
   const { data, error } = await supabase.functions.invoke("send-ankomst-sms", {
     body: { telefon, minutter, kundeNavn },
   });
-  if (error || data?.fejl) return { ok: false, fejl: await readEdgeFunctionError(data, error, "Kunne ikke sende SMS'en") };
+  if (error || data?.fejl) {
+    const fejl = await readEdgeFunctionError(data, error, "Kunne ikke sende SMS'en");
+    logError("dataStore:sendArrivalSms", fejl);
+    return { ok: false, fejl };
+  }
   return { ok: true };
 }
 
@@ -388,6 +415,10 @@ export async function sendArrivalSms({ telefon, minutter, kundeNavn }) {
 // ModelNumberLookup i OrderFormFields.jsx.
 export async function lookupPunkt1Product(model) {
   const { data, error } = await supabase.functions.invoke("punkt1-produktopslag", { body: { model } });
-  if (error || data?.fejl) return { ok: false, fejl: await readEdgeFunctionError(data, error, "Kunne ikke slå produktet op på punkt1.dk") };
+  if (error || data?.fejl) {
+    const fejl = await readEdgeFunctionError(data, error, "Kunne ikke slå produktet op på punkt1.dk");
+    logError("dataStore:lookupPunkt1Product", fejl);
+    return { ok: false, fejl };
+  }
   return { ok: true, matchCount: data.matchCount, brand: data.brand, products: data.products };
 }
