@@ -422,3 +422,38 @@ export async function lookupPunkt1Product(model) {
   }
   return { ok: true, matchCount: data.matchCount, brand: data.brand, products: data.products };
 }
+
+// ---------- Fejl-log (august 2026) ----------
+// Kun læsbar af systemadmin (håndhævet af RLS på selve error_logs-
+// tabellen, ikke kun her i klienten) - se SystemAdminPage.jsx. Se
+// lib/errorLog.js for selve INDSAMLINGEN af fejl.
+
+export async function getErrorLogs(limit = 200) {
+  const { data, error } = await supabase.from("error_logs").select("*").order("created_at", { ascending: false }).limit(limit);
+  if (error) {
+    console.error("Could not load error logs:", error.message);
+    return [];
+  }
+  return (data || []).map((e) => ({
+    id: e.id, tid: e.created_at, butikId: e.store_id, brugerId: e.user_id, rolle: e.user_role,
+    kilde: e.source, besked: e.message, stack: e.stack, url: e.url, kontekst: e.context, brugerAgent: e.user_agent,
+  }));
+}
+
+export async function deleteErrorLog(id) {
+  const { error } = await supabase.from("error_logs").delete().eq("id", id);
+  if (error) {
+    console.error("Could not delete error log entry:", error.message);
+    return false;
+  }
+  return true;
+}
+
+export async function clearErrorLogs() {
+  const { error } = await supabase.from("error_logs").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  if (error) {
+    console.error("Could not clear error log:", error.message);
+    return false;
+  }
+  return true;
+}
