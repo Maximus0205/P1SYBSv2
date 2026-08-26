@@ -122,4 +122,13 @@ export function suggestPlan({ dates, orders, technicians, timeOff, sameBuildingD
   return top;
 }
 
+// Tynd, bekvem indgang til suggestPlan for BOOKING-flowet (SuggestedDates i
+// OrderFormFields.jsx) - som ikke har brug for timeOff/excludeTechnicianIds/
+// originalDate/requireTechnician (en ny booking må gerne foreslås "ikke
+// tildelt", se requireTechnician-kommentaren på suggestPlan ovenfor).
+// Kalder blot suggestPlan med "week" omdøbt til "dates".
+export function suggestBookingDates({ week, orders, technicians, sameBuildingDates, nearbyDates }) {
+  return suggestPlan({ dates: week, orders, technicians, sameBuildingDates, nearbyDates });
+}
+
 export { haversineKm, WORKDAY_MINUTES };
