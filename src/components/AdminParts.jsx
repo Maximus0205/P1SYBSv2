@@ -1,27 +1,38 @@
 import React, { useState } from "react";
-import { Trash2, X, Plus, Pencil, UserPlus, PalmtreeIcon, CalendarOff, KeyRound } from "lucide-react";
-import { vehicleLabel, technicianColor, todayISO } from "../data/domain";
+import { Trash2, X, Plus, Pencil, UserPlus, PalmtreeIcon, CalendarOff, KeyRound, Stethoscope, HeartPulse } from "lucide-react";
+import { vehicleLabel, technicianColor, todayISO, activeSickLeave } from "../data/domain";
 import { suggestUsername, isValidUsername } from "../lib/username";
+import { updateSickLeaveWindow } from "../lib/dataStore";
 
 // En "tekniker" er en bruger med rolle montor — man opretter dem ikke separat
 // (det sker under fanen Brugere). Her kan man kun styre hvilken bil teknikeren
-// kører i lige nu, og registrere fraværsperioder for vedkommende.
-function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTimeOff, onDeleteTimeOff }) {
+// kører i lige nu, og registrere fraværsperioder for vedkommende (ferie ELLER
+// sygdom - se Sygemeld/Raskmeld nedenfor, august 2026).
+function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTimeOff, onDeleteTimeOff, onSygemeld, onRaskmeld }) {
   const [showTimeOff, setShowTimeOff] = useState(false);
   const [start, setStart] = useState(todayISO());
   const [end, setEnd] = useState(todayISO());
   const [note, setNote] = useState("");
+  const [sygemelding, setSygemelding] = useState(false);
+  const [sygeNote, setSygeNote] = useState("");
   const linkedVehicle = vehicles.find((b) => b.id === technician.bilId);
   const myTimeOff = timeOff.filter((f) => f.montorId === technician.id).sort((a, b) => a.startDato.localeCompare(b.startDato));
+  const activeSick = activeSickLeave(technician.id, timeOff);
 
   const createTimeOff = () => {
     if (!start || !end || end < start) return;
-    onAddTimeOff({ montorId: technician.id, startDato: start, slutDato: end, note: note.trim() });
+    onAddTimeOff({ montorId: technician.id, startDato: start, slutDato: end, note: note.trim(), type: "ferie" });
     setNote("");
   };
 
+  const confirmSygemeld = () => {
+    onSygemeld(technician.id, sygeNote.trim());
+    setSygeNote("");
+    setSygemelding(false);
+  };
+
   return (
-    <div className="rounded-xl bg-white border border-line overflow-hidden shadow-sm">
+    <div className={`rounded-xl bg-white border overflow-hidden shadow-sm ${activeSick ? "border-danger" : "border-line"}`}>
       <div className="p-3 flex items-center gap-3 flex-wrap">
         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: technicianColor(technician.id, [technician]) }} />
         <div className="min-w-0 flex-1">
@@ -41,9 +52,29 @@ function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTi
           ))}
         </select>
         <button onClick={() => setShowTimeOff((v) => !v)} className="p-1.5 text-muted hover:text-brand flex items-center gap-1 text-xs font-semibold uppercase tracking-wide" title="Ferie">
-          <PalmtreeIcon size={15} /> Ferie{myTimeOff.length > 0 ? ` (${myTimeOff.length})` : ""}
+          <PalmtreeIcon size={15} /> Ferie{myTimeOff.filter((f) => f.type !== "sygdom").length > 0 ? ` (${myTimeOff.filter((f) => f.type !== "sygdom").length})` : ""}
         </button>
+        {activeSick ? (
+          <button onClick={() => onRaskmeld(activeSick.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-danger hover:opacity-90 transition-opacity flex items-center gap-1.5" title="Raskmeld">
+            <HeartPulse size={14} /> Sygemeldt — Raskmeld
+          </button>
+        ) : (
+          <button onClick={() => setSygemelding((v) => !v)} className="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-danger border border-danger hover:bg-danger hover:text-white transition-colors flex items-center gap-1.5" title="Sygemeld">
+            <Stethoscope size={14} /> Sygemeld
+          </button>
+        )}
       </div>
+
+      {sygemelding && (
+        <div className="border-t border-divider p-3 bg-danger/5">
+          <p className="text-xs text-muted mb-2">Starter en sygemelding fra i dag — ingen slutdato endnu. Sagerne rykkes til "Sygemelding"-fanen i Planlægning, og montøren raskmeldes igen når de er tilbage.</p>
+          <div className="flex gap-2 flex-wrap">
+            <input value={sygeNote} onChange={(e) => setSygeNote(e.target.value)} placeholder="Note (valgfri)" className="flex-1 min-w-[140px] rounded-lg border border-line bg-white px-2 py-1.5 text-xs text-ink" />
+            <button onClick={confirmSygemeld} className="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-danger hover:opacity-90 transition-opacity">Bekræft sygemelding</button>
+            <button onClick={() => setSygemelding(false)} className="text-xs text-muted font-semibold uppercase">Fortryd</button>
+          </div>
+        </div>
+      )}
 
       {showTimeOff && (
         <div className="border-t border-divider p-3 bg-panel">
@@ -58,13 +89,13 @@ function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTi
             <button onClick={createTimeOff} className="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors flex items-center gap-1"><Plus size={13} /> Tilføj</button>
           </div>
           {myTimeOff.length === 0 ? (
-            <p className="text-xs text-muted italic">Ingen ferieperioder registreret.</p>
+            <p className="text-xs text-muted italic">Ingen fraværsperioder registreret.</p>
           ) : (
             <div className="space-y-1.5">
               {myTimeOff.map((f) => (
-                <div key={f.id} className="flex items-center gap-2 text-xs rounded-lg bg-white border border-line px-2 py-1.5">
-                  <CalendarOff size={12} className="text-brand shrink-0" />
-                  <span className="text-ink">{f.startDato} – {f.slutDato}</span>
+                <div key={f.id} className={`flex items-center gap-2 text-xs rounded-lg bg-white border px-2 py-1.5 ${f.type === "sygdom" ? "border-danger" : "border-line"}`}>
+                  {f.type === "sygdom" ? <Stethoscope size={12} className="text-danger shrink-0" /> : <CalendarOff size={12} className="text-brand shrink-0" />}
+                  <span className="text-ink">{f.startDato} – {f.slutDato || "igangværende"}</span>
                   {f.note && <span className="text-muted truncate flex-1">{f.note}</span>}
                   <button onClick={() => onDeleteTimeOff(f.id)} className="ml-auto text-muted hover:text-danger"><X size={13} /></button>
                 </div>
@@ -74,6 +105,45 @@ function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTi
           {linkedVehicle && <p className="text-[10px] text-muted mt-2">Bilen ({vehicleLabel(linkedVehicle)}) vises automatisk som blokeret i kørselsoverblikket i disse perioder — flytter teknikeren til en anden bil, følger blokeringen med.</p>}
         </div>
       )}
+    </div>
+  );
+}
+
+// Butiksindstilling (august 2026): hvor mange timer frem en sygemeldt
+// montørs sager vises i "Sygemelding"-fanen i Planlægning, mens
+// sygemeldingen er aktiv. Kalder en snævert afgrænset databasefunktion
+// (se dataStore.js: updateSickLeaveWindow) - almindelige butiks-admins har
+// IKKE generel skriveadgang til butikkens øvrige indstillinger, kun denne
+// ene, bevidst afgrænsede indstilling.
+function SickLeaveWindowSetting({ store, onUpdated }) {
+  const [hours, setHours] = useState(store?.sygemeldingVindueTimer ?? 48);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+
+  const save = async () => {
+    setSaving(true); setError(""); setSaved(false);
+    const result = await updateSickLeaveWindow(Number(hours));
+    setSaving(false);
+    if (!result.ok) { setError(result.fejl || "Kunne ikke gemme."); return; }
+    setSaved(true);
+    onUpdated?.(Number(hours));
+    setTimeout(() => setSaved(false), 1500);
+  };
+
+  return (
+    <div className="rounded-xl border border-line bg-white p-4 mb-4 shadow-sm">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-1.5"><Stethoscope size={15} className="text-danger" /> Sygemelding — visningsvindue</h3>
+      <p className="text-xs text-muted mb-3">Hvor mange timer frem skal en sygemeldt montørs sager vises i "Sygemelding"-oversigten i Planlægning, mens sygemeldingen er aktiv?</p>
+      <div className="flex items-center gap-2 flex-wrap">
+        <input type="number" min="1" max="720" value={hours} onChange={(e) => setHours(e.target.value)} className="w-24 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+        <span className="text-sm text-muted">timer</span>
+        <button onClick={save} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors disabled:opacity-60">
+          {saving ? "Gemmer..." : "Gem"}
+        </button>
+        {saved && <span className="text-xs text-success font-semibold">Gemt.</span>}
+      </div>
+      {error && <p className="text-xs text-danger mt-2">{error}</p>}
     </div>
   );
 }
@@ -392,11 +462,6 @@ function PrimaryServiceAdmin({ primaryServices, onAdd, onUpdate, onDelete }) {
 // gælder under (påkrævet), og valgfrit hvilke specifikke varetyper den er
 // begrænset til (tomt = gælder for alle varetyper). Heller ikke her sættes
 // et tidsestimat - det tastes manuelt pr. booking, se note ovenfor.
-//
-// Valg-mærkerne (primær ydelse / varetype) er RETTET (august 2026) fra
-// fuldt runde "boble"-knapper (rounded-full) til samme afrundet-firkantede
-// stil (rounded-lg) som resten af appens knapper og kort - det runde
-// boble-udseende var bevidst fjernet konsekvent i hele systemet.
 
 function AddOnServiceRow({ service, productTypes, primaryServices, onUpdate, onDelete }) {
   const togglePrimary = (pId) => {
@@ -475,4 +540,4 @@ function AddOnServiceAdmin({ addOnServices, productTypes, primaryServices, onAdd
   );
 }
 
-export { TechnicianRow, VehicleRow, UserRow, NewUserForm, ROLE_LABEL, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin };
+export { TechnicianRow, SickLeaveWindowSetting, VehicleRow, UserRow, NewUserForm, ROLE_LABEL, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin };
