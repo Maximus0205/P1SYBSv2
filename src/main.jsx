@@ -2,8 +2,25 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 import App from "./App";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { logError } from "./lib/errorLog";
 import "./index.css";
 import "./styles/globals.css";
+
+// Global fejl-opsamling (august 2026): fanger UVENTEDE JS-fejl og
+// ubehandlede løfte-afvisninger et hvilket som helst sted i appen, uden
+// brugeren selv skal gøre noget - se lib/errorLog.js (selve logningen) og
+// den nye fejl-log under fanen System (kun synlig for systemadmin).
+// Supplerer ErrorBoundary nedenfor, som kun fanger fejl der opstår UNDER
+// selve React-renderingen - disse to lyttere fanger desuden fejl i almindelig
+// JavaScript-kode og afviste løfter (fx et Supabase-kald der fejler uden
+// at blive fanget lokalt).
+window.addEventListener("error", (e) => {
+  logError("window.onerror", e.error || e.message, { filename: e.filename, lineno: e.lineno, colno: e.colno });
+});
+window.addEventListener("unhandledrejection", (e) => {
+  logError("unhandledrejection", e.reason);
+});
 
 // HashRouter (ikke BrowserRouter): GitHub Pages serverer kun statiske filer
 // uden server-side rewrites - et refresh på en "rigtig" sti som
@@ -14,8 +31,10 @@ import "./styles/globals.css";
 // hashet og gengiver den rigtige side. Se App.jsx for selve rute-opsætningen.
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <HashRouter>
-      <App />
-    </HashRouter>
+    <ErrorBoundary>
+      <HashRouter>
+        <App />
+      </HashRouter>
+    </ErrorBoundary>
   </React.StrictMode>
 );
