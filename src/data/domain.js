@@ -347,8 +347,15 @@ const PAGES = [
   { key: "admin", label: "Admin", icon: Settings2 },
   { key: "systemadmin", label: "System", icon: Building2 },
 ];
+// "lager" TILFØJET som rigtig, selvstændig rolle (august 2026):
+// databasens rolle-CHECK-constraint tillod den allerede (og WarehousePage
+// har eksisteret et stykke tid), men den var aldrig koblet op i frontend -
+// en bruger med den rolle ville falde tilbage til kun "salg". En
+// lagermedarbejder skal udelukkende bruge pluklisten, ikke resten af
+// systemet.
 const PAGES_FOR_ROLE = {
   admin: ["salg", "planlaegning", "montor", "lager", "arkiv", "admin"],
   saelger: ["salg", "planlaegning", "montor", "lager", "arkiv"],
   montor: ["montor"],
+  lager: ["lager"],
 };
