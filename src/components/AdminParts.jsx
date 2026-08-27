@@ -297,6 +297,7 @@ function NewUserForm({ onAdd }) {
         <select value={role} onChange={(e) => setRole(e.target.value)} className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
           <option value="saelger">Sælger (Salg, Planlægning, Kørsel, Montør, Lager)</option>
           <option value="montor">Montør (kun sin egen rute)</option>
+          <option value="lager">Lager (kun Lager-siden)</option>
           <option value="admin">Administrator (alt, inkl. Opsætning)</option>
         </select>
       </div>
@@ -309,7 +310,7 @@ function NewUserForm({ onAdd }) {
   );
 }
 
-const ROLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montør" };
+const ROLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montør", lager: "Lager" };
 
 // ---------- Varekategorier ----------
 
