@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { getVehicles, saveVehicle, deleteVehicle as deleteVehicleApi, seedDefaultVehicles } from "../lib/dataStore";
-import { uid, DEFAULT_VEHICLES } from "../data/domain";
+import { getVehicles, saveVehicle, deleteVehicle as deleteVehicleApi } from "../lib/dataStore";
+import { uid } from "../data/domain";
 
 // FASE 2 af arkitektur-oprydningen (august 2026) - se hooks/useCatalog.js
 // for den fulde begrundelse. Al state og CRUD for BILER er samlet her.
@@ -11,16 +11,22 @@ import { uid, DEFAULT_VEHICLES } from "../data/domain";
 // (kompositionslaget), ikke i den enkelte hook. Denne hook eksponerer
 // derfor et "råt" deleteVehicle uden bekræftelse; selve bekræftelsen
 // (deleteVehicleWithConfirm) bliver i App.jsx.
+//
+// RETTET (august 2026): der seedes IKKE længere 3 standardbiler
+// automatisk, første gang en ny butik bruges. En butiks vognpark er
+// specifik for netop den butik (antal biler, mærke/model, nummerplader) -
+// tre opdigtede biler ("Bil 1"/"AB 12 345" osv.) er ikke retvisende
+// standarddata, og skal ikke skulle ryddes manuelt væk igen af en admin
+// der opretter en ny butik. En ny butik starter derfor med en tom
+// billiste, og admin opretter selv de biler, butikken faktisk har (se
+// AdminParts.jsx).
 export function useVehicles(storeId) {
   const [vehicles, setVehicles] = useState([]);
 
   const load = useCallback(async (id) => {
     if (!id) { setVehicles([]); return; }
     const v = await getVehicles(id);
-    // Første gang butikken bruges, er listen tom - sæt fornuftige standarder.
-    const finalVehicles = v.length > 0 ? v : DEFAULT_VEHICLES;
-    if (v.length === 0) seedDefaultVehicles(id, finalVehicles);
-    setVehicles(finalVehicles);
+    setVehicles(v);
   }, []);
 
   useEffect(() => { load(storeId); }, [storeId, load]);
