@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { LogOut, Bell, Package, AlertTriangle, Copy } from "lucide-react";
+import { LogOut, Bell, Package, AlertTriangle, Copy, Building2, ArrowLeftRight } from "lucide-react";
 import { PAGES } from "../data/domain";
 import { PUNKT1_LOGO_NEGATIV } from "../assets/logo";
 
@@ -76,13 +76,45 @@ function NotificationBell({ notifications, onOpenOrder }) {
   );
 }
 
-// RETTET (august 2026): faneadgang styres nu af "allowedPages" (beregnet i
-// App.jsx ud fra brugerens FAKTISKE, håndhævede rettigheder - se
-// useSession.js: permissions), ikke længere en fast PAGES_FOR_ROLE[rolle]-
-// opslag her. Én kilde til sandhed - App.jsx beregner allerede det samme
-// for sine <Route>-Gates, og sender det med herned, så de to aldrig kan
-// komme ud af trit med hinanden.
-function TopNav({ page, onChange, user, onLogOut, notifications, onOpenOrder, allowedPages }) {
+// Butiks-visning/-skifter (august 2026): for en almindelig bruger vises
+// blot navnet på deres egen butik - rent informativt, intet at klikke på.
+// For en SYSTEMADMIN vises i stedet en dropdown med ALLE butikker (samt
+// en "Systemadministration"-mulighed for at gå tilbage til butiks-
+// oversigten uden nogen valgt butik), så de kan skifte over og se/hjælpe
+// en given butiks data - uden at det ændrer deres egen brugerkonto
+// permanent (se App.jsx: activeStoreId, som er ren UI-tilstand, ikke
+// gemt på deres profil).
+function StoreSwitcher({ store, isSystemAdmin, allStores, onSwitchStore, onExitStoreView }) {
+  if (isSystemAdmin) {
+    return (
+      <div className="flex items-center gap-1 shrink-0">
+        <Building2 size={13} className="text-[#C9C9C9] hidden sm:inline" />
+        <select
+          value={store?.id || ""}
+          onChange={(e) => e.target.value && onSwitchStore(e.target.value)}
+          className="bg-black border border-[#333] text-[#C9C9C9] text-xs rounded-lg px-2 py-1.5 max-w-[140px] focus:outline-none focus:border-brand"
+          title="Skift butik"
+        >
+          {!store && <option value="">Vælg butik...</option>}
+          {(allStores || []).map((s) => <option key={s.id} value={s.id}>{s.navn}</option>)}
+        </select>
+        {onExitStoreView && (
+          <button onClick={onExitStoreView} className="w-10 h-10 rounded-lg bg-black border border-[#333] flex items-center justify-center text-[#C9C9C9] hover:text-white hover:border-brand transition-colors shrink-0" title="Tilbage til systemadministration">
+            <ArrowLeftRight size={15} />
+          </button>
+        )}
+      </div>
+    );
+  }
+  if (!store) return null;
+  return (
+    <span className="text-xs text-[#C9C9C9] hidden sm:flex items-center gap-1 shrink-0" title={store.navn}>
+      <Building2 size={12} /> {store.navn}
+    </span>
+  );
+}
+
+function TopNav({ page, onChange, user, onLogOut, notifications, onOpenOrder, allowedPages, store, allStores, onSwitchStore, onExitStoreView }) {
   const allowed = PAGES.filter((s) => allowedPages.includes(s.key) || (s.key === "systemadmin" && user.erSystemadmin));
   return (
     <div className="sticky top-0 z-20 bg-ink mb-6">
@@ -109,6 +141,7 @@ function TopNav({ page, onChange, user, onLogOut, notifications, onOpenOrder, al
           })}
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <StoreSwitcher store={store} isSystemAdmin={user.erSystemadmin} allStores={allStores} onSwitchStore={onSwitchStore} onExitStoreView={onExitStoreView} />
           <span className="text-xs text-[#C9C9C9] hidden sm:inline pr-1">{user.navn}</span>
           {notifications && onOpenOrder && <NotificationBell notifications={notifications} onOpenOrder={onOpenOrder} />}
           <button
