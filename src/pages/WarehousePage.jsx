@@ -1,6 +1,6 @@
 import React from "react";
-import { Check, KeyRound, AlertTriangle } from "lucide-react";
-import { lineItemLabel, formatLongDate } from "../data/domain";
+import { Check, KeyRound, AlertTriangle, Lock } from "lucide-react";
+import { lineItemLabel, formatLongDate, canDo } from "../data/domain";
 import { DateSelector } from "../components/common";
 
 // Lagersiden viser ét pluk-PUNKT pr. varelinje - IKKE ét punkt pr. ordre.
@@ -25,7 +25,8 @@ function isOrderPickable(order, technicians, vehicles) {
   return !!vehicle && !vehicle.lukket;
 }
 
-function WarehousePage({ orders, technicians, vehicles, selectedDate, onDateChange, onToggleLineItemPicked, onOpen }) {
+function WarehousePage({ orders, technicians, vehicles, selectedDate, onDateChange, onToggleLineItemPicked, onOpen, permissions }) {
+  const canPick = canDo(permissions, "sag_pluk") || canDo(permissions, "sag_feltarbejde");
   const todaysOrders = orders.filter((s) => s.dato === selectedDate);
   const pickableOrders = todaysOrders.filter((o) => isOrderPickable(o, technicians, vehicles));
   const hiddenCount = todaysOrders.length - pickableOrders.length;
@@ -42,11 +43,12 @@ function WarehousePage({ orders, technicians, vehicles, selectedDate, onDateChan
     return (
       <div className="rounded-xl bg-white border border-[#ECECEC] shadow-sm p-3 flex items-center gap-3">
         <button
-          onClick={() => onToggleLineItemPicked(order.id, lineItem.id)}
-          className={`w-6 h-6 shrink-0 rounded-md border-2 flex items-center justify-center transition-colors ${lineItem.plukket ? "border-success bg-success" : "border-line bg-white"}`}
-          title={lineItem.plukket ? "Marker som ikke plukket" : "Marker som plukket"}
+          onClick={() => canPick && onToggleLineItemPicked(order.id, lineItem.id)}
+          disabled={!canPick}
+          className={`w-6 h-6 shrink-0 rounded-md border-2 flex items-center justify-center transition-colors ${lineItem.plukket ? "border-success bg-success" : "border-line bg-white"} ${!canPick ? "opacity-50 cursor-not-allowed" : ""}`}
+          title={!canPick ? "Du har ikke rettighed til at afkrydse pluk" : lineItem.plukket ? "Marker som ikke plukket" : "Marker som plukket"}
         >
-          {lineItem.plukket && <Check size={14} color="white" strokeWidth={3} />}
+          {lineItem.plukket ? <Check size={14} color="white" strokeWidth={3} /> : (!canPick && <Lock size={11} className="text-muted" />)}
         </button>
         <div onClick={() => onOpen(order.id)} className="min-w-0 flex-1 cursor-pointer">
           <div className="flex items-center gap-2">
@@ -68,6 +70,9 @@ function WarehousePage({ orders, technicians, vehicles, selectedDate, onDateChan
         <p className="text-sm text-muted">{missing.length} varer mangler at blive plukket · {ready.length} klar til afhentning</p>
         <DateSelector date={selectedDate} onChange={onDateChange} />
       </div>
+      {!canPick && (
+        <p className="text-xs text-muted italic mb-4 flex items-center gap-1.5"><Lock size={12} className="shrink-0" /> Du kan se pluklisten, men ikke afkrydse punkter — du mangler rettigheden "Afkrydse plukket".</p>
+      )}
       {hiddenCount > 0 && (
         <p className="text-xs text-muted italic mb-4 flex items-center gap-1.5">
           <AlertTriangle size={12} className="shrink-0" /> {hiddenCount} {hiddenCount === 1 ? "sag er" : "sager er"} skjult her, fordi den mangler montør eller montørens bil er ude af drift — se Planlægning under "Kræver handling".
