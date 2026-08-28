@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Trash2, Plus } from "lucide-react";
 import { TechnicianRow, SickLeaveWindowSetting, VehicleRow, UserRow, NewUserForm, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin } from "../components/AdminParts";
 
@@ -28,6 +28,7 @@ function AdminPage({
     { k: "varer", l: "Varer & ydelser", perm: "admin_katalog" },
   ];
   const visibleTabs = allTabs.filter((f) => hasPerm(permissions, f.perm));
+  const visibleTabKeys = visibleTabs.map((f) => f.k).join(",");
 
   const [newName, setNewName] = useState("");
   const [newPlate, setNewPlate] = useState("");
@@ -36,11 +37,15 @@ function AdminPage({
 
   // Hvis brugerens rettigheder ændrer sig (fx en anden admin fjerner en
   // rettighed mens siden er åben) og den valgte fane ikke længere er
-  // synlig, skift til den første tilgængelige i stedet for at vise en tom
-  // side uden faner at klikke på.
-  if (!visibleTabs.some((f) => f.k === tab) && visibleTabs.length > 0) {
-    setTab(visibleTabs[0].k);
-  }
+  // synlig, skift til den første tilgængelige - i en effect, ikke direkte
+  // under selve renderingen, så det ikke udløser en "state opdateret
+  // under render"-advarsel.
+  useEffect(() => {
+    if (!visibleTabs.some((f) => f.k === tab) && visibleTabs.length > 0) {
+      setTab(visibleTabs[0].k);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleTabKeys]);
 
   if (visibleTabs.length === 0) {
     return (
