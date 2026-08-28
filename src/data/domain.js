@@ -305,6 +305,17 @@ const dailyOrderCompare = (a, b) => {
 // Bruges af "Skal planlægges"-fanen i PlanningPage.jsx.
 const needsPlanning = (order) => order.status !== "afsluttet" && (!order.dato || !order.montorId);
 
+// RETTIGHEDER (august 2026): fælles UI-hjælper til at spørge "må denne
+// bruger X?" - se permissions-kataloget og has_permission()/
+// my_effective_permissions() i databasen for selve den AUTORITATIVE
+// håndhævelse (RLS + triggere på orders/profiles). Denne bruges KUN til at
+// style selve UI'et (låse felter/knapper) - prøver nogen alligevel om det
+// direkte mod databasen, afvises det dér, uanset hvad UI'et viser.
+// permissions === null betyder "ubegrænset" (systemadmins - se App.jsx,
+// som bevidst sender null i stedet for deres egen butiks-profils
+// rettigheder for dem).
+const canDo = (permissions, key) => permissions === null || (permissions || []).includes(key);
+
 export {
   uid, now, todayISO, addDays, formatLongDate, formatShortDate, isToday, formatDuration, formatTime, totalMinutes, serviceIcon,
   DEFAULT_SERVICE_MINUTES, createAddOn, OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID,
@@ -312,7 +323,7 @@ export {
   createLineItem, lineItemLabel, lineItemMinutes, orderExpectedMinutes, normalizeAddress, buildingKey, areaKey,
   weekDays, buildTitle, keyAccessText, TIME_SLOTS, timeSlotById, timeSlotText, KEY_ACCESS_TYPES, TECHNICIAN_COLORS, technicianColor,
   DEFAULT_VEHICLES, vehicleLabel, vehicleBlockedByTimeOff, isTechnicianAbsent, activeSickLeave, emptyCustomer, emptyKeyAccess, STATUS_META,
-  dailyOrderCompare, needsPlanning, computeNotifications, PAGES, PAGES_FOR_ROLE,
+  dailyOrderCompare, needsPlanning, computeNotifications, PAGES, PAGES_FOR_ROLE, canDo,
 };
 
 // Beregner, for en given bruger (profileId), hvilke af DERES EGNE bookede
