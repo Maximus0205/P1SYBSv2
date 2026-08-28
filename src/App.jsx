@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from "react-router-dom";
 
-import { todayISO, PAGES_FOR_ROLE, computeNotifications } from "./data/domain";
+import { todayISO, computeNotifications } from "./data/domain";
 import { useSession } from "./hooks/useSession";
 import { useCatalog } from "./hooks/useCatalog";
 import { useVehicles } from "./hooks/useVehicles";
@@ -120,8 +120,15 @@ function MontorRoute({ profile, orders, technicians, ordersStore, refresh, refre
   );
 }
 
+// Faste side-nøgler der har ét-til-ét-navn med en "side"-rettighed af
+// samme navn (se permissions-kataloget i databasen). "admin" er en
+// undtagelse - den er en PARAPLY over 5 finere admin_*-rettigheder (se
+// AdminPage.jsx, som selv viser/skjuler sine egne faner ud fra dem); har
+// man BLOT ÉN af dem, skal man kunne se Admin-fanen overhovedet.
+const PAGE_PERMISSION_KEYS = ["salg", "planlaegning", "montor", "lager", "arkiv"];
+
 export default function App() {
-  const { loading, session, profile, store, logOut } = useSession();
+  const { loading, session, profile, store, permissions, logOut } = useSession();
 
   const catalog = useCatalog(profile?.butikId);
   const vehiclesStore = useVehicles(profile?.butikId);
@@ -216,7 +223,19 @@ export default function App() {
     );
   }
 
-  const allowedPages = PAGES_FOR_ROLE[profile.rolle] || ["salg"];
+  // RETTET (august 2026): faneadgang styres nu af brugerens FAKTISKE,
+  // håndhævede rettigheder (permissions, hentet i useSession via
+  // my_effective_permissions() i databasen) i stedet for en fast
+  // PAGES_FOR_ROLE[rolle]-opslagstabel. En systemadmin ser altid alt (de
+  // går allerede udenom alle tilsvarende databasetjek, se
+  // orders_guard_field_groups/profiles_guard_privileged_fields-triggerne),
+  // uafhængigt af hvilke rettigheder deres egen butiks-profil måtte have.
+  const allowedPages = profile.erSystemadmin
+    ? [...PAGE_PERMISSION_KEYS, "admin"]
+    : [
+        ...PAGE_PERMISSION_KEYS.filter((k) => permissions.includes(k)),
+        ...(permissions.some((p) => p.startsWith("admin_")) ? ["admin"] : []),
+      ];
   const currentPage = location.pathname.replace(/^\//, "").split("/")[0] || allowedPages[0];
   const narrowPage = currentPage === "montor" || currentPage === "sag";
   const hideTopNav = currentPage === "sag" && profile.rolle === "montor";
@@ -228,7 +247,7 @@ export default function App() {
         .font-mono { font-family: 'JetBrains Mono', monospace; }
       `}</style>
 
-      {!hideTopNav && <TopNav page={currentPage} onChange={(key) => navigate(`/${key}`)} user={profile} onLogOut={logOut} notifications={notifications} onOpenOrder={onOpen} />}
+      {!hideTopNav && <TopNav page={currentPage} onChange={(key) => navigate(`/${key}`)} user={profile} onLogOut={logOut} notifications={notifications} onOpenOrder={onOpen} allowedPages={allowedPages} />}
 
       <div className={`${narrowPage ? "max-w-2xl" : "max-w-6xl"} mx-auto px-4 pb-10 ${hideTopNav ? "pt-4" : ""}`}>
         <Routes>
@@ -282,6 +301,7 @@ export default function App() {
               <AdminPage
                 technicians={technicians} vehicles={vehicles} users={users} timeOff={timeOff} currentUserId={profile.id} store={effectiveStore}
                 productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices}
+                permissions={profile.erSystemadmin ? null : permissions}
                 onUpdateTechnicianVehicle={updateTechnicianVehicle} onAddVehicle={vehiclesStore.addVehicle} onUpdateVehicle={vehiclesStore.updateVehicle} onDeleteVehicle={deleteVehicleWithConfirm} onToggleVehicleClosed={vehiclesStore.toggleVehicleClosed}
                 onAddUser={usersStore.addUser} onUpdateUser={usersStore.updateUser} onDeleteUser={usersStore.deleteUser} onResetPassword={usersStore.resetPassword}
                 onAddProductCategory={catalog.addProductCategory} onUpdateProductCategory={catalog.updateProductCategory} onDeleteProductCategory={catalog.deleteProductCategory}
@@ -295,8 +315,8 @@ export default function App() {
           } />
 
           {/* Systemadministration: styret af profiles.is_system_admin, IKKE af
-              PAGES_FOR_ROLE/allowedPages (som kun kender de almindelige
-              butiks-roller). Dækker den bruger, der er BÅDE systemadmin OG
+              PAGE_PERMISSION_KEYS/allowedPages (som kun kender de almindelige
+              butiks-rettigheder). Dækker den bruger, der er BÅDE systemadmin OG
               koblet til sin egen butik - uden denne rute var "System"-fanen i
               TopNav et dødt link for dem (RETTET august 2026, fejl fundet ved
               test - se rapport 26. august 2026). Systemadmins UDEN egen butik
