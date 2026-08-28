@@ -1,12 +1,28 @@
 import React, { useState, useRef, useEffect } from "react";
-import { X, Plus } from "lucide-react";
+import { X, Plus, Lock } from "lucide-react";
 import { formatTime, formatDuration, now, totalMinutes, lineItemLabel, serviceIcon } from "../data/domain";
+
+// RETTET (august 2026): alle "tilføj/rediger"-handlinger herunder
+// (onAdd/onToggleAddOn/onSave osv.) kan nu være undefined - se
+// OrderView.jsx/TechnicianPage.jsx, som bevidst IKKE sender dem med, hvis
+// den indloggede bruger mangler den relevante rettighed
+// (sag_feltarbejde). Hver komponent viser da en LÅST tilstand (ikon +
+// kort besked) i stedet for enten at skjule sig helt eller - vigtigst -
+// crashe ved at kalde en undefined funktion, hvis nogen når at klikke,
+// inden UI'et opdaterer sig.
+function LockedNotice({ text }) {
+  return (
+    <p className="text-xs text-muted italic mb-4 flex items-center gap-1.5"><Lock size={12} className="shrink-0" /> {text}</p>
+  );
+}
 
 function LineItemDetails({ order, onToggleAddOn, onAddAddOn, onRemoveAddOn }) {
   const [newItem, setNewItem] = useState({});
+  const locked = !onToggleAddOn || !onAddAddOn || !onRemoveAddOn;
   return (
     <div className="rounded-xl bg-white border border-line p-4 mb-5 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Varelinjer, ydelser & opmærksomhedspunkter</h3>
+      {locked && <LockedNotice text="Du kan se, men ikke redigere, tillægsydelser på denne sag." />}
       <div className="space-y-4">
         {order.varelinjer.map((v) => {
           const addOns = v.tillaeg || [];
@@ -27,26 +43,28 @@ function LineItemDetails({ order, onToggleAddOn, onAddAddOn, onRemoveAddOn }) {
                   {addOns.map((y) => {
                     const Icon = serviceIcon(y.navn);
                     return (
-                      <label key={y.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-panel cursor-pointer group">
-                        <input type="checkbox" checked={y.udfoert} onChange={() => onToggleAddOn(v.id, y.id)} className="w-4 h-4 accent-success" />
+                      <label key={y.id} className={`flex items-center gap-2.5 px-2 py-1.5 rounded-lg group ${locked ? "" : "hover:bg-panel cursor-pointer"}`}>
+                        <input type="checkbox" checked={y.udfoert} disabled={locked} onChange={() => onToggleAddOn(v.id, y.id)} className="w-4 h-4 accent-success disabled:opacity-60" />
                         <Icon size={14} className="text-muted shrink-0" strokeWidth={2.5} />
                         <span className={`text-sm flex-1 ${y.udfoert ? "line-through text-muted" : "text-ink"}`}>{y.navn}</span>
-                        <button onClick={(e) => { e.preventDefault(); onRemoveAddOn(v.id, y.id); }} className="opacity-0 group-hover:opacity-100 text-muted hover:text-brand"><X size={14} /></button>
+                        {!locked && <button onClick={(e) => { e.preventDefault(); onRemoveAddOn(v.id, y.id); }} className="opacity-0 group-hover:opacity-100 text-muted hover:text-brand"><X size={14} /></button>}
                       </label>
                     );
                   })}
                 </div>
               )}
-              <div className="flex gap-2 pl-2">
-                <input
-                  value={newItem[v.id] || ""}
-                  onChange={(e) => setNewItem((p) => ({ ...p, [v.id]: e.target.value }))}
-                  onKeyDown={(e) => { if (e.key === "Enter" && (newItem[v.id] || "").trim()) { onAddAddOn(v.id, newItem[v.id].trim()); setNewItem((p) => ({ ...p, [v.id]: "" })); } }}
-                  placeholder="Tilføj punkt..."
-                  className="flex-1 rounded-lg border border-line bg-panel px-3 py-1.5 text-sm text-ink focus:outline-none focus:border-brand"
-                />
-                <button onClick={() => { if (!(newItem[v.id] || "").trim()) return; onAddAddOn(v.id, newItem[v.id].trim()); setNewItem((p) => ({ ...p, [v.id]: "" })); }} className="px-3 rounded-lg text-ink border border-line hover:border-brand hover:text-brand transition-colors"><Plus size={16} /></button>
-              </div>
+              {!locked && (
+                <div className="flex gap-2 pl-2">
+                  <input
+                    value={newItem[v.id] || ""}
+                    onChange={(e) => setNewItem((p) => ({ ...p, [v.id]: e.target.value }))}
+                    onKeyDown={(e) => { if (e.key === "Enter" && (newItem[v.id] || "").trim()) { onAddAddOn(v.id, newItem[v.id].trim()); setNewItem((p) => ({ ...p, [v.id]: "" })); } }}
+                    placeholder="Tilføj punkt..."
+                    className="flex-1 rounded-lg border border-line bg-panel px-3 py-1.5 text-sm text-ink focus:outline-none focus:border-brand"
+                  />
+                  <button onClick={() => { if (!(newItem[v.id] || "").trim()) return; onAddAddOn(v.id, newItem[v.id].trim()); setNewItem((p) => ({ ...p, [v.id]: "" })); }} className="px-3 rounded-lg text-ink border border-line hover:border-brand hover:text-brand transition-colors"><Plus size={16} /></button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -64,10 +82,14 @@ function Notes({ order, onAdd }) {
   const [text, setText] = useState("");
   return (
     <div>
-      <div className="flex gap-2 mb-4">
-        <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Skriv en note om sagen..." rows={2} className="flex-1 rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand resize-none" />
-        <button onClick={() => { if (!text.trim()) return; onAdd(text); setText(""); }} className="px-4 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors">Tilføj</button>
-      </div>
+      {onAdd ? (
+        <div className="flex gap-2 mb-4">
+          <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Skriv en note om sagen..." rows={2} className="flex-1 rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand resize-none" />
+          <button onClick={() => { if (!text.trim()) return; onAdd(text); setText(""); }} className="px-4 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors">Tilføj</button>
+        </div>
+      ) : (
+        <LockedNotice text="Du kan se, men ikke tilføje, noter på denne sag." />
+      )}
       {order.noter.length === 0 ? <p className="text-sm text-muted italic">Ingen noter endnu for denne sag.</p> : (
         <div className="space-y-2">
           {[...order.noter].reverse().map((n) => (
@@ -93,10 +115,14 @@ function Photos({ order, onAdd }) {
   };
   return (
     <div>
-      <div onClick={() => inputRef.current?.click()} className="mb-4 rounded-xl border border-dashed border-line hover:border-brand transition-colors bg-white p-6 text-center cursor-pointer">
-        <p className="text-sm text-muted">Tryk for at tilføje billeder fra sagen</p>
-        <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => e.target.files && handleFiles(e.target.files)} />
-      </div>
+      {onAdd ? (
+        <div onClick={() => inputRef.current?.click()} className="mb-4 rounded-xl border border-dashed border-line hover:border-brand transition-colors bg-white p-6 text-center cursor-pointer">
+          <p className="text-sm text-muted">Tryk for at tilføje billeder fra sagen</p>
+          <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => e.target.files && handleFiles(e.target.files)} />
+        </div>
+      ) : (
+        <LockedNotice text="Du kan se, men ikke tilføje, billeder på denne sag." />
+      )}
       {order.billeder.length === 0 ? <p className="text-sm text-muted italic">Ingen billeder endnu for denne sag.</p> : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {order.billeder.map((b) => (
@@ -117,11 +143,15 @@ function Reports({ order, onAdd }) {
   const [text, setText] = useState("");
   return (
     <div>
-      <div className="rounded-xl border border-line bg-white p-4 mb-4 shadow-sm">
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Rapporttitel, fx 'Afleveringsrapport'" className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink mb-2 focus:outline-none focus:border-brand" />
-        <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Beskrivelse af udført arbejde..." rows={3} className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink mb-2 focus:outline-none focus:border-brand resize-none" />
-        <button onClick={() => { if (!title.trim() || !text.trim()) return; onAdd(title, text); setTitle(""); setText(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors">Gem rapport</button>
-      </div>
+      {onAdd ? (
+        <div className="rounded-xl border border-line bg-white p-4 mb-4 shadow-sm">
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Rapporttitel, fx 'Afleveringsrapport'" className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink mb-2 focus:outline-none focus:border-brand" />
+          <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Beskrivelse af udført arbejde..." rows={3} className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink mb-2 focus:outline-none focus:border-brand resize-none" />
+          <button onClick={() => { if (!title.trim() || !text.trim()) return; onAdd(title, text); setTitle(""); setText(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors">Gem rapport</button>
+        </div>
+      ) : (
+        <LockedNotice text="Du kan se, men ikke oprette, rapporter på denne sag." />
+      )}
       {order.rapporter.length === 0 ? <p className="text-sm text-muted italic">Ingen rapporter endnu for denne sag.</p> : (
         <div className="space-y-2">
           {[...order.rapporter].reverse().map((r) => (
@@ -173,6 +203,7 @@ function ClockWidget({ order, onClockIn, onClockOut }) {
   const hh = String(Math.floor(liveSeconds / 3600)).padStart(2, "0");
   const mm = String(Math.floor((liveSeconds % 3600) / 60)).padStart(2, "0");
   const ss = String(liveSeconds % 60).padStart(2, "0");
+  const locked = !onClockIn || !onClockOut;
 
   return (
     <div className="flex items-center justify-between rounded-xl border border-line bg-white p-4 mb-5 shadow-sm">
@@ -190,9 +221,9 @@ function ClockWidget({ order, onClockIn, onClockOut }) {
         )}
       </div>
       {order.stemplerInd ? (
-        <button onClick={onClockOut} className="px-5 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-ink transition-colors">Stemplet ud</button>
+        <button onClick={onClockOut} disabled={locked} className="px-5 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-ink transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5">{locked && <Lock size={13} />} Stemplet ud</button>
       ) : (
-        <button onClick={onClockIn} className="px-5 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-success hover:bg-ink transition-colors">Stemplet ind</button>
+        <button onClick={onClockIn} disabled={locked} className="px-5 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-success hover:bg-ink transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5">{locked && <Lock size={13} />} Stemplet ind</button>
       )}
     </div>
   );
@@ -301,10 +332,16 @@ function SignaturePad({ defaultName, onSave, onCancel }) {
 // Kundekvittering ved aflevering. Er allerede underskrevet, vises den
 // gemte underskrift + hvem der kvitterede og hvornår - med mulighed for at
 // underskrive igen (fx hvis der var en fejl, eller kunden ombestemmer sig
-// om hvem der kvitterer).
+// om hvem der kvitterer). RETTET (august 2026): onSave kan nu være
+// undefined (mangler sag_feltarbejde) - så vises kvitteringen kun
+// læsende, uden mulighed for at underskrive/genunderskrive.
 function Signature({ order, onSave }) {
   const existing = order.underskrift;
-  const [signing, setSigning] = useState(!existing);
+  const [signing, setSigning] = useState(!existing && !!onSave);
+
+  if (!onSave && !existing) {
+    return <LockedNotice text="Du kan ikke tage imod en kundeunderskrift på denne sag." />;
+  }
 
   if (!signing && existing) {
     return (
@@ -314,7 +351,7 @@ function Signature({ order, onSave }) {
             <p className="text-sm font-semibold text-ink">Kvitteret af {existing.navn}</p>
             <p className="text-[11px] text-muted">{existing.tid}</p>
           </div>
-          <button onClick={() => setSigning(true)} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand underline shrink-0">Underskriv igen</button>
+          {onSave && <button onClick={() => setSigning(true)} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand underline shrink-0">Underskriv igen</button>}
         </div>
         <img src={existing.data} alt={`Underskrift fra ${existing.navn}`} className="w-full max-w-sm rounded-lg border border-line bg-white" />
       </div>
