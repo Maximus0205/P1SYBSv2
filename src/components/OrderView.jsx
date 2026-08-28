@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { KeyRound, Building2, Hash, Pencil, X, Check, Copy, AlertTriangle, User } from "lucide-react";
-import { TIME_SLOTS, buildTitle, keyAccessText, timeSlotById, timeSlotText, lineItemLabel } from "../data/domain";
+import { KeyRound, Building2, Hash, Pencil, X, Check, Copy, AlertTriangle, User, Lock } from "lucide-react";
+import { TIME_SLOTS, buildTitle, keyAccessText, timeSlotById, timeSlotText, lineItemLabel, canDo } from "../data/domain";
 import { StatusBadge } from "../components/common";
 import { LineItemDetails, Notes, Photos, Reports, TimeLog, ClockWidget, Signature } from "../components/OrderParts";
 import { AddressInput } from "../components/AddressInput";
@@ -10,19 +10,35 @@ import { AddressInput } from "../components/AddressInput";
 // (fx kunden ringer og vil rykke datoen). Resten af sagen (varelinjer,
 // kunde-/købernavn osv.) redigeres ikke her - det er bevidst holdt til de
 // hyppigste ændringer, for at redigeringen forbliver hurtig og overskuelig.
-function BookingEditor({ order, technicians, onSave, onCancel }) {
+//
+// RETTET (august 2026): dato/tidsrum/montør (sag_planlaegning) og
+// leveringsadresse (sag_kunde) er to FORSKELLIGE rettigheder - se
+// permissions-kataloget i databasen. Mangler man den ene, låses de
+// tilhørende felter (grå, ikke-redigerbare) i stedet for at hele
+// redigeringen skjules - man kan sagtens have lov til at flytte datoen
+// uden at måtte røre kundens adresse, eller omvendt. Kun de felter man
+// faktisk har rørt (og har lov til) sendes med i onSave - resten
+// udelades, så useOrders.js's updateBooking (som slår sammen med
+// eksisterende felter) ikke overskriver noget man ikke havde adgang til.
+function BookingEditor({ order, technicians, onSave, onCancel, permissions }) {
+  const canPlan = canDo(permissions, "sag_planlaegning");
+  const canEditCustomer = canDo(permissions, "sag_kunde");
+
   const [date, setDate] = useState(order.dato);
   const [timeSlotId, setTimeSlotId] = useState(order.tidsrumId);
   const [technicianId, setTechnicianId] = useState(order.montorId || "");
   const [address, setAddress] = useState(order.kunde.adresse);
 
   const save = () => {
-    const t = timeSlotById(timeSlotId);
-    onSave({
-      dato: date, tidsrumId: timeSlotId, start: t.start, slut: t.slut,
-      montorId: technicianId || null,
-      kunde: { ...order.kunde, adresse: address.trim() },
-    });
+    const fields = {};
+    if (canPlan) {
+      const t = timeSlotById(timeSlotId);
+      Object.assign(fields, { dato: date, tidsrumId: timeSlotId, start: t.start, slut: t.slut, montorId: technicianId || null });
+    }
+    if (canEditCustomer) {
+      fields.kunde = { ...order.kunde, adresse: address.trim() };
+    }
+    onSave(fields);
   };
 
   return (
@@ -31,26 +47,33 @@ function BookingEditor({ order, technicians, onSave, onCancel }) {
       <div className="grid gap-3 sm:grid-cols-2 mb-3">
         <label className="text-xs text-muted">
           Dato
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
+          <input type="date" value={date} disabled={!canPlan} onChange={(e) => setDate(e.target.value)} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand disabled:opacity-60 disabled:cursor-not-allowed" />
         </label>
         <label className="text-xs text-muted">
           Tidsrum
-          <select value={timeSlotId} onChange={(e) => setTimeSlotId(e.target.value)} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
+          <select value={timeSlotId} disabled={!canPlan} onChange={(e) => setTimeSlotId(e.target.value)} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand disabled:opacity-60 disabled:cursor-not-allowed">
             {TIME_SLOTS.map((t) => <option key={t.id} value={t.id}>{timeSlotText(t.id)}</option>)}
           </select>
         </label>
         <label className="text-xs text-muted sm:col-span-2">
           Montør/bil
-          <select value={technicianId} onChange={(e) => setTechnicianId(e.target.value)} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
+          <select value={technicianId} disabled={!canPlan} onChange={(e) => setTechnicianId(e.target.value)} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand disabled:opacity-60 disabled:cursor-not-allowed">
             <option value="">Ikke tildelt</option>
             {technicians.map((m) => <option key={m.id} value={m.id}>{m.navn} — {m.bil}</option>)}
           </select>
         </label>
         <label className="text-xs text-muted sm:col-span-2">
           Leveringsadresse
-          <div className="mt-1"><AddressInput value={address} onChange={setAddress} placeholder="Leveringsadresse" /></div>
+          {canEditCustomer ? (
+            <div className="mt-1"><AddressInput value={address} onChange={setAddress} placeholder="Leveringsadresse" /></div>
+          ) : (
+            <div className="mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-muted flex items-center gap-1.5"><Lock size={12} className="shrink-0" /> {address || "Ingen adresse"}</div>
+          )}
         </label>
       </div>
+      {(!canPlan || !canEditCustomer) && (
+        <p className="text-[11px] text-muted mb-3 flex items-center gap-1.5"><Lock size={11} className="shrink-0" /> Nogle felter er låst - du mangler rettigheden til at redigere dem.</p>
+      )}
       <div className="flex gap-2">
         <button onClick={save} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors flex items-center gap-1.5"><Check size={14} /> Gem ændringer</button>
         <button onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted transition-colors flex items-center gap-1.5"><X size={14} /> Annuller</button>
@@ -102,11 +125,15 @@ function DuplicatePanel({ order, onDuplicate, onCancel }) {
   );
 }
 
-function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, onCycleStatus, onClockIn, onClockOut, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onSaveSignature, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder }) {
+function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, onCycleStatus, onClockIn, onClockOut, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onSaveSignature, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions }) {
   const [tab, setTab] = useState("noter");
   const [editing, setEditing] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   const technician = technicians.find((m) => m.id === order.montorId);
+  const canFieldwork = canDo(permissions, "sag_feltarbejde");
+  const canPlan = canDo(permissions, "sag_planlaegning");
+  const canEditCustomer = canDo(permissions, "sag_kunde");
+  const canCreate = canDo(permissions, "sag_opret");
   const tabs = [
     { key: "noter", label: "Noter", count: order.noter.length },
     { key: "materialer", label: "Materialer", count: (order.materialer || []).length },
@@ -124,6 +151,7 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
         <BookingEditor
           order={order}
           technicians={technicians}
+          permissions={permissions}
           onCancel={() => setEditing(false)}
           onSave={(fields) => { onUpdateBooking(fields); setEditing(false); }}
         />
@@ -150,7 +178,7 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
                 <div className="mt-2.5 rounded-lg bg-danger/10 border border-danger px-3 py-2">
                   <p className="text-sm font-semibold text-danger flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" /> Sagen kom ikke i mål</p>
                   <p className="text-xs text-danger mt-0.5">{order.problem.note} · {order.problem.tid}</p>
-                  {onClearProblem && <button onClick={onClearProblem} className="text-[11px] text-danger underline hover:no-underline mt-1">Ryd markering</button>}
+                  {onClearProblem && canFieldwork && <button onClick={onClearProblem} className="text-[11px] text-danger underline hover:no-underline mt-1">Ryd markering</button>}
                 </div>
               )}
               {followUpOrder && onOpenOrder && (
@@ -176,9 +204,11 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
               )}
             </div>
             <div className="flex flex-col items-end gap-2">
-              <button onClick={() => onCycleStatus(order.id)}><StatusBadge status={order.status} /></button>
-              <button onClick={() => setEditing(true)} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand flex items-center gap-1"><Pencil size={13} /> Redigér booking</button>
-              {onDuplicate && (
+              <button onClick={() => canFieldwork && onCycleStatus(order.id)} disabled={!canFieldwork} className="disabled:opacity-60 disabled:cursor-not-allowed"><StatusBadge status={order.status} /></button>
+              {(canPlan || canEditCustomer) && (
+                <button onClick={() => setEditing(true)} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand flex items-center gap-1"><Pencil size={13} /> Redigér booking</button>
+              )}
+              {onDuplicate && canCreate && (
                 <button onClick={() => setDuplicating(true)} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand flex items-center gap-1"><Copy size={13} /> Dupliker / opfølgning</button>
               )}
             </div>
@@ -186,8 +216,8 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
         </div>
       )}
 
-      <LineItemDetails order={order} onToggleAddOn={onToggleAddOn} onAddAddOn={onAddAddOn} onRemoveAddOn={onRemoveAddOn} />
-      <ClockWidget order={order} onClockIn={onClockIn} onClockOut={onClockOut} />
+      <LineItemDetails order={order} onToggleAddOn={canFieldwork ? onToggleAddOn : undefined} onAddAddOn={canFieldwork ? onAddAddOn : undefined} onRemoveAddOn={canFieldwork ? onRemoveAddOn : undefined} />
+      <ClockWidget order={order} onClockIn={canFieldwork ? onClockIn : undefined} onClockOut={canFieldwork ? onClockOut : undefined} />
       <div className="flex border-b border-line mb-5 overflow-x-auto">
         {tabs.map((t) => (
           <button key={t.key} onClick={() => setTab(t.key)} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors shrink-0 ${tab === t.key ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
@@ -195,7 +225,7 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
           </button>
         ))}
       </div>
-      {tab === "noter" && <Notes order={order} onAdd={addNote} />}
+      {tab === "noter" && <Notes order={order} onAdd={canFieldwork ? addNote : undefined} />}
       {tab === "materialer" && (
         (order.materialer || []).length === 0 ? (
           <p className="text-sm text-muted italic">Intet ekstra materialeforbrug registreret for denne sag.</p>
@@ -210,10 +240,10 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
           </div>
         )
       )}
-      {tab === "billeder" && <Photos order={order} onAdd={addPhoto} />}
-      {tab === "rapporter" && <Reports order={order} onAdd={addReport} />}
+      {tab === "billeder" && <Photos order={order} onAdd={canFieldwork ? addPhoto : undefined} />}
+      {tab === "rapporter" && <Reports order={order} onAdd={canFieldwork ? addReport : undefined} />}
       {tab === "tid" && <TimeLog order={order} />}
-      {tab === "underskrift" && <Signature order={order} onSave={onSaveSignature} />}
+      {tab === "underskrift" && <Signature order={order} onSave={canFieldwork ? onSaveSignature : undefined} />}
     </div>
   );
 }
