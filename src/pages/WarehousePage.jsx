@@ -16,7 +16,9 @@ import { DateSelector } from "../components/common";
 // delene ikke opfyldt, giver det ikke mening at bede lageret plukke varen
 // endnu - den kan jo ikke leveres. Sagen dukker i stedet op i
 // Planlægning under "Kræver handling", hvor det reelle problem (ingen
-// montør/bil) skal løses først.
+// montør/bil) skal løses først. Eksporteres (august 2026) så DashboardPage
+// kan genbruge samme regel til "Dagens pluk"-widgeten, i stedet for at
+// duplikere den.
 function isOrderPickable(order, technicians, vehicles) {
   if (!order.montorId) return false;
   const technician = technicians.find((m) => m.id === order.montorId);
@@ -92,4 +94,4 @@ function WarehousePage({ orders, technicians, vehicles, selectedDate, onDateChan
   );
 }
 
-export { WarehousePage };
+export { WarehousePage, isOrderPickable };
