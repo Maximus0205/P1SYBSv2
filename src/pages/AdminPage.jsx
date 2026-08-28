@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Trash2, Plus } from "lucide-react";
 import { TechnicianRow, SickLeaveWindowSetting, VehicleRow, UserRow, NewUserForm, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin } from "../components/AdminParts";
+import { getPermissionsCatalog, getRoleDefaultPermissions } from "../lib/dataStore";
 
 // RETTET (august 2026): Admin-sidens FANER vises nu ud fra brugerens
 // faktiske admin_*-rettigheder (permissions), ikke længere ubetinget for
@@ -14,7 +15,7 @@ function AdminPage({
   productTypes, productCategories, primaryServices, addOnServices,
   permissions,
   onUpdateTechnicianVehicle, onAddVehicle, onUpdateVehicle, onDeleteVehicle, onToggleVehicleClosed,
-  onAddUser, onUpdateUser, onDeleteUser, onResetPassword,
+  onAddUser, onUpdateUser, onDeleteUser, onResetPassword, onUpdatePermissions,
   onAddProductCategory, onUpdateProductCategory, onDeleteProductCategory,
   onAddProductType, onUpdateProductType, onDeleteProductType,
   onAddPrimaryService, onUpdatePrimaryService, onDeletePrimaryService,
@@ -34,6 +35,16 @@ function AdminPage({
   const [newPlate, setNewPlate] = useState("");
   const [tab, setTab] = useState(visibleTabs[0]?.k || "montorer");
   const [productTab, setProductTab] = useState("kategorier");
+
+  // Rettighedskataloget + rolle-standarderne (til rettigheds-editoren for
+  // hver bruger, se UserRow i AdminParts.jsx) - statiske/sjældent
+  // ændrede, så hentes én gang her frem for i hver enkelt brugerrække.
+  const [permissionsCatalog, setPermissionsCatalog] = useState([]);
+  const [roleDefaults, setRoleDefaults] = useState({});
+  useEffect(() => {
+    getPermissionsCatalog().then(setPermissionsCatalog);
+    getRoleDefaultPermissions().then(setRoleDefaults);
+  }, []);
 
   // Hvis brugerens rettigheder ændrer sig (fx en anden admin fjerner en
   // rettighed mens siden er åben) og den valgte fane ikke længere er
@@ -131,10 +142,16 @@ function AdminPage({
           <div className="space-y-2">
             {users.map((b) => {
               const vehicle = vehicles.find((v) => v.id === b.bilId);
-              return <UserRow key={b.id} user={b} vehicle={vehicle} currentUserId={currentUserId} onUpdate={onUpdateUser} onDelete={onDeleteUser} onResetPassword={onResetPassword} />;
+              return (
+                <UserRow
+                  key={b.id} user={b} vehicle={vehicle} currentUserId={currentUserId}
+                  onUpdate={onUpdateUser} onDelete={onDeleteUser} onResetPassword={onResetPassword}
+                  permissionsCatalog={permissionsCatalog} roleDefaults={roleDefaults} onUpdatePermissions={onUpdatePermissions}
+                />
+              );
             })}
           </div>
-          <p className="text-[11px] text-muted mt-3">Sætter du en bruger til rollen "Montør", skal du huske at give vedkommende en bil under fanen "Montører".</p>
+          <p className="text-[11px] text-muted mt-3">Sætter du en bruger til rollen "Montør", skal du huske at give vedkommende en bil under fanen "Montører". Brug "Rettigheder" på den enkelte bruger til at tilføje eller fratage adgang udover det, rollen giver som udgangspunkt.</p>
         </div>
       )}
 
