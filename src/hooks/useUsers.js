@@ -21,8 +21,17 @@ export function useUsers(storeId) {
 
   useEffect(() => { load(storeId); }, [storeId, load]);
 
+  // RETTET (august 2026): sender nu ALTID butikId (= den butik hooket er
+  // parameteriseret med - den butik der lige nu vises, se App.jsx's
+  // butiks-skifter for systemadmins) eksplicit med. For en almindelig
+  // admin ignorerer edge functionen (admin-opret-bruger) den alligevel og
+  // bruger deres egen butik - men for en SYSTEMADMIN, der lige nu er
+  // skiftet over til at se en anden butik end deres egen, er det
+  // afgørende: uden det ville edge functionen (som for systemadmins
+  // eksplicit stoler på et medsendt butikId) ende med at oprette brugeren
+  // UDEN nogen butik overhovedet.
   const addUser = async (fields) => {
-    const result = await createUserAsAdmin(fields);
+    const result = await createUserAsAdmin({ ...fields, butikId: storeId });
     if (result.ok && storeId) await load(storeId);
     return result;
   };
