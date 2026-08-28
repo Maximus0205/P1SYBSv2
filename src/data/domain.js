@@ -1,4 +1,4 @@
-import { RotateCw, Trash2, Cable, Wifi, Wrench, Tag, ShoppingCart, Route, Truck, Package, Settings2, Building2, Archive } from "lucide-react";
+import { RotateCw, Trash2, Cable, Wifi, Wrench, Tag, ShoppingCart, Route, Truck, Package, Settings2, Building2, Archive, Home, Bell, AlertCircle, CalendarClock } from "lucide-react";
 
 // Core domain helpers and default data for the app. Function/constant names
 // are English (part of the codebase's English rename); the actual STRING
@@ -316,6 +316,29 @@ const needsPlanning = (order) => order.status !== "afsluttet" && (!order.dato ||
 // rettigheder for dem).
 const canDo = (permissions, key) => permissions === null || (permissions || []).includes(key);
 
+// DASHBOARD-WIDGETS (august 2026): kataloget over widgets forsiden kan
+// sammensættes af, og hvad hver især kræver af rettighed for at give
+// mening at vise (null = altid relevant, ingen bestemt rettighed
+// nødvendig). "Forside" selv er IKKE en rettighed - alle med adgang til
+// en butik overhovedet har en forside, se DashboardPage.jsx.
+const DASHBOARD_WIDGET_CATALOG = [
+  { key: "needs_action", label: "Kræver handling", icon: AlertCircle, requires: "planlaegning" },
+  { key: "today_route", label: "Dagens rute", icon: Route, requires: "montor" },
+  { key: "pick_list", label: "Dagens pluk", icon: Package, requires: "lager" },
+  { key: "quick_booking", label: "Hurtig booking", icon: ShoppingCart, requires: "salg" },
+  { key: "notifications", label: "Notifikationer", icon: Bell, requires: null },
+  { key: "upcoming_today", label: "Sager i dag", icon: CalendarClock, requires: null },
+];
+
+// Standard-widgets pr. rolle, indtil brugeren selv tilpasser sin forside
+// (se profiles.dashboard_widgets - null/tom betyder "brug denne standard").
+const DEFAULT_DASHBOARD_WIDGETS = {
+  admin: ["needs_action", "upcoming_today", "quick_booking", "notifications"],
+  saelger: ["needs_action", "quick_booking", "upcoming_today", "notifications"],
+  montor: ["today_route", "notifications"],
+  lager: ["pick_list"],
+};
+
 export {
   uid, now, todayISO, addDays, formatLongDate, formatShortDate, isToday, formatDuration, formatTime, totalMinutes, serviceIcon,
   DEFAULT_SERVICE_MINUTES, createAddOn, OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID,
@@ -323,7 +346,7 @@ export {
   createLineItem, lineItemLabel, lineItemMinutes, orderExpectedMinutes, normalizeAddress, buildingKey, areaKey,
   weekDays, buildTitle, keyAccessText, TIME_SLOTS, timeSlotById, timeSlotText, KEY_ACCESS_TYPES, TECHNICIAN_COLORS, technicianColor,
   DEFAULT_VEHICLES, vehicleLabel, vehicleBlockedByTimeOff, isTechnicianAbsent, activeSickLeave, emptyCustomer, emptyKeyAccess, STATUS_META,
-  dailyOrderCompare, needsPlanning, computeNotifications, PAGES, PAGES_FOR_ROLE, canDo,
+  dailyOrderCompare, needsPlanning, computeNotifications, PAGES, PAGES_FOR_ROLE, canDo, DASHBOARD_WIDGET_CATALOG, DEFAULT_DASHBOARD_WIDGETS,
 };
 
 // Beregner, for en given bruger (profileId), hvilke af DERES EGNE bookede
@@ -349,7 +372,13 @@ function computeNotifications(orders, profileId) {
 // Kørsel er fusioneret ind i Planlægning (august 2026) - de to sider
 // dækkede reelt samme arbejdsopgave. "koersel" findes derfor ikke længere
 // som selvstændig fane, se PlanningPage.jsx.
+//
+// "dashboard" (august 2026): forsiden - se DashboardPage.jsx. Ikke
+// rettighedsstyret som de øvrige (alle med en butik har en forside),
+// derfor tilføjet direkte i allowedPages i App.jsx, ikke via
+// permissions-kataloget.
 const PAGES = [
+  { key: "dashboard", label: "Forside", icon: Home },
   { key: "salg", label: "Salg", icon: ShoppingCart },
   { key: "planlaegning", label: "Planlægning", icon: Route },
   { key: "montor", label: "Montør", icon: Truck },
