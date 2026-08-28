@@ -8,6 +8,7 @@ import { useVehicles } from "./hooks/useVehicles";
 import { useTimeOff } from "./hooks/useTimeOff";
 import { useUsers } from "./hooks/useUsers";
 import { useOrders } from "./hooks/useOrders";
+import { getAllStores, getStore } from "./lib/dataStore";
 
 import { TopNav } from "./components/TopNav";
 import { LoginPage } from "./components/LoginPage";
@@ -129,13 +130,42 @@ function MontorRoute({ profile, orders, technicians, ordersStore, refresh, refre
 const PAGE_PERMISSION_KEYS = ["salg", "planlaegning", "montor", "lager", "arkiv"];
 
 export default function App() {
-  const { loading, session, profile, store, permissions, logOut } = useSession();
+  const { loading, session, profile, permissions, logOut } = useSession();
 
-  const catalog = useCatalog(profile?.butikId);
-  const vehiclesStore = useVehicles(profile?.butikId);
-  const timeOffStore = useTimeOff(profile?.butikId);
-  const usersStore = useUsers(profile?.butikId);
-  const ordersStore = useOrders(profile?.butikId);
+  // BUTIKS-SKIFT (august 2026): activeStoreId er den butik, hvis data der
+  // rent faktisk vises/hentes lige nu. For langt de fleste er det altid
+  // deres egen butik (profile.butikId) - men en SYSTEMADMIN kan skifte
+  // den til en ANDEN butik, for at se/hjælpe den, uden det ændrer noget
+  // på deres egen brugerkonto (se TopNav.jsx: StoreSwitcher, og migrationen
+  // "system_admin_can_read_write_any_store_data" i Supabase-projektet, som
+  // giver dem RLS-adgang til enhver butiks data). Ren UI-tilstand -
+  // nulstilles ved genindlæsning/login til egen butik (eller "ingen" for
+  // en systemadmin uden egen). undefined = "endnu ikke initialiseret fra
+  // profilen" (adskilt fra null = "bevidst ingen butik valgt"), så det
+  // korte øjeblik mellem profil-indlæsning og initialisering kan vises som
+  // en loading-tilstand i stedet for fejlagtigt at ramme "ingen butik".
+  const [activeStoreId, setActiveStoreId] = useState(undefined);
+  const [allStores, setAllStores] = useState([]);
+  const [activeStore, setActiveStore] = useState(null);
+
+  useEffect(() => {
+    if (profile && activeStoreId === undefined) setActiveStoreId(profile.butikId || null);
+  }, [profile, activeStoreId]);
+
+  useEffect(() => {
+    if (profile?.erSystemadmin) getAllStores().then(setAllStores);
+  }, [profile?.erSystemadmin]);
+
+  useEffect(() => {
+    if (!activeStoreId) { setActiveStore(null); return; }
+    getStore(activeStoreId).then(setActiveStore);
+  }, [activeStoreId]);
+
+  const catalog = useCatalog(activeStoreId || null);
+  const vehiclesStore = useVehicles(activeStoreId || null);
+  const timeOffStore = useTimeOff(activeStoreId || null);
+  const usersStore = useUsers(activeStoreId || null);
+  const ordersStore = useOrders(activeStoreId || null);
   const { vehicles } = vehiclesStore;
   const { timeOff } = timeOffStore;
   const { users } = usersStore;
@@ -144,11 +174,14 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [refreshing, setRefreshing] = useState(false);
   // Sygemeldingsvinduet (timer) kan rettes af butikkens admin (se
-  // AdminPage/SickLeaveWindowSetting) - useSession genindlæser ikke
-  // automatisk butikken efter det, så vi holder en lokal override her, der
-  // vinder over den oprindeligt indlæste værdi, indtil næste login/refresh.
+  // AdminPage/SickLeaveWindowSetting) - hentes ikke automatisk igen efter
+  // det, så vi holder en lokal override her, der vinder over den
+  // oprindeligt indlæste værdi, indtil næste skift af butik/genindlæsning.
   const [sickLeaveWindowOverride, setSickLeaveWindowOverride] = useState(null);
-  const effectiveStore = store ? { ...store, sygemeldingVindueTimer: sickLeaveWindowOverride ?? store.sygemeldingVindueTimer } : store;
+  const effectiveStore = activeStore ? { ...activeStore, sygemeldingVindueTimer: sickLeaveWindowOverride ?? activeStore.sygemeldingVindueTimer } : activeStore;
+
+  const switchStore = (storeId) => { setSickLeaveWindowOverride(null); setActiveStoreId(storeId); };
+  const exitStoreView = () => { setSickLeaveWindowOverride(null); setActiveStoreId(null); };
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -163,7 +196,7 @@ export default function App() {
   const notifications = useMemo(() => computeNotifications(orders, profile?.id), [orders, profile?.id]);
 
   const refresh = async () => {
-    if (!profile?.butikId) return;
+    if (!activeStoreId) return;
     setRefreshing(true);
     await Promise.all([ordersStore.reload(), catalog.reload(), vehiclesStore.reload(), timeOffStore.reload(), usersStore.reload()]);
     setRefreshing(false);
@@ -194,11 +227,11 @@ export default function App() {
     return <LoginPage />;
   }
 
-  if (!profile) {
+  if (!profile || activeStoreId === undefined) {
     return <div className="min-h-screen w-full flex items-center justify-center bg-paper"><p className="text-sm text-muted">Indlæser profil...</p></div>;
   }
 
-  if (!profile.butikId) {
+  if (!activeStoreId) {
     if (profile.erSystemadmin) {
       return (
         <div className="min-h-screen w-full bg-paper">
@@ -207,6 +240,19 @@ export default function App() {
               <p className="font-mono text-[11px] tracking-widest uppercase text-brand">Systemadministration</p>
               <button onClick={logOut} className="text-xs text-muted hover:text-brand underline">Log ud</button>
             </div>
+            {allStores.length > 0 && (
+              <div className="mb-6 rounded-xl border border-line bg-white p-4 shadow-sm">
+                <label className="text-xs text-muted block mb-1.5">Se og hjælp en specifik butik</label>
+                <select
+                  defaultValue=""
+                  onChange={(e) => e.target.value && switchStore(e.target.value)}
+                  className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
+                >
+                  <option value="">Vælg en butik...</option>
+                  {allStores.map((s) => <option key={s.id} value={s.id}>{s.navn}</option>)}
+                </select>
+              </div>
+            )}
             <SystemAdminPage />
           </div>
         </div>
@@ -230,7 +276,8 @@ export default function App() {
   // PAGES_FOR_ROLE[rolle]-opslagstabel. En systemadmin ser altid alt (de
   // går allerede udenom alle tilsvarende databasetjek, se
   // orders_guard_field_groups/profiles_guard_privileged_fields-triggerne),
-  // uafhængigt af hvilke rettigheder deres egen butiks-profil måtte have.
+  // uafhængigt af hvilke rettigheder deres egen butiks-profil måtte have -
+  // og uanset hvilken butik de lige nu er skiftet over til at se.
   const allowedPages = profile.erSystemadmin
     ? [...PAGE_PERMISSION_KEYS, "admin"]
     : [
@@ -254,7 +301,14 @@ export default function App() {
         .font-mono { font-family: 'JetBrains Mono', monospace; }
       `}</style>
 
-      {!hideTopNav && <TopNav page={currentPage} onChange={(key) => navigate(`/${key}`)} user={profile} onLogOut={logOut} notifications={notifications} onOpenOrder={onOpen} allowedPages={allowedPages} />}
+      {!hideTopNav && (
+        <TopNav
+          page={currentPage} onChange={(key) => navigate(`/${key}`)} user={profile} onLogOut={logOut}
+          notifications={notifications} onOpenOrder={onOpen} allowedPages={allowedPages}
+          store={effectiveStore} allStores={allStores} onSwitchStore={switchStore}
+          onExitStoreView={profile.erSystemadmin ? exitStoreView : undefined}
+        />
+      )}
 
       <div className={`${narrowPage ? "max-w-2xl" : "max-w-6xl"} mx-auto px-4 pb-10 ${hideTopNav ? "pt-4" : ""}`}>
         <Routes>
@@ -328,7 +382,9 @@ export default function App() {
               TopNav et dødt link for dem (RETTET august 2026, fejl fundet ved
               test - se rapport 26. august 2026). Systemadmins UDEN egen butik
               rammer aldrig denne rute, de får SystemAdminPage vist direkte
-              ovenfor (se "!profile.butikId"-grenen), før Routes overhovedet når at blive nået. */}
+              ovenfor (se "!activeStoreId"-grenen), før Routes overhovedet når at
+              blive nået - ligesom når de bevidst skifter tilbage dertil via
+              TopNav's "tilbage til systemadministration"-knap. */}
           <Route path="/systemadmin" element={
             profile.erSystemadmin ? <SystemAdminPage /> : <Navigate to={`/${allowedPages[0]}`} replace />
           } />
