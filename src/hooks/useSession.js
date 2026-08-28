@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
-import { getOwnProfile, getStore } from "../lib/dataStore";
+import { getOwnProfile, getStore, getMyPermissions } from "../lib/dataStore";
 
 // FASE 4 (sidste) af arkitektur-oprydningen (august 2026) - se
 // hooks/useCatalog.js for den fulde begrundelse. Al state for SESSION,
@@ -21,22 +21,31 @@ import { getOwnProfile, getStore } from "../lib/dataStore";
 // montør der er valgt (selectedTechnicianId) er navigations-UI-state, ikke
 // session-data - App.jsx reagerer selv på ændringer i profile via sin egen
 // useEffect, i stedet for at denne hook selv styrer navigation.
+//
+// RETTIGHEDER (august 2026): permissions er brugerens FAKTISKE, håndhævede
+// rettigheder (rollens standard ∪ individuelle tilføjelser, minus
+// individuelle fratagelser - se my_effective_permissions() i databasen).
+// Hentes samme sted og på samme tidspunkt som resten af profilen, af
+// samme grund som resten af denne hook er samlet ét sted.
 export function useSession() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null); // { id, navn, rolle, bilId, butikId, erSystemadmin }
   const [store, setStore] = useState(null); // { id, navn, adresse, lat, lon }
+  const [permissions, setPermissions] = useState([]); // string[] - se has_permission()/my_effective_permissions() i databasen
 
   const reloadProfile = useCallback(async (userId) => {
     const p = await getOwnProfile(userId);
-    if (!p) { setProfile(null); setStore(null); return null; }
+    if (!p) { setProfile(null); setStore(null); setPermissions([]); return null; }
     const normalized = { id: p.id, navn: p.navn, rolle: p.rolle, bilId: p.bil_id, butikId: p.butik_id, erSystemadmin: !!p.er_systemadmin };
     setProfile(normalized);
     if (normalized.butikId) {
-      const storeData = await getStore(normalized.butikId);
+      const [storeData, myPermissions] = await Promise.all([getStore(normalized.butikId), getMyPermissions()]);
       setStore(storeData);
+      setPermissions(myPermissions);
     } else {
       setStore(null);
+      setPermissions([]);
     }
     return normalized;
   }, []);
@@ -58,6 +67,7 @@ export function useSession() {
       } else {
         setProfile(null);
         setStore(null);
+        setPermissions([]);
       }
     });
 
@@ -67,5 +77,5 @@ export function useSession() {
 
   const logOut = async () => { await supabase.auth.signOut(); };
 
-  return { loading, session, profile, store, logOut };
+  return { loading, session, profile, store, permissions, logOut, reloadPermissions: () => reloadProfile(session?.user?.id) };
 }
