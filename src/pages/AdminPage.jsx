@@ -2,9 +2,17 @@ import React, { useState } from "react";
 import { Trash2, Plus } from "lucide-react";
 import { TechnicianRow, SickLeaveWindowSetting, VehicleRow, UserRow, NewUserForm, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin } from "../components/AdminParts";
 
+// RETTET (august 2026): Admin-sidens FANER vises nu ud fra brugerens
+// faktiske admin_*-rettigheder (permissions), ikke længere ubetinget for
+// enhver der kan åbne "/admin" overhovedet. permissions === null betyder
+// systemadmin - se App.jsx, som bevidst IKKE sender et permissions-array
+// for dem (de har altid alt, uafhængigt af deres egen butiks-profil).
+const hasPerm = (permissions, key) => permissions === null || permissions.includes(key);
+
 function AdminPage({
   technicians, vehicles, users, timeOff, currentUserId, store,
   productTypes, productCategories, primaryServices, addOnServices,
+  permissions,
   onUpdateTechnicianVehicle, onAddVehicle, onUpdateVehicle, onDeleteVehicle, onToggleVehicleClosed,
   onAddUser, onUpdateUser, onDeleteUser, onResetPassword,
   onAddProductCategory, onUpdateProductCategory, onDeleteProductCategory,
@@ -13,10 +21,36 @@ function AdminPage({
   onAddAddOnService, onUpdateAddOnService, onDeleteAddOnService,
   onAddTimeOff, onDeleteTimeOff, onSygemeld, onRaskmeld, onSickLeaveWindowUpdated,
 }) {
+  const allTabs = [
+    { k: "montorer", l: "Montører", perm: "admin_montorer" },
+    { k: "biler", l: "Biler", perm: "admin_biler" },
+    { k: "brugere", l: "Brugere", perm: "admin_brugere" },
+    { k: "varer", l: "Varer & ydelser", perm: "admin_katalog" },
+  ];
+  const visibleTabs = allTabs.filter((f) => hasPerm(permissions, f.perm));
+
   const [newName, setNewName] = useState("");
   const [newPlate, setNewPlate] = useState("");
-  const [tab, setTab] = useState("montorer");
+  const [tab, setTab] = useState(visibleTabs[0]?.k || "montorer");
   const [productTab, setProductTab] = useState("kategorier");
+
+  // Hvis brugerens rettigheder ændrer sig (fx en anden admin fjerner en
+  // rettighed mens siden er åben) og den valgte fane ikke længere er
+  // synlig, skift til den første tilgængelige i stedet for at vise en tom
+  // side uden faner at klikke på.
+  if (!visibleTabs.some((f) => f.k === tab) && visibleTabs.length > 0) {
+    setTab(visibleTabs[0].k);
+  }
+
+  if (visibleTabs.length === 0) {
+    return (
+      <div>
+        <p className="font-mono text-[11px] tracking-widest uppercase text-brand mb-1">Administration</p>
+        <h1 className="font-display text-4xl uppercase tracking-tight text-ink mb-6">Opsætning</h1>
+        <p className="text-sm text-muted italic">Du har ikke nogen administrations-rettigheder tildelt endnu.</p>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -24,7 +58,7 @@ function AdminPage({
       <h1 className="font-display text-4xl uppercase tracking-tight text-ink mb-6">Opsætning</h1>
 
       <div className="flex border-b border-line mb-6 flex-wrap">
-        {[{ k: "montorer", l: "Montører" }, { k: "biler", l: "Biler" }, { k: "brugere", l: "Brugere" }, { k: "varer", l: "Varer & ydelser" }].map((f) => (
+        {visibleTabs.map((f) => (
           <button key={f.k} onClick={() => setTab(f.k)} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors ${tab === f.k ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>{f.l}</button>
         ))}
       </div>
@@ -34,7 +68,7 @@ function AdminPage({
           <p className="text-xs text-muted mb-4">
             En montør er ikke noget man opretter her — det er en bruger med rollen "Montør" (se fanen "Brugere"). Her styrer du hvilken bil hver montør kører i lige nu, registrerer ferieperioder, og kan sygemelde/raskmelde en montør akut. Den bil en montør er tilknyttet, vises automatisk som blokeret i kørselsoverblikket i de perioder montøren er fraværende (ferie eller sygdom).
           </p>
-          <SickLeaveWindowSetting store={store} onUpdated={onSickLeaveWindowUpdated} />
+          {hasPerm(permissions, "admin_butik") && <SickLeaveWindowSetting store={store} onUpdated={onSickLeaveWindowUpdated} />}
           <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Alle montører ({technicians.length})</h3>
           {technicians.length === 0 ? (
             <p className="text-sm text-muted italic">Ingen brugere med rollen "Montør" endnu — opret en under fanen "Brugere".</p>
