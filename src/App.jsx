@@ -37,7 +37,7 @@ function Gate({ allowed, page, children }) {
   return children;
 }
 
-function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder }) {
+function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder, permissions }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const order = orders.find((o) => o.id === id);
@@ -67,6 +67,7 @@ function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder 
   const sharedProps = {
     order,
     technicians,
+    permissions,
     onBack: () => navigate(-1),
     addNote: (t) => ordersStore.addNote(order.id, t, { id: profile.id, navn: profile.navn }),
     addPhoto: (p) => ordersStore.addPhoto(order.id, p),
@@ -236,6 +237,12 @@ export default function App() {
         ...PAGE_PERMISSION_KEYS.filter((k) => permissions.includes(k)),
         ...(permissions.some((p) => p.startsWith("admin_")) ? ["admin"] : []),
       ];
+  // Sendes videre til sider der låser ENKELTE felter/knapper efter
+  // finkornede sags-rettigheder (sag_kunde/sag_planlaegning/sag_pluk/
+  // sag_feltarbejde/sag_opret - se OrderView.jsx/WarehousePage.jsx). null
+  // for en systemadmin = "ubegrænset" (se canDo() i domain.js), ligesom
+  // for Admin-sidens egne faner ovenfor.
+  const effectivePermissions = profile.erSystemadmin ? null : permissions;
   const currentPage = location.pathname.replace(/^\//, "").split("/")[0] || allowedPages[0];
   const narrowPage = currentPage === "montor" || currentPage === "sag";
   const hideTopNav = currentPage === "sag" && profile.rolle === "montor";
@@ -251,7 +258,7 @@ export default function App() {
 
       <div className={`${narrowPage ? "max-w-2xl" : "max-w-6xl"} mx-auto px-4 pb-10 ${hideTopNav ? "pt-4" : ""}`}>
         <Routes>
-          <Route path="/sag/:id" element={<OrderRoute profile={profile} orders={orders} technicians={technicians} ordersStore={ordersStore} duplicateOrder={duplicateOrder} />} />
+          <Route path="/sag/:id" element={<OrderRoute profile={profile} orders={orders} technicians={technicians} ordersStore={ordersStore} duplicateOrder={duplicateOrder} permissions={effectivePermissions} />} />
 
           <Route path="/salg" element={
             <Gate allowed={allowedPages} page="salg">
@@ -286,7 +293,7 @@ export default function App() {
 
           <Route path="/lager" element={
             <Gate allowed={allowedPages} page="lager">
-              <WarehousePage orders={orders} technicians={technicians} vehicles={vehicles} selectedDate={selectedDate} onDateChange={setSelectedDate} onToggleLineItemPicked={ordersStore.toggleLineItemPicked} onOpen={onOpen} />
+              <WarehousePage orders={orders} technicians={technicians} vehicles={vehicles} selectedDate={selectedDate} onDateChange={setSelectedDate} onToggleLineItemPicked={ordersStore.toggleLineItemPicked} onOpen={onOpen} permissions={effectivePermissions} />
             </Gate>
           } />
 
@@ -301,7 +308,7 @@ export default function App() {
               <AdminPage
                 technicians={technicians} vehicles={vehicles} users={users} timeOff={timeOff} currentUserId={profile.id} store={effectiveStore}
                 productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices}
-                permissions={profile.erSystemadmin ? null : permissions}
+                permissions={effectivePermissions}
                 onUpdateTechnicianVehicle={updateTechnicianVehicle} onAddVehicle={vehiclesStore.addVehicle} onUpdateVehicle={vehiclesStore.updateVehicle} onDeleteVehicle={deleteVehicleWithConfirm} onToggleVehicleClosed={vehiclesStore.toggleVehicleClosed}
                 onAddUser={usersStore.addUser} onUpdateUser={usersStore.updateUser} onDeleteUser={usersStore.deleteUser} onResetPassword={usersStore.resetPassword} onUpdatePermissions={usersStore.updatePermissions}
                 onAddProductCategory={catalog.addProductCategory} onUpdateProductCategory={catalog.updateProductCategory} onDeleteProductCategory={catalog.deleteProductCategory}
