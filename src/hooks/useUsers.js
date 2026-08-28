@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { getStoreUsers, createUserAsAdmin, updateProfile, resetPasswordAsAdmin } from "../lib/dataStore";
+import { getStoreUsers, createUserAsAdmin, updateProfile, resetPasswordAsAdmin, updateUserPermissions } from "../lib/dataStore";
 
 // FASE 2 af arkitektur-oprydningen (august 2026) - se hooks/useCatalog.js
 // for den fulde begrundelse. Al state og CRUD for BRUGERE (som "montører"
@@ -45,5 +45,16 @@ export function useUsers(storeId) {
 
   const resetPassword = (userId, newPassword) => resetPasswordAsAdmin(userId, newPassword);
 
-  return { users, addUser, updateUser, deleteUser, resetPassword, reload: () => load(storeId) };
+  // Individuelle rettigheds-til-/fravalg (august 2026) - se
+  // AdminParts.jsx: UserRow's rettigheds-editor. Håndhæves også i
+  // databasen (se profiles_guard_privileged_fields-triggeren), dette kald
+  // kan altså ikke bruges til at give sig selv/nogen flere rettigheder end
+  // man selv har lov til.
+  const updatePermissions = async (userId, { extraPermissions, revokedPermissions }) => {
+    const result = await updateUserPermissions(userId, { extraPermissions, revokedPermissions });
+    if (result.ok && storeId) await load(storeId);
+    return result;
+  };
+
+  return { users, addUser, updateUser, deleteUser, resetPassword, updatePermissions, reload: () => load(storeId) };
 }
