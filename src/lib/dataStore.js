@@ -298,6 +298,21 @@ export async function updateUserPermissions(userId, { extraPermissions, revokedP
   return { ok: true };
 }
 
+// ---------- Dashboard-widgets (august 2026) ----------
+// Ren visningspræference (se profiles.dashboard_widgets) - hvilke widgets
+// den enkelte bruger har valgt at vise på deres forside, og i hvilken
+// rækkefølge. Giver ingen ny adgang til noget, kun layout - derfor intet
+// særskilt håndhævelses-lag ud over almindelig RLS (man kan altid frit
+// tilpasse sin egen forside).
+export async function updateDashboardWidgets(userId, widgetKeys) {
+  const { error } = await supabase.from("profiles").update({ dashboard_widgets: widgetKeys }).eq("id", userId);
+  if (error) {
+    logDbError("dataStore:updateDashboardWidgets", "Could not save dashboard layout", error);
+    return { ok: false, fejl: error.message };
+  }
+  return { ok: true };
+}
+
 // ---------- Profiles ----------
 // Login/password itself is handled by Supabase Auth (see LoginSide.jsx).
 // This table only holds store_id + role + name/username per user.
@@ -341,7 +356,7 @@ export async function getOwnProfile(userId) {
   }
   if (!data) return null;
   // Normalized to the fields App.jsx expects (butik_id/rolle/bil_id/er_systemadmin).
-  return { id: data.id, navn: data.name, butik_id: data.store_id, rolle: data.role, bil_id: data.vehicle_id, er_systemadmin: data.is_system_admin, brugernavn: data.username };
+  return { id: data.id, navn: data.name, butik_id: data.store_id, rolle: data.role, bil_id: data.vehicle_id, er_systemadmin: data.is_system_admin, brugernavn: data.username, dashboard_widgets: data.dashboard_widgets };
 }
 
 // All users in the same store (for the admin page's "Users" tab). Includes
