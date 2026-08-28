@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { LogOut, Bell, Package, AlertTriangle, Copy } from "lucide-react";
-import { PAGES, PAGES_FOR_ROLE } from "../data/domain";
+import { PAGES } from "../data/domain";
 import { PUNKT1_LOGO_NEGATIV } from "../assets/logo";
 
 // Notifikationsklokke: viser, for den INDLOGGEDE bruger, hvilke af DERES
@@ -76,8 +76,14 @@ function NotificationBell({ notifications, onOpenOrder }) {
   );
 }
 
-function TopNav({ page, onChange, user, onLogOut, notifications, onOpenOrder }) {
-  const allowed = PAGES.filter((s) => (PAGES_FOR_ROLE[user.rolle] || []).includes(s.key) || (s.key === "systemadmin" && user.erSystemadmin));
+// RETTET (august 2026): faneadgang styres nu af "allowedPages" (beregnet i
+// App.jsx ud fra brugerens FAKTISKE, håndhævede rettigheder - se
+// useSession.js: permissions), ikke længere en fast PAGES_FOR_ROLE[rolle]-
+// opslag her. Én kilde til sandhed - App.jsx beregner allerede det samme
+// for sine <Route>-Gates, og sender det med herned, så de to aldrig kan
+// komme ud af trit med hinanden.
+function TopNav({ page, onChange, user, onLogOut, notifications, onOpenOrder, allowedPages }) {
+  const allowed = PAGES.filter((s) => allowedPages.includes(s.key) || (s.key === "systemadmin" && user.erSystemadmin));
   return (
     <div className="sticky top-0 z-20 bg-ink mb-6">
       <div className="max-w-6xl mx-auto flex items-center justify-between gap-2 px-3 py-2.5">
