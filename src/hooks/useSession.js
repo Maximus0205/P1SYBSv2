@@ -27,17 +27,21 @@ import { getOwnProfile, getStore, getMyPermissions } from "../lib/dataStore";
 // individuelle fratagelser - se my_effective_permissions() i databasen).
 // Hentes samme sted og på samme tidspunkt som resten af profilen, af
 // samme grund som resten af denne hook er samlet ét sted.
+//
+// DASHBOARD-WIDGETS (august 2026): profile.dashboardWidgets er brugerens
+// egen valgte forside-sammensætning (null = brug rollens standard, se
+// DEFAULT_DASHBOARD_WIDGETS i domain.js) - se DashboardPage.jsx.
 export function useSession() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState(null);
-  const [profile, setProfile] = useState(null); // { id, navn, rolle, bilId, butikId, erSystemadmin }
+  const [profile, setProfile] = useState(null); // { id, navn, rolle, bilId, butikId, erSystemadmin, dashboardWidgets }
   const [store, setStore] = useState(null); // { id, navn, adresse, lat, lon }
   const [permissions, setPermissions] = useState([]); // string[] - se has_permission()/my_effective_permissions() i databasen
 
   const reloadProfile = useCallback(async (userId) => {
     const p = await getOwnProfile(userId);
     if (!p) { setProfile(null); setStore(null); setPermissions([]); return null; }
-    const normalized = { id: p.id, navn: p.navn, rolle: p.rolle, bilId: p.bil_id, butikId: p.butik_id, erSystemadmin: !!p.er_systemadmin };
+    const normalized = { id: p.id, navn: p.navn, rolle: p.rolle, bilId: p.bil_id, butikId: p.butik_id, erSystemadmin: !!p.er_systemadmin, dashboardWidgets: p.dashboard_widgets || null };
     setProfile(normalized);
     if (normalized.butikId) {
       const [storeData, myPermissions] = await Promise.all([getStore(normalized.butikId), getMyPermissions()]);
