@@ -242,6 +242,60 @@ export async function updateSickLeaveWindow(hours) {
   return { ok: true };
 }
 
+// ---------- Rettigheder (august 2026) ----------
+// Se migrationerne "permission_catalog_and_role_defaults",
+// "profile_individual_permission_overrides" og
+// "enforce_permissions_on_writes" i Supabase-projektet. En brugers
+// FAKTISKE rettigheder = rollens standardrettigheder ∪ extra_permissions,
+// minus revoked_permissions - håndhævet i selve databasen (RLS +
+// triggere på orders/profiles), ikke kun i UI'et. Disse funktioner henter
+// kataloget/standarderne (til rettigheds-editoren i Admin) og ens egne,
+// faktiske rettigheder (til at styre navigation, se useSession.js).
+
+export async function getMyPermissions() {
+  const { data, error } = await supabase.rpc("my_effective_permissions");
+  if (error) {
+    logDbError("dataStore:getMyPermissions", "Could not load permissions", error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function getPermissionsCatalog() {
+  const { data, error } = await supabase.from("permissions").select("key, label, category").order("category").order("key");
+  if (error) {
+    logDbError("dataStore:getPermissionsCatalog", "Could not load permissions catalog", error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function getRoleDefaultPermissions() {
+  const { data, error } = await supabase.from("role_default_permissions").select("role, permission_key");
+  if (error) {
+    logDbError("dataStore:getRoleDefaultPermissions", "Could not load role default permissions", error);
+    return {};
+  }
+  const map = {};
+  (data || []).forEach((r) => { (map[r.role] ||= []).push(r.permission_key); });
+  return map;
+}
+
+// Opdaterer én brugers individuelle til-/fravalg. Håndhæves også i
+// databasen (kun en med admin_brugere-rettighed, på en ANDEN bruger end
+// sig selv - se profiles_guard_privileged_fields-triggeren), så dette
+// kald ikke kan bruges til at give sig selv flere rettigheder.
+export async function updateUserPermissions(userId, { extraPermissions, revokedPermissions }) {
+  const { error } = await supabase.from("profiles").update({
+    extra_permissions: extraPermissions, revoked_permissions: revokedPermissions,
+  }).eq("id", userId);
+  if (error) {
+    logDbError("dataStore:updateUserPermissions", "Could not update permissions", error);
+    return { ok: false, fejl: error.message };
+  }
+  return { ok: true };
+}
+
 // ---------- Profiles ----------
 // Login/password itself is handled by Supabase Auth (see LoginSide.jsx).
 // This table only holds store_id + role + name/username per user.
@@ -288,15 +342,17 @@ export async function getOwnProfile(userId) {
   return { id: data.id, navn: data.name, butik_id: data.store_id, rolle: data.role, bil_id: data.vehicle_id, er_systemadmin: data.is_system_admin, brugernavn: data.username };
 }
 
-// All users in the same store (for the admin page's "Users" tab).
+// All users in the same store (for the admin page's "Users" tab). Includes
+// hver brugers individuelle rettigheds-til-/fravalg (extra/revoked), så
+// rettigheds-editoren i Admin kan vise dem (se AdminParts.jsx: UserRow).
 export async function getStoreUsers(storeId) {
   if (!storeId) return [];
-  const { data, error } = await supabase.from("profiles").select("id, name, role, vehicle_id, username").eq("store_id", storeId);
+  const { data, error } = await supabase.from("profiles").select("id, name, role, vehicle_id, username, extra_permissions, revoked_permissions").eq("store_id", storeId);
   if (error) {
     logDbError("dataStore:getStoreUsers", "Could not load the store's users", error);
     return [];
   }
-  return (data || []).map((p) => ({ id: p.id, navn: p.name, rolle: p.role, bilId: p.vehicle_id, brugernavn: p.username }));
+  return (data || []).map((p) => ({ id: p.id, navn: p.name, rolle: p.role, bilId: p.vehicle_id, brugernavn: p.username, extraPermissions: p.extra_permissions || [], revokedPermissions: p.revoked_permissions || [] }));
 }
 
 // System admin: search/browse across ALL stores (for the "All users" list
