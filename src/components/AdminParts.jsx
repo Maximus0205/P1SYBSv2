@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Trash2, X, Plus, Pencil, UserPlus, PalmtreeIcon, CalendarOff, KeyRound, Stethoscope, HeartPulse } from "lucide-react";
+import { Trash2, X, Plus, Pencil, UserPlus, PalmtreeIcon, CalendarOff, KeyRound, Stethoscope, HeartPulse, ShieldCheck, ChevronDown, ChevronUp } from "lucide-react";
 import { vehicleLabel, technicianColor, todayISO, activeSickLeave } from "../data/domain";
 import { suggestUsername, isValidUsername } from "../lib/username";
 import { updateSickLeaveWindow } from "../lib/dataStore";
@@ -187,13 +187,95 @@ function VehicleRow({ vehicle, usedBy, onUpdate, onDelete, onToggleClosed }) {
   );
 }
 
-function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPassword }) {
+const PERMISSION_CATEGORY_LABEL = { side: "Faner/sider", sag: "Redigering på sager" };
+
+// Rettigheds-editor for ÉN bruger (august 2026). En bruger har altid en
+// ROLLE (giver et fast sæt standardrettigheder, se role_default_
+// permissions i databasen) - denne editor lader en admin (med
+// admin_brugere-rettighed) TILFØJE noget ud over rollens standard, eller
+// FRATAGE noget rollen ellers ville give, for netop denne ene person. En
+// rettighed der kommer fra rollen vises med et "standard"-mærke; klikker
+// man den fra, lander den i revokedPermissions - klikker man en IKKE-
+// standard rettighed til, lander den i extraPermissions. Håndhæves også i
+// selve databasen (kan altså ikke omgås ved at redigere UI'et), se
+// migrationerne "profile_individual_permission_overrides" og
+// "enforce_permissions_on_writes".
+function PermissionsEditor({ user, permissionsCatalog, roleDefaults, onUpdatePermissions }) {
+  const [busy, setBusy] = useState(false);
+  const roleDefaultSet = new Set(roleDefaults[user.rolle] || []);
+  const extra = user.extraPermissions || [];
+  const revoked = user.revokedPermissions || [];
+
+  const isChecked = (key) => (roleDefaultSet.has(key) || extra.includes(key)) && !revoked.includes(key);
+  const isFromRole = (key) => roleDefaultSet.has(key);
+
+  const toggle = async (key) => {
+    const checked = isChecked(key);
+    let nextExtra = extra;
+    let nextRevoked = revoked;
+    if (checked) {
+      // Slå fra: hvis den kommer fra rollen, skal den eksplicit fratages;
+      // ellers er den bare en individuel tilføjelse der fjernes igen.
+      nextExtra = extra.filter((k) => k !== key);
+      nextRevoked = isFromRole(key) ? [...revoked.filter((k) => k !== key), key] : revoked;
+    } else {
+      // Slå til: fjern en evt. fratagelse, og tilføj den (kun nødvendigt
+      // hvis den ikke allerede kommer fra rollen).
+      nextRevoked = revoked.filter((k) => k !== key);
+      nextExtra = isFromRole(key) ? extra : [...extra.filter((k) => k !== key), key];
+    }
+    setBusy(true);
+    await onUpdatePermissions(user.id, { extraPermissions: nextExtra, revokedPermissions: nextRevoked });
+    setBusy(false);
+  };
+
+  const byCategory = {};
+  permissionsCatalog.forEach((p) => { (byCategory[p.category] ||= []).push(p); });
+
+  return (
+    <div className="border-t border-divider p-3 bg-panel space-y-3">
+      {permissionsCatalog.length === 0 ? (
+        <p className="text-xs text-muted italic">Indlæser rettighedskatalog...</p>
+      ) : (
+        Object.entries(byCategory).map(([category, perms]) => (
+          <div key={category}>
+            <p className="text-[10px] uppercase tracking-wide text-muted mb-1.5">{PERMISSION_CATEGORY_LABEL[category] || category}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {perms.map((p) => {
+                const checked = isChecked(p.key);
+                const fromRole = isFromRole(p.key);
+                return (
+                  <button
+                    key={p.key}
+                    disabled={busy}
+                    onClick={() => toggle(p.key)}
+                    title={p.label}
+                    className={`text-xs px-2.5 py-1 rounded-lg border transition-colors flex items-center gap-1 disabled:opacity-50 ${
+                      checked ? "border-success bg-success/10 text-success" : "border-line text-muted hover:border-brand hover:text-brand"
+                    }`}
+                  >
+                    {p.label}
+                    {checked && fromRole && <span className="text-[9px] uppercase tracking-wide opacity-70">· standard</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))
+      )}
+      <p className="text-[10px] text-muted">Rettigheder mærket "standard" kommer fra brugerens rolle. Klik for at tilføje eller fratage en rettighed for præcis denne bruger - ændringer gemmes med det samme.</p>
+    </div>
+  );
+}
+
+function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPassword, permissionsCatalog, roleDefaults, onUpdatePermissions }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user.navn);
   const [showReset, setShowReset] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [resetMessage, setResetMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showPermissions, setShowPermissions] = useState(false);
 
   const reset = async () => {
     if (newPassword.length < 6) { setResetMessage("Mindst 6 tegn."); return; }
@@ -206,9 +288,11 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
     setTimeout(() => { setShowReset(false); setResetMessage(""); }, 1500);
   };
 
+  const canEditPermissions = user.id !== currentUserId && onUpdatePermissions && permissionsCatalog;
+
   return (
-    <div className="rounded-xl bg-white border border-line p-3 shadow-sm">
-      <div className="flex items-center gap-3 flex-wrap">
+    <div className="rounded-xl bg-white border border-line overflow-hidden shadow-sm">
+      <div className="p-3 flex items-center gap-3 flex-wrap">
         <div className="min-w-0 flex-1">
           {editing ? (
             <div className="flex items-center gap-1.5">
@@ -223,17 +307,23 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
             {ROLE_LABEL[user.rolle] || user.rolle}
             {user.brugernavn && <span> · logger ind som "{user.brugernavn}"</span>}
             {user.rolle === "montor" ? ` · ${vehicle ? vehicleLabel(vehicle) : "ingen bil endnu"}` : ""}
+            {(user.extraPermissions?.length > 0 || user.revokedPermissions?.length > 0) && <span> · individuelt tilpasset</span>}
           </p>
         </div>
         <select value={user.rolle} onChange={(e) => onUpdate(user.id, { rolle: e.target.value })} className="rounded-lg border border-line bg-panel px-2 py-1.5 text-xs text-ink">
           {Object.entries(ROLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
+        {canEditPermissions && (
+          <button onClick={() => setShowPermissions((v) => !v)} className="p-1.5 text-muted hover:text-brand" title="Rettigheder">
+            <ShieldCheck size={15} />
+          </button>
+        )}
         {!editing && <button onClick={() => { setName(user.navn); setEditing(true); }} className="p-1.5 text-muted hover:text-brand" title="Ret navn"><Pencil size={15} /></button>}
         {onResetPassword && <button onClick={() => setShowReset((v) => !v)} className="p-1.5 text-muted hover:text-brand" title="Nulstil adgangskode"><KeyRound size={15} /></button>}
         {user.id !== currentUserId && <button onClick={() => onDelete(user.id)} className="p-1.5 text-muted hover:text-danger" title="Fjern adgang"><Trash2 size={15} /></button>}
       </div>
       {showReset && (
-        <div className="mt-2.5 pt-2.5 border-t border-divider flex items-center gap-2 flex-wrap">
+        <div className="px-3 pb-3 flex items-center gap-2 flex-wrap">
           <input
             type="password"
             value={newPassword}
@@ -246,6 +336,12 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
           </button>
           {resetMessage && <span className={`text-[11px] ${resetMessage.includes("nulstillet") ? "text-success" : "text-danger"}`}>{resetMessage}</span>}
         </div>
+      )}
+      {showPermissions && canEditPermissions && (
+        <PermissionsEditor user={user} permissionsCatalog={permissionsCatalog} roleDefaults={roleDefaults} onUpdatePermissions={onUpdatePermissions} />
+      )}
+      {user.id === currentUserId && (
+        <p className="px-3 pb-2 text-[10px] text-muted italic">Du kan ikke ændre dine egne rettigheder eller rolle - bed en anden administrator om det.</p>
       )}
     </div>
   );
