@@ -1,19 +1,20 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from "react-router-dom";
 
-import { todayISO, computeNotifications } from "./data/domain";
+import { todayISO, computeNotifications, DEFAULT_DASHBOARD_WIDGETS } from "./data/domain";
 import { useSession } from "./hooks/useSession";
 import { useCatalog } from "./hooks/useCatalog";
 import { useVehicles } from "./hooks/useVehicles";
 import { useTimeOff } from "./hooks/useTimeOff";
 import { useUsers } from "./hooks/useUsers";
 import { useOrders } from "./hooks/useOrders";
-import { getAllStores, getStore } from "./lib/dataStore";
+import { getAllStores, getStore, updateDashboardWidgets } from "./lib/dataStore";
 
 import { TopNav } from "./components/TopNav";
 import { LoginPage } from "./components/LoginPage";
 import { OrderView } from "./components/OrderView";
 
+import { DashboardPage } from "./pages/DashboardPage";
 import { SalesPage } from "./pages/SalesPage";
 import { PlanningPage } from "./pages/PlanningPage";
 import { TechnicianPicker, TechnicianRouteView, TechnicianOrderDetail } from "./pages/TechnicianPage";
@@ -130,7 +131,7 @@ function MontorRoute({ profile, orders, technicians, ordersStore, refresh, refre
 const PAGE_PERMISSION_KEYS = ["salg", "planlaegning", "montor", "lager", "arkiv"];
 
 export default function App() {
-  const { loading, session, profile, permissions, logOut } = useSession();
+  const { loading, session, profile, permissions, logOut, reloadPermissions } = useSession();
 
   // BUTIKS-SKIFT (august 2026): activeStoreId er den butik, hvis data der
   // rent faktisk vises/hentes lige nu. For langt de fleste er det altid
@@ -219,6 +220,15 @@ export default function App() {
 
   const onOpen = (id) => navigate(`/sag/${id}`);
 
+  // Forsidens widget-valg (august 2026) - brugerens egen (profile.
+  // dashboardWidgets), eller rollens standard, hvis de aldrig har
+  // tilpasset den. Se DashboardPage.jsx.
+  const updateDashboardWidgetsFor = async (keys) => {
+    if (!profile) return;
+    await updateDashboardWidgets(profile.id, keys);
+    reloadPermissions();
+  };
+
   if (loading) {
     return <div className="min-h-screen w-full flex items-center justify-center bg-paper"><p className="text-sm text-muted">Indlæser...</p></div>;
   }
@@ -278,9 +288,13 @@ export default function App() {
   // orders_guard_field_groups/profiles_guard_privileged_fields-triggerne),
   // uafhængigt af hvilke rettigheder deres egen butiks-profil måtte have -
   // og uanset hvilken butik de lige nu er skiftet over til at se.
+  //
+  // "dashboard" er ALTID først (og altid tilgængelig) - det er den nye
+  // standard-forside, ikke en rettighedsstyret side, se DashboardPage.jsx.
   const allowedPages = profile.erSystemadmin
-    ? [...PAGE_PERMISSION_KEYS, "admin"]
+    ? ["dashboard", ...PAGE_PERMISSION_KEYS, "admin"]
     : [
+        "dashboard",
         ...PAGE_PERMISSION_KEYS.filter((k) => permissions.includes(k)),
         ...(permissions.some((p) => p.startsWith("admin_")) ? ["admin"] : []),
       ];
@@ -290,6 +304,7 @@ export default function App() {
   // for en systemadmin = "ubegrænset" (se canDo() i domain.js), ligesom
   // for Admin-sidens egne faner ovenfor.
   const effectivePermissions = profile.erSystemadmin ? null : permissions;
+  const dashboardWidgets = profile.dashboardWidgets || DEFAULT_DASHBOARD_WIDGETS[profile.rolle] || [];
   const currentPage = location.pathname.replace(/^\//, "").split("/")[0] || allowedPages[0];
   const narrowPage = currentPage === "montor" || currentPage === "sag";
   const hideTopNav = currentPage === "sag" && profile.rolle === "montor";
@@ -312,6 +327,16 @@ export default function App() {
 
       <div className={`${narrowPage ? "max-w-2xl" : "max-w-6xl"} mx-auto px-4 pb-10 ${hideTopNav ? "pt-4" : ""}`}>
         <Routes>
+          <Route path="/dashboard" element={
+            <DashboardPage
+              profile={profile} permissions={effectivePermissions}
+              orders={orders} technicians={technicians} vehicles={vehicles} timeOff={timeOff} store={effectiveStore}
+              notifications={notifications} onOpen={onOpen} onCycleStatus={ordersStore.cycleStatus}
+              onNavigate={(key) => navigate(`/${key}`)}
+              dashboardWidgets={dashboardWidgets} onUpdateWidgets={updateDashboardWidgetsFor}
+            />
+          } />
+
           <Route path="/sag/:id" element={<OrderRoute profile={profile} orders={orders} technicians={technicians} ordersStore={ordersStore} duplicateOrder={duplicateOrder} permissions={effectivePermissions} />} />
 
           <Route path="/salg" element={
