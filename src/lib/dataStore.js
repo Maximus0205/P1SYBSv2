@@ -225,16 +225,18 @@ export async function deleteStoreAsSystemAdmin(storeId) {
   return { ok: true };
 }
 
-// Butikkens EGEN admin (ikke kun systemadmin) må ændre PRÆCIS denne ene
-// indstilling - hvor mange timer frem en sygemeldt montørs sager vises,
-// mens sygemeldingen er aktiv. Kalder en snævert afgrænset SECURITY
-// DEFINER-funktion i databasen (se migrationen "allow_store_admin_
-// update_sick_leave_window", august 2026) - IKKE et almindeligt
-// tabel-opdateringskald, fordi almindelige butiks-admins i øvrigt ikke har
-// skriveadgang til stores-tabellen (kun systemadmin har), og det er
-// bevidst IKKE udvidet generelt her, kun for denne ene indstilling.
-export async function updateSickLeaveWindow(hours) {
-  const { error } = await supabase.rpc("update_sick_leave_window", { p_hours: hours });
+// Butikkens EGEN admin (eller en systemadmin, for enhver butik - se
+// App.jsx: butiks-skifteren) må ændre PRÆCIS denne ene indstilling - hvor
+// mange timer frem en sygemeldt montørs sager vises, mens sygemeldingen
+// er aktiv. Kalder en snævert afgrænset SECURITY DEFINER-funktion i
+// databasen - IKKE et almindeligt tabel-opdateringskald, fordi
+// almindelige butiks-admins i øvrigt ikke har skriveadgang til
+// stores-tabellen. storeId sendes nu EKSPLICIT med (RETTET august 2026,
+// se migrationen "fix_sick_leave_window_for_store_switching") - uden det
+// ville en systemadmin, der er skiftet til at se en ANDEN butik end deres
+// egen, ved et tryk her stille og roligt ramme deres egen butik i stedet.
+export async function updateSickLeaveWindow(hours, storeId) {
+  const { error } = await supabase.rpc("update_sick_leave_window", { p_hours: hours, p_store_id: storeId ?? null });
   if (error) {
     logDbError("dataStore:updateSickLeaveWindow", "Could not update sick leave window", error);
     return { ok: false, fejl: error.message };
