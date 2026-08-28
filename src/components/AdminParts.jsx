@@ -114,7 +114,10 @@ function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTi
 // sygemeldingen er aktiv. Kalder en snævert afgrænset databasefunktion
 // (se dataStore.js: updateSickLeaveWindow) - almindelige butiks-admins har
 // IKKE generel skriveadgang til butikkens øvrige indstillinger, kun denne
-// ene, bevidst afgrænsede indstilling.
+// ene, bevidst afgrænsede indstilling. RETTET (august 2026): sender nu
+// eksplicit store.id med - ellers ville en systemadmin, der er skiftet
+// til at se en ANDEN butik end deres egen, ramme deres egen butik i
+// stedet (se App.jsx: butiks-skifteren).
 function SickLeaveWindowSetting({ store, onUpdated }) {
   const [hours, setHours] = useState(store?.sygemeldingVindueTimer ?? 48);
   const [saving, setSaving] = useState(false);
@@ -123,7 +126,7 @@ function SickLeaveWindowSetting({ store, onUpdated }) {
 
   const save = async () => {
     setSaving(true); setError(""); setSaved(false);
-    const result = await updateSickLeaveWindow(Number(hours));
+    const result = await updateSickLeaveWindow(Number(hours), store?.id);
     setSaving(false);
     if (!result.ok) { setError(result.fejl || "Kunne ikke gemme."); return; }
     setSaved(true);
