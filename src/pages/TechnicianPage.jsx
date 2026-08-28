@@ -1,6 +1,6 @@
 import React from "react";
-import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, Loader2, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash, Package, X, Plus, User } from "lucide-react";
-import { buildTitle, isToday, formatLongDate, formatDuration, technicianColor, keyAccessText, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel, dailyOrderCompare } from "../data/domain";
+import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, Loader2, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash, Package, X, Plus, User, Lock } from "lucide-react";
+import { buildTitle, isToday, formatLongDate, formatDuration, technicianColor, keyAccessText, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel, dailyOrderCompare, canDo } from "../data/domain";
 import { StatusBadge, DateSelector } from "../components/common";
 import { Notes, Photos, Reports, TimeLog, ClockWidget, Signature } from "../components/OrderParts";
 import { BookingEditor, DuplicatePanel } from "../components/OrderView";
@@ -353,33 +353,39 @@ function TechnicianLineItems({ order }) {
 // adskilt fra "Noter" (fri tekst) og selve varelinjerne (det der blev
 // solgt/booket) - så det senere er let at finde igen, fx til fakturering
 // af ekstraforbrug. Kun tilgængelig i montør-visningen indtil videre.
+// RETTET (august 2026): onAdd/onRemove kan mangle (ingen sag_feltarbejde)
+// - viser da kun listen, uden tilføj-formularen, i stedet for at crashe.
 function Materials({ order, onAdd, onRemove }) {
   const [navn, setNavn] = React.useState("");
   const [antal, setAntal] = React.useState(1);
   const materialer = order.materialer || [];
 
   const submit = () => {
-    if (!navn.trim()) return;
+    if (!navn.trim() || !onAdd) return;
     onAdd({ navn, antal });
     setNavn(""); setAntal(1);
   };
 
   return (
     <div>
-      <div className="flex gap-2 mb-4">
-        <input
-          value={navn} onChange={(e) => setNavn(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-          placeholder="Fx 'Vandslange 3m'"
-          className="flex-1 rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
-        />
-        <input
-          type="number" min="1" value={antal}
-          onChange={(e) => setAntal(e.target.value)}
-          className="w-16 rounded-lg border border-line bg-white px-2 py-2 text-sm text-ink text-center focus:outline-none focus:border-brand"
-        />
-        <button onClick={submit} className="px-3 rounded-lg text-ink border border-line hover:border-brand hover:text-brand transition-colors shrink-0"><Plus size={16} /></button>
-      </div>
+      {onAdd ? (
+        <div className="flex gap-2 mb-4">
+          <input
+            value={navn} onChange={(e) => setNavn(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+            placeholder="Fx 'Vandslange 3m'"
+            className="flex-1 rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
+          />
+          <input
+            type="number" min="1" value={antal}
+            onChange={(e) => setAntal(e.target.value)}
+            className="w-16 rounded-lg border border-line bg-white px-2 py-2 text-sm text-ink text-center focus:outline-none focus:border-brand"
+          />
+          <button onClick={submit} className="px-3 rounded-lg text-ink border border-line hover:border-brand hover:text-brand transition-colors shrink-0"><Plus size={16} /></button>
+        </div>
+      ) : (
+        <p className="text-xs text-muted italic mb-4 flex items-center gap-1.5"><Lock size={12} className="shrink-0" /> Du kan se, men ikke tilføje, materialeforbrug på denne sag.</p>
+      )}
       {materialer.length === 0 ? (
         <p className="text-sm text-muted italic">Intet ekstra materialeforbrug registreret for denne sag.</p>
       ) : (
@@ -390,7 +396,7 @@ function Materials({ order, onAdd, onRemove }) {
                 <p className="text-sm text-ink truncate">{m.antal > 1 ? `${m.antal}× ` : ""}{m.navn}</p>
                 <p className="font-mono text-[11px] text-muted mt-0.5">{m.tid}</p>
               </div>
-              <button onClick={() => onRemove(m.id)} className="text-muted hover:text-danger shrink-0"><X size={16} /></button>
+              {onRemove && <button onClick={() => onRemove(m.id)} className="text-muted hover:text-danger shrink-0"><X size={16} /></button>}
             </div>
           ))}
         </div>
@@ -430,20 +436,32 @@ function ProblemPanel({ order, onSubmit, onCancel }) {
 
 // ---------------------------------------------------------------------------
 // MONTØR-SPECIFIK SAGSDETALJE (august 2026, opdateret med problem-
-// markering + "booket af") - bevidst en HELT SEPARAT visning fra den delte
-// OrderView.jsx, som bruges af admin/sælger. Se TechnicianLineItems for
-// hvorfor tillæg er ren tekst, ikke pille/boble-mærker.
+// markering + "booket af" + individuelle rettigheder) - bevidst en HELT
+// SEPARAT visning fra den delte OrderView.jsx, som bruges af admin/sælger.
+// Se TechnicianLineItems for hvorfor tillæg er ren tekst, ikke pille/
+// boble-mærker.
 //
 // Resten af funktionaliteten (redigér booking, dupliker/opfølgning, noter,
 // billeder, rapporter, tid, underskrift, materialer) er UÆNDRET og
 // genbruger de samme, allerede fungerende komponenter som OrderView.jsx
 // bruger. At holde ændringen isoleret til denne fil betyder admin- og
 // sælger-visningen er 100% upåvirket.
-function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, addReport, onCycleStatus, onClockIn, onClockOut, onUpdateBooking, onSaveSignature, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem }) {
+//
+// RETTIGHEDER: montør-rollen får som standard alle sag_*-rettigheder (se
+// role_default_permissions i databasen - det svarer til, hvad en montør
+// allerede kunne før dette system fandtes), så for de fleste montører
+// ændrer intet sig her. Låsningen nedenfor betyder noget for en montør,
+// der individuelt har fået frataget en rettighed (se PermissionsEditor i
+// AdminParts.jsx).
+function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, addReport, onCycleStatus, onClockIn, onClockOut, onUpdateBooking, onSaveSignature, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem, permissions }) {
   const [tab, setTab] = React.useState("noter");
   const [editing, setEditing] = React.useState(false);
   const [duplicating, setDuplicating] = React.useState(false);
   const [markingProblem, setMarkingProblem] = React.useState(false);
+  const canFieldwork = canDo(permissions, "sag_feltarbejde");
+  const canPlan = canDo(permissions, "sag_planlaegning");
+  const canEditCustomer = canDo(permissions, "sag_kunde");
+  const canCreate = canDo(permissions, "sag_opret");
   const tabs = [
     { key: "noter", label: "Noter", count: order.noter.length },
     { key: "materialer", label: "Materialer", count: (order.materialer || []).length },
@@ -458,7 +476,7 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
       <button onClick={onBack} className="text-sm text-muted hover:text-brand mb-4 flex items-center gap-1">← Tilbage</button>
 
       {editing ? (
-        <BookingEditor order={order} technicians={technicians} onCancel={() => setEditing(false)} onSave={(fields) => { onUpdateBooking(fields); setEditing(false); }} />
+        <BookingEditor order={order} technicians={technicians} permissions={permissions} onCancel={() => setEditing(false)} onSave={(fields) => { onUpdateBooking(fields); setEditing(false); }} />
       ) : duplicating ? (
         <DuplicatePanel order={order} onCancel={() => setDuplicating(false)} onDuplicate={(items) => { onDuplicate?.(items); setDuplicating(false); }} />
       ) : markingProblem ? (
@@ -472,7 +490,7 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
               #{order.nr} · {formatLongDate(order.dato)} · {order.start}–{order.slut}
               {order.ordrenummer && <span className="ml-2 inline-flex items-center gap-0.5"><Hash size={10} /> {order.ordrenummer}</span>}
             </p>
-            <button onClick={() => onCycleStatus(order.id)} className="shrink-0"><StatusBadge status={order.status} /></button>
+            <button onClick={() => canFieldwork && onCycleStatus(order.id)} disabled={!canFieldwork} className="shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"><StatusBadge status={order.status} /></button>
           </div>
           {order.oprettetAf?.navn && (
             <p className="text-xs text-muted mb-1 flex items-center gap-1"><User size={11} className="shrink-0" /> Booket af {order.oprettetAf.navn}</p>
@@ -489,7 +507,7 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
             <div className="mt-2.5 rounded-lg bg-danger/10 border border-danger px-3 py-2">
               <p className="text-sm font-semibold text-danger flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" /> Markeret: kom ikke i mål</p>
               <p className="text-xs text-danger mt-0.5">{order.problem.note} · {order.problem.tid}</p>
-              {onClearProblem && <button onClick={onClearProblem} className="text-[11px] text-danger underline hover:no-underline mt-1">Fjern markering</button>}
+              {onClearProblem && canFieldwork && <button onClick={onClearProblem} className="text-[11px] text-danger underline hover:no-underline mt-1">Fjern markering</button>}
             </div>
           )}
 
@@ -516,11 +534,13 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
 
           {/* Sekundære handlinger - lavest visuel vægt, nederst i kortet. */}
           <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-divider">
-            <button onClick={() => setEditing(true)} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand flex items-center gap-1"><Pencil size={13} /> Redigér booking</button>
-            {onDuplicate && (
+            {(canPlan || canEditCustomer) && (
+              <button onClick={() => setEditing(true)} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand flex items-center gap-1"><Pencil size={13} /> Redigér booking</button>
+            )}
+            {onDuplicate && canCreate && (
               <button onClick={() => setDuplicating(true)} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand flex items-center gap-1"><Copy size={13} /> Dupliker / opfølgning</button>
             )}
-            {onMarkProblem && !order.problem && (
+            {onMarkProblem && canFieldwork && !order.problem && (
               <button onClick={() => setMarkingProblem(true)} className="text-xs font-semibold uppercase tracking-wide text-danger hover:opacity-80 flex items-center gap-1"><AlertTriangle size={13} /> Marker: kom ikke i mål</button>
             )}
           </div>
@@ -528,7 +548,7 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
       )}
 
       <TechnicianLineItems order={order} />
-      <ClockWidget order={order} onClockIn={onClockIn} onClockOut={onClockOut} />
+      <ClockWidget order={order} onClockIn={canFieldwork ? onClockIn : undefined} onClockOut={canFieldwork ? onClockOut : undefined} />
 
       <div className="flex border-b border-line mb-5 overflow-x-auto">
         {tabs.map((t) => (
@@ -537,12 +557,12 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
           </button>
         ))}
       </div>
-      {tab === "noter" && <Notes order={order} onAdd={addNote} />}
-      {tab === "materialer" && <Materials order={order} onAdd={(m) => onAddMaterial?.(m)} onRemove={(id) => onRemoveMaterial?.(id)} />}
-      {tab === "billeder" && <Photos order={order} onAdd={addPhoto} />}
-      {tab === "rapporter" && <Reports order={order} onAdd={addReport} />}
+      {tab === "noter" && <Notes order={order} onAdd={canFieldwork ? addNote : undefined} />}
+      {tab === "materialer" && <Materials order={order} onAdd={canFieldwork ? (m) => onAddMaterial?.(m) : undefined} onRemove={canFieldwork ? (id) => onRemoveMaterial?.(id) : undefined} />}
+      {tab === "billeder" && <Photos order={order} onAdd={canFieldwork ? addPhoto : undefined} />}
+      {tab === "rapporter" && <Reports order={order} onAdd={canFieldwork ? addReport : undefined} />}
       {tab === "tid" && <TimeLog order={order} />}
-      {tab === "underskrift" && <Signature order={order} onSave={onSaveSignature} />}
+      {tab === "underskrift" && <Signature order={order} onSave={canFieldwork ? onSaveSignature : undefined} />}
     </div>
   );
 }
