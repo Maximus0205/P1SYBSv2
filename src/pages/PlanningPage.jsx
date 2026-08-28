@@ -54,7 +54,8 @@ function technicianIssue(order, technicians, vehicles) {
 // fremad/afsluttet). "Uafsluttet/fejlrapporter" er IKKE gensidigt
 // udelukkende med de øvrige - en sag kan sagtens optræde der OG i fx
 // "Skal planlægges" samtidig, da problem-markeringen er uafhængig af
-// resten (se domain.js).
+// resten (se domain.js). Eksporteres (august 2026) så DashboardPage kan
+// genbruge samme klassificering til "Kræver handling"-widgeten.
 function classify(orders, technicians, vehicles, timeOff, windowHours) {
   const today = todayISO();
   const windowDays = Math.max(1, Math.ceil((windowHours || 48) / 24));
@@ -738,4 +739,4 @@ function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedD
   );
 }
 
-export { PlanningPage };
+export { PlanningPage, classify };
