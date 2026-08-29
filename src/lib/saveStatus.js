@@ -22,14 +22,22 @@
 const listeners = new Set();
 let current = null; // { besked, tidspunkt } | null
 
+// En fejl i en lytter må ALDRIG vælte den handling, der udløste den -
+// fejlrapportering er det sidste sted, hvor det giver mening at kaste
+// videre. Kaldes både fra notify() og fra den første, umiddelbare
+// levering i subscribeSaveFailure (RETTET august 2026: den sidste stod
+// tidligere uden for beskyttelsen, så en lytter der kastede, væltede
+// selve tilmeldingen - fundet af testen af dette modul).
+function deliver(fn) {
+  try {
+    fn(current);
+  } catch (_) {
+    // Bevidst stille - se ovenfor.
+  }
+}
+
 function notify() {
-  listeners.forEach((fn) => {
-    try {
-      fn(current);
-    } catch (_) {
-      // En fejl i en lytter må aldrig vælte den handling, der udløste den.
-    }
-  });
+  listeners.forEach(deliver);
 }
 
 // Kaldes fra data-laget, når en skrivning IKKE gik igennem. besked bør
@@ -49,6 +57,6 @@ export function clearSaveFailure() {
 
 export function subscribeSaveFailure(fn) {
   listeners.add(fn);
-  fn(current); // giv den nye lytter den aktuelle tilstand med det samme
+  deliver(fn); // giv den nye lytter den aktuelle tilstand med det samme
   return () => listeners.delete(fn);
 }
