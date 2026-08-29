@@ -14,6 +14,16 @@ import { uid, dailyOrderCompare } from "../data/domain";
 // listen og slet resten" - se den oprindelige forklaring i dataStore.js
 // om hvorfor det er vigtigt ved flere samtidige brugere.
 //
+// TILBAGERULNING VED FEJLET SKRIVNING (august 2026): alle ændringer her
+// er OPTIMISTISKE - de vises med det samme, og skrivningen til Supabase
+// sker bagefter. Fejler den skrivning, blev ændringen tidligere stående
+// på skærmen, som om alt var gået godt; først ved næste genindlæsning
+// opdagede man, at noten/statussen/plukket aldrig var blevet gemt. Det er
+// særligt slemt for en montør i marken, som lukker sagen og kører videre.
+// saveOneOrder ruller derfor nu ændringen tilbage til den version, der
+// står i databasen, hvis skrivningen fejler - og dataStore.js melder selve
+// fejlen videre til brugeren (se lib/saveStatus.js).
+//
 // DATO ER VALGFRI (august 2026): en sag kan oprettes/duplikeres UDEN dato
 // (og dermed uden tidsrum/montør) - den lander så i "Skal planlægges" i
 // PlanningPage.jsx (se needsPlanning i domain.js), som kan foreslå BÅDE
@@ -30,9 +40,19 @@ export function useOrders(storeId) {
 
   useEffect(() => { load(storeId); }, [storeId, load]);
 
+  // Gemmer ÉN ordre. Ved fejl rulles den optimistiske ændring tilbage:
+  // fandtes ordren i forvejen, gendannes den forrige version; var det en
+  // helt ny ordre, fjernes den igen. Se noten om tilbagerulning ovenfor.
   const saveOneOrder = (order) => {
+    const previous = orders.find((s) => s.id === order.id) || null;
     setOrders((prev) => (prev.some((s) => s.id === order.id) ? prev.map((s) => (s.id === order.id ? order : s)) : [...prev, order]));
-    if (storeId) saveOrder(storeId, order);
+    if (!storeId) return;
+    saveOrder(storeId, order).then((ok) => {
+      if (ok) return;
+      setOrders((prev) => (previous
+        ? prev.map((s) => (s.id === order.id ? previous : s))
+        : prev.filter((s) => s.id !== order.id)));
+    });
   };
 
   // Opretter en ny ordre med et midlertidigt sagsnummer (vises med det
@@ -46,6 +66,11 @@ export function useOrders(storeId) {
   // for notifikationssystemet (kun sagens EGEN opretter får besked om
   // materialeforbrug/problemer/opfølgninger på den, se dismissNotifications
   // nedenfor).
+  //
+  // Slår oprettelsen fejl (fx manglende sag_opret-rettighed), fjernes den
+  // optimistisk tilføjede sag igen, og der returneres null - så den
+  // kaldende komponent ikke navigerer videre til en sag, der aldrig blev
+  // oprettet.
   const addOrder = async ({ kunde, koeber, noegle, dato, tidsrumId, start, slut, montorId, varelinjer, ordrenummer, createdBy }) => {
     if (!storeId) return;
     const newOrder = {
@@ -57,7 +82,11 @@ export function useOrders(storeId) {
       oprettetAf: createdBy || null,
     };
     setOrders((prev) => [...prev, newOrder]);
-    await saveOrder(storeId, newOrder);
+    const ok = await saveOrder(storeId, newOrder);
+    if (!ok) {
+      setOrders((prev) => prev.filter((s) => s.id !== newOrder.id));
+      return null;
+    }
     const fresh = await getFreshOrder(storeId, newOrder.id);
     if (fresh) setOrders((prev) => prev.map((s) => (s.id === fresh.id ? fresh : s)));
     return newOrder.id;
@@ -78,6 +107,10 @@ export function useOrders(storeId) {
   // id) og nulstiller dens opfølgnings-notifikation til "ulæst" - det er
   // grundlaget for at kunne fortælle den oprindelige sags opretter "der er
   // lavet en opfølgning på en af dine sager", se dismissNotifications.
+  //
+  // Fejler selve oprettelsen af den nye sag, røres kilde-sagen slet ikke:
+  // ellers ville den stå med et harOpfoelgning-link til en sag, der ikke
+  // findes, og en notifikation om en opfølgning, der aldrig blev lavet.
   const duplicateOrder = async (sourceOrder, selectedLineItems, createdBy) => {
     if (!storeId || !selectedLineItems || selectedLineItems.length === 0) return null;
     const clonedLineItems = selectedLineItems.map((v) => ({
@@ -98,7 +131,11 @@ export function useOrders(storeId) {
       opfoelgningAf: sourceOrder.id,
     };
     setOrders((prev) => [...prev, newOrder]);
-    await saveOrder(storeId, newOrder);
+    const ok = await saveOrder(storeId, newOrder);
+    if (!ok) {
+      setOrders((prev) => prev.filter((s) => s.id !== newOrder.id));
+      return null;
+    }
 
     // Markér kilde-sagen med et forward-link + ulæst opfølgnings-notifikation.
     const freshSource = findOrder(orders, sourceOrder.id) || sourceOrder;
