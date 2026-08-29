@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { SaveErrorBanner } from "./components/SaveErrorBanner";
 import { logError } from "./lib/errorLog";
 import "./index.css";
 import "./styles/globals.css";
@@ -29,6 +30,14 @@ window.addEventListener("unhandledrejection", (e) => {
 // ALDRIG til serveren, så et refresh altid indlæser den samme index.html
 // uanset hvilken fane man var på, hvorefter React Router selv læser
 // hashet og gengiver den rigtige side. Se App.jsx for selve rute-opsætningen.
+//
+// SaveErrorBanner (august 2026) er bevidst monteret UDEN FOR både
+// ErrorBoundary og HashRouter:
+//  - uden for routeren, så beskeden ikke forsvinder, hvis brugeren
+//    navigerer videre i samme sekund som en skrivning fejler;
+//  - uden for ErrorBoundary, så en render-crash i App ikke også river
+//    beskeden om den fejlede skrivning væk.
+// Se lib/saveStatus.js for hvorfor den findes.
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <ErrorBoundary>
@@ -36,5 +45,6 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <App />
       </HashRouter>
     </ErrorBoundary>
+    <SaveErrorBanner />
   </React.StrictMode>
 );
