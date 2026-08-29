@@ -14,6 +14,7 @@
 
 import { supabase } from "./supabaseClient";
 import { logError } from "./errorLog";
+import { reportSaveFailure } from "./saveStatus";
 
 // Fejl-logning (august 2026) VED SIDEN AF console.error (ikke i stedet
 // for - konsollen er stadig nyttig ved lokal udvikling). Uden dette
@@ -23,6 +24,28 @@ import { logError } from "./errorLog";
 function logDbError(source, message, error) {
   console.error(message, error?.message);
   logError(source, error?.message || message, { detail: message });
+}
+
+// Som logDbError, men til SKRIVNINGER: melder desuden fejlen videre til
+// brugeren med det samme (se lib/saveStatus.js og
+// components/SaveErrorBanner.jsx).
+//
+// RETTET (august 2026): fejl-loggen ovenfor er kun synlig for en
+// systemadmin bagefter. Fejlede en skrivning - fx fordi
+// rettighedstriggeren på orders afviste den, eller fordi mobilen mistede
+// forbindelsen midt i et besøg - så brugeren stadig sin ændring på
+// skærmen (optimistisk opdatering) og gik derfra i god tro. Databasens
+// egne afvisningsbeskeder er allerede formuleret på dansk, så de kan
+// vises direkte.
+//
+// Bruges KUN de steder, hvor UI'et ikke selv viser fejlen. De kald der
+// returnerer { ok, fejl } og får den vist af den kaldende komponent (fx
+// createStoreAsSystemAdmin, createUserAsAdmin, resetPasswordAsAdmin,
+// updateSickLeaveWindow) bruger fortsat logDbError alene - ellers ville
+// samme fejl blive vist to gange.
+function logWriteError(source, message, error, brugerBesked) {
+  logDbError(source, message, error);
+  reportSaveFailure(brugerBesked ? `${brugerBesked} ${error?.message || ""}`.trim() : (error?.message || message));
 }
 
 async function getList(table, storeId) {
@@ -50,7 +73,7 @@ async function saveRow(table, storeId, item) {
   const row = { id: String(item.id), store_id: storeId, data: item, updated_at: new Date().toISOString() };
   const { error } = await supabase.from(table).upsert(row, { onConflict: "store_id,id" });
   if (error) {
-    logDbError(`dataStore:saveRow:${table}`, `Could not save to ${table}`, error);
+    logWriteError(`dataStore:saveRow:${table}`, `Could not save to ${table}`, error, "Kunne ikke gemme ændringen:");
     return false;
   }
   return true;
@@ -63,7 +86,7 @@ async function deleteRow(table, storeId, id) {
   if (!storeId || !id) return false;
   const { error } = await supabase.from(table).delete().eq("store_id", storeId).eq("id", String(id));
   if (error) {
-    logDbError(`dataStore:deleteRow:${table}`, `Could not delete from ${table}`, error);
+    logWriteError(`dataStore:deleteRow:${table}`, `Could not delete from ${table}`, error, "Kunne ikke slette:");
     return false;
   }
   return true;
@@ -82,7 +105,7 @@ async function seedDefaults(table, storeId, list) {
   const rows = list.map((item) => ({ id: String(item.id), store_id: storeId, data: item, updated_at: new Date().toISOString() }));
   const { error } = await supabase.from(table).upsert(rows, { onConflict: "store_id,id" });
   if (error) {
-    logDbError(`dataStore:seedDefaults:${table}`, `Could not seed defaults in ${table}`, error);
+    logWriteError(`dataStore:seedDefaults:${table}`, `Could not seed defaults in ${table}`, error, "Kunne ikke oprette standardopsætningen:");
     return false;
   }
   return true;
@@ -292,7 +315,7 @@ export async function updateUserPermissions(userId, { extraPermissions, revokedP
     extra_permissions: extraPermissions, revoked_permissions: revokedPermissions,
   }).eq("id", userId);
   if (error) {
-    logDbError("dataStore:updateUserPermissions", "Could not update permissions", error);
+    logWriteError("dataStore:updateUserPermissions", "Could not update permissions", error, "Rettigheden blev ikke ændret:");
     return { ok: false, fejl: error.message };
   }
   return { ok: true };
@@ -307,7 +330,7 @@ export async function updateUserPermissions(userId, { extraPermissions, revokedP
 export async function updateDashboardWidgets(userId, widgetKeys) {
   const { error } = await supabase.from("profiles").update({ dashboard_widgets: widgetKeys }).eq("id", userId);
   if (error) {
-    logDbError("dataStore:updateDashboardWidgets", "Could not save dashboard layout", error);
+    logWriteError("dataStore:updateDashboardWidgets", "Could not save dashboard layout", error, "Forsidens opsætning blev ikke gemt:");
     return { ok: false, fejl: error.message };
   }
   return { ok: true };
@@ -420,7 +443,7 @@ export async function addTimeOff(storeId, { montorId, startDato, slutDato, note,
     store_id: storeId, technician_id: montorId, start_date: startDato, end_date: slutDato || null, note: note || null, type: type || "ferie",
   });
   if (error) {
-    logDbError("dataStore:addTimeOff", "Could not create time off", error);
+    logWriteError("dataStore:addTimeOff", "Could not create time off", error, "Fraværet blev ikke oprettet:");
     return false;
   }
   return true;
@@ -429,7 +452,7 @@ export async function addTimeOff(storeId, { montorId, startDato, slutDato, note,
 export async function deleteTimeOff(timeOffId) {
   const { error } = await supabase.from("time_off").delete().eq("id", timeOffId);
   if (error) {
-    logDbError("dataStore:deleteTimeOff", "Could not delete time off", error);
+    logWriteError("dataStore:deleteTimeOff", "Could not delete time off", error, "Fraværet blev ikke slettet:");
     return false;
   }
   return true;
@@ -447,7 +470,7 @@ export async function beginSickLeave(storeId, montorId, note) {
 export async function endSickLeave(timeOffId) {
   const { error } = await supabase.from("time_off").update({ end_date: new Date().toISOString().slice(0, 10) }).eq("id", timeOffId);
   if (error) {
-    logDbError("dataStore:endSickLeave", "Could not end sick leave", error);
+    logWriteError("dataStore:endSickLeave", "Could not end sick leave", error, "Raskmeldingen blev ikke gemt:");
     return false;
   }
   return true;
@@ -468,7 +491,7 @@ export async function updateProfile(userId, fields) {
   if ("butikId" in fields) dbFields.store_id = fields.butikId;
   const { error } = await supabase.from("profiles").update(dbFields).eq("id", userId);
   if (error) {
-    logDbError("dataStore:updateProfile", "Could not update profile", error);
+    logWriteError("dataStore:updateProfile", "Could not update profile", error, "Brugeren blev ikke opdateret:");
     return false;
   }
   return true;
