@@ -33,6 +33,15 @@ function daysBetween(isoA, isoB) {
   return Math.round((b - a) / 86400000);
 }
 
+// Lørdag (6) eller søndag (0). Samme lokale dato-parsning som resten af
+// filen (isoDato + "T00:00:00"), så en dato aldrig tolkes en dag forkert
+// pga. tidszone.
+function isWeekend(iso) {
+  if (!iso) return false;
+  const day = new Date(iso + "T00:00:00").getDay();
+  return day === 0 || day === 6;
+}
+
 // Genererer en simpel liste af "days" fortløbende datoer fra startIso -
 // bekvemmelighed for den kaldende komponent, som selv skal geokode
 // adresser for datoerne i vinduet (se sameBuildingDates/nearbyDates).
@@ -50,6 +59,19 @@ export function planningWindow(startIso, days) {
 //     (så en triviel, ligegyldig flytning ikke sker uden grund) - men
 //     IKKE en hård begrænsning, en meget bedre kombination et par dage
 //     væk kan sagtens vinde over "uændret dato".
+//
+// WEEKENDER FRASORTERES (RETTET august 2026): begge kaldere sendte
+// weekender med i vinduet - booking-flowet via weekDays() (mandag-søndag)
+// og "Kræver handling"-fliserne via planningWindow(i dag, 14). Da lørdag
+// og søndag i praksis altid er helt tomme, gav de den HØJESTE
+// ledig-kapacitet-score ("Helt ledig dag") og lå derfor typisk ØVERST i
+// forslagslisten. Oveni forsvandt en sag, der blev booket på et sådant
+// forslag, ud af ugeoverblikket i PlanningPage, som bevidst kun viser
+// mandag-fredag. Filtreringen ligger HER (ét sted), ikke hos de to
+// kaldere, så en fremtidig tredje kalder ikke falder i samme hul.
+// Bemærk: dette begrænser kun hvad systemet SELV foreslår - vælger man
+// manuelt en lørdag i InteractiveWeekPicker (som stadig viser alle syv
+// dage), er det uændret muligt.
 //
 // excludeTechnicianIds udelukker specifikke montører helt fra kandidat-
 // listen (fx den sygemeldte/defekte montør selv - der er jo netop
@@ -80,6 +102,7 @@ export function suggestPlan({ dates, orders, technicians, timeOff, sameBuildingD
 
   const candidates = [];
   for (const dato of dates || []) {
+    if (isWeekend(dato)) continue; // se noten om weekender ovenfor
     const dayOrders = (orders || []).filter((o) => o.dato === dato && o.status !== "afsluttet");
     for (const t of rows) {
       if (t.id && isTechnicianAbsent(t.id, dato, timeOff)) continue;
@@ -131,4 +154,4 @@ export function suggestBookingDates({ week, orders, technicians, sameBuildingDat
   return suggestPlan({ dates: week, orders, technicians, sameBuildingDates, nearbyDates });
 }
 
-export { haversineKm, WORKDAY_MINUTES };
+export { haversineKm, isWeekend, WORKDAY_MINUTES };
