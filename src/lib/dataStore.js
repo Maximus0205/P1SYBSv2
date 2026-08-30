@@ -26,6 +26,30 @@ function logDbError(source, message, error) {
   logError(source, error?.message || message, { detail: message });
 }
 
+// Er dette en fejl, der skyldes FORBINDELSEN frem for en afvisning?
+//
+// VIGTIGT (august 2026): supabase-js KASTER IKKE ved netværksfejl. Den
+// fanger fejlen internt og returnerer den i { error }, præcis som en
+// afvist skrivning. Set fra kaldende kode ligner "mobilen har ingen
+// dækning" og "du mangler rettigheden Feltarbejde" derfor hinanden - og
+// det er en vigtig forskel: den ene skal prøves igen senere, den anden
+// vil fejle for evigt.
+//
+// Uden denne skelnen ville offline-køen (se lib/offlineQueue.js) aldrig
+// blive brugt, fordi den fejl-gren den lytter på, aldrig rammes.
+function erNetvaerksfejl(error) {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+  const besked = (error?.message || "").toLowerCase();
+  return (
+    besked.includes("failed to fetch") ||
+    besked.includes("networkerror") ||
+    besked.includes("network request failed") ||
+    besked.includes("load failed") ||
+    besked.includes("timeout") ||
+    besked.includes("aborted")
+  );
+}
+
 // Som logDbError, men til SKRIVNINGER: melder desuden fejlen videre til
 // brugeren med det samme (se lib/saveStatus.js og
 // components/SaveErrorBanner.jsx).
@@ -58,7 +82,9 @@ async function getList(table, storeId) {
   return (data || []).map((r) => r.data);
 }
 
-// Creates or updates ONE specific row.
+// Creates or updates ONE specific row. Returnerer { ok, netvaerk, fejl },
+// så den kaldende kode kan skelne mellem "afvist" og "kunne ikke nå
+// serveren" - se erNetvaerksfejl ovenfor og saveRow nedenfor.
 //
 // onConflict: 'store_id,id' er EKSPLICIT sat (rettet august 2026) - disse
 // tabeller (vehicles, product_types, product_categories, primary_services,
@@ -68,15 +94,32 @@ async function getList(table, storeId) {
 // stole på databasens PK-target - hvilket nu virker korrekt efter
 // migrationen, men er skrøbeligt at stole på implicit; med det eksplicit
 // sat her kan skemaet ikke stille og roligt komme ud af trit med koden.
-async function saveRow(table, storeId, item) {
-  if (!storeId || !item) return false;
+async function saveRowResult(table, storeId, item) {
+  if (!storeId || !item) return { ok: false, netvaerk: false, fejl: "Mangler butik eller data" };
   const row = { id: String(item.id), store_id: storeId, data: item, updated_at: new Date().toISOString() };
   const { error } = await supabase.from(table).upsert(row, { onConflict: "store_id,id" });
   if (error) {
-    logWriteError(`dataStore:saveRow:${table}`, `Could not save to ${table}`, error, "Kunne ikke gemme ændringen:");
-    return false;
+    const netvaerk = erNetvaerksfejl(error);
+    if (netvaerk) {
+      // Ved en netværksfejl vises INGEN besked her. Ændringen er ikke
+      // tabt - den lægges i kø og sendes, når forbindelsen er tilbage
+      // (se useOrders.js). At vise "Ændringen blev ikke gemt" i den
+      // situation ville være direkte forkert og få en montør til at
+      // indtaste alting én gang til uden grund.
+      logDbError(`dataStore:saveRow:${table}`, `Netværksfejl ved skrivning til ${table}`, error);
+    } else {
+      logWriteError(`dataStore:saveRow:${table}`, `Could not save to ${table}`, error, "Kunne ikke gemme ændringen:");
+    }
+    return { ok: false, netvaerk, fejl: error.message };
   }
-  return true;
+  return { ok: true, netvaerk: false };
+}
+
+// Bagudkompatibel indpakning: de fleste kaldere har kun brug for "gik det
+// godt?" og skal ikke forholde sig til hvorfor.
+async function saveRow(table, storeId, item) {
+  const r = await saveRowResult(table, storeId, item);
+  return r.ok;
 }
 
 // Deletes ONE specific row. Scoped to the store as an extra safety measure
@@ -127,6 +170,9 @@ export async function getFreshOrder(storeId, id) {
 
 export const getOrders = (storeId) => getList("orders", storeId);
 export const saveOrder = (storeId, order) => saveRow("orders", storeId, order);
+// Til offline-køen: samme skrivning, men med besked om HVORFOR det gik
+// galt, så en netværksfejl kan køes i stedet for at blive rullet tilbage.
+export const saveOrderResult = (storeId, order) => saveRowResult("orders", storeId, order);
 export const deleteOrder = (storeId, id) => deleteRow("orders", storeId, id);
 
 export const getVehicles = (storeId) => getList("vehicles", storeId);
