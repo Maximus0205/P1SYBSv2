@@ -73,6 +73,14 @@ export function planningWindow(startIso, days) {
 // manuelt en lørdag i InteractiveWeekPicker (som stadig viser alle syv
 // dage), er det uændret muligt.
 //
+// orderMinutes (RETTET august 2026): SAGENS EGEN forventede varighed.
+// Kapacitetstjekket så tidligere KUN på, hvad der allerede lå på dagen -
+// så en dag med 440 af 450 minutter booket blev regnet som en gyldig
+// kandidat, og en 5-timers opgave kunne lægges oveni, så dagen endte på
+// næsten det dobbelte af en arbejdsdag. Nu skal sagen kunne VÆRE der.
+// Standard 0, så eksisterende kaldere er upåvirkede, og ugyldige værdier
+// (null/NaN/negative) behandles som 0 frem for at vælte beregningen.
+//
 // excludeTechnicianIds udelukker specifikke montører helt fra kandidat-
 // listen (fx den sygemeldte/defekte montør selv - der er jo netop
 // PROBLEMET, ikke løsningen). Springer fraværende montører og allerede
@@ -89,7 +97,8 @@ export function planningWindow(startIso, days) {
 // et der ser ud til at løse noget, men reelt ikke gør. Booking-flowets
 // egne datoforslag (SuggestedDates) beholder standardværdien false, da
 // "ikke tildelt" der er et legitimt, midlertidigt valg ved en ny booking.
-export function suggestPlan({ dates, orders, technicians, timeOff, sameBuildingDates, nearbyDates, excludeTechnicianIds, originalDate, requireTechnician }) {
+export function suggestPlan({ dates, orders, technicians, timeOff, sameBuildingDates, nearbyDates, excludeTechnicianIds, originalDate, requireTechnician, orderMinutes }) {
+  const nyMinutter = Math.max(0, Number(orderMinutes) || 0);
   const nearbyByDate = new Map();
   (nearbyDates || []).forEach(({ dato, km }) => {
     if (!nearbyByDate.has(dato) || nearbyByDate.get(dato) > km) nearbyByDate.set(dato, km);
@@ -107,9 +116,11 @@ export function suggestPlan({ dates, orders, technicians, timeOff, sameBuildingD
     for (const t of rows) {
       if (t.id && isTechnicianAbsent(t.id, dato, timeOff)) continue;
       const loadMinutes = dayOrders.filter((o) => o.montorId === t.id).reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
-      if (loadMinutes > WORKDAY_MINUTES) continue; // allerede en fyldt dag - ikke et godt forslag
+      // Sagen skal kunne VÆRE der - ikke bare "dagen er ikke fuld endnu".
+      if (loadMinutes + nyMinutter > WORKDAY_MINUTES) continue;
 
-      let score = Math.max(0, (WORKDAY_MINUTES - loadMinutes) / 30); // ledig kapacitet, svag baggrundsfaktor
+      const ledigEfter = WORKDAY_MINUTES - loadMinutes - nyMinutter;
+      let score = Math.max(0, ledigEfter / 30); // ledig kapacitet, svag baggrundsfaktor
       let begrundelse = loadMinutes === 0 ? "Helt ledig dag" : `Kun ${Math.round((loadMinutes / 60) * 10) / 10}t booket i forvejen`;
       if (!t.id) score -= 20; // "ikke tildelt" er en sidste udvej, ikke et reelt forslag
 
@@ -150,8 +161,15 @@ export function suggestPlan({ dates, orders, technicians, timeOff, sameBuildingD
 // originalDate/requireTechnician (en ny booking må gerne foreslås "ikke
 // tildelt", se requireTechnician-kommentaren på suggestPlan ovenfor).
 // Kalder blot suggestPlan med "week" omdøbt til "dates".
-export function suggestBookingDates({ week, orders, technicians, sameBuildingDates, nearbyDates }) {
-  return suggestPlan({ dates: week, orders, technicians, sameBuildingDates, nearbyDates });
+//
+// orderMinutes sendes med, HVIS den kaldende komponent kender den -
+// booking-flowet bygger varelinjerne op undervejs, så varigheden kan
+// sagtens være 0 endnu, når de første datoforslag beregnes. Det er
+// acceptabelt her: en ny booking rettes typisk til manuelt bagefter, og
+// et forslag beregnet på et halvfærdigt grundlag er stadig bedre end
+// ingen forslag.
+export function suggestBookingDates({ week, orders, technicians, sameBuildingDates, nearbyDates, orderMinutes }) {
+  return suggestPlan({ dates: week, orders, technicians, sameBuildingDates, nearbyDates, orderMinutes });
 }
 
 export { haversineKm, isWeekend, WORKDAY_MINUTES };
