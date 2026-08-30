@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { getOrders, saveOrder, getFreshOrder } from "../lib/dataStore";
 import { uid, dailyOrderCompare } from "../data/domain";
+import { enqueueOrder, flushQueue, isNetworkError, queueLength, subscribeQueue } from "../lib/offlineQueue";
+import { reportSaveFailure } from "../lib/saveStatus";
 
 // FASE 3 af arkitektur-oprydningen (august 2026) - se hooks/useCatalog.js
 // for den fulde begrundelse. Al state og CRUD for ORDRER - den suverænt
@@ -18,11 +20,22 @@ import { uid, dailyOrderCompare } from "../data/domain";
 // er OPTIMISTISKE - de vises med det samme, og skrivningen til Supabase
 // sker bagefter. Fejler den skrivning, blev ændringen tidligere stående
 // på skærmen, som om alt var gået godt; først ved næste genindlæsning
-// opdagede man, at noten/statussen/plukket aldrig var blevet gemt. Det er
-// særligt slemt for en montør i marken, som lukker sagen og kører videre.
-// saveOneOrder ruller derfor nu ændringen tilbage til den version, der
-// står i databasen, hvis skrivningen fejler - og dataStore.js melder selve
-// fejlen videre til brugeren (se lib/saveStatus.js).
+// opdagede man, at noten/statussen/plukket aldrig var blevet gemt.
+// saveOneOrder ruller derfor ændringen tilbage til den version, der står
+// i databasen - MEDMINDRE fejlen skyldes manglende netværk, se nedenfor.
+//
+// OFFLINE-KØ (august 2026): en montør i en kælder eller elevator har
+// intet netværk. At rulle ændringen tilbage dér er teknisk korrekt, men
+// praktisk ubrugeligt: arbejdet er udført, og montøren skal ikke huske at
+// gøre det hele igen senere. Ved en NETVÆRKSFEJL beholdes ændringen
+// derfor på skærmen og lægges i kø (se lib/offlineQueue.js), og den
+// sendes automatisk, når forbindelsen er tilbage.
+//
+// Skelnen er afgørende: kun NETVÆRKSFEJL køes. En afvist skrivning
+// (manglende rettighed, RLS, ugyldige data) rulles stadig tilbage og
+// vises for brugeren - den ville fejle igen uanset hvor mange gange vi
+// prøvede, og at køe den ville genskabe præcis den tavse fejl, hele
+// tilbagerulningen blev bygget for at fjerne.
 //
 // DATO ER VALGFRI (august 2026): en sag kan oprettes/duplikeres UDEN dato
 // (og dermed uden tidsrum/montør) - den lander så i "Skal planlægges" i
@@ -32,6 +45,11 @@ import { uid, dailyOrderCompare } from "../data/domain";
 // en beslutning, og skjulte at sagen endnu ikke var planlagt ordentligt.
 export function useOrders(storeId) {
   const [orders, setOrders] = useState([]);
+  const [queuedCount, setQueuedCount] = useState(0);
+  // Forhindrer to samtidige tømninger af køen (fx hvis "online" fyrer
+  // samtidig med det periodiske forsøg) - to på én gang ville sende de
+  // samme sager to gange.
+  const flushingRef = useRef(false);
 
   const load = useCallback(async (id) => {
     if (!id) { setOrders([]); return; }
@@ -40,19 +58,74 @@ export function useOrders(storeId) {
 
   useEffect(() => { load(storeId); }, [storeId, load]);
 
-  // Gemmer ÉN ordre. Ved fejl rulles den optimistiske ændring tilbage:
-  // fandtes ordren i forvejen, gendannes den forrige version; var det en
-  // helt ny ordre, fjernes den igen. Se noten om tilbagerulning ovenfor.
+  useEffect(() => subscribeQueue((k) => setQueuedCount(k.length)), []);
+
+  // Sender køen. Kaldes når browseren melder "online" igen, ved opstart,
+  // og med jævne mellemrum - "online"-hændelsen er notorisk upålidelig på
+  // mobil (telefonen kan melde forbindelse, længe før der reelt er hul
+  // igennem), så den må ikke stå alene.
+  const flush = useCallback(async () => {
+    if (flushingRef.current || queueLength() === 0) return;
+    flushingRef.current = true;
+    try {
+      const r = await flushQueue(saveOrder, {
+        onDropped: (post) =>
+          reportSaveFailure(
+            `En ændring på sag ${post.order?.nr || post.id} kunne ikke gemmes efter flere forsøg og er nu fjernet fra køen. Åbn sagen og indtast ændringen igen.`
+          ),
+      });
+      // Hent friske data, hvis noget rent faktisk kom afsted - så skærmen
+      // viser det, der nu står i databasen, inkl. hvad andre har ændret
+      // imens.
+      if (r.sendt > 0 && storeId) await load(storeId);
+    } finally {
+      flushingRef.current = false;
+    }
+  }, [storeId, load]);
+
+  useEffect(() => {
+    flush();
+    window.addEventListener("online", flush);
+    const iv = setInterval(flush, 30000);
+    return () => { window.removeEventListener("online", flush); clearInterval(iv); };
+  }, [flush]);
+
+  // Gemmer ÉN ordre. Ved en AFVIST skrivning rulles den optimistiske
+  // ændring tilbage: fandtes ordren i forvejen, gendannes den forrige
+  // version; var det en helt ny ordre, fjernes den igen. Ved NETVÆRKSFEJL
+  // beholdes ændringen i stedet og lægges i kø - se noten ovenfor.
   const saveOneOrder = (order) => {
     const previous = orders.find((s) => s.id === order.id) || null;
     setOrders((prev) => (prev.some((s) => s.id === order.id) ? prev.map((s) => (s.id === order.id ? order : s)) : [...prev, order]));
     if (!storeId) return;
-    saveOrder(storeId, order).then((ok) => {
-      if (ok) return;
-      setOrders((prev) => (previous
-        ? prev.map((s) => (s.id === order.id ? previous : s))
-        : prev.filter((s) => s.id !== order.id)));
-    });
+
+    const rulTilbage = () => setOrders((prev) => (previous
+      ? prev.map((s) => (s.id === order.id ? previous : s))
+      : prev.filter((s) => s.id !== order.id)));
+
+    // Er browseren allerede offline, er der ingen grund til at forsøge
+    // først - læg den i kø med det samme.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      enqueueOrder(storeId, order);
+      return;
+    }
+
+    saveOrder(storeId, order)
+      .then((ok) => {
+        // saveOrder returnerer false ved en AFVIST skrivning (dataStore
+        // har allerede vist fejlen for brugeren).
+        if (!ok) rulTilbage();
+      })
+      .catch((e) => {
+        // En kastet fejl er typisk netværket. Så beholder vi ændringen på
+        // skærmen og sender den, når der er hul igennem igen.
+        if (isNetworkError(e)) {
+          enqueueOrder(storeId, order);
+          return;
+        }
+        rulTilbage();
+        reportSaveFailure(e?.message || "Ændringen blev ikke gemt.");
+      });
   };
 
   // Opretter en ny ordre med et midlertidigt sagsnummer (vises med det
@@ -71,6 +144,11 @@ export function useOrders(storeId) {
   // optimistisk tilføjede sag igen, og der returneres null - så den
   // kaldende komponent ikke navigerer videre til en sag, der aldrig blev
   // oprettet.
+  //
+  // BEVIDST IKKE KØET: sagsnummeret tildeles af databasen, og en køet
+  // oprettelse ville stå med "..." som nummer i timevis. Nye sager
+  // oprettes desuden fra butikken (Salg), hvor brugeren er online - den
+  // kompleksitet er der ingen grund til at tage på sig her.
   const addOrder = async ({ kunde, koeber, noegle, dato, tidsrumId, start, slut, montorId, varelinjer, ordrenummer, createdBy }) => {
     if (!storeId) return;
     const newOrder = {
@@ -323,6 +401,9 @@ export function useOrders(storeId) {
     toggleAddOn, addAddOn, removeAddOn, saveSignature,
     addMaterial, removeMaterial,
     markProblem, clearProblem, dismissNotifications,
+    // Antal ændringer der venter på at blive sendt - bruges af
+    // OfflineBanner, så montøren kan se, at arbejdet ikke er tabt.
+    queuedCount,
     reload: () => load(storeId),
   };
 }
