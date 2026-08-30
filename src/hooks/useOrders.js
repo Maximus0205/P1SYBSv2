@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { getOrders, saveOrder, getFreshOrder } from "../lib/dataStore";
+import { getOrders, saveOrder, saveOrderResult, getFreshOrder } from "../lib/dataStore";
 import { uid, dailyOrderCompare } from "../data/domain";
-import { enqueueOrder, flushQueue, isNetworkError, queueLength, subscribeQueue } from "../lib/offlineQueue";
+import { enqueueOrder, flushQueue, queueLength, subscribeQueue } from "../lib/offlineQueue";
 import { reportSaveFailure } from "../lib/saveStatus";
 
 // FASE 3 af arkitektur-oprydningen (august 2026) - se hooks/useCatalog.js
@@ -22,20 +22,28 @@ import { reportSaveFailure } from "../lib/saveStatus";
 // på skærmen, som om alt var gået godt; først ved næste genindlæsning
 // opdagede man, at noten/statussen/plukket aldrig var blevet gemt.
 // saveOneOrder ruller derfor ændringen tilbage til den version, der står
-// i databasen - MEDMINDRE fejlen skyldes manglende netværk, se nedenfor.
+// i databasen - MEDMINDRE fejlen skyldes netværket, se nedenfor.
 //
 // OFFLINE-KØ (august 2026): en montør i en kælder eller elevator har
 // intet netværk. At rulle ændringen tilbage dér er teknisk korrekt, men
-// praktisk ubrugeligt: arbejdet er udført, og montøren skal ikke huske at
-// gøre det hele igen senere. Ved en NETVÆRKSFEJL beholdes ændringen
-// derfor på skærmen og lægges i kø (se lib/offlineQueue.js), og den
-// sendes automatisk, når forbindelsen er tilbage.
+// praktisk ubrugeligt: arbejdet ER udført, og montøren skal ikke huske at
+// gøre det hele igen senere. I praksis fører det til, at folk falder
+// tilbage på papir - og så er systemet ikke længere sandheden om, hvad
+// der er sket. Ved en NETVÆRKSFEJL beholdes ændringen derfor på skærmen
+// og lægges i kø (se lib/offlineQueue.js), og den sendes automatisk, når
+// forbindelsen er tilbage.
 //
-// Skelnen er afgørende: kun NETVÆRKSFEJL køes. En afvist skrivning
+// Skelnen er afgørende: kun NETVÆRKSFEJL køes. En AFVIST skrivning
 // (manglende rettighed, RLS, ugyldige data) rulles stadig tilbage og
 // vises for brugeren - den ville fejle igen uanset hvor mange gange vi
 // prøvede, og at køe den ville genskabe præcis den tavse fejl, hele
 // tilbagerulningen blev bygget for at fjerne.
+//
+// Selve skelnen sker i dataStore (saveOrderResult -> { ok, netvaerk }),
+// IKKE her. Det er med vilje: supabase-js kaster ikke ved netværksfejl,
+// men returnerer den i { error } præcis som en afvisning, så forskellen
+// kan kun aflæses dér, hvor fejlobjektet findes. Et tidligere forsøg på
+// at fange det med .catch() her virkede aldrig, netop derfor.
 //
 // DATO ER VALGFRI (august 2026): en sag kan oprettes/duplikeres UDEN dato
 // (og dermed uden tidsrum/montør) - den lander så i "Skal planlægges" i
@@ -90,10 +98,12 @@ export function useOrders(storeId) {
     return () => { window.removeEventListener("online", flush); clearInterval(iv); };
   }, [flush]);
 
-  // Gemmer ÉN ordre. Ved en AFVIST skrivning rulles den optimistiske
-  // ændring tilbage: fandtes ordren i forvejen, gendannes den forrige
-  // version; var det en helt ny ordre, fjernes den igen. Ved NETVÆRKSFEJL
-  // beholdes ændringen i stedet og lægges i kø - se noten ovenfor.
+  // Gemmer ÉN ordre.
+  //   ok            -> færdig, intet mere at gøre
+  //   netvaerk      -> behold ændringen på skærmen, læg den i kø
+  //   afvist        -> rul tilbage (dataStore har allerede vist fejlen)
+  // Se den lange note ovenfor om hvorfor de to fejltyper skal behandles
+  // stik modsat hinanden.
   const saveOneOrder = (order) => {
     const previous = orders.find((s) => s.id === order.id) || null;
     setOrders((prev) => (prev.some((s) => s.id === order.id) ? prev.map((s) => (s.id === order.id ? order : s)) : [...prev, order]));
@@ -110,19 +120,16 @@ export function useOrders(storeId) {
       return;
     }
 
-    saveOrder(storeId, order)
-      .then((ok) => {
-        // saveOrder returnerer false ved en AFVIST skrivning (dataStore
-        // har allerede vist fejlen for brugeren).
-        if (!ok) rulTilbage();
+    saveOrderResult(storeId, order)
+      .then((r) => {
+        if (r.ok) return;
+        if (r.netvaerk) { enqueueOrder(storeId, order); return; }
+        rulTilbage();
       })
       .catch((e) => {
-        // En kastet fejl er typisk netværket. Så beholder vi ændringen på
-        // skærmen og sender den, når der er hul igennem igen.
-        if (isNetworkError(e)) {
-          enqueueOrder(storeId, order);
-          return;
-        }
+        // Skulle noget uventet alligevel kaste (fx en fejl i selve
+        // klientbiblioteket), er den sikre opførsel at rulle tilbage og
+        // sige det ligeud - ikke at antage, at det var netværket.
         rulTilbage();
         reportSaveFailure(e?.message || "Ændringen blev ikke gemt.");
       });
@@ -401,8 +408,8 @@ export function useOrders(storeId) {
     toggleAddOn, addAddOn, removeAddOn, saveSignature,
     addMaterial, removeMaterial,
     markProblem, clearProblem, dismissNotifications,
-    // Antal ændringer der venter på at blive sendt - bruges af
-    // OfflineBanner, så montøren kan se, at arbejdet ikke er tabt.
+    // Antal ændringer der venter på at blive sendt - så UI'et kan vise
+    // montøren, at arbejdet ikke er tabt.
     queuedCount,
     reload: () => load(storeId),
   };
