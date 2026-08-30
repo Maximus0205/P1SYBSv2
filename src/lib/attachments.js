@@ -63,15 +63,22 @@ async function kald(krop, standardBesked) {
 
 // Henter en sags vedhæftninger. Kun 'active' - en afbrudt upload skal
 // ikke vises som et billede, der ikke kan hentes.
-export async function getAttachments(storeId, orderId) {
-  if (!storeId || !orderId) return [];
-  const { data, error } = await supabase
+//
+// storeId er VALGFRIT: RLS på attachments afgrænser allerede til den
+// indloggedes egen butik, så et sags-id fra en anden butik giver
+// ingenting uanset hvad. Det gør, at komponenter som Photos kan hente
+// deres egne data uden at butiks-id'et skal sendes ned gennem hvert
+// eneste lag af props. Sendes det med, bruges det som ekstra afgrænsning.
+export async function getAttachments(orderId, storeId) {
+  if (!orderId) return [];
+  let query = supabase
     .from("attachments")
     .select("id, kind, navn, mime_type, bytes, created_at, created_by")
-    .eq("store_id", storeId)
     .eq("order_id", String(orderId))
     .eq("status", "active")
     .order("created_at", { ascending: true });
+  if (storeId) query = query.eq("store_id", storeId);
+  const { data, error } = await query;
   if (error) {
     logError("attachments:getAttachments", error.message);
     return [];
@@ -79,7 +86,7 @@ export async function getAttachments(storeId, orderId) {
   return data || [];
 }
 
-// Signeret URL til at VISE en vedhæftning. Kortlivet med vilje - en URL
+// Signeret URL til at VISE én vedhæftning. Kortlivet med vilje - en URL
 // der virker for evigt, er reelt en offentlig fil, og en sagsmappe
 // indeholder billeder fra kundens hjem og deres underskrift.
 //
@@ -87,6 +94,14 @@ export async function getAttachments(storeId, orderId) {
 // hent den, når billedet skal vises.
 export async function getAttachmentUrl(attachmentId) {
   return kald({ handling: "hent-url", vedhaeftningId: attachmentId }, "Kunne ikke hente filen");
+}
+
+// Som ovenstående, men for flere ad gangen. En sag med otte billeder skal
+// ikke koste otte rundture - særligt ikke over mobildata i en kælder.
+// Returnerer { ok, urls: { <id>: { url, navn, mimeType } } }.
+export async function getAttachmentUrls(attachmentIds) {
+  if (!attachmentIds || attachmentIds.length === 0) return { ok: true, urls: {} };
+  return kald({ handling: "hent-urls", vedhaeftningIder: attachmentIds }, "Kunne ikke hente filerne");
 }
 
 // Uploader én fil. Kører hele to-fase-flowet og melder selv fejl videre
@@ -152,8 +167,9 @@ export async function uploadAttachment({ orderId, file, kind, onProgress }) {
 
 // Markerer en vedhæftning til sletning. Fjerner IKKE rækken: selve filen
 // skal væk fra lageret først, ellers står der en fil, ingen kan se, men
-// som stadig fylder i butikkens forbrug. Oprydningsjobbet fjerner begge
-// dele i den rigtige rækkefølge.
+// som stadig fylder i butikkens forbrug. Oprydningsjobbet
+// (sagsdokumentation-oprydning) fjerner begge dele i den rigtige
+// rækkefølge.
 export async function markAttachmentForDeletion(attachmentId) {
   const { error } = await supabase
     .from("attachments").update({ status: "deleting" }).eq("id", attachmentId);
