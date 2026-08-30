@@ -5,7 +5,31 @@ import { RotateCw, Trash2, Cable, Wifi, Wrench, Tag, ShoppingCart, Route, Truck,
 // VALUES shown in the UI (labels, statuses, product names) stay Danish,
 // since the people using the app are Danish shop staff.
 
-const uid = () => Math.random().toString(36).slice(2, 10);
+// RETTET (august 2026): uid() var tidligere
+// Math.random().toString(36).slice(2, 10) - otte tegn, ca. 41 bits.
+// Det er IKKE nok her, fordi id'et bruges som en sags PRIMÆRNØGLE, og
+// dataStore.saveRow gemmer med UPSERT: to sager der tilfældigvis fik
+// samme id, ville ikke give en fejl - den ene ville stille og roligt
+// OVERSKRIVE den anden. Tavst datatab er den værste udgang, og
+// Math.random er hverken kollisionssikker eller garanteret ensartet på
+// tværs af browsere.
+//
+// crypto.randomUUID() giver 122 tilfældige bits fra styresystemets egen
+// kryptografiske kilde. Findes i alle browsere, appen understøtter, men
+// KUN over HTTPS/localhost (window.crypto er ikke tilgængelig på en
+// usikker oprindelse) - derfor faldback nedenfor, så en udvikler på en
+// http-adresse ikke får en app, der går ned ved oprettelse af en sag.
+// Faldbacken bruger to uafhængige random-kald og et tidsstempel, hvilket
+// er væsentligt bedre end den gamle, men stadig kun en nødløsning.
+//
+// Eksisterende, korte id'er i databasen er upåvirkede: de bliver stående
+// som de er, og nye lange id'er kan ikke kollidere med dem.
+const uid = () => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}-${Math.random().toString(36).slice(2, 12)}`;
+};
 
 const now = () =>
   new Date().toLocaleString("da-DK", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
