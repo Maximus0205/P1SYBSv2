@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect } from "react";
-import { X, Plus, Lock } from "lucide-react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import { X, Plus, Lock, Loader2, ImageOff } from "lucide-react";
 import { formatTime, formatDuration, now, totalMinutes, lineItemLabel, serviceIcon } from "../data/domain";
+import { getAttachments, getAttachmentUrls, uploadAttachment, markAttachmentForDeletion } from "../lib/attachments";
 
 // RETTET (august 2026): alle "tilføj/rediger"-handlinger herunder
 // (onAdd/onToggleAddOn/onSave osv.) kan nu være undefined - se
@@ -104,28 +105,141 @@ function Notes({ order, onAdd }) {
   );
 }
 
+// OMLAGT (august 2026): billeder gemmes ikke længere som base64 inde i
+// sagens jsonb-blob, men som rigtige filer i et lager - se
+// lib/attachments.js for hele baggrunden. Kort fortalt fyldte ÉN sag med
+// billeder 2,5 MB, og appen henter ALLE butikkens sager med hele blobben
+// ved hver indlæsning, også på montørernes mobiler.
+//
+// BAGUDKOMPATIBILeT: gamle billeder ligger stadig i order.billeder som
+// base64. De vises fortsat, side om side med de nye - der er ingen
+// big-bang-migrering, og ingen sag mister sin dokumentation. Nye billeder
+// lander altid i det nye lager. Gamle kan ikke slettes herfra (de sidder i
+// selve sagen), og det er med vilje: dokumentation for udført arbejde
+// skal ikke kunne forsvinde ved et uheld.
+//
+// onAdd bruges IKKE længere til at gemme (det gør uploadAttachment), men
+// bevares som det SIGNAL fra OrderView/TechnicianPage om, hvorvidt den
+// indloggede har rettigheden sag_feltarbejde. På den måde er
+// rettighedslogikken ét sted, og de to kaldende sider behøver ikke ændres.
+// Serveren tjekker selv rettigheden igen ved upload - UI'et er ikke en
+// sikkerhedsgrænse.
 function Photos({ order, onAdd }) {
   const inputRef = useRef(null);
-  const handleFiles = (files) => {
-    Array.from(files).forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = () => onAdd({ src: reader.result, navn: file.name });
-      reader.readAsDataURL(file);
-    });
+  const [attachments, setAttachments] = useState([]);
+  const [urls, setUrls] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(null); // {antal, faerdige, trin}
+  const canEdit = !!onAdd;
+
+  const legacyPhotos = order.billeder || [];
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const liste = await getAttachments(order.id);
+    const billeder = liste.filter((a) => a.kind === "billede");
+    setAttachments(billeder);
+    if (billeder.length > 0) {
+      const svar = await getAttachmentUrls(billeder.map((a) => a.id));
+      setUrls(svar.ok ? svar.urls || {} : {});
+    } else {
+      setUrls({});
+    }
+    setLoading(false);
+  }, [order.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleFiles = async (files) => {
+    const liste = Array.from(files);
+    if (liste.length === 0) return;
+    // Sekventielt, ikke parallelt: en montør på mobildata får en
+    // væsentligt mere pålidelig upload af fem billeder ét ad gangen end
+    // fem samtidige, der konkurrerer om en dårlig forbindelse.
+    for (let i = 0; i < liste.length; i++) {
+      setUploading({ antal: liste.length, faerdige: i, trin: "starter" });
+      await uploadAttachment({
+        orderId: order.id,
+        file: liste[i],
+        kind: "billede",
+        onProgress: (trin) => setUploading({ antal: liste.length, faerdige: i, trin }),
+      });
+      // Fejl melder uploadAttachment selv videre til brugeren (se
+      // SaveErrorBanner) - vi stopper ikke resten af billederne af den
+      // grund, de øvrige kan sagtens gå igennem.
+    }
+    setUploading(null);
+    await load();
   };
+
+  const handleRemove = async (id) => {
+    const svar = await markAttachmentForDeletion(id);
+    if (svar.ok) setAttachments((prev) => prev.filter((a) => a.id !== id));
+  };
+
+  const trinTekst = { starter: "Forbereder...", sender: "Sender...", bekraefter: "Gemmer..." };
+  const intetAtVise = !loading && attachments.length === 0 && legacyPhotos.length === 0;
+
   return (
     <div>
-      {onAdd ? (
-        <div onClick={() => inputRef.current?.click()} className="mb-4 rounded-xl border border-dashed border-line hover:border-brand transition-colors bg-white p-6 text-center cursor-pointer">
-          <p className="text-sm text-muted">Tryk for at tilføje billeder fra sagen</p>
-          <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => e.target.files && handleFiles(e.target.files)} />
+      {canEdit ? (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => !uploading && inputRef.current?.click()}
+          onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !uploading) { e.preventDefault(); inputRef.current?.click(); } }}
+          className={`mb-4 rounded-xl border border-dashed bg-white p-6 text-center transition-colors focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/30 ${uploading ? "border-line opacity-70 cursor-wait" : "border-line hover:border-brand cursor-pointer"}`}
+        >
+          {uploading ? (
+            <p className="text-sm text-muted flex items-center justify-center gap-2">
+              <Loader2 size={15} className="animate-spin" aria-hidden="true" />
+              {trinTekst[uploading.trin] || "Sender..."} ({uploading.faerdige + 1} af {uploading.antal})
+            </p>
+          ) : (
+            <p className="text-sm text-muted">Tryk for at tilføje billeder fra sagen</p>
+          )}
+          <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { if (e.target.files) { handleFiles(e.target.files); e.target.value = ""; } }} />
         </div>
       ) : (
         <LockedNotice text="Du kan se, men ikke tilføje, billeder på denne sag." />
       )}
-      {order.billeder.length === 0 ? <p className="text-sm text-muted italic">Ingen billeder endnu for denne sag.</p> : (
+
+      {loading ? (
+        <p className="text-sm text-muted italic flex items-center gap-2"><Loader2 size={14} className="animate-spin" aria-hidden="true" /> Henter billeder...</p>
+      ) : intetAtVise ? (
+        <p className="text-sm text-muted italic">Ingen billeder endnu for denne sag.</p>
+      ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {order.billeder.map((b) => (
+          {attachments.map((a) => {
+            const fil = urls[a.id];
+            return (
+              <div key={a.id} className="rounded-xl overflow-hidden border border-line bg-white shadow-sm group relative">
+                {fil ? (
+                  <img src={fil.url} alt={a.navn || "Billede fra sagen"} className="w-full h-32 object-cover" />
+                ) : (
+                  // Lageret svarede ikke. Sagen og alt andet virker
+                  // stadig - kun billedet mangler, og det siges ligeud i
+                  // stedet for at vise et gået-i-stykker-ikon.
+                  <div className="w-full h-32 flex flex-col items-center justify-center gap-1 bg-panel text-muted">
+                    <ImageOff size={18} aria-hidden="true" />
+                    <span className="text-[10px] px-2 text-center">Kunne ikke hentes</span>
+                  </div>
+                )}
+                <p className="text-[11px] text-muted px-2 py-1 truncate">{a.navn || "Billede"}</p>
+                {canEdit && (
+                  <button
+                    onClick={() => handleRemove(a.id)}
+                    aria-label={`Fjern billedet ${a.navn || ""}`}
+                    className="absolute top-1 right-1 w-9 h-9 flex items-center justify-center rounded-lg bg-white/90 text-muted hover:text-danger border border-line opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-danger"
+                  >
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          {/* Gamle base64-billeder fra før omlægningen. Vises uændret. */}
+          {legacyPhotos.map((b) => (
             <div key={b.id} className="rounded-xl overflow-hidden border border-line bg-white shadow-sm">
               <img src={b.src} alt={b.navn} className="w-full h-32 object-cover" />
               <p className="text-[11px] text-muted px-2 py-1 truncate">{b.navn}</p>
@@ -133,7 +247,6 @@ function Photos({ order, onAdd }) {
           ))}
         </div>
       )}
-      <p className="text-[11px] text-muted mt-3">Billeder gemmes kun i denne session og forsvinder ved genindlæsning.</p>
     </div>
   );
 }
@@ -335,6 +448,13 @@ function SignaturePad({ defaultName, onSave, onCancel }) {
 // om hvem der kvitterer). RETTET (august 2026): onSave kan nu være
 // undefined (mangler sag_feltarbejde) - så vises kvitteringen kun
 // læsende, uden mulighed for at underskrive/genunderskrive.
+//
+// BEMÆRK: underskriften ligger fortsat som base64 i sagen (order.underskrift)
+// og er IKKE flyttet til vedhæftningslaget endnu, i modsætning til
+// billederne ovenfor. Det er et bevidst valg om rækkefølge, ikke en
+// forglemmelse: en underskrift er ét lille PNG (typisk under 50 KB), mens
+// billederne var det, der gjorde en enkelt sag 2,5 MB stor. Flytningen af
+// underskriften bør ske sammen med, at de gamle base64-billeder migreres.
 function Signature({ order, onSave }) {
   const existing = order.underskrift;
   const [signing, setSigning] = useState(!existing && !!onSave);
