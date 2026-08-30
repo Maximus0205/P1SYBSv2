@@ -17,6 +17,21 @@ function LockedNotice({ text }) {
   );
 }
 
+// RETTET (august 2026): slet-knapper var skjult med
+// "opacity-0 group-hover:opacity-100". På en telefon eller tablet FINDES
+// hover ikke - knappen var der, men usynlig og reelt uopnåelig. En montør
+// på mobil kunne dermed ALDRIG fjerne en tillægsydelse eller et billede.
+// Det er en tavs fejl: der er ingen fejlmeddelelse, funktionen er bare
+// utilgængelig for præcis den brugergruppe, der bruger appen mest.
+//
+// Løsningen er ikke at fjerne hover-effekten, men at gøre den betinget:
+// [@media(hover:hover)] gælder KUN enheder med en rigtig pegeenhed (mus/
+// trackpad). Har enheden ikke hover - altså touch - er knappen synlig
+// hele tiden. Bemærk at det skal være hover:hover og ikke fx en
+// bredde-baseret grænse: en lille laptop har mus, og en stor tablet har
+// ikke, så skærmbredde svarer ikke til inputmetode.
+const HOVER_ONLY_VISIBLE = "opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus:opacity-100";
+
 function LineItemDetails({ order, onToggleAddOn, onAddAddOn, onRemoveAddOn }) {
   const [newItem, setNewItem] = useState({});
   const locked = !onToggleAddOn || !onAddAddOn || !onRemoveAddOn;
@@ -45,10 +60,22 @@ function LineItemDetails({ order, onToggleAddOn, onAddAddOn, onRemoveAddOn }) {
                     const Icon = serviceIcon(y.navn);
                     return (
                       <label key={y.id} className={`flex items-center gap-2.5 px-2 py-1.5 rounded-lg group ${locked ? "" : "hover:bg-panel cursor-pointer"}`}>
-                        <input type="checkbox" checked={y.udfoert} disabled={locked} onChange={() => onToggleAddOn(v.id, y.id)} className="w-4 h-4 accent-success disabled:opacity-60" />
+                        {/* Afkrydsningsfeltet er forstørret til 20px: 16px er
+                            under det, en tommelfinger rammer pålideligt, og
+                            det her er den handling, montøren udfører flest
+                            gange om dagen. */}
+                        <input type="checkbox" checked={y.udfoert} disabled={locked} onChange={() => onToggleAddOn(v.id, y.id)} className="w-5 h-5 accent-success disabled:opacity-60 shrink-0" />
                         <Icon size={14} className="text-muted shrink-0" strokeWidth={2.5} />
                         <span className={`text-sm flex-1 ${y.udfoert ? "line-through text-muted" : "text-ink"}`}>{y.navn}</span>
-                        {!locked && <button onClick={(e) => { e.preventDefault(); onRemoveAddOn(v.id, y.id); }} className="opacity-0 group-hover:opacity-100 text-muted hover:text-brand"><X size={14} /></button>}
+                        {!locked && (
+                          <button
+                            onClick={(e) => { e.preventDefault(); onRemoveAddOn(v.id, y.id); }}
+                            aria-label={`Fjern tillægsydelsen ${y.navn}`}
+                            className={`shrink-0 -my-2 w-11 h-11 flex items-center justify-center rounded-lg text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand ${HOVER_ONLY_VISIBLE}`}
+                          >
+                            <X size={16} aria-hidden="true" />
+                          </button>
+                        )}
                       </label>
                     );
                   })}
@@ -61,9 +88,10 @@ function LineItemDetails({ order, onToggleAddOn, onAddAddOn, onRemoveAddOn }) {
                     onChange={(e) => setNewItem((p) => ({ ...p, [v.id]: e.target.value }))}
                     onKeyDown={(e) => { if (e.key === "Enter" && (newItem[v.id] || "").trim()) { onAddAddOn(v.id, newItem[v.id].trim()); setNewItem((p) => ({ ...p, [v.id]: "" })); } }}
                     placeholder="Tilføj punkt..."
-                    className="flex-1 rounded-lg border border-line bg-panel px-3 py-1.5 text-sm text-ink focus:outline-none focus:border-brand"
+                    aria-label="Tilføj tillægsydelse eller opmærksomhedspunkt"
+                    className="flex-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
                   />
-                  <button onClick={() => { if (!(newItem[v.id] || "").trim()) return; onAddAddOn(v.id, newItem[v.id].trim()); setNewItem((p) => ({ ...p, [v.id]: "" })); }} className="px-3 rounded-lg text-ink border border-line hover:border-brand hover:text-brand transition-colors"><Plus size={16} /></button>
+                  <button onClick={() => { if (!(newItem[v.id] || "").trim()) return; onAddAddOn(v.id, newItem[v.id].trim()); setNewItem((p) => ({ ...p, [v.id]: "" })); }} aria-label="Tilføj punkt" className="w-11 shrink-0 flex items-center justify-center rounded-lg text-ink border border-line hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors"><Plus size={16} aria-hidden="true" /></button>
                 </div>
               )}
             </div>
@@ -85,8 +113,8 @@ function Notes({ order, onAdd }) {
     <div>
       {onAdd ? (
         <div className="flex gap-2 mb-4">
-          <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Skriv en note om sagen..." rows={2} className="flex-1 rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand resize-none" />
-          <button onClick={() => { if (!text.trim()) return; onAdd(text); setText(""); }} className="px-4 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors">Tilføj</button>
+          <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Skriv en note om sagen..." aria-label="Ny note" rows={2} className="flex-1 rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand resize-none" />
+          <button onClick={() => { if (!text.trim()) return; onAdd(text); setText(""); }} className="px-4 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors">Tilføj</button>
         </div>
       ) : (
         <LockedNotice text="Du kan se, men ikke tilføje, noter på denne sag." />
@@ -111,12 +139,20 @@ function Notes({ order, onAdd }) {
 // billeder 2,5 MB, og appen henter ALLE butikkens sager med hele blobben
 // ved hver indlæsning, også på montørernes mobiler.
 //
-// BAGUDKOMPATIBILeT: gamle billeder ligger stadig i order.billeder som
+// BAGUDKOMPATIBILITET: gamle billeder ligger stadig i order.billeder som
 // base64. De vises fortsat, side om side med de nye - der er ingen
 // big-bang-migrering, og ingen sag mister sin dokumentation. Nye billeder
 // lander altid i det nye lager. Gamle kan ikke slettes herfra (de sidder i
 // selve sagen), og det er med vilje: dokumentation for udført arbejde
 // skal ikke kunne forsvinde ved et uheld.
+//
+// KOMPRIMERING (august 2026): et moderne mobilkamera leverer 4-8 MB pr.
+// billede. Fem billeder fra en kælder på 4G er 30 MB - det tager
+// evigheder, fejler ofte undervejs, og butikken betaler for lagerplads,
+// den ikke har brug for. Billedet skaleres derfor ned til maks. 1600 px
+// og gemmes som JPEG (kvalitet 0,8), før det sendes. Det giver typisk
+// 300-500 KB uden synligt tab på et dokumentationsbillede, hvor pointen
+// er "sådan så installationen ud", ikke trykklar opløsning.
 //
 // onAdd bruges IKKE længere til at gemme (det gør uploadAttachment), men
 // bevares som det SIGNAL fra OrderView/TechnicianPage om, hvorvidt den
@@ -124,6 +160,37 @@ function Notes({ order, onAdd }) {
 // rettighedslogikken ét sted, og de to kaldende sider behøver ikke ændres.
 // Serveren tjekker selv rettigheden igen ved upload - UI'et er ikke en
 // sikkerhedsgrænse.
+const MAKS_BILLEDKANT = 1600;
+const JPEG_KVALITET = 0.8;
+
+async function komprimerBillede(file) {
+  // Kun rigtige billeder. En PDF eller en HEIC, browseren ikke kan tegne,
+  // sendes uændret igennem - hellere en stor fil end ingen fil.
+  if (!file.type.startsWith("image/")) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const skala = Math.min(1, MAKS_BILLEDKANT / Math.max(bitmap.width, bitmap.height));
+    // Er billedet allerede lille nok, er der intet at vinde ved at tegne
+    // det om - og en omkodning ville kun forringe det.
+    if (skala === 1 && file.size < 800 * 1024) { bitmap.close?.(); return file; }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * skala);
+    canvas.height = Math.round(bitmap.height * skala);
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+
+    const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", JPEG_KVALITET));
+    if (!blob || blob.size >= file.size) return file; // ingen gevinst
+    const navn = file.name.replace(/\.[^.]+$/, "") + ".jpg";
+    return new File([blob], navn, { type: "image/jpeg" });
+  } catch (_) {
+    // Kan browseren ikke læse formatet (fx visse HEIC-varianter), er den
+    // rigtige opførsel at sende originalen - ikke at tabe billedet.
+    return file;
+  }
+}
+
 function Photos({ order, onAdd }) {
   const inputRef = useRef(null);
   const [attachments, setAttachments] = useState([]);
@@ -157,10 +224,11 @@ function Photos({ order, onAdd }) {
     // væsentligt mere pålidelig upload af fem billeder ét ad gangen end
     // fem samtidige, der konkurrerer om en dårlig forbindelse.
     for (let i = 0; i < liste.length; i++) {
-      setUploading({ antal: liste.length, faerdige: i, trin: "starter" });
+      setUploading({ antal: liste.length, faerdige: i, trin: "komprimerer" });
+      const fil = await komprimerBillede(liste[i]);
       await uploadAttachment({
         orderId: order.id,
-        file: liste[i],
+        file: fil,
         kind: "billede",
         onProgress: (trin) => setUploading({ antal: liste.length, faerdige: i, trin }),
       });
@@ -177,7 +245,7 @@ function Photos({ order, onAdd }) {
     if (svar.ok) setAttachments((prev) => prev.filter((a) => a.id !== id));
   };
 
-  const trinTekst = { starter: "Forbereder...", sender: "Sender...", bekraefter: "Gemmer..." };
+  const trinTekst = { komprimerer: "Forbereder billedet...", starter: "Forbereder...", sender: "Sender...", bekraefter: "Gemmer..." };
   const intetAtVise = !loading && attachments.length === 0 && legacyPhotos.length === 0;
 
   return (
@@ -230,9 +298,9 @@ function Photos({ order, onAdd }) {
                   <button
                     onClick={() => handleRemove(a.id)}
                     aria-label={`Fjern billedet ${a.navn || ""}`}
-                    className="absolute top-1 right-1 w-9 h-9 flex items-center justify-center rounded-lg bg-white/90 text-muted hover:text-danger border border-line opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-danger"
+                    className={`absolute top-1 right-1 w-11 h-11 flex items-center justify-center rounded-lg bg-white/90 text-muted hover:text-danger border border-line focus:outline-none focus:ring-2 focus:ring-danger ${HOVER_ONLY_VISIBLE}`}
                   >
-                    <X size={14} aria-hidden="true" />
+                    <X size={16} aria-hidden="true" />
                   </button>
                 )}
               </div>
@@ -258,9 +326,9 @@ function Reports({ order, onAdd }) {
     <div>
       {onAdd ? (
         <div className="rounded-xl border border-line bg-white p-4 mb-4 shadow-sm">
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Rapporttitel, fx 'Afleveringsrapport'" className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink mb-2 focus:outline-none focus:border-brand" />
-          <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Beskrivelse af udført arbejde..." rows={3} className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink mb-2 focus:outline-none focus:border-brand resize-none" />
-          <button onClick={() => { if (!title.trim() || !text.trim()) return; onAdd(title, text); setTitle(""); setText(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors">Gem rapport</button>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Rapporttitel, fx 'Afleveringsrapport'" aria-label="Rapporttitel" className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink mb-2 focus:outline-none focus:border-brand" />
+          <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Beskrivelse af udført arbejde..." aria-label="Beskrivelse af udført arbejde" rows={3} className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink mb-2 focus:outline-none focus:border-brand resize-none" />
+          <button onClick={() => { if (!title.trim() || !text.trim()) return; onAdd(title, text); setTitle(""); setText(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors">Gem rapport</button>
         </div>
       ) : (
         <LockedNotice text="Du kan se, men ikke oprette, rapporter på denne sag." />
@@ -334,9 +402,9 @@ function ClockWidget({ order, onClockIn, onClockOut }) {
         )}
       </div>
       {order.stemplerInd ? (
-        <button onClick={onClockOut} disabled={locked} className="px-5 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-ink transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5">{locked && <Lock size={13} />} Stemplet ud</button>
+        <button onClick={onClockOut} disabled={locked} className="px-5 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-ink focus:outline-none focus:ring-2 focus:ring-ink transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5">{locked && <Lock size={13} aria-hidden="true" />} Stemplet ud</button>
       ) : (
-        <button onClick={onClockIn} disabled={locked} className="px-5 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-success hover:bg-ink transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5">{locked && <Lock size={13} />} Stemplet ind</button>
+        <button onClick={onClockIn} disabled={locked} className="px-5 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-success hover:bg-ink focus:outline-none focus:ring-2 focus:ring-ink transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5">{locked && <Lock size={13} aria-hidden="true" />} Stemplet ind</button>
       )}
     </div>
   );
@@ -433,10 +501,10 @@ function SignaturePad({ defaultName, onSave, onCancel }) {
         />
       </div>
       {!hasDrawn && <p className="text-[11px] text-danger mt-1.5">Der skal skrives under, før den kan gemmes.</p>}
-      <div className="flex gap-2 mt-3">
-        <button onClick={save} disabled={!hasDrawn || !name.trim()} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors disabled:opacity-50">Gem underskrift</button>
-        <button onClick={clear} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted transition-colors">Ryd</button>
-        {onCancel && <button onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted transition-colors">Annuller</button>}
+      <div className="flex flex-wrap gap-2 mt-3">
+        <button onClick={save} disabled={!hasDrawn || !name.trim()} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-50">Gem underskrift</button>
+        <button onClick={clear} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted focus:outline-none focus:ring-2 focus:ring-muted transition-colors">Ryd</button>
+        {onCancel && <button onClick={onCancel} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted focus:outline-none focus:ring-2 focus:ring-muted transition-colors">Annuller</button>}
       </div>
     </div>
   );
@@ -471,7 +539,7 @@ function Signature({ order, onSave }) {
             <p className="text-sm font-semibold text-ink">Kvitteret af {existing.navn}</p>
             <p className="text-[11px] text-muted">{existing.tid}</p>
           </div>
-          {onSave && <button onClick={() => setSigning(true)} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand underline shrink-0">Underskriv igen</button>}
+          {onSave && <button onClick={() => setSigning(true)} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand underline shrink-0 py-2 px-1 focus:outline-none focus:ring-2 focus:ring-brand rounded">Underskriv igen</button>}
         </div>
         <img src={existing.data} alt={`Underskrift fra ${existing.navn}`} className="w-full max-w-sm rounded-lg border border-line bg-white" />
       </div>
