@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, RefreshCw, KeyRound, Clock, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid, MapPin, Phone, Route, Stethoscope, CalendarX2, AlertTriangle } from "lucide-react";
 import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, dailyOrderCompare, needsPlanning, activeSickLeave, buildingKey, timeSlotById } from "../data/domain";
 import { geocodeAddress, geocodeAddresses, drivingDistances, routeDrivingTime, optimalVisitOrder } from "../lib/geocoding";
-import { suggestPlan, planningWindow } from "../lib/scheduling";
+import { suggestPlan, planningWindow, WORKDAY_MINUTES } from "../lib/scheduling";
 import { DateSelector } from "../components/common";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 
@@ -22,8 +22,8 @@ import { OrderCardCompact } from "../components/OrderCardCompact";
 //
 // "KRÆVER HANDLING" ER FIRE "dashboard-fliser" - kun ÉN kan være foldet ud
 // ad gangen:
-//   1. Montørproblem  - montøren findes ikke længere, eller bilen er
-//                        blokeret
+//   1. Montørproblem  - montøren findes ikke længere, bilen er blokeret,
+//                        eller montøren har fravær/ferie den dag
 //   2. Sygemelding     - sager for en AKTIVT sygemeldt montør, inden for
 //                        butikkens eget tidsvindue (se Admin)
 //   3. Skal planlægges - mangler dato ELLER montør (IKKE "dato passeret" -
@@ -38,13 +38,32 @@ import { OrderCardCompact } from "../components/OrderCardCompact";
 // forslag - det kræver en menneskelig opfølgning.
 // ---------------------------------------------------------------------------
 
-function technicianIssue(order, technicians, vehicles) {
+// RETTET (august 2026): FERIE blev slet ikke fanget her. En sag tildelt en
+// montør, der holder ferie den pågældende dag, landede i INGEN af
+// "kræver handling"-fliserne - den blev kun vist med et lille
+// "Fraværende"-mærke i ugeoverblikket, hvis nogen huskede at kigge.
+// Sygdom var dækket (egen flise), bilen ude af drift var dækket, men
+// ferie - den ENESTE af de tre, man kender uger i forvejen og derfor
+// burde kunne planlægge sig ud af i god tid - faldt igennem.
+//
+// Sygdom holdes bevidst UDE her: den har sin egen flise med sit eget
+// tidsvindue, og en sag skal ikke optræde to steder.
+function technicianIssue(order, technicians, vehicles, timeOff) {
   if (!order.montorId) return null;
   const technician = technicians.find((m) => m.id === order.montorId);
   if (!technician) return "Montøren findes ikke længere";
   if (technician.bilId) {
     const vehicle = (vehicles || []).find((v) => v.id === technician.bilId);
     if (vehicle?.lukket) return "Montørens bil er ude af drift";
+  }
+  if (order.dato) {
+    const fravaer = (timeOff || []).find((f) =>
+      f.montorId === order.montorId &&
+      (f.type || "ferie") !== "sygdom" &&
+      order.dato >= f.startDato &&
+      (!f.slutDato || order.dato <= f.slutDato)
+    );
+    if (fravaer) return "Montøren har fravær/ferie denne dag";
   }
   return null;
 }
@@ -72,13 +91,16 @@ function classify(orders, technicians, vehicles, timeOff, windowHours) {
   for (const s of orders) {
     if (s.status === "afsluttet") { done.push(s); continue; }
 
-    const issue = s.montorId ? technicianIssue(s, technicians, vehicles) : null;
-    if (issue) { technicianProblem.push({ ...s, _issue: issue }); continue; }
-
+    // Sygdom tjekkes FØR de øvrige montørproblemer: den har sin egen
+    // flise med butikkens eget tidsvindue, og skal ikke opsluges af den
+    // bredere "montørproblem"-kategori.
     if (s.montorId && s.dato) {
       const sick = activeSickLeave(s.montorId, timeOff);
       if (sick && s.dato <= windowEnd) { sickLeave.push({ ...s, _sygemelding: sick }); continue; }
     }
+
+    const issue = s.montorId ? technicianIssue(s, technicians, vehicles, timeOff) : null;
+    if (issue) { technicianProblem.push({ ...s, _issue: issue }); continue; }
 
     if (needsPlanning(s)) { needsPlan.push(s); continue; }
 
@@ -115,19 +137,28 @@ function matchesSearch(order, search) {
 // Viser ALTID de manuelle dato/montør-vælgere (fuld kontrol bevaret), PLUS
 // et automatisk beregnet forslag (hvis der er ét), som kan anvendes med ét
 // klik. Forslaget beregnes af den kaldende flise (ReplanTile), ikke her.
+//
+// Årsagen til at sagen er havnet her (_issue) vises nu eksplicit: en
+// planlægger, der åbner "Montørproblem", skal kunne se HVILKET problem
+// hver enkelt sag har - "bilen er ude af drift" og "montøren har ferie"
+// kræver forskellige beslutninger.
 function ReplanCard({ order, technicians, suggestion, loadingSuggestion, onApplySuggestion, onManualChange, onOpen }) {
   return (
     <div className="rounded-lg bg-white border border-line p-3 mb-2 last:mb-0 shadow-sm">
       <div className="flex items-start justify-between gap-2 mb-1.5">
-        <button onClick={() => onOpen(order.id)} className="text-left min-w-0 flex-1 hover:opacity-80">
+        <button onClick={() => onOpen(order.id)} className="text-left min-w-0 flex-1 hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-brand rounded">
           <p className="text-sm font-semibold text-ink truncate">{order.kunde?.navn || "Ukendt kunde"} <span className="font-mono text-[11px] text-muted">#{order.nr}</span></p>
           <p className="text-xs text-muted truncate">{buildTitle(order.varelinjer)}</p>
         </button>
         <span className="text-[11px] font-mono text-muted shrink-0 pt-0.5">{order.dato ? formatShortDate(order.dato) : "ingen dato"}</span>
       </div>
 
+      {order._issue && (
+        <p className="text-[11px] text-danger flex items-center gap-1 mb-1.5"><AlertCircle size={11} className="shrink-0" aria-hidden="true" /> {order._issue}</p>
+      )}
+
       {loadingSuggestion ? (
-        <p className="text-[11px] text-muted flex items-center gap-1.5 mb-2"><Loader2 size={11} className="animate-spin shrink-0" /> Beregner forslag...</p>
+        <p className="text-[11px] text-muted flex items-center gap-1.5 mb-2"><Loader2 size={11} className="animate-spin shrink-0" aria-hidden="true" /> Beregner forslag...</p>
       ) : suggestion ? (
         <div className="flex items-center justify-between gap-2 rounded-lg bg-panel px-2.5 py-1.5 mb-2">
           <p className="text-xs text-ink min-w-0 truncate">
@@ -135,7 +166,7 @@ function ReplanCard({ order, technicians, suggestion, loadingSuggestion, onApply
             {suggestion.montorNavn && ` · ${suggestion.montorNavn}`}
             <span className="text-muted"> — {suggestion.begrundelse}</span>
           </p>
-          <button onClick={() => onApplySuggestion(order, suggestion)} className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors rounded-lg px-2.5 py-1 flex items-center gap-1"><Check size={11} /> Brug</button>
+          <button onClick={() => onApplySuggestion(order, suggestion)} className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors rounded-lg px-3 py-2 flex items-center gap-1"><Check size={11} aria-hidden="true" /> Brug</button>
         </div>
       ) : (
         <p className="text-[11px] text-muted italic mb-2">Intet forslag med en ledig montør fundet inden for de næste 14 dage — tildel manuelt nedenfor.</p>
@@ -146,12 +177,14 @@ function ReplanCard({ order, technicians, suggestion, loadingSuggestion, onApply
           type="date"
           value={order.dato || ""}
           onChange={(e) => onManualChange(order.id, { dato: e.target.value || null })}
-          className="rounded-lg border border-line bg-panel px-2 py-1 text-[11px] text-ink font-mono focus:outline-none focus:border-brand"
+          aria-label={`Dato for sag ${order.nr}`}
+          className="rounded-lg border border-line bg-panel px-2 py-2 text-xs text-ink font-mono focus:outline-none focus:border-brand"
         />
         <select
           value={order.montorId || ""}
           onChange={(e) => onManualChange(order.id, { montorId: e.target.value || null })}
-          className="flex-1 min-w-[100px] rounded-lg border border-line bg-panel px-2 py-1 text-[11px] text-ink focus:outline-none focus:border-brand"
+          aria-label={`Montør for sag ${order.nr}`}
+          className="flex-1 min-w-[100px] rounded-lg border border-line bg-panel px-2 py-2 text-xs text-ink focus:outline-none focus:border-brand"
         >
           <option value="">Ikke tildelt</option>
           {technicians.map((m) => <option key={m.id} value={m.id}>{m.navn}</option>)}
@@ -202,7 +235,13 @@ function ReplanTile({ items, orders, technicians, timeOff, excludeTechnicianIds,
         const exclude = typeof excludeTechnicianIds === "function" ? excludeTechnicianIds(order) : excludeTechnicianIds;
         // requireTechnician: true - se scheduling.js. Et forslag der ikke
         // rent faktisk tildeler en montør er ikke en løsning her.
-        const plan = suggestPlan({ dates, orders, technicians, timeOff, sameBuildingDates, nearbyDates, excludeTechnicianIds: exclude, originalDate: order.dato || null, requireTechnician: true });
+        //
+        // orderMinutes (august 2026): sagens EGEN forventede varighed
+        // sendes med, så en dag der allerede har 7 timer booket ikke
+        // foreslås til en 5-timers opgave. Uden den så motoren kun på
+        // hvad der lå der i forvejen, og kunne fylde en dag langt over
+        // arbejdsdagens længde.
+        const plan = suggestPlan({ dates, orders, technicians, timeOff, sameBuildingDates, nearbyDates, excludeTechnicianIds: exclude, originalDate: order.dato || null, requireTechnician: true, orderMinutes: orderExpectedMinutes(order) });
         if (plan[0] && !cancelled) results[order.id] = plan[0];
       }
       if (!cancelled) { setSuggestions(results); setLoading(false); }
@@ -242,14 +281,14 @@ function UnresolvedTile({ items, onClearProblem, onOpen }) {
       {items.map((o) => (
         <div key={o.id} className="rounded-lg bg-white border border-danger p-3 mb-2 last:mb-0 shadow-sm">
           <div className="flex items-start justify-between gap-2 mb-1">
-            <button onClick={() => onOpen(o.id)} className="text-left min-w-0 flex-1 hover:opacity-80">
+            <button onClick={() => onOpen(o.id)} className="text-left min-w-0 flex-1 hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-brand rounded">
               <p className="text-sm font-semibold text-ink truncate">{o.kunde?.navn || "Ukendt kunde"} <span className="font-mono text-[11px] text-muted">#{o.nr}</span></p>
               <p className="text-xs text-muted truncate">{buildTitle(o.varelinjer)}</p>
             </button>
             <span className="text-[11px] font-mono text-muted shrink-0 pt-0.5">{o.dato ? formatShortDate(o.dato) : "ingen dato"}</span>
           </div>
-          <p className="text-xs text-danger flex items-start gap-1.5 mb-2"><AlertTriangle size={13} className="shrink-0 mt-0.5" /> {o.problem?.note} <span className="text-muted shrink-0">· {o.problem?.tid}</span></p>
-          <button onClick={() => onClearProblem(o.id)} className="text-[11px] font-semibold uppercase tracking-wide text-danger underline hover:no-underline">Marker som løst</button>
+          <p className="text-xs text-danger flex items-start gap-1.5 mb-2"><AlertTriangle size={13} className="shrink-0 mt-0.5" aria-hidden="true" /> {o.problem?.note} <span className="text-muted shrink-0">· {o.problem?.tid}</span></p>
+          <button onClick={() => onClearProblem(o.id)} className="text-[11px] font-semibold uppercase tracking-wide text-danger underline hover:no-underline focus:outline-none focus:ring-2 focus:ring-danger rounded px-1 py-2">Marker som løst</button>
         </div>
       ))}
     </div>
@@ -259,9 +298,9 @@ function UnresolvedTile({ items, onClearProblem, onOpen }) {
 // ---------------- Selve flise-knappen (lukket tilstand) ----------------
 function TileButton({ icon: Icon, color, count, label, selected, onClick }) {
   return (
-    <button onClick={onClick} className="rounded-xl border-2 p-3 text-left transition-colors bg-white hover:bg-panel" style={{ borderColor: selected ? color : "#ECECEC" }}>
+    <button onClick={onClick} aria-pressed={selected} className="rounded-xl border-2 p-3 text-left transition-colors bg-white hover:bg-panel focus:outline-none focus:ring-2 focus:ring-brand" style={{ borderColor: selected ? color : "#ECECEC" }}>
       <div className="flex items-center justify-between mb-1.5">
-        <Icon size={16} style={{ color }} className="shrink-0" />
+        <Icon size={16} style={{ color }} className="shrink-0" aria-hidden="true" />
         <span className="text-2xl font-display leading-none" style={{ color: count > 0 ? color : "#C9C2AE" }}>{count}</span>
       </div>
       <p className="text-[11px] font-semibold uppercase tracking-wide text-ink leading-tight">{label}</p>
@@ -273,11 +312,11 @@ function CollapsibleSection({ title, icon: Icon, colorClass, items, technicians,
   const [open, setOpen] = useState(false);
   return (
     <div className="rounded-xl border border-line bg-white overflow-hidden">
-      <button onClick={() => setOpen((v) => !v)} className="w-full p-3 flex items-center gap-2 text-left">
-        <Icon size={15} className={`shrink-0 ${colorClass}`} />
+      <button onClick={() => setOpen((v) => !v)} aria-expanded={open} className="w-full p-3 flex items-center gap-2 text-left focus:outline-none focus:ring-2 focus:ring-brand">
+        <Icon size={15} className={`shrink-0 ${colorClass}`} aria-hidden="true" />
         <span className="text-sm font-semibold uppercase tracking-wide text-ink flex-1">{title}</span>
         <span className="text-xs font-mono px-1.5 py-0.5 rounded-full border border-line text-muted">{items.length}</span>
-        <ChevronDown size={16} className={`text-muted transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown size={16} className={`text-muted transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
       </button>
       {open && (
         <div className="p-3 pt-0 grid gap-2 sm:grid-cols-2">
@@ -292,7 +331,10 @@ function CollapsibleSection({ title, icon: Icon, colorClass, items, technicians,
   );
 }
 
-const WORKDAY_MINUTES = 450; // ~7,5 time
+// WORKDAY_MINUTES importeres nu fra lib/scheduling.js (rettet august
+// 2026). Den var defineret HER OGSÅ, med samme værdi - så en ændring af
+// arbejdsdagens længde ét sted ville give en app, hvor forslagsmotoren og
+// overbelastnings-markeringen var uenige om, hvornår en dag er fuld.
 function hoursLabel(minutes) {
   if (minutes === 0) return "–";
   const h = Math.floor(minutes / 60);
@@ -303,6 +345,10 @@ function shortDayLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateStr
 function shortDateLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "short" }); }
 
 // ---------------- Overblik: ugekalender med kort og omfordeling ----------------
+// RETTET (august 2026): selve sagskortet var et <div onClick>. Det kan
+// ikke nås med tastatur, får ingen fokusmarkering, og en skærmlæser
+// fortæller ikke, at det kan trykkes. Det er nu en rigtig <button> med
+// venstrestillet tekst - samme udseende, men brugbar uden mus.
 function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnicianId, color, onLeave, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
   return (
     <div
@@ -312,38 +358,43 @@ function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnician
       <div className="flex items-start gap-1.5">
         {(onMoveUp || onMoveDown) && (
           <div className="flex flex-col shrink-0 -ml-1 -mt-0.5">
-            <button onClick={(e) => { e.stopPropagation(); onMoveUp(); }} disabled={!canMoveUp} className="p-1 rounded text-muted hover:text-brand disabled:opacity-20 disabled:pointer-events-none" title="Flyt tidligere i ruten">
-              <ChevronUp size={14} />
+            <button onClick={(e) => { e.stopPropagation(); onMoveUp(); }} disabled={!canMoveUp} aria-label="Flyt tidligere i ruten" className="p-2 rounded text-muted hover:text-brand disabled:opacity-20 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-brand" title="Flyt tidligere i ruten">
+              <ChevronUp size={14} aria-hidden="true" />
             </button>
-            <button onClick={(e) => { e.stopPropagation(); onMoveDown(); }} disabled={!canMoveDown} className="p-1 rounded text-muted hover:text-brand disabled:opacity-20 disabled:pointer-events-none" title="Flyt senere i ruten">
-              <ChevronDown size={14} />
+            <button onClick={(e) => { e.stopPropagation(); onMoveDown(); }} disabled={!canMoveDown} aria-label="Flyt senere i ruten" className="p-2 rounded text-muted hover:text-brand disabled:opacity-20 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-brand" title="Flyt senere i ruten">
+              <ChevronDown size={14} aria-hidden="true" />
             </button>
           </div>
         )}
-        <div onClick={() => onOpen(order.id)} className="cursor-pointer min-w-0 flex-1">
+        <button
+          type="button"
+          onClick={() => onOpen(order.id)}
+          className="text-left min-w-0 flex-1 focus:outline-none focus:ring-2 focus:ring-brand rounded"
+        >
           <div className="flex items-center justify-between gap-1">
             <span className="text-[11px] font-mono text-muted">{order.start}–{order.slut}</span>
-            {order.noegle?.kraeves && <KeyRound size={10} className="text-brand shrink-0" />}
+            {order.noegle?.kraeves && <KeyRound size={10} className="text-brand shrink-0" aria-label="Nøgle/adgang kræves" />}
           </div>
           <p className="text-sm font-semibold text-ink truncate">{order.kunde?.navn}</p>
           <p className="text-xs text-muted truncate">{buildTitle(order.varelinjer)}</p>
           {order.kunde?.adresse && (
             <p className="text-[11px] text-muted truncate flex items-center gap-1">
-              <MapPin size={10} className="shrink-0" /> {order.kunde.adresse}
+              <MapPin size={10} className="shrink-0" aria-hidden="true" /> {order.kunde.adresse}
             </p>
           )}
           {order.kunde?.telefon && (
             <p className="text-[11px] text-muted truncate flex items-center gap-1">
-              <Phone size={10} className="shrink-0" /> {order.kunde.telefon}
+              <Phone size={10} className="shrink-0" aria-hidden="true" /> {order.kunde.telefon}
             </p>
           )}
-        </div>
+        </button>
       </div>
       <select
         value={currentTechnicianId || ""}
         onChange={(e) => onAssign(order.id, e.target.value || null)}
         onClick={(e) => e.stopPropagation()}
-        className={`w-full mt-1.5 rounded-md border px-1.5 py-1 text-[11px] focus:outline-none ${onLeave ? "border-danger text-danger font-semibold" : "border-line bg-panel text-muted focus:border-brand"}`}
+        aria-label={`Montør for ${order.kunde?.navn || "sagen"}`}
+        className={`w-full mt-1.5 rounded-md border px-1.5 py-2 text-[11px] focus:outline-none focus:ring-2 focus:ring-brand ${onLeave ? "border-danger text-danger font-semibold" : "border-line bg-panel text-muted focus:border-brand"}`}
       >
         <option value="">Ikke tildelt</option>
         {technicians.map((m) => <option key={m.id} value={m.id}>{m.navn}</option>)}
@@ -355,7 +406,7 @@ function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnician
 function DayTimeBadge({ minutes, overloaded, loading }) {
   return (
     <span className={`text-[11px] font-bold rounded-md px-2 py-0.5 flex items-center gap-1 shrink-0 ${overloaded ? "bg-danger text-white" : "bg-panel text-ink"}`}>
-      {loading ? <Loader2 size={11} className="animate-spin shrink-0" /> : null}
+      {loading ? <Loader2 size={11} className="animate-spin shrink-0" aria-hidden="true" /> : null}
       {loading ? "beregner..." : hoursLabel(minutes)}
     </span>
   );
@@ -374,14 +425,14 @@ function TechnicianDaySection({ row, day, dayOrders, technicians, onOpen, onAssi
         <p className="text-xs font-semibold truncate min-w-0" style={{ color }}>{row.navn}</p>
         <div className="flex items-center gap-1 shrink-0">
           {row.id && dayOrders.length >= 2 && onSetVisitOrder && (
-            <button onClick={() => onOptimize(row.id, day, dayOrders)} disabled={optimizing[optKey]} className="p-0.5 rounded text-muted hover:text-brand disabled:opacity-50" title="Foreslå bedste besøgsrækkefølge">
-              {optimizing[optKey] ? <Loader2 size={11} className="animate-spin" /> : <Route size={11} />}
+            <button onClick={() => onOptimize(row.id, day, dayOrders)} disabled={optimizing[optKey]} aria-label={`Foreslå bedste besøgsrækkefølge for ${row.navn}`} className="p-2 rounded text-muted hover:text-brand disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brand" title="Foreslå bedste besøgsrækkefølge">
+              {optimizing[optKey] ? <Loader2 size={11} className="animate-spin" aria-hidden="true" /> : <Route size={11} aria-hidden="true" />}
             </button>
           )}
           {row.id && timeInfo.loadMinutes > 0 && <DayTimeBadge minutes={timeInfo.total} overloaded={timeInfo.overloaded} loading={timeInfo.stillLoading} />}
         </div>
       </div>
-      {isOnLeave && <p className="text-[10px] font-semibold uppercase tracking-wide text-danger mb-1 flex items-center gap-0.5"><AlertCircle size={9} /> Fraværende</p>}
+      {isOnLeave && <p className="text-[10px] font-semibold uppercase tracking-wide text-danger mb-1 flex items-center gap-0.5"><AlertCircle size={9} aria-hidden="true" /> Fraværende</p>}
       {dayOrders.map((o, i) => (
         <MiniOrderCard
           key={o.id}
@@ -409,6 +460,10 @@ function TechnicianDaySection({ row, day, dayOrders, technicians, onOpen, onAssi
 // Section ovenfor), i deres rigtige rækkefølge (dailyOrderCompare) - det
 // er den akse, der rent faktisk giver overblik: "hvad sker der på tirsdag"
 // er et langt hyppigere spørgsmål end "hvad laver Jens hele ugen".
+//
+// MOBIL har sin egen udgave: dag-faner øverst + montør-sektionerne stablet
+// under hinanden. Fem kolonner ved siden af hinanden på en telefonskærm
+// ville give kort på under 70 px bredde - ulæselige og umulige at ramme.
 function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder, onSetVisitOrder, onOpen }) {
   const [open, setOpen] = useState(true);
   const [weekAnchor, setWeekAnchor] = useState(todayISO());
@@ -509,32 +564,32 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
 
   return (
     <div className="rounded-xl border border-brand bg-white mb-4 overflow-hidden">
-      <button onClick={() => setOpen((v) => !v)} className="w-full p-3 flex items-center gap-2 text-left">
-        <LayoutGrid size={15} className="text-brand shrink-0" />
+      <button onClick={() => setOpen((v) => !v)} aria-expanded={open} className="w-full p-3 flex items-center gap-2 text-left focus:outline-none focus:ring-2 focus:ring-brand">
+        <LayoutGrid size={15} className="text-brand shrink-0" aria-hidden="true" />
         <div className="flex-1 min-w-0">
           <span className="text-sm font-semibold uppercase tracking-wide text-ink">Overblik</span>
           <span className="text-xs text-muted ml-2">{weekOrders.length} sager denne uge{unassignedThisWeek > 0 ? ` · ${unassignedThisWeek} ikke tildelt` : ""}</span>
         </div>
-        <ChevronDown size={16} className={`text-muted transition-transform shrink-0 ${open ? "rotate-180" : ""}`} />
+        <ChevronDown size={16} className={`text-muted transition-transform shrink-0 ${open ? "rotate-180" : ""}`} aria-hidden="true" />
       </button>
 
       {open && (
         <div className="border-t border-line">
           <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-divider">
-            <button onClick={() => setWeekAnchor((w) => addDays(w, -7))} className="p-1.5 rounded-lg border border-line text-muted hover:text-brand hover:border-brand transition-colors" title="Forrige uge">
-              <ChevronLeft size={15} />
+            <button onClick={() => setWeekAnchor((w) => addDays(w, -7))} aria-label="Forrige uge" className="p-2.5 rounded-lg border border-line text-muted hover:text-brand hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors" title="Forrige uge">
+              <ChevronLeft size={15} aria-hidden="true" />
             </button>
             <div className="text-center">
               <p className="text-sm font-semibold text-ink">{shortDateLabel(weekdays5[0])} – {shortDateLabel(weekdays5[4])}</p>
-              {weekAnchor !== today && <button onClick={() => setWeekAnchor(today)} className="text-[10px] font-semibold uppercase tracking-wide text-brand hover:underline">Gå til denne uge</button>}
+              {weekAnchor !== today && <button onClick={() => setWeekAnchor(today)} className="text-[10px] font-semibold uppercase tracking-wide text-brand hover:underline focus:outline-none focus:ring-2 focus:ring-brand rounded px-1">Gå til denne uge</button>}
             </div>
-            <button onClick={() => setWeekAnchor((w) => addDays(w, 7))} className="p-1.5 rounded-lg border border-line text-muted hover:text-brand hover:border-brand transition-colors" title="Næste uge">
-              <ChevronRight size={15} />
+            <button onClick={() => setWeekAnchor((w) => addDays(w, 7))} aria-label="Næste uge" className="p-2.5 rounded-lg border border-line text-muted hover:text-brand hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors" title="Næste uge">
+              <ChevronRight size={15} aria-hidden="true" />
             </button>
           </div>
 
           <p className="text-[11px] text-muted px-3 py-2 flex items-center gap-1.5 border-b border-divider">
-            {storeCoord ? <Building2 size={11} className="shrink-0" /> : <Car size={11} className="shrink-0" />}
+            {storeCoord ? <Building2 size={11} className="shrink-0" aria-hidden="true" /> : <Car size={11} className="shrink-0" aria-hidden="true" />}
             <span className="hidden sm:inline">
               {storeCoord
                 ? "Tidstal inkluderer kørsel fra firmaets adresse og mellem dagens stop, samt arbejdstid. Rute-ikonet foreslår bedste besøgsrækkefølge."
@@ -545,17 +600,25 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
 
           {/* ------- MOBIL: dag-faner (man-fre) + stak af montør-sektioner ------- */}
           <div className="md:hidden">
-            <div className="flex gap-1.5 overflow-x-auto px-3 py-2 border-b border-divider">
-              {weekdays5.map((d) => (
-                <button
-                  key={d}
-                  onClick={() => setSelectedDay(d)}
-                  className={`shrink-0 flex flex-col items-center px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${d === selectedDay ? "bg-brand text-white" : d === today ? "bg-panel text-brand" : "text-muted hover:bg-panel"}`}
-                >
-                  <span className="text-[9px] uppercase">{shortDayLabel(d)}</span>
-                  <span>{new Date(d + "T00:00:00").getDate()}</span>
-                </button>
-              ))}
+            <div className="flex gap-1.5 overflow-x-auto px-3 py-2 border-b border-divider" role="tablist" aria-label="Vælg ugedag">
+              {weekdays5.map((d) => {
+                const antal = rows.reduce((sum, r) => sum + ordersFor(r.id, d).length, 0);
+                return (
+                  <button
+                    key={d}
+                    role="tab"
+                    aria-selected={d === selectedDay}
+                    onClick={() => setSelectedDay(d)}
+                    className={`shrink-0 flex flex-col items-center px-3 py-2 rounded-lg text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-brand ${d === selectedDay ? "bg-brand text-white" : d === today ? "bg-panel text-brand" : "text-muted hover:bg-panel"}`}
+                  >
+                    <span className="text-[9px] uppercase">{shortDayLabel(d)}</span>
+                    <span>{new Date(d + "T00:00:00").getDate()}</span>
+                    {/* Antal sager pr. dag, så man kan se hvor der er travlt
+                        UDEN at skulle klikke sig gennem alle fem faner. */}
+                    <span className={`text-[9px] font-mono ${d === selectedDay ? "text-white/80" : "text-muted"}`}>{antal || "–"}</span>
+                  </button>
+                );
+              })}
             </div>
 
             <div className="p-3 space-y-4">
@@ -639,21 +702,22 @@ function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedD
             <DateSelector date={selectedDate} onChange={onDateChange} />
           </div>
         </div>
-        <button onClick={onRefresh} className="p-2 rounded-lg text-ink border border-line hover:border-brand hover:text-brand transition-colors" title="Opdater">
-          <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
+        <button onClick={onRefresh} aria-label="Opdater" className="p-2.5 rounded-lg text-ink border border-line hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors" title="Opdater">
+          <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} aria-hidden="true" />
         </button>
       </div>
 
       <div className="relative mb-4">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Søg efter sagsnr., ordre-/fakturanr., telefon, adresse eller kundenavn..."
+          aria-label="Søg i sager"
           className="w-full rounded-lg border border-line bg-white pl-9 pr-9 py-2.5 text-sm text-ink focus:outline-none focus:border-brand"
         />
         {search && (
-          <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-brand"><X size={16} /></button>
+          <button onClick={() => setSearch("")} aria-label="Ryd søgning" className="absolute right-1 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand"><X size={16} aria-hidden="true" /></button>
         )}
       </div>
 
@@ -673,7 +737,7 @@ function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedD
           <WeekOverview orders={orders} technicians={technicians} timeOff={timeOff} store={store} onAssign={onAssign} onReorder={onReorder} onSetVisitOrder={onSetVisitOrder} onOpen={onOpen} />
 
           <div className="mb-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-ink mb-2 flex items-center gap-1.5"><AlertCircle size={15} className="text-danger" /> Kræver handling</h2>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-ink mb-2 flex items-center gap-1.5"><AlertCircle size={15} className="text-danger" aria-hidden="true" /> Kræver handling</h2>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
               <TileButton icon={UserX} color="#B3261E" count={technicianProblem.length} label="Montørproblem" selected={openTile === "problem"} onClick={() => setOpenTile(openTile === "problem" ? null : "problem")} />
               <TileButton icon={Stethoscope} color="#C8232E" count={sickLeave.length} label="Sygemelding" selected={openTile === "sygdom"} onClick={() => setOpenTile(openTile === "sygdom" ? null : "sygdom")} />
@@ -700,7 +764,7 @@ function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedD
                   )
                 )}
                 {openTile === "planlaeg" && (
-                  needsPlan.length === 0 ? <p className="text-sm text-success italic flex items-center gap-1.5"><Sparkles size={14} /> Alle sager er planlagt.</p> : (
+                  needsPlan.length === 0 ? <p className="text-sm text-success italic flex items-center gap-1.5"><Sparkles size={14} aria-hidden="true" /> Alle sager er planlagt.</p> : (
                     <ReplanTile
                       items={needsPlan} orders={orders} technicians={technicians} timeOff={timeOff}
                       excludeTechnicianIds={[]} onUpdateBooking={onUpdateBooking} onOpen={onOpen}
@@ -708,7 +772,7 @@ function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedD
                   )
                 )}
                 {openTile === "problemer" && (
-                  unresolved.length === 0 ? <p className="text-sm text-success italic flex items-center gap-1.5"><Sparkles size={14} /> Ingen uafsluttede/fejlmarkerede sager.</p> : (
+                  unresolved.length === 0 ? <p className="text-sm text-success italic flex items-center gap-1.5"><Sparkles size={14} aria-hidden="true" /> Ingen uafsluttede/fejlmarkerede sager.</p> : (
                     <UnresolvedTile items={unresolved} onClearProblem={onClearProblem} onOpen={onOpen} />
                   )
                 )}
@@ -719,7 +783,7 @@ function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedD
           {inProgressToday.length > 0 && (
             <div className="rounded-xl border border-info bg-white mb-4 overflow-hidden">
               <div className="p-3 border-b border-line flex items-center gap-2">
-                <PlayCircle size={15} className="text-info shrink-0" />
+                <PlayCircle size={15} className="text-info shrink-0" aria-hidden="true" />
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-ink flex-1">I gang i dag</h2>
                 <span className="text-xs font-mono px-1.5 py-0.5 rounded-full border border-line text-muted">{inProgressToday.length}</span>
               </div>
