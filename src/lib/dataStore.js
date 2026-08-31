@@ -417,6 +417,32 @@ export async function resetPasswordAsAdmin(userId, newPassword) {
   return { ok: true };
 }
 
+// SLETTER en bruger permanent - både Auth-loginet og profilen (august
+// 2026). Kræver service_role, derfor en edge function (admin-slet-bruger),
+// som selv tjekker at kalderen har admin_brugere (eller er systemadmin) og
+// kun rører sin egen butiks brugere.
+//
+// tjekKun=true UDFØRER INTET, men returnerer konsekvenserne, så
+// bekræftelsesdialogen kan vise dem, FØR nogen trykker:
+//   { navn, rolle, fravaersperioder, kommendeSager }
+//
+// Det er ikke pynt. Fravær og sygemeldinger SLETTES med brugeren (CASCADE
+// i databasen), og kommende sager tildelt personen bliver liggende og
+// dukker op i Planlægning under "Montørproblem" med teksten "Montøren
+// findes ikke længere". Begge dele skal man kende, inden man sletter en
+// montør midt i en uge med 12 sager i kalenderen.
+export async function deleteUserAsAdmin(userId, { tjekKun } = {}) {
+  const { data, error } = await supabase.functions.invoke("admin-slet-bruger", {
+    body: { brugerId: userId, tjekKun: !!tjekKun },
+  });
+  if (error || data?.fejl) {
+    const fejl = await readEdgeFunctionError(data, error, "Kunne ikke slette brugeren");
+    logError("dataStore:deleteUserAsAdmin", fejl);
+    return { ok: false, fejl };
+  }
+  return { ok: true, konsekvenser: data?.konsekvenser || null };
+}
+
 export async function getOwnProfile(userId) {
   const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
   if (error) {
@@ -524,9 +550,12 @@ export async function endSickLeave(timeOffId) {
 
 // Admin (or system admin) edits name/role/technician link/store on an
 // existing user.
-// NB: can NOT create new Auth users from here (needs the service_role key,
-// which must never live in the frontend) - new users have to sign up
-// themselves, after which an admin/system admin sets store_id + role.
+//
+// BUTIKSSKIFT (august 2026): butik_id/butikId er den vej, en medarbejder
+// flyttes til en anden butik - en opgave for en SYSTEMADMIN, som er den
+// eneste med overblik over alle butikker. Butikkens egen admin kan ikke
+// flytte nogen; de kan oprette og slette brugere i deres egen butik (se
+// deleteUserAsAdmin ovenfor).
 export async function updateProfile(userId, fields) {
   const dbFields = {};
   if ("navn" in fields) dbFields.name = fields.navn;
