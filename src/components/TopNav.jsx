@@ -15,11 +15,11 @@ function NotifGroup({ title, icon: Icon, color, items, onOpen }) {
   return (
     <div className="p-3">
       <p className="text-[11px] font-semibold uppercase tracking-wide mb-1.5 flex items-center gap-1.5" style={{ color }}>
-        <Icon size={13} className="shrink-0" /> {title}
+        <Icon size={13} className="shrink-0" aria-hidden="true" /> {title}
       </p>
       <div className="space-y-0.5">
         {items.map((o) => (
-          <button key={o.id} onClick={() => onOpen(o.id)} className="w-full text-left rounded-lg hover:bg-panel px-2 py-1.5 flex items-center justify-between gap-2 transition-colors">
+          <button key={o.id} onClick={() => onOpen(o.id)} className="w-full text-left rounded-lg hover:bg-panel px-2 py-2 flex items-center justify-between gap-2 transition-colors focus:outline-none focus:ring-2 focus:ring-brand">
             <span className="text-xs text-ink truncate">{o.kunde?.navn || "Ukendt kunde"}</span>
             <span className="font-mono text-[10px] text-muted shrink-0">#{o.nr}</span>
           </button>
@@ -36,8 +36,23 @@ function NotificationBell({ notifications, onOpenOrder }) {
   useEffect(() => {
     if (!open) return;
     const onOutside = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    // "mousedown" alene lukkede ikke på touch i alle browsere - "touchstart"
+    // tilføjet, så en montør på mobil også kan lukke ved at trykke udenfor.
     document.addEventListener("mousedown", onOutside);
-    return () => document.removeEventListener("mousedown", onOutside);
+    document.addEventListener("touchstart", onOutside);
+    return () => {
+      document.removeEventListener("mousedown", onOutside);
+      document.removeEventListener("touchstart", onOutside);
+    };
+  }, [open]);
+
+  // Escape lukker - forventet opførsel for enhver popover, og den eneste
+  // vej ud for en tastaturbruger.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
   const { materialer = [], problemer = [], opfoelgninger = [] } = notifications || {};
@@ -49,10 +64,12 @@ function NotificationBell({ notifications, onOpenOrder }) {
     <div ref={ref} className="relative shrink-0">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="relative w-10 h-10 rounded-lg bg-black border border-[#333] flex items-center justify-center text-[#C9C9C9] hover:text-white hover:border-brand transition-colors"
+        aria-expanded={open}
+        aria-label={total > 0 ? `Notifikationer, ${total} nye` : "Notifikationer"}
+        className="relative w-10 h-10 rounded-lg bg-black border border-[#333] flex items-center justify-center text-[#C9C9C9] hover:text-white hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors"
         title="Notifikationer"
       >
-        <Bell size={16} />
+        <Bell size={16} aria-hidden="true" />
         {total > 0 && (
           <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-lg bg-brand text-white text-[10px] font-bold flex items-center justify-center">
             {total > 9 ? "9+" : total}
@@ -88,19 +105,20 @@ function StoreSwitcher({ store, isSystemAdmin, allStores, onSwitchStore, onExitS
   if (isSystemAdmin) {
     return (
       <div className="flex items-center gap-1 shrink-0">
-        <Building2 size={13} className="text-[#C9C9C9] hidden sm:inline" />
+        <Building2 size={13} className="text-[#C9C9C9] hidden sm:inline" aria-hidden="true" />
         <select
           value={store?.id || ""}
           onChange={(e) => e.target.value && onSwitchStore(e.target.value)}
-          className="bg-black border border-[#333] text-[#C9C9C9] text-xs rounded-lg px-2 py-1.5 max-w-[140px] focus:outline-none focus:border-brand"
+          aria-label="Skift butik"
+          className="bg-black border border-[#333] text-[#C9C9C9] text-xs rounded-lg px-2 py-2 max-w-[100px] sm:max-w-[140px] focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand"
           title="Skift butik"
         >
           {!store && <option value="">Vælg butik...</option>}
           {(allStores || []).map((s) => <option key={s.id} value={s.id}>{s.navn}</option>)}
         </select>
         {onExitStoreView && (
-          <button onClick={onExitStoreView} className="w-10 h-10 rounded-lg bg-black border border-[#333] flex items-center justify-center text-[#C9C9C9] hover:text-white hover:border-brand transition-colors shrink-0" title="Tilbage til systemadministration">
-            <ArrowLeftRight size={15} />
+          <button onClick={onExitStoreView} aria-label="Tilbage til systemadministration" className="w-10 h-10 rounded-lg bg-black border border-[#333] flex items-center justify-center text-[#C9C9C9] hover:text-white hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors shrink-0" title="Tilbage til systemadministration">
+            <ArrowLeftRight size={15} aria-hidden="true" />
           </button>
         )}
       </div>
@@ -109,20 +127,56 @@ function StoreSwitcher({ store, isSystemAdmin, allStores, onSwitchStore, onExitS
   if (!store) return null;
   return (
     <span className="text-xs text-[#C9C9C9] hidden sm:flex items-center gap-1 shrink-0" title={store.navn}>
-      <Building2 size={12} /> {store.navn}
+      <Building2 size={12} aria-hidden="true" /> {store.navn}
     </span>
   );
 }
 
+// RETTET (august 2026, fundet på skærmbillede fra en rigtig telefon):
+// toplinjen var ÉN vandret række - logo, fane-knapper og kontroller side
+// om side. På en telefon fik fane-området under 150 px at være på, fordi
+// logo + butiksvælger + klokke + log ud tog resten. Resultatet var, at
+// den aktive fane blev beskåret midt i ordet ("...lægni") og lagde sig
+// hen over logoet, og at man hverken kunne se eller nå de øvrige faner.
+// Navigationen var altså reelt ubrugelig på mobil.
+//
+// Løsningen er at give fanerne deres EGEN række på små skærme: logo og
+// kontroller i første række, fanerne i fuld bredde nedenunder (stadig
+// vandret rulbare, hvis der er mange). På sm og bredere er det uændret
+// én række, hvor der er plads. Løst med flex-wrap + order, så knapperne
+// kun findes ÉT sted i DOM'en - ikke to udgaver med hidden/visible, som
+// ville gentage hele navigationen for en skærmlæser.
 function TopNav({ page, onChange, user, onLogOut, notifications, onOpenOrder, allowedPages, store, allStores, onSwitchStore, onExitStoreView }) {
   const allowed = PAGES.filter((s) => allowedPages.includes(s.key) || (s.key === "systemadmin" && user.erSystemadmin));
   return (
     <div className="sticky top-0 z-20 bg-ink mb-6">
-      <div className="max-w-6xl mx-auto flex items-center justify-between gap-2 px-3 py-2.5">
-        <div className="shrink-0 flex items-center pr-1">
+      <nav aria-label="Hovedmenu" className="max-w-6xl mx-auto flex flex-wrap items-center gap-2 px-3 py-2.5">
+        <div className="shrink-0 flex items-center pr-1 order-1">
           <img src={PUNKT1_LOGO_NEGATIV} alt="Punkt1" className="h-7 w-auto" />
         </div>
-        <div className="flex overflow-x-auto gap-1.5 py-0.5">
+
+        {/* Kontroller: order-2 på mobil (samme række som logoet, skubbet
+            helt til højre), order-3 på pc (efter fanerne). */}
+        <div className="flex items-center gap-2 shrink-0 ml-auto order-2 sm:order-3 sm:ml-0">
+          <StoreSwitcher store={store} isSystemAdmin={user.erSystemadmin} allStores={allStores} onSwitchStore={onSwitchStore} onExitStoreView={onExitStoreView} />
+          <span className="text-xs text-[#C9C9C9] hidden sm:inline pr-1">{user.navn}</span>
+          {notifications && onOpenOrder && <NotificationBell notifications={notifications} onOpenOrder={onOpenOrder} />}
+          <button
+            onClick={onLogOut}
+            aria-label="Log ud"
+            className="w-10 h-10 rounded-lg bg-black border border-[#333] flex items-center justify-center text-brand hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors"
+            title="Log ud"
+          >
+            <LogOut size={16} aria-hidden="true" />
+          </button>
+        </div>
+
+        {/* Faner: w-full på mobil = egen række under logoet. På sm og
+            bredere flex-1 i samme række. min-w-0 er nødvendig, for at et
+            flex-barn overhovedet MÅ blive smallere end sit indhold - uden
+            den ville overflow-x-auto aldrig træde i kraft, og indholdet
+            ville skubbe naboerne ud i stedet for at rulle. */}
+        <div className="w-full sm:w-auto sm:flex-1 min-w-0 overflow-x-auto flex gap-1.5 py-0.5 order-3 sm:order-2">
           {allowed.map((s) => {
             const Icon = s.icon;
             const active = page === s.key;
@@ -130,29 +184,18 @@ function TopNav({ page, onChange, user, onLogOut, notifications, onOpenOrder, al
               <button
                 key={s.key}
                 onClick={() => onChange(s.key)}
-                className={`flex items-center gap-1.5 px-3.5 py-2 shrink-0 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors ${
+                aria-current={active ? "page" : undefined}
+                className={`flex items-center gap-1.5 px-3.5 py-2 shrink-0 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors focus:outline-none focus:ring-2 focus:ring-brand ${
                   active ? "bg-white text-ink" : "bg-transparent text-[#C9C9C9] hover:text-white"
                 }`}
               >
-                <Icon size={15} strokeWidth={2.5} />
+                <Icon size={15} strokeWidth={2.5} aria-hidden="true" />
                 {s.label}
               </button>
             );
           })}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <StoreSwitcher store={store} isSystemAdmin={user.erSystemadmin} allStores={allStores} onSwitchStore={onSwitchStore} onExitStoreView={onExitStoreView} />
-          <span className="text-xs text-[#C9C9C9] hidden sm:inline pr-1">{user.navn}</span>
-          {notifications && onOpenOrder && <NotificationBell notifications={notifications} onOpenOrder={onOpenOrder} />}
-          <button
-            onClick={onLogOut}
-            className="w-10 h-10 rounded-lg bg-black border border-[#333] flex items-center justify-center text-brand hover:border-brand transition-colors"
-            title="Log ud"
-          >
-            <LogOut size={16} />
-          </button>
-        </div>
-      </div>
+      </nav>
     </div>
   );
 }
