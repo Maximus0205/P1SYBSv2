@@ -42,7 +42,8 @@ function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTi
         <select
           value={technician.bilId || ""}
           onChange={(e) => onUpdateVehicle(technician.id, e.target.value || null)}
-          className="rounded-lg border border-line bg-panel px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-brand"
+          aria-label={`Bil for ${technician.navn}`}
+          className="rounded-lg border border-line bg-panel px-2 py-2 text-xs text-ink focus:outline-none focus:border-brand"
         >
           <option value="">Ingen bil</option>
           {vehicles.map((b) => (
@@ -51,16 +52,16 @@ function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTi
             </option>
           ))}
         </select>
-        <button onClick={() => setShowTimeOff((v) => !v)} className="p-1.5 text-muted hover:text-brand flex items-center gap-1 text-xs font-semibold uppercase tracking-wide" title="Ferie">
-          <PalmtreeIcon size={15} /> Ferie{myTimeOff.filter((f) => f.type !== "sygdom").length > 0 ? ` (${myTimeOff.filter((f) => f.type !== "sygdom").length})` : ""}
+        <button onClick={() => setShowTimeOff((v) => !v)} aria-expanded={showTimeOff} className="p-2 text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded-lg flex items-center gap-1 text-xs font-semibold uppercase tracking-wide" title="Ferie">
+          <PalmtreeIcon size={15} aria-hidden="true" /> Ferie{myTimeOff.filter((f) => f.type !== "sygdom").length > 0 ? ` (${myTimeOff.filter((f) => f.type !== "sygdom").length})` : ""}
         </button>
         {activeSick ? (
-          <button onClick={() => onRaskmeld(activeSick.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-danger hover:opacity-90 transition-opacity flex items-center gap-1.5" title="Raskmeld">
-            <HeartPulse size={14} /> Sygemeldt — Raskmeld
+          <button onClick={() => onRaskmeld(activeSick.id)} className="px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-danger hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-ink transition-opacity flex items-center gap-1.5" title="Raskmeld">
+            <HeartPulse size={14} aria-hidden="true" /> Sygemeldt — Raskmeld
           </button>
         ) : (
-          <button onClick={() => setSygemelding((v) => !v)} className="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-danger border border-danger hover:bg-danger hover:text-white transition-colors flex items-center gap-1.5" title="Sygemeld">
-            <Stethoscope size={14} /> Sygemeld
+          <button onClick={() => setSygemelding((v) => !v)} className="px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-danger border border-danger hover:bg-danger hover:text-white focus:outline-none focus:ring-2 focus:ring-danger transition-colors flex items-center gap-1.5" title="Sygemeld">
+            <Stethoscope size={14} aria-hidden="true" /> Sygemeld
           </button>
         )}
       </div>
@@ -69,9 +70,9 @@ function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTi
         <div className="border-t border-divider p-3 bg-danger/5">
           <p className="text-xs text-muted mb-2">Starter en sygemelding fra i dag — ingen slutdato endnu. Sagerne rykkes til "Sygemelding"-fanen i Planlægning, og montøren raskmeldes igen når de er tilbage.</p>
           <div className="flex gap-2 flex-wrap">
-            <input value={sygeNote} onChange={(e) => setSygeNote(e.target.value)} placeholder="Note (valgfri)" className="flex-1 min-w-[140px] rounded-lg border border-line bg-white px-2 py-1.5 text-xs text-ink" />
-            <button onClick={confirmSygemeld} className="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-danger hover:opacity-90 transition-opacity">Bekræft sygemelding</button>
-            <button onClick={() => setSygemelding(false)} className="text-xs text-muted font-semibold uppercase">Fortryd</button>
+            <input value={sygeNote} onChange={(e) => setSygeNote(e.target.value)} placeholder="Note (valgfri)" aria-label="Note til sygemelding" className="flex-1 min-w-[140px] rounded-lg border border-line bg-white px-2 py-2 text-xs text-ink" />
+            <button onClick={confirmSygemeld} className="px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-danger hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-ink transition-opacity">Bekræft sygemelding</button>
+            <button onClick={() => setSygemelding(false)} className="text-xs text-muted font-semibold uppercase px-2 py-2">Fortryd</button>
           </div>
         </div>
       )}
@@ -80,13 +81,13 @@ function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTi
         <div className="border-t border-divider p-3 bg-panel">
           <div className="flex gap-2 flex-wrap items-end mb-3">
             <label className="text-[11px] text-muted">Fra
-              <input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="block rounded-lg border border-line bg-white px-2 py-1 text-xs text-ink mt-0.5" />
+              <input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="block rounded-lg border border-line bg-white px-2 py-2 text-xs text-ink mt-0.5" />
             </label>
             <label className="text-[11px] text-muted">Til
-              <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="block rounded-lg border border-line bg-white px-2 py-1 text-xs text-ink mt-0.5" />
+              <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="block rounded-lg border border-line bg-white px-2 py-2 text-xs text-ink mt-0.5" />
             </label>
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (valgfri)" className="flex-1 min-w-[120px] rounded-lg border border-line bg-white px-2 py-1.5 text-xs text-ink" />
-            <button onClick={createTimeOff} className="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors flex items-center gap-1"><Plus size={13} /> Tilføj</button>
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (valgfri)" aria-label="Note til fravær" className="flex-1 min-w-[120px] rounded-lg border border-line bg-white px-2 py-2 text-xs text-ink" />
+            <button onClick={createTimeOff} className="px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1"><Plus size={13} aria-hidden="true" /> Tilføj</button>
           </div>
           {myTimeOff.length === 0 ? (
             <p className="text-xs text-muted italic">Ingen fraværsperioder registreret.</p>
@@ -94,10 +95,10 @@ function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTi
             <div className="space-y-1.5">
               {myTimeOff.map((f) => (
                 <div key={f.id} className={`flex items-center gap-2 text-xs rounded-lg bg-white border px-2 py-1.5 ${f.type === "sygdom" ? "border-danger" : "border-line"}`}>
-                  {f.type === "sygdom" ? <Stethoscope size={12} className="text-danger shrink-0" /> : <CalendarOff size={12} className="text-brand shrink-0" />}
+                  {f.type === "sygdom" ? <Stethoscope size={12} className="text-danger shrink-0" aria-hidden="true" /> : <CalendarOff size={12} className="text-brand shrink-0" aria-hidden="true" />}
                   <span className="text-ink">{f.startDato} – {f.slutDato || "igangværende"}</span>
                   {f.note && <span className="text-muted truncate flex-1">{f.note}</span>}
-                  <button onClick={() => onDeleteTimeOff(f.id)} className="ml-auto text-muted hover:text-danger"><X size={13} /></button>
+                  <button onClick={() => onDeleteTimeOff(f.id)} aria-label={`Slet fravær ${f.startDato}`} className="ml-auto w-9 h-9 -my-1.5 flex items-center justify-center rounded-lg text-muted hover:text-danger focus:outline-none focus:ring-2 focus:ring-danger"><X size={13} aria-hidden="true" /></button>
                 </div>
               ))}
             </div>
@@ -136,12 +137,12 @@ function SickLeaveWindowSetting({ store, onUpdated }) {
 
   return (
     <div className="rounded-xl border border-line bg-white p-4 mb-4 shadow-sm">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-1.5"><Stethoscope size={15} className="text-danger" /> Sygemelding — visningsvindue</h3>
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-1.5"><Stethoscope size={15} className="text-danger" aria-hidden="true" /> Sygemelding — visningsvindue</h3>
       <p className="text-xs text-muted mb-3">Hvor mange timer frem skal en sygemeldt montørs sager vises i "Sygemelding"-oversigten i Planlægning, mens sygemeldingen er aktiv?</p>
       <div className="flex items-center gap-2 flex-wrap">
-        <input type="number" min="1" max="720" value={hours} onChange={(e) => setHours(e.target.value)} className="w-24 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+        <input type="number" min="1" max="720" value={hours} onChange={(e) => setHours(e.target.value)} aria-label="Antal timer" className="w-24 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
         <span className="text-sm text-muted">timer</span>
-        <button onClick={save} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors disabled:opacity-60">
+        <button onClick={save} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60">
           {saving ? "Gemmer..." : "Gem"}
         </button>
         {saved && <span className="text-xs text-success font-semibold">Gemt.</span>}
@@ -161,10 +162,10 @@ function VehicleRow({ vehicle, usedBy, onUpdate, onDelete, onToggleClosed }) {
   if (editing) {
     return (
       <div className="rounded-xl bg-white border border-line p-2.5 flex items-center gap-2 flex-wrap shadow-sm">
-        <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Navn/tag, fx 'Bil 1'" className="flex-1 min-w-[120px] rounded-lg border border-line bg-panel px-2 py-1 text-sm text-ink focus:outline-none focus:border-brand" />
-        <input value={plate} onChange={(e) => setPlate(e.target.value)} placeholder="Nummerplade" className="flex-1 min-w-[120px] rounded-lg border border-line bg-panel px-2 py-1 text-sm text-ink focus:outline-none focus:border-brand" />
-        <button onClick={() => { onUpdate({ navn: name.trim() || vehicle.navn, nummerplade: plate.trim() || vehicle.nummerplade }); setEditing(false); }} className="text-xs text-success font-semibold uppercase">Gem</button>
-        <button onClick={() => { setName(vehicle.navn); setPlate(vehicle.nummerplade); setEditing(false); }} className="text-xs text-muted font-semibold uppercase">Fortryd</button>
+        <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Navn/tag, fx 'Bil 1'" aria-label="Bilens navn" className="flex-1 min-w-[120px] rounded-lg border border-line bg-panel px-2 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+        <input value={plate} onChange={(e) => setPlate(e.target.value)} placeholder="Nummerplade" aria-label="Nummerplade" className="flex-1 min-w-[120px] rounded-lg border border-line bg-panel px-2 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+        <button onClick={() => { onUpdate({ navn: name.trim() || vehicle.navn, nummerplade: plate.trim() || vehicle.nummerplade }); setEditing(false); }} className="text-xs text-success font-semibold uppercase px-2 py-2">Gem</button>
+        <button onClick={() => { setName(vehicle.navn); setPlate(vehicle.nummerplade); setEditing(false); }} className="text-xs text-muted font-semibold uppercase px-2 py-2">Fortryd</button>
       </div>
     );
   }
@@ -175,17 +176,17 @@ function VehicleRow({ vehicle, usedBy, onUpdate, onDelete, onToggleClosed }) {
       {usedBy && <span className="text-[10px] text-muted shrink-0">kører af {usedBy}</span>}
       {showCloseReason ? (
         <div className="flex items-center gap-1 shrink-0">
-          <input autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Årsag (fx værksted)" className="w-32 rounded-lg border border-line bg-panel px-1.5 py-1 text-[10px] text-ink" />
-          <button onClick={() => { onToggleClosed(vehicle.id, reason.trim() || "Værksted"); setShowCloseReason(false); }} className="text-[10px] font-semibold uppercase text-white bg-brand rounded-lg px-2 py-1">Luk</button>
-          <button onClick={() => setShowCloseReason(false)} className="text-[10px] text-muted">Fortryd</button>
+          <input autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Årsag (fx værksted)" aria-label="Årsag til blokering" className="w-32 rounded-lg border border-line bg-panel px-1.5 py-2 text-[10px] text-ink" />
+          <button onClick={() => { onToggleClosed(vehicle.id, reason.trim() || "Værksted"); setShowCloseReason(false); }} className="text-[10px] font-semibold uppercase text-white bg-brand rounded-lg px-2 py-2">Luk</button>
+          <button onClick={() => setShowCloseReason(false)} className="text-[10px] text-muted px-2 py-2">Fortryd</button>
         </div>
       ) : (
-        <button onClick={() => (vehicle.lukket ? onToggleClosed(vehicle.id) : setShowCloseReason(true))} className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-md border shrink-0 ${vehicle.lukket ? "border-success text-success hover:bg-success hover:text-white" : "border-brand text-brand hover:bg-brand hover:text-white"} transition-colors`}>
+        <button onClick={() => (vehicle.lukket ? onToggleClosed(vehicle.id) : setShowCloseReason(true))} className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-2 rounded-md border shrink-0 focus:outline-none focus:ring-2 focus:ring-brand ${vehicle.lukket ? "border-success text-success hover:bg-success hover:text-white" : "border-brand text-brand hover:bg-brand hover:text-white"} transition-colors`}>
           {vehicle.lukket ? "Åbn igen" : "Blokér (fx værksted)"}
         </button>
       )}
-      <button onClick={() => setEditing(true)} className="p-1 text-muted hover:text-brand shrink-0" title="Ret navn/nummerplade"><Pencil size={13} /></button>
-      <button onClick={onDelete} className="p-1 text-muted hover:text-danger shrink-0" title="Slet"><Trash2 size={13} /></button>
+      <button onClick={() => setEditing(true)} aria-label={`Ret navn og nummerplade for ${vehicle.navn}`} className="w-9 h-9 flex items-center justify-center rounded-lg text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand shrink-0" title="Ret navn/nummerplade"><Pencil size={13} aria-hidden="true" /></button>
+      <button onClick={onDelete} aria-label={`Slet ${vehicle.navn}`} className="w-9 h-9 flex items-center justify-center rounded-lg text-muted hover:text-danger focus:outline-none focus:ring-2 focus:ring-danger shrink-0" title="Slet"><Trash2 size={13} aria-hidden="true" /></button>
     </div>
   );
 }
@@ -252,8 +253,9 @@ function PermissionsEditor({ user, permissionsCatalog, roleDefaults, onUpdatePer
                     key={p.key}
                     disabled={busy}
                     onClick={() => toggle(p.key)}
+                    aria-pressed={checked}
                     title={p.label}
-                    className={`text-xs px-2.5 py-1 rounded-lg border transition-colors flex items-center gap-1 disabled:opacity-50 ${
+                    className={`text-xs px-2.5 py-2 rounded-lg border transition-colors flex items-center gap-1 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brand ${
                       checked ? "border-success bg-success/10 text-success" : "border-line text-muted hover:border-brand hover:text-brand"
                     }`}
                   >
@@ -299,9 +301,9 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
         <div className="min-w-0 flex-1">
           {editing ? (
             <div className="flex items-center gap-1.5">
-              <input autoFocus value={name} onChange={(e) => setName(e.target.value)} className="rounded-lg border border-line bg-panel px-2 py-1 text-sm text-ink focus:outline-none focus:border-brand" />
-              <button onClick={() => { onUpdate(user.id, { navn: name.trim() || user.navn }); setEditing(false); }} className="text-xs text-success font-semibold uppercase">Gem</button>
-              <button onClick={() => { setName(user.navn); setEditing(false); }} className="text-xs text-muted font-semibold uppercase">Fortryd</button>
+              <input autoFocus value={name} onChange={(e) => setName(e.target.value)} aria-label="Brugerens navn" className="rounded-lg border border-line bg-panel px-2 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+              <button onClick={() => { onUpdate(user.id, { navn: name.trim() || user.navn }); setEditing(false); }} className="text-xs text-success font-semibold uppercase px-2 py-2">Gem</button>
+              <button onClick={() => { setName(user.navn); setEditing(false); }} className="text-xs text-muted font-semibold uppercase px-2 py-2">Fortryd</button>
             </div>
           ) : (
             <p className="font-semibold text-sm text-ink truncate">{user.navn}</p>
@@ -313,17 +315,28 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
             {(user.extraPermissions?.length > 0 || user.revokedPermissions?.length > 0) && <span> · individuelt tilpasset</span>}
           </p>
         </div>
-        <select value={user.rolle} onChange={(e) => onUpdate(user.id, { rolle: e.target.value })} className="rounded-lg border border-line bg-panel px-2 py-1.5 text-xs text-ink">
+        <select value={user.rolle} onChange={(e) => onUpdate(user.id, { rolle: e.target.value })} aria-label={`Rolle for ${user.navn}`} className="rounded-lg border border-line bg-panel px-2 py-2 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-brand">
           {Object.entries(ROLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
         {canEditPermissions && (
-          <button onClick={() => setShowPermissions((v) => !v)} className="p-1.5 text-muted hover:text-brand" title="Rettigheder">
-            <ShieldCheck size={15} />
+          <button onClick={() => setShowPermissions((v) => !v)} aria-expanded={showPermissions} aria-label={`Rettigheder for ${user.navn}`} className="w-10 h-10 flex items-center justify-center rounded-lg text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand" title="Rettigheder">
+            <ShieldCheck size={15} aria-hidden="true" />
           </button>
         )}
-        {!editing && <button onClick={() => { setName(user.navn); setEditing(true); }} className="p-1.5 text-muted hover:text-brand" title="Ret navn"><Pencil size={15} /></button>}
-        {onResetPassword && <button onClick={() => setShowReset((v) => !v)} className="p-1.5 text-muted hover:text-brand" title="Nulstil adgangskode"><KeyRound size={15} /></button>}
-        {user.id !== currentUserId && <button onClick={() => onDelete(user.id)} className="p-1.5 text-muted hover:text-danger" title="Fjern adgang"><Trash2 size={15} /></button>}
+        {!editing && <button onClick={() => { setName(user.navn); setEditing(true); }} aria-label={`Ret navn på ${user.navn}`} className="w-10 h-10 flex items-center justify-center rounded-lg text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand" title="Ret navn"><Pencil size={15} aria-hidden="true" /></button>}
+        {onResetPassword && <button onClick={() => setShowReset((v) => !v)} aria-expanded={showReset} aria-label={`Nulstil adgangskode for ${user.navn}`} className="w-10 h-10 flex items-center justify-center rounded-lg text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand" title="Nulstil adgangskode"><KeyRound size={15} aria-hidden="true" /></button>}
+        {/* RETTET (august 2026): tooltip'en sagde "Fjern adgang", fordi
+            knappen dengang blot fjernede butikstilknytningen. Den SLETTER
+            nu brugeren permanent (login og profil), og en knap må ikke
+            beskrive sig selv mildere end den handler - det er præcis den
+            slags misforståelse, der koster en medarbejderkonto. Selve
+            bekræftelsen, med konsekvenserne hentet fra serveren, ligger i
+            useUsers.js. */}
+        {user.id !== currentUserId && (
+          <button onClick={() => onDelete(user.id)} aria-label={`Slet brugeren ${user.navn} permanent`} className="w-10 h-10 flex items-center justify-center rounded-lg text-muted hover:text-danger focus:outline-none focus:ring-2 focus:ring-danger" title="Slet bruger permanent">
+            <Trash2 size={15} aria-hidden="true" />
+          </button>
+        )}
       </div>
       {showReset && (
         <div className="px-3 pb-3 flex items-center gap-2 flex-wrap">
@@ -332,9 +345,10 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             placeholder="Ny adgangskode (mindst 6 tegn)"
-            className="flex-1 min-w-[160px] rounded-lg border border-line bg-panel px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-brand"
+            aria-label="Ny adgangskode"
+            className="flex-1 min-w-[160px] rounded-lg border border-line bg-panel px-2 py-2 text-xs text-ink focus:outline-none focus:border-brand"
           />
-          <button onClick={reset} disabled={busy} className="px-3 py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors disabled:opacity-60">
+          <button onClick={reset} disabled={busy} className="px-3 py-2 rounded-lg text-[10px] font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60">
             {busy ? "..." : "Sæt ny adgangskode"}
           </button>
           {resetMessage && <span className={`text-[11px] ${resetMessage.includes("nulstillet") ? "text-success" : "text-danger"}`}>{resetMessage}</span>}
@@ -344,7 +358,7 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
         <PermissionsEditor user={user} permissionsCatalog={permissionsCatalog} roleDefaults={roleDefaults} onUpdatePermissions={onUpdatePermissions} />
       )}
       {user.id === currentUserId && (
-        <p className="px-3 pb-2 text-[10px] text-muted italic">Du kan ikke ændre dine egne rettigheder eller rolle - bed en anden administrator om det.</p>
+        <p className="px-3 pb-2 text-[10px] text-muted italic">Du kan ikke ændre dine egne rettigheder eller rolle - og heller ikke slette din egen bruger. Bed en anden administrator om det.</p>
       )}
     </div>
   );
@@ -382,18 +396,18 @@ function NewUserForm({ onAdd }) {
     <div className="rounded-xl border border-line bg-white p-5 mb-6 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Opret ny bruger</h3>
       <div className="flex rounded-lg border border-line mb-3 text-xs font-semibold uppercase tracking-wide w-fit overflow-hidden">
-        <button onClick={() => setLoginType("brugernavn")} className={`px-3 py-1.5 transition-colors ${loginType === "brugernavn" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>Brugernavn</button>
-        <button onClick={() => setLoginType("email")} className={`px-3 py-1.5 transition-colors ${loginType === "email" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>E-mail</button>
+        <button onClick={() => setLoginType("brugernavn")} aria-pressed={loginType === "brugernavn"} className={`px-3 py-2 transition-colors ${loginType === "brugernavn" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>Brugernavn</button>
+        <button onClick={() => setLoginType("email")} aria-pressed={loginType === "email"} className={`px-3 py-2 transition-colors ${loginType === "email" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>E-mail</button>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <input value={name} onChange={(e) => changeName(e.target.value)} placeholder="Navn" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+        <input value={name} onChange={(e) => changeName(e.target.value)} placeholder="Navn" aria-label="Navn" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
         {loginType === "brugernavn" ? (
-          <input value={username} onChange={(e) => { setUsername(e.target.value); setUsernameEdited(true); }} placeholder="Brugernavn (foreslået, kan rettes)" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
+          <input value={username} onChange={(e) => { setUsername(e.target.value); setUsernameEdited(true); }} placeholder="Brugernavn (foreslået, kan rettes)" aria-label="Brugernavn" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
         ) : (
-          <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="E-mail" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+          <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="E-mail" aria-label="E-mail" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
         )}
-        <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Adgangskode (mindst 6 tegn)" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-        <select value={role} onChange={(e) => setRole(e.target.value)} className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
+        <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Adgangskode (mindst 6 tegn)" aria-label="Adgangskode" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+        <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Rolle" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
           <option value="saelger">Sælger (Salg, Planlægning, Kørsel, Montør, Lager)</option>
           <option value="montor">Montør (kun sin egen rute)</option>
           <option value="lager">Lager (kun Lager-siden)</option>
@@ -402,8 +416,8 @@ function NewUserForm({ onAdd }) {
       </div>
       {role === "montor" && <p className="text-[11px] text-muted mt-2">Bil tilknyttes bagefter under fanen "Montører".</p>}
       {error && <p className="text-xs text-danger mt-2">{error}</p>}
-      <button onClick={create} disabled={busy} className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors flex items-center gap-1.5 disabled:opacity-60">
-        <UserPlus size={15} /> {busy ? "Opretter..." : "Opret bruger"}
+      <button onClick={create} disabled={busy} className="mt-3 px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-60">
+        <UserPlus size={15} aria-hidden="true" /> {busy ? "Opretter..." : "Opret bruger"}
       </button>
     </div>
   );
@@ -420,8 +434,8 @@ function ProductCategoryAdmin({ productCategories, onAdd, onUpdate, onDelete }) 
       <div className="rounded-xl border border-line bg-white p-5 mb-4 shadow-sm">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Opret ny varekategori</h3>
         <div className="flex gap-2">
-          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Fx 'Hvidevare'" className="flex-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-          <button onClick={() => { if (!newName.trim()) return; onAdd(newName.trim()); setNewName(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors flex items-center gap-1.5"><Plus size={15} /> Opret</button>
+          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Fx 'Hvidevare'" aria-label="Navn på varekategori" className="flex-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+          <button onClick={() => { if (!newName.trim()) return; onAdd(newName.trim()); setNewName(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5"><Plus size={15} aria-hidden="true" /> Opret</button>
         </div>
       </div>
       <div className="space-y-2">
@@ -439,16 +453,16 @@ function EditableNameRow({ item, onUpdate, onDelete, extra, extraContent }) {
       <div className="flex items-center gap-2 flex-wrap">
         {editing ? (
           <>
-            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} className="flex-1 min-w-[140px] rounded-lg border border-line bg-panel px-2 py-1 text-sm text-ink focus:outline-none focus:border-brand" />
-            <button onClick={() => { onUpdate(name.trim() || item.navn); setEditing(false); }} className="text-xs text-success font-semibold uppercase">Gem</button>
-            <button onClick={() => { setName(item.navn); setEditing(false); }} className="text-xs text-muted font-semibold uppercase">Fortryd</button>
+            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} aria-label="Navn" className="flex-1 min-w-[140px] rounded-lg border border-line bg-panel px-2 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+            <button onClick={() => { onUpdate(name.trim() || item.navn); setEditing(false); }} className="text-xs text-success font-semibold uppercase px-2 py-2">Gem</button>
+            <button onClick={() => { setName(item.navn); setEditing(false); }} className="text-xs text-muted font-semibold uppercase px-2 py-2">Fortryd</button>
           </>
         ) : (
           <>
             <p className="font-semibold text-sm text-ink flex-1">{item.navn}</p>
             {extra}
-            <button onClick={() => setEditing(true)} className="p-1.5 text-muted hover:text-brand"><Pencil size={14} /></button>
-            <button onClick={onDelete} className="p-1.5 text-muted hover:text-danger"><Trash2 size={14} /></button>
+            <button onClick={() => setEditing(true)} aria-label={`Ret ${item.navn}`} className="w-9 h-9 flex items-center justify-center rounded-lg text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand"><Pencil size={14} aria-hidden="true" /></button>
+            <button onClick={onDelete} aria-label={`Slet ${item.navn}`} className="w-9 h-9 flex items-center justify-center rounded-lg text-muted hover:text-danger focus:outline-none focus:ring-2 focus:ring-danger"><Trash2 size={14} aria-hidden="true" /></button>
           </>
         )}
       </div>
@@ -467,19 +481,19 @@ function ProductTypeRow({ productType, productCategories, onUpdate, onDelete }) 
     <div className="rounded-xl border border-line bg-white p-3 flex items-center gap-2 flex-wrap shadow-sm">
       {editingName ? (
         <div className="flex items-center gap-2 flex-1 min-w-[160px]">
-          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} className="flex-1 rounded-lg border border-line bg-panel px-2 py-1 text-sm text-ink focus:outline-none focus:border-brand" />
-          <button onClick={() => { onUpdate(productType.id, { navn: name.trim() || productType.navn }); setEditingName(false); }} className="text-xs text-success font-semibold uppercase">Gem</button>
-          <button onClick={() => { setName(productType.navn); setEditingName(false); }} className="text-xs text-muted font-semibold uppercase">Fortryd</button>
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} aria-label="Varetypens navn" className="flex-1 rounded-lg border border-line bg-panel px-2 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+          <button onClick={() => { onUpdate(productType.id, { navn: name.trim() || productType.navn }); setEditingName(false); }} className="text-xs text-success font-semibold uppercase px-2 py-2">Gem</button>
+          <button onClick={() => { setName(productType.navn); setEditingName(false); }} className="text-xs text-muted font-semibold uppercase px-2 py-2">Fortryd</button>
         </div>
       ) : (
         <p className="font-semibold text-sm text-ink flex-1">{productType.navn}</p>
       )}
-      <select value={productType.kategoriId || ""} onChange={(e) => onUpdate(productType.id, { kategoriId: e.target.value || null })} className="rounded-lg border border-line bg-panel px-2 py-1.5 text-xs text-ink shrink-0">
+      <select value={productType.kategoriId || ""} onChange={(e) => onUpdate(productType.id, { kategoriId: e.target.value || null })} aria-label={`Kategori for ${productType.navn}`} className="rounded-lg border border-line bg-panel px-2 py-2 text-xs text-ink shrink-0">
         <option value="">Ingen kategori</option>
         {productCategories.map((k) => <option key={k.id} value={k.id}>{k.navn}</option>)}
       </select>
-      {!editingName && <button onClick={() => setEditingName(true)} className="p-1.5 text-muted hover:text-brand shrink-0"><Pencil size={14} /></button>}
-      <button onClick={() => onDelete(productType.id)} className="p-1.5 text-muted hover:text-danger shrink-0"><Trash2 size={14} /></button>
+      {!editingName && <button onClick={() => setEditingName(true)} aria-label={`Ret ${productType.navn}`} className="w-9 h-9 flex items-center justify-center rounded-lg text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand shrink-0"><Pencil size={14} aria-hidden="true" /></button>}
+      <button onClick={() => onDelete(productType.id)} aria-label={`Slet ${productType.navn}`} className="w-9 h-9 flex items-center justify-center rounded-lg text-muted hover:text-danger focus:outline-none focus:ring-2 focus:ring-danger shrink-0"><Trash2 size={14} aria-hidden="true" /></button>
     </div>
   );
 }
@@ -492,12 +506,12 @@ function ProductTypeAdmin({ productTypes, productCategories, onAdd, onUpdate, on
       <div className="rounded-xl border border-line bg-white p-5 mb-4 shadow-sm">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Opret ny varetype</h3>
         <div className="flex gap-2 flex-wrap">
-          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Fx 'Kaffemaskine'" className="flex-1 min-w-[160px] rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-          <select value={newCategoryId} onChange={(e) => setNewCategoryId(e.target.value)} className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink">
+          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Fx 'Kaffemaskine'" aria-label="Navn på varetype" className="flex-1 min-w-[160px] rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+          <select value={newCategoryId} onChange={(e) => setNewCategoryId(e.target.value)} aria-label="Kategori" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink">
             <option value="">Ingen kategori</option>
             {productCategories.map((k) => <option key={k.id} value={k.id}>{k.navn}</option>)}
           </select>
-          <button onClick={() => { if (!newName.trim()) return; onAdd(newName.trim(), newCategoryId || null); setNewName(""); setNewCategoryId(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors flex items-center gap-1.5"><Plus size={15} /> Opret</button>
+          <button onClick={() => { if (!newName.trim()) return; onAdd(newName.trim(), newCategoryId || null); setNewName(""); setNewCategoryId(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5"><Plus size={15} aria-hidden="true" /> Opret</button>
         </div>
       </div>
       <p className="text-[11px] text-muted mb-2">Hvilke tillægsydelser der er relevante for en varetype styres under fanen "Tillægsydelser" - vælg der hvilke varetyper hver tillægsydelse gælder for.</p>
@@ -523,15 +537,15 @@ function PrimaryServiceRow({ service, onUpdate, onDelete }) {
     <div className="rounded-xl border border-line bg-white p-3 flex items-center gap-2 flex-wrap shadow-sm">
       {editingName ? (
         <div className="flex items-center gap-2 flex-1 min-w-[160px]">
-          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} className="flex-1 rounded-lg border border-line bg-panel px-2 py-1 text-sm text-ink focus:outline-none focus:border-brand" />
-          <button onClick={() => { onUpdate(service.id, { navn: name.trim() || service.navn }); setEditingName(false); }} className="text-xs text-success font-semibold uppercase">Gem</button>
-          <button onClick={() => { setName(service.navn); setEditingName(false); }} className="text-xs text-muted font-semibold uppercase">Fortryd</button>
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} aria-label="Ydelsens navn" className="flex-1 rounded-lg border border-line bg-panel px-2 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+          <button onClick={() => { onUpdate(service.id, { navn: name.trim() || service.navn }); setEditingName(false); }} className="text-xs text-success font-semibold uppercase px-2 py-2">Gem</button>
+          <button onClick={() => { setName(service.navn); setEditingName(false); }} className="text-xs text-muted font-semibold uppercase px-2 py-2">Fortryd</button>
         </div>
       ) : (
         <p className="font-semibold text-sm text-ink flex-1">{service.navn}</p>
       )}
-      {!editingName && <button onClick={() => setEditingName(true)} className="p-1.5 text-muted hover:text-brand shrink-0"><Pencil size={14} /></button>}
-      <button onClick={() => onDelete(service.id)} className="p-1.5 text-muted hover:text-danger shrink-0"><Trash2 size={14} /></button>
+      {!editingName && <button onClick={() => setEditingName(true)} aria-label={`Ret ${service.navn}`} className="w-9 h-9 flex items-center justify-center rounded-lg text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand shrink-0"><Pencil size={14} aria-hidden="true" /></button>}
+      <button onClick={() => onDelete(service.id)} aria-label={`Slet ${service.navn}`} className="w-9 h-9 flex items-center justify-center rounded-lg text-muted hover:text-danger focus:outline-none focus:ring-2 focus:ring-danger shrink-0"><Trash2 size={14} aria-hidden="true" /></button>
     </div>
   );
 }
@@ -543,8 +557,8 @@ function PrimaryServiceAdmin({ primaryServices, onAdd, onUpdate, onDelete }) {
       <div className="rounded-xl border border-line bg-white p-5 mb-4 shadow-sm">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Opret ny primær ydelse</h3>
         <div className="flex gap-2 flex-wrap">
-          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Fx 'Montering'" className="flex-1 min-w-[160px] rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-          <button onClick={() => { if (!newName.trim()) return; onAdd(newName.trim()); setNewName(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors flex items-center gap-1.5"><Plus size={15} /> Opret</button>
+          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Fx 'Montering'" aria-label="Navn på primær ydelse" className="flex-1 min-w-[160px] rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+          <button onClick={() => { if (!newName.trim()) return; onAdd(newName.trim()); setNewName(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5"><Plus size={15} aria-hidden="true" /> Opret</button>
         </div>
       </div>
       <p className="text-[11px] text-muted mb-2">Hvilke tillægsydelser der er tilgængelige under en given primær ydelse styres under fanen "Tillægsydelser". Tidsforbrug sættes ikke her — det tastes manuelt af sælgeren for hver enkelt booking.</p>
@@ -590,7 +604,7 @@ function AddOnServiceRow({ service, productTypes, primaryServices, onUpdate, onD
                 primaryServices.map((p) => {
                   const selected = (service.primaerYdelser || []).includes(p.id);
                   return (
-                    <button key={p.id} onClick={() => togglePrimary(p.id)} className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${selected ? "border-success bg-success/10 text-success" : "border-line text-muted hover:border-brand hover:text-brand"}`}>
+                    <button key={p.id} onClick={() => togglePrimary(p.id)} aria-pressed={selected} className={`text-xs px-2.5 py-2 rounded-lg border transition-colors focus:outline-none focus:ring-2 focus:ring-brand ${selected ? "border-success bg-success/10 text-success" : "border-line text-muted hover:border-brand hover:text-brand"}`}>
                       {p.navn}
                     </button>
                   );
@@ -606,7 +620,7 @@ function AddOnServiceRow({ service, productTypes, primaryServices, onUpdate, onD
               {productTypes.map((v) => {
                 const selected = (service.varetyper || []).includes(v.id);
                 return (
-                  <button key={v.id} onClick={() => toggleProductType(v.id)} className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${selected ? "border-brand bg-brand/10 text-brand" : "border-line text-muted hover:border-brand hover:text-brand"}`}>
+                  <button key={v.id} onClick={() => toggleProductType(v.id)} aria-pressed={selected} className={`text-xs px-2.5 py-2 rounded-lg border transition-colors focus:outline-none focus:ring-2 focus:ring-brand ${selected ? "border-brand bg-brand/10 text-brand" : "border-line text-muted hover:border-brand hover:text-brand"}`}>
                     {v.navn}
                   </button>
                 );
@@ -626,8 +640,8 @@ function AddOnServiceAdmin({ addOnServices, productTypes, primaryServices, onAdd
       <div className="rounded-xl border border-line bg-white p-5 mb-4 shadow-sm">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Opret ny tillægsydelse</h3>
         <div className="flex gap-2 flex-wrap">
-          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Fx 'Dørvending'" className="flex-1 min-w-[160px] rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-          <button onClick={() => { if (!newName.trim()) return; onAdd(newName.trim()); setNewName(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors flex items-center gap-1.5"><Plus size={15} /> Opret</button>
+          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Fx 'Dørvending'" aria-label="Navn på tillægsydelse" className="flex-1 min-w-[160px] rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+          <button onClick={() => { if (!newName.trim()) return; onAdd(newName.trim()); setNewName(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5"><Plus size={15} aria-hidden="true" /> Opret</button>
         </div>
         <p className="text-[11px] text-muted mt-2">Efter oprettelse skal du sætte hvilke primære ydelser den gælder under (nedenfor på hver række) — ellers vises den aldrig i booking-flowet.</p>
       </div>
