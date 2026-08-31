@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AlertCircle, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, RefreshCw, KeyRound, Clock, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid, MapPin, Phone, Route, Stethoscope, CalendarX2, AlertTriangle } from "lucide-react";
+import { AlertCircle, ArrowLeftRight, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, RefreshCw, KeyRound, Clock, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid, MapPin, Phone, Route, Stethoscope, CalendarX2, AlertTriangle } from "lucide-react";
 import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, dailyOrderCompare, needsPlanning, activeSickLeave, buildingKey, timeSlotById } from "../data/domain";
 import { geocodeAddress, geocodeAddresses, drivingDistances, routeDrivingTime, optimalVisitOrder } from "../lib/geocoding";
 import { suggestPlan, planningWindow, WORKDAY_MINUTES } from "../lib/scheduling";
@@ -308,22 +308,56 @@ function TileButton({ icon: Icon, color, count, label, selected, onClick }) {
   );
 }
 
+// Hvor mange sagskort der vises ad gangen i "Planlagt fremad"/"Afsluttet".
+// RETTET (august 2026, set på skærmbillede): listerne indeholdt 172 og 235
+// sager, og ALLE blev renderet i samme øjeblik, sektionen blev foldet ud.
+// Det er hundredvis af DOM-noder på én gang - mærkbart hak på en telefon,
+// og fuldstændig unyttigt: ingen scroller gennem 235 kort for at finde
+// noget. Skal man finde en bestemt sag, bruger man søgefeltet øverst.
+const SECTION_PAGE_SIZE = 30;
+
 function CollapsibleSection({ title, icon: Icon, colorClass, items, technicians, onOpen, onCycleStatus, emptyText }) {
   const [open, setOpen] = useState(false);
+  const [visible, setVisible] = useState(SECTION_PAGE_SIZE);
+
+  // Nulstil ved lukning, så en genåbning ikke igen renderer alt det, man
+  // havde foldet frem sidste gang.
+  const toggle = () => {
+    setOpen((v) => {
+      if (v) setVisible(SECTION_PAGE_SIZE);
+      return !v;
+    });
+  };
+
+  const shown = items.slice(0, visible);
+  const remaining = items.length - shown.length;
+
   return (
     <div className="rounded-xl border border-line bg-white overflow-hidden">
-      <button onClick={() => setOpen((v) => !v)} aria-expanded={open} className="w-full p-3 flex items-center gap-2 text-left focus:outline-none focus:ring-2 focus:ring-brand">
+      <button onClick={toggle} aria-expanded={open} className="w-full p-3 flex items-center gap-2 text-left focus:outline-none focus:ring-2 focus:ring-brand">
         <Icon size={15} className={`shrink-0 ${colorClass}`} aria-hidden="true" />
         <span className="text-sm font-semibold uppercase tracking-wide text-ink flex-1">{title}</span>
         <span className="text-xs font-mono px-1.5 py-0.5 rounded-full border border-line text-muted">{items.length}</span>
         <ChevronDown size={16} className={`text-muted transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
       </button>
       {open && (
-        <div className="p-3 pt-0 grid gap-2 sm:grid-cols-2">
+        <div className="p-3 pt-0">
           {items.length === 0 ? (
             <p className="text-xs text-muted italic pt-2">{emptyText}</p>
           ) : (
-            items.map((s) => <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} />)
+            <>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {shown.map((s) => <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} />)}
+              </div>
+              {remaining > 0 && (
+                <button
+                  onClick={() => setVisible((v) => v + SECTION_PAGE_SIZE)}
+                  className="w-full mt-3 py-3 rounded-lg border border-line text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors"
+                >
+                  Vis {Math.min(SECTION_PAGE_SIZE, remaining)} flere · {remaining} tilbage
+                </button>
+              )}
+            </>
           )}
         </div>
       )}
@@ -349,7 +383,22 @@ function shortDateLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateSt
 // ikke nås med tastatur, får ingen fokusmarkering, og en skærmlæser
 // fortæller ikke, at det kan trykkes. Det er nu en rigtig <button> med
 // venstrestillet tekst - samme udseende, men brugbar uden mus.
+//
+// MONTØR-VÆLGEREN ER FOLDET SAMMEN (august 2026, set på skærmbillede):
+// hvert eneste kort havde en fuldbredde-dropdown nederst, som gentog
+// præcis det, den farvede montør-overskrift over gruppen allerede sagde.
+// På en travl dag med 19 sager blev det 19 grå kasser med samme navn i,
+// og ~35 px ekstra højde pr. kort - altså en markant længere rulning for
+// information, man allerede havde. Dropdownen foldes nu frem med
+// "flyt"-knappen i kortets øverste højre hjørne.
+//
+// UNDTAGELSER, hvor den stadig er åben fra start:
+//   * sagen er IKKE tildelt nogen - dér ER vælgeren hele pointen
+//   * montøren er fraværende den dag - sagen SKAL flyttes, og så må
+//     handlingen ikke være gemt bag et ekstra tryk
 function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnicianId, color, onLeave, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
+  const [showAssign, setShowAssign] = useState(!currentTechnicianId || !!onLeave);
+
   return (
     <div
       className="rounded-lg bg-white border border-line hover:shadow-sm transition-shadow px-2.5 py-2 mb-1.5 last:mb-0"
@@ -366,39 +415,55 @@ function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnician
             </button>
           </div>
         )}
-        <button
-          type="button"
-          onClick={() => onOpen(order.id)}
-          className="text-left min-w-0 flex-1 focus:outline-none focus:ring-2 focus:ring-brand rounded"
-        >
+        <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-1">
             <span className="text-[11px] font-mono text-muted">{order.start}–{order.slut}</span>
-            {order.noegle?.kraeves && <KeyRound size={10} className="text-brand shrink-0" aria-label="Nøgle/adgang kræves" />}
+            <div className="flex items-center gap-0.5 shrink-0">
+              {order.noegle?.kraeves && <KeyRound size={10} className="text-brand shrink-0" aria-label="Nøgle/adgang kræves" />}
+              <button
+                type="button"
+                onClick={() => setShowAssign((v) => !v)}
+                aria-expanded={showAssign}
+                aria-label={`Flyt ${order.kunde?.navn || "sagen"} til en anden montør`}
+                title="Flyt til anden montør"
+                className={`w-9 h-9 -mr-1 -my-1 flex items-center justify-center rounded focus:outline-none focus:ring-2 focus:ring-brand ${showAssign ? "text-brand" : "text-muted hover:text-brand"}`}
+              >
+                <ArrowLeftRight size={13} aria-hidden="true" />
+              </button>
+            </div>
           </div>
-          <p className="text-sm font-semibold text-ink truncate">{order.kunde?.navn}</p>
-          <p className="text-xs text-muted truncate">{buildTitle(order.varelinjer)}</p>
-          {order.kunde?.adresse && (
-            <p className="text-[11px] text-muted truncate flex items-center gap-1">
-              <MapPin size={10} className="shrink-0" aria-hidden="true" /> {order.kunde.adresse}
-            </p>
-          )}
-          {order.kunde?.telefon && (
-            <p className="text-[11px] text-muted truncate flex items-center gap-1">
-              <Phone size={10} className="shrink-0" aria-hidden="true" /> {order.kunde.telefon}
-            </p>
-          )}
-        </button>
+          <button
+            type="button"
+            onClick={() => onOpen(order.id)}
+            className="text-left w-full min-w-0 focus:outline-none focus:ring-2 focus:ring-brand rounded"
+          >
+            <p className="text-sm font-semibold text-ink truncate">{order.kunde?.navn}</p>
+            <p className="text-xs text-muted truncate">{buildTitle(order.varelinjer)}</p>
+            {order.kunde?.adresse && (
+              <p className="text-[11px] text-muted truncate flex items-center gap-1">
+                <MapPin size={10} className="shrink-0" aria-hidden="true" /> {order.kunde.adresse}
+              </p>
+            )}
+            {order.kunde?.telefon && (
+              <p className="text-[11px] text-muted truncate flex items-center gap-1">
+                <Phone size={10} className="shrink-0" aria-hidden="true" /> {order.kunde.telefon}
+              </p>
+            )}
+          </button>
+        </div>
       </div>
-      <select
-        value={currentTechnicianId || ""}
-        onChange={(e) => onAssign(order.id, e.target.value || null)}
-        onClick={(e) => e.stopPropagation()}
-        aria-label={`Montør for ${order.kunde?.navn || "sagen"}`}
-        className={`w-full mt-1.5 rounded-md border px-1.5 py-2 text-[11px] focus:outline-none focus:ring-2 focus:ring-brand ${onLeave ? "border-danger text-danger font-semibold" : "border-line bg-panel text-muted focus:border-brand"}`}
-      >
-        <option value="">Ikke tildelt</option>
-        {technicians.map((m) => <option key={m.id} value={m.id}>{m.navn}</option>)}
-      </select>
+      {showAssign && (
+        <select
+          value={currentTechnicianId || ""}
+          onChange={(e) => onAssign(order.id, e.target.value || null)}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Montør for ${order.kunde?.navn || "sagen"}`}
+          className={`w-full mt-1.5 rounded-md border px-1.5 py-2 text-[11px] focus:outline-none focus:ring-2 focus:ring-brand ${onLeave ? "border-danger text-danger font-semibold" : "border-line bg-panel text-muted focus:border-brand"}`}
+        >
+          <option value="">Ikke tildelt</option>
+          {technicians.map((m) => <option key={m.id} value={m.id}>{m.navn}</option>)}
+        </select>
+      )}
     </div>
   );
 }
@@ -608,6 +673,7 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
                     key={d}
                     role="tab"
                     aria-selected={d === selectedDay}
+                    aria-label={`${shortDayLabel(d)} ${new Date(d + "T00:00:00").getDate()}. — ${antal} ${antal === 1 ? "sag" : "sager"}`}
                     onClick={() => setSelectedDay(d)}
                     className={`shrink-0 flex flex-col items-center px-3 py-2 rounded-lg text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-brand ${d === selectedDay ? "bg-brand text-white" : d === today ? "bg-panel text-brand" : "text-muted hover:bg-panel"}`}
                   >
