@@ -181,6 +181,26 @@ const lineItemLabel = (v) => {
 const lineItemMinutes = (line) => (Number(line.primaerYdelse?.minutter) || 0) + (line.tillaeg || []).reduce((sum, y) => sum + (Number(y.minutter) || 0), 0);
 const orderExpectedMinutes = (order) => (order.varelinjer || []).reduce((sum, l) => sum + lineItemMinutes(l), 0);
 
+// ---------------- Manglende varer (august 2026) ----------------
+// Lageret kan ved pluk melde, at en vare IKKE kan findes - typisk fordi
+// den er oversolgt, eller fordi en leverance ikke er kommet til tiden.
+// Markeringen sidder på den enkelte VARELINJE (ikke på hele sagen), fordi
+// en sag ofte har flere varer, og det kun er den ene, der mangler -
+// resten kan sagtens leveres som planlagt.
+//
+// Formen er { note, tid, meldtAf, set } hvor "set" er læst/ulæst for
+// sælgerens notifikation. At læst-tilstanden ligger HER og ikke i sagens
+// notifikationSet er et bevidst sikkerhedsvalg: notifikationSet er
+// beskyttet af rettigheden sag_feltarbejde, og skulle lageret kunne røre
+// den, måtte vi åbne den rettighedsgrænse - hvorefter en
+// lagermedarbejder også kunne afvise sælgerens notifikationer om
+// materialeforbrug og problemer. Se migrationen
+// "allow_warehouse_to_report_missing_items" i Supabase, som tillader
+// lageret at skrive netop 'plukket' og 'mangler' på en varelinje, men
+// intet andet.
+const missingLineItems = (order) => (order.varelinjer || []).filter((v) => v.mangler && v.mangler.note);
+const orderHasMissingItems = (order) => missingLineItems(order).length > 0;
+
 const normalizeAddress = (addr) => (addr || "").toLowerCase().replace(/[.,]/g, " ").replace(/\s+/g, " ").trim();
 const buildingKey = (addr) => {
   const n = normalizeAddress(addr);
@@ -368,6 +388,7 @@ export {
   DEFAULT_SERVICE_MINUTES, createAddOn, OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID,
   DEFAULT_PRODUCT_CATEGORIES, DEFAULT_PRODUCT_TYPES, DEFAULT_PRIMARY_SERVICES, DEFAULT_ADD_ON_SERVICES, availableAddOns,
   createLineItem, lineItemLabel, lineItemMinutes, orderExpectedMinutes, normalizeAddress, buildingKey, areaKey,
+  missingLineItems, orderHasMissingItems,
   weekDays, buildTitle, keyAccessText, TIME_SLOTS, timeSlotById, timeSlotText, KEY_ACCESS_TYPES, TECHNICIAN_COLORS, technicianColor,
   DEFAULT_VEHICLES, vehicleLabel, vehicleBlockedByTimeOff, isTechnicianAbsent, activeSickLeave, emptyCustomer, emptyKeyAccess, STATUS_META,
   dailyOrderCompare, needsPlanning, computeNotifications, PAGES, PAGES_FOR_ROLE, canDo, DASHBOARD_WIDGET_CATALOG, DEFAULT_DASHBOARD_WIDGETS,
@@ -378,18 +399,27 @@ export {
 //  - materialer: nyt materialeforbrug tilføjet af montøren
 //  - problemer: montøren har markeret sagen med et problem/ikke gennemført
 //  - opfoelgninger: der er oprettet en opfølgningssag ud fra denne
+//  - manglendeVarer: lageret kan ikke finde en vare til sagen (august 2026)
 // En sag kan sagtens optræde i flere lister samtidig. Kun sagens EGEN
 // opretter tæller med - en admin der blot kigger på andres sager udløser
 // ingen notifikationer. Se useOrders.js: dismissNotifications for hvordan
 // en sag markeres som læst (sker automatisk når opretteren selv åbner den,
 // se App.jsx).
+//
+// manglendeVarer læser IKKE notifikationSet, men læst-flaget på selve
+// varelinjens mangler-objekt - se noten ved missingLineItems ovenfor for
+// hvorfor. Bemærk konsekvensen: melder lageret en NY vare manglende på en
+// sag, hvor sælgeren allerede har set en tidligere melding, bliver sagen
+// ulæst igen, fordi den nye linje har set: false. Det er den ønskede
+// opførsel - to manglende varer er to beskeder, ikke én.
 function computeNotifications(orders, profileId) {
-  if (!profileId) return { materialer: [], problemer: [], opfoelgninger: [] };
+  if (!profileId) return { materialer: [], problemer: [], opfoelgninger: [], manglendeVarer: [] };
   const mine = (orders || []).filter((o) => o.oprettetAf?.id === profileId);
   return {
     materialer: mine.filter((o) => (o.materialer || []).length > 0 && !o.notifikationSet?.materialer),
     problemer: mine.filter((o) => o.problem && !o.notifikationSet?.problem),
     opfoelgninger: mine.filter((o) => o.harOpfoelgning && !o.notifikationSet?.opfoelgning),
+    manglendeVarer: mine.filter((o) => (o.varelinjer || []).some((v) => v.mangler?.note && !v.mangler.set)),
   };
 }
 
