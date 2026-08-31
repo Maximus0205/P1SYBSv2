@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { getOrders, saveOrder, saveOrderResult, getFreshOrder } from "../lib/dataStore";
-import { uid, dailyOrderCompare } from "../data/domain";
+import { getOrders, saveOrder, saveOrderResult, deleteOrder as deleteOrderRow, getFreshOrder } from "../lib/dataStore";
+import { uid, dailyOrderCompare, lineItemFingerprint } from "../data/domain";
 import { enqueueOrder, flushQueue, queueLength, subscribeQueue } from "../lib/offlineQueue";
 import { reportSaveFailure } from "../lib/saveStatus";
 
@@ -42,15 +42,12 @@ import { reportSaveFailure } from "../lib/saveStatus";
 // Selve skelnen sker i dataStore (saveOrderResult -> { ok, netvaerk }),
 // IKKE her. Det er med vilje: supabase-js kaster ikke ved netværksfejl,
 // men returnerer den i { error } præcis som en afvisning, så forskellen
-// kan kun aflæses dér, hvor fejlobjektet findes. Et tidligere forsøg på
-// at fange det med .catch() her virkede aldrig, netop derfor.
+// kan kun aflæses dér, hvor fejlobjektet findes.
 //
 // DATO ER VALGFRI (august 2026): en sag kan oprettes/duplikeres UDEN dato
 // (og dermed uden tidsrum/montør) - den lander så i "Skal planlægges" i
 // PlanningPage.jsx (se needsPlanning i domain.js), som kan foreslå BÅDE
-// dato og montør for den. Der sættes bevidst IKKE en standarddato længere
-// (tidligere blev "i dag" altid gættet) - det var reelt en gætning, ikke
-// en beslutning, og skjulte at sagen endnu ikke var planlagt ordentligt.
+// dato og montør for den.
 export function useOrders(storeId) {
   const [orders, setOrders] = useState([]);
   const [queuedCount, setQueuedCount] = useState(0);
@@ -82,9 +79,6 @@ export function useOrders(storeId) {
             `En ændring på sag ${post.order?.nr || post.id} kunne ikke gemmes efter flere forsøg og er nu fjernet fra køen. Åbn sagen og indtast ændringen igen.`
           ),
       });
-      // Hent friske data, hvis noget rent faktisk kom afsted - så skærmen
-      // viser det, der nu står i databasen, inkl. hvad andre har ændret
-      // imens.
       if (r.sendt > 0 && storeId) await load(storeId);
     } finally {
       flushingRef.current = false;
@@ -102,8 +96,6 @@ export function useOrders(storeId) {
   //   ok            -> færdig, intet mere at gøre
   //   netvaerk      -> behold ændringen på skærmen, læg den i kø
   //   afvist        -> rul tilbage (dataStore har allerede vist fejlen)
-  // Se den lange note ovenfor om hvorfor de to fejltyper skal behandles
-  // stik modsat hinanden.
   const saveOneOrder = (order) => {
     const previous = orders.find((s) => s.id === order.id) || null;
     setOrders((prev) => (prev.some((s) => s.id === order.id) ? prev.map((s) => (s.id === order.id ? order : s)) : [...prev, order]));
@@ -113,8 +105,6 @@ export function useOrders(storeId) {
       ? prev.map((s) => (s.id === order.id ? previous : s))
       : prev.filter((s) => s.id !== order.id)));
 
-    // Er browseren allerede offline, er der ingen grund til at forsøge
-    // først - læg den i kø med det samme.
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       enqueueOrder(storeId, order);
       return;
@@ -127,9 +117,6 @@ export function useOrders(storeId) {
         rulTilbage();
       })
       .catch((e) => {
-        // Skulle noget uventet alligevel kaste (fx en fejl i selve
-        // klientbiblioteket), er den sikre opførsel at rulle tilbage og
-        // sige det ligeud - ikke at antage, at det var netværket.
         rulTilbage();
         reportSaveFailure(e?.message || "Ændringen blev ikke gemt.");
       });
@@ -140,22 +127,8 @@ export function useOrders(storeId) {
   // assign_order_number-triggeren) - så det ENDELIGE, garanteret unikke
   // sagsnummer altid vises korrekt, uden gæt fra browseren.
   //
-  // createdBy ({id, navn} for den indloggede bruger, eller null) gemmes
-  // som oprettetAf - så det altid er synligt, HVEM der har booket sagen
-  // (savnet funktion, se OrderView.jsx), og bruges desuden som grundlag
-  // for notifikationssystemet (kun sagens EGEN opretter får besked om
-  // materialeforbrug/problemer/opfølgninger på den, se dismissNotifications
-  // nedenfor).
-  //
-  // Slår oprettelsen fejl (fx manglende sag_opret-rettighed), fjernes den
-  // optimistisk tilføjede sag igen, og der returneres null - så den
-  // kaldende komponent ikke navigerer videre til en sag, der aldrig blev
-  // oprettet.
-  //
   // BEVIDST IKKE KØET: sagsnummeret tildeles af databasen, og en køet
-  // oprettelse ville stå med "..." som nummer i timevis. Nye sager
-  // oprettes desuden fra butikken (Salg), hvor brugeren er online - den
-  // kompleksitet er der ingen grund til at tage på sig her.
+  // oprettelse ville stå med "..." som nummer i timevis.
   const addOrder = async ({ kunde, koeber, noegle, dato, tidsrumId, start, slut, montorId, varelinjer, ordrenummer, createdBy }) => {
     if (!storeId) return;
     const newOrder = {
@@ -179,19 +152,36 @@ export function useOrders(storeId) {
 
   const findOrder = (orders_, id) => orders_.find((x) => x.id === id);
 
-  // Opretter en ny sag ud fra en EKSISTERENDE (dupliker/opfølgning) - se
-  // "Dupliker / Opfølgning" i OrderView.jsx. Kunde/køber/nøgleoplysninger
-  // og adresse kopieres, men datoen, tidsrummet og montøren NULSTILLES
-  // bevidst til INTET SAT (ikke længere "i dag") - opfølgningen lander i
-  // "Skal planlægges" og kan derfra få et rigtigt forslag til dato+montør,
-  // i stedet for at gætte på dags dato. Sagsnummer, status, noter,
-  // billeder, rapporter, tidsregistrering, materialeforbrug og
-  // plukket-status starter alle helt friske. Returnerer det nye sags-id.
+  // SLETTER en sag permanent (august 2026). Kræver rettigheden sag_slet,
+  // håndhævet af RLS-policyen "delete orders with permission" i databasen
+  // - admin og sælger har den, montør og lager ikke.
   //
-  // Markerer desuden den OPRINDELIGE sag med harOpfoelgning (den nye sags
-  // id) og nulstiller dens opfølgnings-notifikation til "ulæst" - det er
-  // grundlaget for at kunne fortælle den oprindelige sags opretter "der er
-  // lavet en opfølgning på en af dine sager", se dismissNotifications.
+  // BEVIDST IKKE KØET OFFLINE, i modsætning til almindelige ændringer: en
+  // sletning er uigenkaldelig, og at udføre den timer senere - når
+  // brugeren for længst har glemt den, og en kollega måske har arbejdet
+  // videre på sagen i mellemtiden - er ikke en tjeneste. Uden forbindelse
+  // fejler den ærligt, og sagen bliver stående.
+  //
+  // Returnerer true/false, så den kaldende komponent ved, om den skal
+  // navigere væk fra en sag, der ikke længere findes.
+  const deleteOrder = async (orderId) => {
+    if (!storeId) return false;
+    const previous = findOrder(orders, orderId);
+    if (!previous) return false;
+    setOrders((prev) => prev.filter((s) => s.id !== orderId));
+    const ok = await deleteOrderRow(storeId, orderId);
+    if (!ok) {
+      // Læg den tilbage. dataStore har allerede vist fejlen for brugeren.
+      setOrders((prev) => (prev.some((s) => s.id === orderId) ? prev : [...prev, previous]));
+      return false;
+    }
+    return true;
+  };
+
+  // Opretter en ny sag ud fra en EKSISTERENDE (dupliker/opfølgning).
+  // Datoen, tidsrummet og montøren NULSTILLES bevidst til INTET SAT -
+  // opfølgningen lander i "Skal planlægges" og kan derfra få et rigtigt
+  // forslag til dato+montør, i stedet for at gætte på dags dato.
   //
   // Fejler selve oprettelsen af den nye sag, røres kilde-sagen slet ikke:
   // ellers ville den stå med et harOpfoelgning-link til en sag, der ikke
@@ -202,6 +192,10 @@ export function useOrders(storeId) {
       ...v,
       id: uid(),
       plukket: false,
+      // En manglende-vare-markering hører til den OPRINDELIGE sag og må
+      // ikke følge med over på opfølgningen - den nye sag er jo netop
+      // forsøget på at løse problemet.
+      mangler: null,
       tillaeg: (v.tillaeg || []).map((y) => ({ ...y, udfoert: false })),
     }));
     const newOrder = {
@@ -222,7 +216,6 @@ export function useOrders(storeId) {
       return null;
     }
 
-    // Markér kilde-sagen med et forward-link + ulæst opfølgnings-notifikation.
     const freshSource = findOrder(orders, sourceOrder.id) || sourceOrder;
     saveOneOrder({
       ...freshSource,
@@ -235,8 +228,7 @@ export function useOrders(storeId) {
     return newOrder.id;
   };
 
-  // Hurtig-redigering af en booket ordre (dato/tidsrum/montør/adresse) - se
-  // BookingEditor i OrderView.jsx.
+  // Hurtig-redigering af en booket ordre (dato/tidsrum/montør/adresse).
   const updateBooking = (id, fields) => { const s = findOrder(orders, id); if (s) saveOneOrder({ ...s, ...fields }); };
 
   const importOrders = (newOrders) => newOrders.forEach((s) => saveOneOrder(s));
@@ -244,12 +236,89 @@ export function useOrders(storeId) {
   const assignTechnician = (orderId, technicianId) => { const s = findOrder(orders, orderId); if (s) saveOneOrder({ ...s, montorId: technicianId }); };
   const updateTimeSlot = (orderId, timeSlotId) => { const s = findOrder(orders, orderId); if (s) saveOneOrder({ ...s, tidsrumId: timeSlotId }); };
 
-  // Ændrer besøgs-RÆKKEFØLGEN for sager hos samme montør, samme dag (fx ved
-  // sygdom, forgæves besøg, eller bare fordi en anden rute giver mere
-  // mening). Direction er -1 (flyt op/tidligere) eller +1 (flyt ned/senere).
-  // Normaliserer HELE dagens gruppe for den montør til fortløbende tal
-  // (0,1,2...) hver gang - se dailyOrderCompare i domain.js for hvorfor.
-  // Kun de sager hvis raekkefolge rent faktisk ændrer sig bliver gemt.
+  // ---------------- Varelinjer på en EKSISTERENDE sag (august 2026) ----------------
+  // Indtil nu kunne varelinjerne kun sættes ved oprettelsen af sagen. I
+  // praksis sker der løbende ændringer: kunden ombestemmer sig, en vare
+  // er oversolgt og erstattes af en tilsvarende model, eller der skal en
+  // ekstra ting med. Kræver rettigheden sag_feltarbejde (se
+  // orders_guard_field_groups i databasen), som sælger, montør og admin
+  // har - men lageret bevidst ikke: de må melde en vare manglende, ikke
+  // omskrive hvad der er solgt.
+  //
+  // Ordrens afledte "plukket"-flag genberegnes ved hver ændring: fjerner
+  // man den ene uplukkede linje, ER resten af sagen jo færdigplukket, og
+  // så skal lagerlisten også vise det.
+  const setLineItems = (orderId, varelinjer) => {
+    const s = findOrder(orders, orderId);
+    if (!s) return;
+    const liste = varelinjer || [];
+    const allPicked = liste.length > 0 && liste.every((v) => v.plukket);
+    saveOneOrder({ ...s, varelinjer: liste, plukket: allPicked });
+  };
+
+  const updateLineItem = (orderId, lineItemId, fields) => {
+    const s = findOrder(orders, orderId);
+    if (!s) return;
+    setLineItems(orderId, s.varelinjer.map((v) => (v.id === lineItemId ? { ...v, ...fields } : v)));
+  };
+
+  const addLineItem = (orderId, lineItem) => {
+    const s = findOrder(orders, orderId);
+    if (!s || !lineItem) return;
+    setLineItems(orderId, [...(s.varelinjer || []), { ...lineItem, id: lineItem.id || uid() }]);
+  };
+
+  // Fjerner ÉN varelinje. Den kaldende komponent er ansvarlig for at
+  // bekræfte handlingen først - det er en ændring af, hvad kunden har
+  // købt, ikke en visningsdetalje.
+  const removeLineItem = (orderId, lineItemId) => {
+    const s = findOrder(orders, orderId);
+    if (!s) return;
+    setLineItems(orderId, (s.varelinjer || []).filter((v) => v.id !== lineItemId));
+  };
+
+  // ---------------- Manglende varer (august 2026) ----------------
+  // Lageret melder ved pluk, at en vare ikke kan findes - oversolgt, eller
+  // en leverance der ikke er kommet. Sælgeren, der har booket sagen, får
+  // besked, så kunden kan kontaktes FØR montøren kører forgæves.
+  //
+  // meldtVedDato og meldtForVare er selve mekanikken bag, at
+  // notifikationen forsvinder AF SIG SELV, når problemet er håndteret -
+  // se isMissingActive i domain.js. Vi gemmer sagens dato og et
+  // fingeraftryk af varen, som den så ud PÅ MELDINGSTIDSPUNKTET; ændrer
+  // sælgeren enten dato eller vare, matcher det ikke længere, og
+  // meldingen er dermed besvaret.
+  //
+  // Bemærk at der IKKE røres ved notifikationSet her. Det er med vilje:
+  // det felt er beskyttet af sag_feltarbejde, som lageret ikke har - se
+  // migrationen "allow_warehouse_to_report_missing_items", der giver dem
+  // adgang til præcis 'plukket' og 'mangler' på en varelinje og intet
+  // andet.
+  const reportMissingItem = (orderId, lineItemId, note, reporter) => {
+    const s = findOrder(orders, orderId);
+    if (!s) return;
+    const linje = (s.varelinjer || []).find((v) => v.id === lineItemId);
+    if (!linje) return;
+    updateLineItem(orderId, lineItemId, {
+      // En vare, der ikke kan findes, kan pr. definition ikke være plukket.
+      plukket: false,
+      mangler: {
+        note: (note || "").trim() || "Varen kan ikke findes på lageret",
+        tid: new Date().toLocaleString("da-DK"),
+        meldtAf: reporter || null,
+        meldtVedDato: s.dato || null,
+        meldtForVare: lineItemFingerprint(linje),
+      },
+    });
+  };
+
+  // Varen dukkede op alligevel. Fjerner markeringen helt frem for at
+  // sætte et "løst"-flag: der er ikke noget at gemme på, og en tom
+  // markering ville bare ligge og forvirre næste gang nogen kigger.
+  const clearMissingItem = (orderId, lineItemId) => updateLineItem(orderId, lineItemId, { mangler: null });
+
+  // Ændrer besøgs-RÆKKEFØLGEN for sager hos samme montør, samme dag.
+  // Direction er -1 (flyt op/tidligere) eller +1 (flyt ned/senere).
   const reorderOrder = (technicianId, date, orderId, direction) => {
     const group = orders
       .filter((o) => o.montorId === technicianId && o.dato === date && o.status !== "afsluttet")
@@ -265,12 +334,8 @@ export function useOrders(storeId) {
     });
   };
 
-  // Sætter besøgs-RÆKKEFØLGEN for en montørs dag i ÉT hug, ud fra en
-  // færdigberegnet liste af sags-id'er i den ønskede rækkefølge - bruges af
-  // "Foreslå bedste rækkefølge" (se lib/geocoding.js: optimalVisitOrder,
-  // og PlanningPage.jsx), som beregner en hel ny rækkefølge på én gang, i
-  // modsætning til reorderOrder ovenfor, der kun flytter ÉT trin ad gangen.
-  // Kun de sager hvis raekkefolge rent faktisk ændrer sig bliver gemt.
+  // Sætter besøgs-RÆKKEFØLGEN for en montørs dag i ÉT hug - bruges af
+  // "Foreslå bedste rækkefølge" (se lib/geocoding.js: optimalVisitOrder).
   const setVisitOrder = (technicianId, date, orderedIds) => {
     orderedIds.forEach((id, i) => {
       const o = findOrder(orders, id);
@@ -281,9 +346,7 @@ export function useOrders(storeId) {
   };
 
   // Slår plukket til/fra for ÉN varelinje (se WarehousePage.jsx: dér er 1
-  // varelinje = 1 pluk-punkt på lagerlisten, i stedet for 1 punkt pr. hele
-  // ordren). Ordrens samlede "plukket"-flag holdes synkroniseret som et
-  // afledt "alle varelinjer på ordren er plukket"-flag.
+  // varelinje = 1 punkt på pluklisten).
   const toggleLineItemPicked = (orderId, lineItemId) => {
     const s = findOrder(orders, orderId);
     if (!s) return;
@@ -292,9 +355,7 @@ export function useOrders(storeId) {
     saveOneOrder({ ...s, varelinjer, plukket: allPicked });
   };
 
-  // Cirkulerer status planlagt -> i gang -> afsluttet -> planlagt. Sætter
-  // (eller nulstiller) afsluttetTidspunkt sammen med selve status-skiftet,
-  // så sagskort kan vise HVORNÅR en sag reelt blev afsluttet.
+  // Cirkulerer status planlagt -> i gang -> afsluttet -> planlagt.
   const cycleStatus = (id) => {
     const s = findOrder(orders, id);
     if (!s) return;
@@ -306,10 +367,6 @@ export function useOrders(storeId) {
     saveOneOrder({ ...s, status: newStatus, ...extra });
   };
 
-  // "author" ({id, navn} for den, der SKRIVER noten, eller null) gemmes som
-  // forfatter på selve note-posten - så det altid er synligt, HVEM der har
-  // noteret hvad, når flere forskellige personer (sælger OG montør) kan
-  // skrive noter på samme sag. Se Notes-komponenten i OrderParts.jsx.
   const addNote = (id, text, author) => { const s = findOrder(orders, id); if (s) saveOneOrder({ ...s, noter: [...s.noter, { id: uid(), tekst: text, tid: new Date().toLocaleString("da-DK"), forfatter: author || null }] }); };
   const addPhoto = (id, { src, navn }) => { const s = findOrder(orders, id); if (s) saveOneOrder({ ...s, billeder: [...s.billeder, { id: uid(), src, navn }] }); };
   const addReport = (id, title, text) => { const s = findOrder(orders, id); if (s) saveOneOrder({ ...s, rapporter: [...s.rapporter, { id: uid(), titel: title, tekst: text, tid: new Date().toLocaleString("da-DK") }] }); };
@@ -336,21 +393,15 @@ export function useOrders(storeId) {
     if (s) saveOneOrder({ ...s, varelinjer: s.varelinjer.map((v) => (v.id === lineItemId ? { ...v, tillaeg: v.tillaeg.filter((y) => y.id !== addOnId) } : v)) });
   };
 
-  // Kundeunderskrift ved aflevering - se Signature-komponenten i
-  // OrderParts.jsx. Gemmes som ét felt på ordren (navn + billeddata +
-  // tidspunkt), ligesom noter/billeder/rapporter.
+  // Kundeunderskrift ved aflevering.
   const saveSignature = (orderId, { navn, data }) => {
     const s = findOrder(orders, orderId);
     if (s) saveOneOrder({ ...s, underskrift: { navn, data, tid: new Date().toLocaleString("da-DK") } });
   };
 
-  // Materialeforbrug UD OVER det oprindeligt planlagte - fx "vi skulle
-  // bruge en længere vandslange" opdaget hos kunden. Adskilt fra noter
-  // (fri tekst) og varelinjer (det der blev SOLGT/booket) - dette er en
-  // logget liste over ekstra ting brugt undervejs, til senere brug ved
-  // evt. fakturering/lageropfølgning. Nulstiller notifikationen til
-  // "ulæst" hver gang - så sælgeren får besked igen, selv hvis de allerede
-  // havde set og afvist et TIDLIGERE materiale på samme sag.
+  // Materialeforbrug UD OVER det oprindeligt planlagte. Nulstiller
+  // notifikationen til "ulæst" hver gang - så sælgeren får besked igen,
+  // selv hvis de allerede havde set et TIDLIGERE materiale på samme sag.
   const addMaterial = (orderId, { navn, antal }) => {
     const s = findOrder(orders, orderId);
     if (!s || !navn?.trim()) return;
@@ -365,11 +416,9 @@ export function useOrders(storeId) {
     if (s) saveOneOrder({ ...s, materialer: (s.materialer || []).filter((m) => m.id !== materialId) });
   };
 
-  // Markerer en sag som "afsluttet med et problem" - fx kunden var ikke
-  // hjemme, mangler dele, adgangsproblem osv. Bevidst UAFHÆNGIG af selve
-  // status-cyklussen (planlagt/i gang/afsluttet) - montøren kan stadig
-  // frit bruge status som normalt, "problem" er en selvstændig markering
-  // oveni, ikke en fjerde status. Nulstiller notifikationen til "ulæst".
+  // Markerer en sag som "afsluttet med et problem". Bevidst UAFHÆNGIG af
+  // status-cyklussen - "problem" er en selvstændig markering, ikke en
+  // fjerde status.
   const markProblem = (orderId, note) => {
     const s = findOrder(orders, orderId);
     if (!s || !note?.trim()) return;
@@ -384,32 +433,37 @@ export function useOrders(storeId) {
     if (s) saveOneOrder({ ...s, problem: null });
   };
 
-  // Markerer én eller flere notifikationstyper ("materialer", "problem",
-  // "opfoelgning") som SET (læst/afvist) for en given sag - se App.jsx,
-  // som kalder dette automatisk når sagens EGEN opretter åbner den. Se
-  // domain.js: computeNotifications for selve beregningen af, hvad der
-  // reelt vises som ulæst.
+  // Markerer notifikationstyper som SET (læst) for en given sag - kaldes
+  // automatisk når sagens EGEN opretter åbner den.
+  //
+  // BEMÆRK at "manglendeVarer" IKKE kan afvises her. Den er ikke en
+  // besked, men en uafklaret tilstand: at have set den løser ingenting,
+  // kunden står stadig til at få en montør uden varen. Den forsvinder
+  // først, når sagen får en ny dato, varen ændres, eller lageret fjerner
+  // markeringen - se isMissingActive i domain.js.
   const dismissNotifications = (orderId, kinds) => {
     const s = findOrder(orders, orderId);
     if (!s || !kinds || kinds.length === 0) return;
+    const relevante = kinds.filter((k) => k !== "manglendeVarer");
+    if (relevante.length === 0) return;
     const current = s.notifikationSet || {};
-    const hasChange = kinds.some((k) => !current[k]);
+    const hasChange = relevante.some((k) => !current[k]);
     if (!hasChange) return;
     const next = { ...current };
-    kinds.forEach((k) => { next[k] = true; });
+    relevante.forEach((k) => { next[k] = true; });
     saveOneOrder({ ...s, notifikationSet: next });
   };
 
   return {
     orders,
-    addOrder, duplicateOrder, updateBooking, importOrders,
+    addOrder, duplicateOrder, deleteOrder, updateBooking, importOrders,
     assignTechnician, updateTimeSlot, reorderOrder, setVisitOrder, toggleLineItemPicked, cycleStatus,
+    setLineItems, updateLineItem, addLineItem, removeLineItem,
+    reportMissingItem, clearMissingItem,
     addNote, addPhoto, addReport, clockIn, clockOut,
     toggleAddOn, addAddOn, removeAddOn, saveSignature,
     addMaterial, removeMaterial,
     markProblem, clearProblem, dismissNotifications,
-    // Antal ændringer der venter på at blive sendt - så UI'et kan vise
-    // montøren, at arbejdet ikke er tabt.
     queuedCount,
     reload: () => load(storeId),
   };
