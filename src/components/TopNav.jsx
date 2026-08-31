@@ -1,15 +1,18 @@
 import React, { useEffect, useRef, useState } from "react";
-import { LogOut, Bell, Package, AlertTriangle, Copy, Building2, ArrowLeftRight } from "lucide-react";
-import { PAGES } from "../data/domain";
+import { LogOut, Bell, Package, AlertTriangle, Copy, Building2, ArrowLeftRight, Truck } from "lucide-react";
+import { PAGES, missingLineItems, lineItemLabel } from "../data/domain";
 import { PUNKT1_LOGO_NEGATIV } from "../assets/logo";
 
 // Notifikationsklokke: viser, for den INDLOGGEDE bruger, hvilke af DERES
 // EGNE bookede sager der har noget nyt siden sidst - materialeforbrug
 // tilføjet af montøren, et problem markeret (sagen kunne ikke gennemføres
-// som planlagt), eller en opfølgningssag oprettet ud fra den. Rent i
-// systemet (ingen push/e-mail) - synlig hver gang man er logget ind,
-// uanset hvilken fane man står på. Forsvinder fra listen automatisk, når
-// man selv åbner den pågældende sag (se App.jsx: OrderRoute).
+// som planlagt), en opfølgningssag oprettet ud fra den, eller en vare som
+// lageret ikke kan finde. Rent i systemet (ingen push/e-mail) - synlig
+// hver gang man er logget ind, uanset hvilken fane man står på.
+//
+// De tre første forsvinder automatisk, når man selv åbner den pågældende
+// sag (se App.jsx: OrderRoute). MANGLENDE VARER gør IKKE - se noten ved
+// MissingGroup nedenfor.
 function NotifGroup({ title, icon: Icon, color, items, onOpen }) {
   if (items.length === 0) return null;
   return (
@@ -25,6 +28,49 @@ function NotifGroup({ title, icon: Icon, color, items, onOpen }) {
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+// MANGLENDE VARER (august 2026) har sin egen gruppe med sin egen visning,
+// fordi den adskiller sig fra de tre øvrige på to måder:
+//
+//   1. Den forsvinder ikke, fordi man har set den. Sagen skal have en ny
+//      dato, varen skal skiftes ud, eller lageret skal melde den fundet -
+//      se isMissingActive i domain.js. Derfor står der eksplicit, hvad
+//      der skal til, så beskeden ikke bare føles som støj, der ikke kan
+//      lukkes.
+//   2. Den handler om en BESTEMT vare, ikke om sagen som helhed. Står der
+//      kun kundenavnet, må sælgeren åbne sagen for at se hvilken af de
+//      tre varer, der mangler - og det er præcis det opkald til kunden,
+//      der haster.
+function MissingGroup({ items, onOpen }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wide mb-1.5 flex items-center gap-1.5 text-danger">
+        <Truck size={13} className="shrink-0" aria-hidden="true" />
+        {items.length === 1 ? "1 sag mangler en vare" : `${items.length} sager mangler varer`}
+      </p>
+      <div className="space-y-0.5">
+        {items.map((o) => {
+          const mangler = missingLineItems(o);
+          return (
+            <button key={o.id} onClick={() => onOpen(o.id)} className="w-full text-left rounded-lg hover:bg-panel px-2 py-2 transition-colors focus:outline-none focus:ring-2 focus:ring-brand">
+              <span className="flex items-center justify-between gap-2">
+                <span className="text-xs text-ink truncate">{o.kunde?.navn || "Ukendt kunde"}</span>
+                <span className="font-mono text-[10px] text-muted shrink-0">#{o.nr}</span>
+              </span>
+              <span className="block text-[11px] text-danger truncate">
+                {mangler.map((v) => lineItemLabel(v)).join(", ")}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-muted mt-1.5 px-2">
+        Bliver stående, indtil sagen får en ny dato, varen skiftes ud, eller lageret finder den.
+      </p>
     </div>
   );
 }
@@ -55,8 +101,8 @@ function NotificationBell({ notifications, onOpenOrder }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  const { materialer = [], problemer = [], opfoelgninger = [] } = notifications || {};
-  const total = materialer.length + problemer.length + opfoelgninger.length;
+  const { materialer = [], problemer = [], opfoelgninger = [], manglendeVarer = [] } = notifications || {};
+  const total = materialer.length + problemer.length + opfoelgninger.length + manglendeVarer.length;
 
   const openAndClose = (id) => { setOpen(false); onOpenOrder(id); };
 
@@ -82,6 +128,10 @@ function NotificationBell({ notifications, onOpenOrder }) {
             <p className="p-4 text-sm text-muted text-center">Ingen nye notifikationer på dine sager.</p>
           ) : (
             <div className="max-h-96 overflow-y-auto divide-y divide-divider">
+              {/* Manglende varer står ØVERST: det er den eneste af de fire,
+                  hvor en kunde risikerer at få et forgæves besøg, hvis
+                  ingen når at reagere i tide. */}
+              <MissingGroup items={manglendeVarer} onOpen={openAndClose} />
               <NotifGroup title={`${problemer.length} ${problemer.length === 1 ? "sag" : "sager"} kom ikke i mål`} icon={AlertTriangle} color="#B3261E" items={problemer} onOpen={openAndClose} />
               <NotifGroup title={`${materialer.length} ${materialer.length === 1 ? "sag har" : "sager har"} nyt materialeforbrug`} icon={Package} color="#C8232E" items={materialer} onOpen={openAndClose} />
               <NotifGroup title={`${opfoelgninger.length} ${opfoelgninger.length === 1 ? "sag har" : "sager har"} fået en opfølgning`} icon={Copy} color="#52697E" items={opfoelgninger} onOpen={openAndClose} />
