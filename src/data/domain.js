@@ -186,19 +186,48 @@ const orderExpectedMinutes = (order) => (order.varelinjer || []).reduce((sum, l)
 // den er oversolgt, eller fordi en leverance ikke er kommet til tiden.
 // Markeringen sidder på den enkelte VARELINJE (ikke på hele sagen), fordi
 // en sag ofte har flere varer, og det kun er den ene, der mangler -
-// resten kan sagtens leveres som planlagt.
+// resten kan sagtens leveres som planlagt. ÉN manglende vare = ÉN
+// notifikation til den sælger, der har booket sagen.
 //
-// Formen er { note, tid, meldtAf, set } hvor "set" er læst/ulæst for
-// sælgerens notifikation. At læst-tilstanden ligger HER og ikke i sagens
-// notifikationSet er et bevidst sikkerhedsvalg: notifikationSet er
-// beskyttet af rettigheden sag_feltarbejde, og skulle lageret kunne røre
-// den, måtte vi åbne den rettighedsgrænse - hvorefter en
-// lagermedarbejder også kunne afvise sælgerens notifikationer om
-// materialeforbrug og problemer. Se migrationen
-// "allow_warehouse_to_report_missing_items" i Supabase, som tillader
-// lageret at skrive netop 'plukket' og 'mangler' på en varelinje, men
-// intet andet.
-const missingLineItems = (order) => (order.varelinjer || []).filter((v) => v.mangler && v.mangler.note);
+// NOTIFIKATIONEN ER UDLEDT, IKKE AFKRYDSET (vigtig forskel fra de øvrige
+// notifikationstyper). De andre - materialeforbrug, problem, opfølgning -
+// er BESKEDER: de er set, når sælgeren har åbnet sagen, og markeres
+// derfor læst i notifikationSet. En manglende vare er derimod en
+// UAFKLARET TILSTAND: at have set beskeden løser ingenting, kunden står
+// stadig til at få en montør på besøg uden den vare, der skulle leveres.
+// Markeringen bliver derfor stående, indtil problemet reelt er håndteret,
+// og der er præcis tre måder:
+//
+//   1. Sagen bookes til en NY DATO (afventer næste leverance)
+//   2. Den manglende VARE ændres til en anden (fx en tilsvarende model)
+//   3. Lageret fjerner markeringen igen (varen dukkede op alligevel)
+//
+// De to første registreres ved at gemme sagens dato OG et fingeraftryk af
+// varen på det tidspunkt, meldingen blev givet. Ændrer nogen af delene
+// sig, er meldingen ikke længere aktuel, og notifikationen forsvinder af
+// sig selv - uden at nogen skal huske at rydde op efter sig.
+//
+// Bemærk at fingeraftrykket bevidst KUN dækker hvilken VARE der er tale
+// om (varetype, mærke, model) - ikke ydelse, minutter eller
+// tillægsydelser. Retter sælgeren monteringstiden fra 60 til 90 minutter,
+// er varen jo stadig den samme og mangler stadig.
+const lineItemFingerprint = (v) =>
+  [v?.varetypeId || "", v?.varetypeTekst || "", v?.maerke || "", v?.model || ""]
+    .join("|").toLowerCase().trim();
+
+const isMissingActive = (order, v) => {
+  const m = v?.mangler;
+  if (!m || !m.note) return false;
+  // Ombooket til en anden dato -> håndteret.
+  if ((m.meldtVedDato || null) !== (order?.dato || null)) return false;
+  // Varen er skiftet ud -> håndteret. (meldtForVare kan mangle på ældre
+  // markeringer; så falder vi tilbage på kun dato-tjekket frem for at
+  // erklære dem håndterede uden grund.)
+  if (m.meldtForVare && m.meldtForVare !== lineItemFingerprint(v)) return false;
+  return true;
+};
+
+const missingLineItems = (order) => (order?.varelinjer || []).filter((v) => isMissingActive(order, v));
 const orderHasMissingItems = (order) => missingLineItems(order).length > 0;
 
 const normalizeAddress = (addr) => (addr || "").toLowerCase().replace(/[.,]/g, " ").replace(/\s+/g, " ").trim();
@@ -388,7 +417,7 @@ export {
   DEFAULT_SERVICE_MINUTES, createAddOn, OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID,
   DEFAULT_PRODUCT_CATEGORIES, DEFAULT_PRODUCT_TYPES, DEFAULT_PRIMARY_SERVICES, DEFAULT_ADD_ON_SERVICES, availableAddOns,
   createLineItem, lineItemLabel, lineItemMinutes, orderExpectedMinutes, normalizeAddress, buildingKey, areaKey,
-  missingLineItems, orderHasMissingItems,
+  lineItemFingerprint, isMissingActive, missingLineItems, orderHasMissingItems,
   weekDays, buildTitle, keyAccessText, TIME_SLOTS, timeSlotById, timeSlotText, KEY_ACCESS_TYPES, TECHNICIAN_COLORS, technicianColor,
   DEFAULT_VEHICLES, vehicleLabel, vehicleBlockedByTimeOff, isTechnicianAbsent, activeSickLeave, emptyCustomer, emptyKeyAccess, STATUS_META,
   dailyOrderCompare, needsPlanning, computeNotifications, PAGES, PAGES_FOR_ROLE, canDo, DASHBOARD_WIDGET_CATALOG, DEFAULT_DASHBOARD_WIDGETS,
@@ -402,16 +431,13 @@ export {
 //  - manglendeVarer: lageret kan ikke finde en vare til sagen (august 2026)
 // En sag kan sagtens optræde i flere lister samtidig. Kun sagens EGEN
 // opretter tæller med - en admin der blot kigger på andres sager udløser
-// ingen notifikationer. Se useOrders.js: dismissNotifications for hvordan
-// en sag markeres som læst (sker automatisk når opretteren selv åbner den,
-// se App.jsx).
+// ingen notifikationer.
 //
-// manglendeVarer læser IKKE notifikationSet, men læst-flaget på selve
-// varelinjens mangler-objekt - se noten ved missingLineItems ovenfor for
-// hvorfor. Bemærk konsekvensen: melder lageret en NY vare manglende på en
-// sag, hvor sælgeren allerede har set en tidligere melding, bliver sagen
-// ulæst igen, fordi den nye linje har set: false. Det er den ønskede
-// opførsel - to manglende varer er to beskeder, ikke én.
+// De tre første markeres LÆST, når opretteren selv åbner sagen (se
+// useOrders.js: dismissNotifications, kaldt fra App.jsx). manglendeVarer
+// gør IKKE - den er udledt af varelinjernes tilstand og forsvinder først,
+// når den manglende vare rent faktisk er håndteret. Se noten ved
+// isMissingActive ovenfor.
 function computeNotifications(orders, profileId) {
   if (!profileId) return { materialer: [], problemer: [], opfoelgninger: [], manglendeVarer: [] };
   const mine = (orders || []).filter((o) => o.oprettetAf?.id === profileId);
@@ -419,7 +445,7 @@ function computeNotifications(orders, profileId) {
     materialer: mine.filter((o) => (o.materialer || []).length > 0 && !o.notifikationSet?.materialer),
     problemer: mine.filter((o) => o.problem && !o.notifikationSet?.problem),
     opfoelgninger: mine.filter((o) => o.harOpfoelgning && !o.notifikationSet?.opfoelgning),
-    manglendeVarer: mine.filter((o) => (o.varelinjer || []).some((v) => v.mangler?.note && !v.mangler.set)),
+    manglendeVarer: mine.filter((o) => o.status !== "afsluttet" && orderHasMissingItems(o)),
   };
 }
 
