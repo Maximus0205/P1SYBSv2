@@ -39,7 +39,7 @@ function Gate({ allowed, page, children }) {
   return children;
 }
 
-function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder, permissions }) {
+function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder, permissions, catalog }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const order = orders.find((o) => o.id === id);
@@ -51,6 +51,11 @@ function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder,
     if (order.problem && !order.notifikationSet?.problem) kinds.push("problem");
     if (order.harOpfoelgning && !order.notifikationSet?.opfoelgning) kinds.push("opfoelgning");
     if (kinds.length > 0) ordersStore.dismissNotifications(order.id, kinds);
+    // BEMÆRK: "manglendeVarer" står bevidst IKKE på listen. Den er ikke en
+    // besked, der er set, men en uafklaret tilstand - at åbne sagen løser
+    // ikke, at varen mangler. Den forsvinder først, når sagen får en ny
+    // dato, varen ændres, eller lageret fjerner markeringen (se
+    // isMissingActive i domain.js).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.id, order?.materialer?.length, order?.problem, order?.harOpfoelgning, order?.notifikationSet]);
 
@@ -89,6 +94,32 @@ function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder,
     onClearProblem: () => ordersStore.clearProblem(order.id),
     onOpenOrder: (targetId) => navigate(`/sag/${targetId}`),
     followUpOrder, originalOrder,
+
+    // ---- Varelinjer på en eksisterende sag (august 2026) ----
+    // Kataloget sendes med, fordi en varelinje-editor skal kunne tilbyde
+    // de samme varetyper/ydelser/tillæg som ved oprettelsen - ellers
+    // ville man kunne rette en sag til noget, butikken ikke udfører.
+    catalog,
+    onUpdateLineItem: (lineItemId, fields) => ordersStore.updateLineItem(order.id, lineItemId, fields),
+    onAddLineItem: (lineItem) => ordersStore.addLineItem(order.id, lineItem),
+    onRemoveLineItem: (lineItemId) => ordersStore.removeLineItem(order.id, lineItemId),
+    onSetLineItems: (varelinjer) => ordersStore.setLineItems(order.id, varelinjer),
+
+    // Sælgeren kan fjerne en manglende-vare-markering direkte, hvis sagen
+    // er afklaret med kunden på anden vis end at ombooke eller skifte
+    // varen (fx kunden vil hellere vente uden ny dato). Selve MELDINGEN
+    // kan kun lageret oprette - se WarehousePage.
+    onClearMissingItem: (lineItemId) => ordersStore.clearMissingItem(order.id, lineItemId),
+
+    // Sletning navigerer væk BAGEFTER og kun hvis det lykkedes - ellers
+    // ville man ende på en tom side, mens sagen stadig lå i databasen.
+    // Selve bekræftelsen ligger i OrderView, tæt på knappen, hvor
+    // sagsnummer og kundenavn kan nævnes i teksten.
+    onDeleteOrder: async () => {
+      const ok = await ordersStore.deleteOrder(order.id);
+      if (ok) navigate("/planlaegning", { replace: true });
+      return ok;
+    },
   };
 
   return profile.rolle === "montor" ? <TechnicianOrderDetail {...sharedProps} /> : <OrderView {...sharedProps} />;
@@ -220,6 +251,13 @@ export default function App() {
 
   const onOpen = (id) => navigate(`/sag/${id}`);
 
+  // MANGLENDE VARER (august 2026): lageret melder, at en vare ikke kan
+  // findes ved pluk. Hvem der meldte den gemmes med, så sælgeren kan
+  // spørge den rigtige kollega - og fordi en melding uden afsender er
+  // svær at handle på, når man står med kunden i telefonen.
+  const reportMissingItem = (orderId, lineItemId, note) =>
+    ordersStore.reportMissingItem(orderId, lineItemId, note, profile ? { id: profile.id, navn: profile.navn } : null);
+
   // Forsidens widget-valg (august 2026) - brugerens egen (profile.
   // dashboardWidgets), eller rollens standard, hvis de aldrig har
   // tilpasset den. Se DashboardPage.jsx.
@@ -300,9 +338,9 @@ export default function App() {
       ];
   // Sendes videre til sider der låser ENKELTE felter/knapper efter
   // finkornede sags-rettigheder (sag_kunde/sag_planlaegning/sag_pluk/
-  // sag_feltarbejde/sag_opret - se OrderView.jsx/WarehousePage.jsx). null
-  // for en systemadmin = "ubegrænset" (se canDo() i domain.js), ligesom
-  // for Admin-sidens egne faner ovenfor.
+  // sag_feltarbejde/sag_opret/sag_slet - se OrderView.jsx/
+  // WarehousePage.jsx). null for en systemadmin = "ubegrænset" (se
+  // canDo() i domain.js), ligesom for Admin-sidens egne faner ovenfor.
   const effectivePermissions = profile.erSystemadmin ? null : permissions;
   const dashboardWidgets = profile.dashboardWidgets || DEFAULT_DASHBOARD_WIDGETS[profile.rolle] || [];
   const currentPage = location.pathname.replace(/^\//, "").split("/")[0] || allowedPages[0];
@@ -337,7 +375,7 @@ export default function App() {
             />
           } />
 
-          <Route path="/sag/:id" element={<OrderRoute profile={profile} orders={orders} technicians={technicians} ordersStore={ordersStore} duplicateOrder={duplicateOrder} permissions={effectivePermissions} />} />
+          <Route path="/sag/:id" element={<OrderRoute profile={profile} orders={orders} technicians={technicians} ordersStore={ordersStore} duplicateOrder={duplicateOrder} permissions={effectivePermissions} catalog={catalog} />} />
 
           <Route path="/salg" element={
             <Gate allowed={allowedPages} page="salg">
@@ -372,7 +410,14 @@ export default function App() {
 
           <Route path="/lager" element={
             <Gate allowed={allowedPages} page="lager">
-              <WarehousePage orders={orders} technicians={technicians} vehicles={vehicles} selectedDate={selectedDate} onDateChange={setSelectedDate} onToggleLineItemPicked={ordersStore.toggleLineItemPicked} onOpen={onOpen} permissions={effectivePermissions} />
+              <WarehousePage
+                orders={orders} technicians={technicians} vehicles={vehicles}
+                selectedDate={selectedDate} onDateChange={setSelectedDate}
+                onToggleLineItemPicked={ordersStore.toggleLineItemPicked}
+                onReportMissingItem={reportMissingItem}
+                onClearMissingItem={ordersStore.clearMissingItem}
+                onOpen={onOpen} permissions={effectivePermissions}
+              />
             </Gate>
           } />
 
