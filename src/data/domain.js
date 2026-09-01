@@ -19,8 +19,6 @@ import { RotateCw, Trash2, Cable, Wifi, Wrench, Tag, ShoppingCart, Route, Truck,
 // KUN over HTTPS/localhost (window.crypto er ikke tilgængelig på en
 // usikker oprindelse) - derfor faldback nedenfor, så en udvikler på en
 // http-adresse ikke får en app, der går ned ved oprettelse af en sag.
-// Faldbacken bruger to uafhængige random-kald og et tidsstempel, hvilket
-// er væsentligt bedre end den gamle, men stadig kun en nødløsning.
 //
 // Eksisterende, korte id'er i databasen er upåvirkede: de bliver stående
 // som de er, og nye lange id'er kan ikke kollidere med dem.
@@ -43,16 +41,12 @@ const addDays = (iso, days) => {
   d.setDate(d.getDate() + days);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
-// formatLongDate/formatShortDate/isToday accepterer nu bevidst et TOMT
-// (null/undefined) dato-felt uden at gå ned - siden august 2026 kan en sag
-// oprettes/duplikeres UDEN dato (se "Skal planlægges" i PlanningPage.jsx),
-// og disse formateringsfunktioner bruges alle vegne en sags dato vises.
+// formatLongDate/formatShortDate/isToday accepterer bevidst et TOMT
+// (null/undefined) dato-felt uden at gå ned - en sag kan oprettes/
+// duplikeres UDEN dato (se "Skal planlægges" i PlanningPage.jsx), og disse
+// funktioner bruges alle vegne en sags dato vises.
 const formatLongDate = (iso) =>
   iso ? new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { weekday: "long", day: "numeric", month: "long" }) : "Ingen dato sat";
-// Kort datoformat ("18. aug") - til brug på sagskort, hvor der ikke er
-// plads til den lange udgave (ugedag + fuld måned), men datoen stadig skal
-// være synlig - fx i lister der spænder over flere dage (Kræver handling,
-// Arkiv, Planlagt fremad/Afsluttet).
 const formatShortDate = (iso) =>
   iso ? new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "short" }) : "Ingen dato";
 const isToday = (iso) => !!iso && iso === todayISO();
@@ -85,16 +79,14 @@ const OTHER_PRODUCT_TYPE_ID = "andet";
 const OTHER_PRODUCT_TYPE = "Andet (skriv selv)";
 
 // ---------------- Products & services ----------------
-// Structure: product category -> product type (belongs to one category) ->
-// an order picks, for each line item: product type, brand/model, one
-// PRIMARY service, and optionally ADD-ON services. The relationships (which
-// add-ons apply to which primary services/product types) live entirely on
-// the add-on itself (primaerYdelser: [id...], varetyper: [id...], empty
-// list = applies to all product types). Deliberately NO time estimate is
-// set on product types/primary services/add-ons in Admin - all time is
-// entered manually per booking in the salesperson's flow (see
-// SagFormFields.jsx), since it varies too much for a fixed number per type
-// to make sense.
+// Struktur: varekategori -> varetype (hører til én kategori) -> en sag
+// vælger, pr. varelinje: varetype, mærke/model, én PRIMÆR ydelse, og
+// valgfrit TILLÆGSYDELSER. Relationerne (hvilke tillæg der gælder under
+// hvilke primære ydelser/varetyper) ligger udelukkende på selve tillægget.
+//
+// Bevidst INTET tidsestimat på varetyper/ydelser/tillæg i Admin - tid
+// tastes manuelt pr. booking, og foreslås efterhånden ud fra MÅLT tid, se
+// data/estimates.js.
 
 const DEFAULT_PRODUCT_CATEGORIES = [
   { id: "vk1", navn: "Hvidevare" },
@@ -136,10 +128,6 @@ const DEFAULT_ADD_ON_SERVICES = [
   { id: "t3", navn: "Bortskaffelse af gammelt produkt", primaerYdelser: ["p2", "p3"], varetyper: [] },
 ];
 
-// The add-ons actually selectable for a given product type + primary
-// service: must apply to the chosen primary service, and either apply to
-// all product types (empty varetyper list), to "Other", or specifically to
-// this product type.
 const availableAddOns = (productTypeId, primaryServiceId, addOnServices) => {
   return (addOnServices || []).filter((t) => {
     const appliesToPrimary = (t.primaerYdelser || []).includes(primaryServiceId);
@@ -150,10 +138,9 @@ const availableAddOns = (productTypeId, primaryServiceId, addOnServices) => {
 };
 
 // NB: "plukket" (afkrydset på lager) sidder HER, pr. varelinje - se
-// WarehousePage.jsx, hvor 1 varelinje = 1 punkt på pluklisten. Det er
-// bevidst forskelligt fra order.plukket (se App.jsx), som blot er et
-// afledt "hele ordren er samlet"-flag, opdateret automatisk når alle
-// varelinjer på ordren er plukket.
+// WarehousePage.jsx, hvor 1 varelinje = 1 punkt på pluklisten. Bevidst
+// forskelligt fra order.plukket, som blot er et afledt "hele ordren er
+// samlet"-flag.
 const createLineItem = (productTypes, primaryServices, productTypeId, text = "") => {
   const firstProductType = productTypes[0];
   const id = productTypeId || (firstProductType ? firstProductType.id : OTHER_PRODUCT_TYPE_ID);
@@ -184,33 +171,28 @@ const orderExpectedMinutes = (order) => (order.varelinjer || []).reduce((sum, l)
 // ---------------- Manglende varer (august 2026) ----------------
 // Lageret kan ved pluk melde, at en vare IKKE kan findes - typisk fordi
 // den er oversolgt, eller fordi en leverance ikke er kommet til tiden.
-// Markeringen sidder på den enkelte VARELINJE (ikke på hele sagen), fordi
-// en sag ofte har flere varer, og det kun er den ene, der mangler -
-// resten kan sagtens leveres som planlagt. ÉN manglende vare = ÉN
+// Markeringen sidder på den enkelte VARELINJE, fordi en sag ofte har flere
+// varer, og det kun er den ene der mangler. ÉN manglende vare = ÉN
 // notifikation til den sælger, der har booket sagen.
 //
-// NOTIFIKATIONEN ER UDLEDT, IKKE AFKRYDSET (vigtig forskel fra de øvrige
-// notifikationstyper). De andre - materialeforbrug, problem, opfølgning -
-// er BESKEDER: de er set, når sælgeren har åbnet sagen, og markeres
-// derfor læst i notifikationSet. En manglende vare er derimod en
-// UAFKLARET TILSTAND: at have set beskeden løser ingenting, kunden står
-// stadig til at få en montør på besøg uden den vare, der skulle leveres.
-// Markeringen bliver derfor stående, indtil problemet reelt er håndteret,
-// og der er præcis tre måder:
+// NOTIFIKATIONEN ER UDLEDT, IKKE AFKRYDSET. De øvrige notifikationstyper
+// er BESKEDER: de er set, når sælgeren har åbnet sagen. En manglende vare
+// er derimod en UAFKLARET TILSTAND - at have set beskeden løser ingenting,
+// kunden står stadig til at få en montør på besøg uden varen. Markeringen
+// bliver derfor stående, indtil problemet reelt er håndteret, og der er
+// præcis tre måder:
 //
 //   1. Sagen bookes til en NY DATO (afventer næste leverance)
-//   2. Den manglende VARE ændres til en anden (fx en tilsvarende model)
+//   2. Den manglende VARE ændres til en anden (fx tilsvarende model)
 //   3. Lageret fjerner markeringen igen (varen dukkede op alligevel)
 //
 // De to første registreres ved at gemme sagens dato OG et fingeraftryk af
-// varen på det tidspunkt, meldingen blev givet. Ændrer nogen af delene
-// sig, er meldingen ikke længere aktuel, og notifikationen forsvinder af
-// sig selv - uden at nogen skal huske at rydde op efter sig.
+// varen på meldingstidspunktet. Ændrer nogen af delene sig, forsvinder
+// notifikationen af sig selv - uden at nogen skal rydde op efter sig.
 //
-// Bemærk at fingeraftrykket bevidst KUN dækker hvilken VARE der er tale
-// om (varetype, mærke, model) - ikke ydelse, minutter eller
-// tillægsydelser. Retter sælgeren monteringstiden fra 60 til 90 minutter,
-// er varen jo stadig den samme og mangler stadig.
+// Fingeraftrykket dækker bevidst KUN hvilken VARE der er tale om - ikke
+// ydelse, minutter eller tillæg. Retter sælgeren monteringstiden fra 60
+// til 90 minutter, er varen jo stadig den samme og mangler stadig.
 const lineItemFingerprint = (v) =>
   [v?.varetypeId || "", v?.varetypeTekst || "", v?.maerke || "", v?.model || ""]
     .join("|").toLowerCase().trim();
@@ -218,11 +200,9 @@ const lineItemFingerprint = (v) =>
 const isMissingActive = (order, v) => {
   const m = v?.mangler;
   if (!m || !m.note) return false;
-  // Ombooket til en anden dato -> håndteret.
   if ((m.meldtVedDato || null) !== (order?.dato || null)) return false;
-  // Varen er skiftet ud -> håndteret. (meldtForVare kan mangle på ældre
-  // markeringer; så falder vi tilbage på kun dato-tjekket frem for at
-  // erklære dem håndterede uden grund.)
+  // meldtForVare kan mangle på ældre markeringer; så falder vi tilbage på
+  // kun dato-tjekket frem for at erklære dem håndterede uden grund.
   if (m.meldtForVare && m.meldtForVare !== lineItemFingerprint(v)) return false;
   return true;
 };
@@ -257,11 +237,10 @@ const weekDays = (iso) => {
   });
 };
 
-// Sagsoverskrift til lister (Planlægning, Montør, Arkiv, Kræver handling
-// m.fl.): viser YDELSE + VAREKATEGORI + evt. TILLÆGSYDELSER pr. varelinje,
-// så man kan danne sig et overblik over selve ARBEJDET uden at åbne sagen
-// først. Mærke/model hører til varelinje-detaljerne (se lineItemLabel,
-// bruges bl.a. på Montør- og Lager-siden) og gentages bevidst ikke her.
+// Sagsoverskrift til lister: viser YDELSE + VAREKATEGORI + evt.
+// TILLÆGSYDELSER pr. varelinje, så man kan danne sig et overblik over
+// selve ARBEJDET uden at åbne sagen. Mærke/model hører til varelinje-
+// detaljerne (se lineItemLabel) og gentages bevidst ikke her.
 const buildTitle = (lineItems) => {
   if (!lineItems || lineItems.length === 0) return "Ny opgave";
   const parts = lineItems
@@ -313,10 +292,8 @@ const vehicleLabel = (vehicle) => (vehicle ? `${vehicle.navn || "(uden navn)"} �
 
 // RETTET (august 2026): en sygemelding kan have slutDato === null (åben,
 // endnu ikke raskmeldt) - den oprindelige `date <= f.slutDato` ville have
-// været FALSK for enhver dato, når slutDato er null (null-sammenligning i
-// JS), og en bil under en AKTIV sygemelding ville derfor fejlagtigt IKKE
-// være vist som blokeret. Håndterer nu begge typer (ferie har altid en
-// slutDato, sygdom kan mangle den).
+// været FALSK for enhver dato, når slutDato er null, og en bil under en
+// AKTIV sygemelding ville derfor fejlagtigt IKKE være vist som blokeret.
 const vehicleBlockedByTimeOff = (vehicleId, date, technicians, timeOff) => {
   const onThisVehicle = technicians.filter((m) => m.bilId === vehicleId);
   if (onThisVehicle.length === 0) return null;
@@ -326,17 +303,13 @@ const vehicleBlockedByTimeOff = (vehicleId, date, technicians, timeOff) => {
   return { ferie: entry, montor: technician };
 };
 
-// Er montøren fraværende (ferie ELLER sygdom, se ovenstående note om
-// null-slutDato) på en given dato - generel fraværs-tjek, bruges bl.a. til
-// at undgå at foreslå en fraværende montør i planlægningsforslag.
+// Er montøren fraværende (ferie ELLER sygdom) på en given dato - bruges
+// bl.a. til at undgå at foreslå en fraværende montør i planlægningen.
 const isTechnicianAbsent = (technicianId, date, timeOff) =>
   (timeOff || []).some((f) => f.montorId === technicianId && date >= f.startDato && (!f.slutDato || date <= f.slutDato));
 
-// Er montøren AKTIVT sygemeldt lige nu (en sygdoms-periode der er startet
-// og enten stadig er åben, eller først slutter i fremtiden)? Bruges af
-// "Sygemelding"-fanen i Planlægning til at finde deres berørte sager. Kun
-// type "sygdom" tæller med her - almindelig ferie giver ikke denne
-// markering (den fanges i stedet under "Montørproblem", se PlanningPage.jsx).
+// Er montøren AKTIVT sygemeldt lige nu? Kun type "sygdom" tæller her -
+// almindelig ferie fanges under "Montørproblem", se PlanningPage.jsx.
 const activeSickLeave = (technicianId, timeOff) => {
   const today = todayISO();
   return (timeOff || []).find((f) => f.montorId === technicianId && f.type === "sygdom" && f.startDato <= today && (!f.slutDato || f.slutDato >= today)) || null;
@@ -351,16 +324,11 @@ const STATUS_META = {
   afsluttet: { label: "Afsluttet", color: "#3D7A5C" },
 };
 
-// Rækkefølge for sager hos SAMME montør SAMME dag (montørens besøgs-
-// rækkefølge). Bookinger sker kun med grove tidsrum (hel dag/formiddag/
-// eftermiddag), ikke præcise klokkeslæt - derfor har flere sager for samme
-// montør ofte identisk start/slut-tid, og den viste rækkefølge ville uden
-// dette felt reelt være tilfældig (bestemt af oprettelsestidspunkt). Feltet
-// `raekkefolge` (et helt tal) sættes KUN når nogen aktivt har omfordelt
-// rækkefølgen (se reorderOrder i App.jsx) - før det, sorteres der som
-// hidtil efter tidsrummets starttid. Når rækkefølgen først er sat manuelt
-// for en montørs dag, normaliseres HELE gruppen (alle sager samme montør+
-// dag) til fortløbende tal 0,1,2... så sorteringen forbliver entydig.
+// Rækkefølge for sager hos SAMME montør SAMME dag. Bookinger sker kun med
+// grove tidsrum (hel dag/formiddag/eftermiddag), så flere sager har ofte
+// identisk start/slut-tid, og rækkefølgen ville uden dette felt reelt være
+// tilfældig. `raekkefolge` sættes KUN når nogen aktivt har omfordelt - før
+// det sorteres efter tidsrummets starttid.
 const dailyOrderCompare = (a, b) => {
   const ar = typeof a.raekkefolge === "number" ? a.raekkefolge : null;
   const br = typeof b.raekkefolge === "number" ? b.raekkefolge : null;
@@ -370,44 +338,38 @@ const dailyOrderCompare = (a, b) => {
   return (a.start || "").localeCompare(b.start || "");
 };
 
-// En sag "MANGLER PLANLÆGNING", hvis den ikke har en dato ELLER ikke har
-// en montør sat (og ikke allerede er afsluttet). Bevidst IKKE inklusiv
-// "dato passeret" - er datoen passeret uden sagen er problem-markeret (se
-// order.problem), antages den at være gennemført; det er ikke noget
-// systemet selv skal foreslå at handle på (aftalt eksplicit august 2026).
-// Bruges af "Skal planlægges"-fanen i PlanningPage.jsx.
+// En sag "MANGLER PLANLÆGNING", hvis den ikke har dato ELLER montør (og
+// ikke er afsluttet). Bevidst IKKE inklusiv "dato passeret" - er datoen
+// passeret uden problem-markering, antages sagen gennemført.
 const needsPlanning = (order) => order.status !== "afsluttet" && (!order.dato || !order.montorId);
 
-// RETTIGHEDER (august 2026): fælles UI-hjælper til at spørge "må denne
-// bruger X?" - se permissions-kataloget og has_permission()/
-// my_effective_permissions() i databasen for selve den AUTORITATIVE
-// håndhævelse (RLS + triggere på orders/profiles). Denne bruges KUN til at
-// style selve UI'et (låse felter/knapper) - prøver nogen alligevel om det
-// direkte mod databasen, afvises det dér, uanset hvad UI'et viser.
-// permissions === null betyder "ubegrænset" (systemadmins - se App.jsx,
-// som bevidst sender null i stedet for deres egen butiks-profils
-// rettigheder for dem).
+// RETTIGHEDER: fælles UI-hjælper til "må denne bruger X?". Den
+// AUTORITATIVE håndhævelse ligger i databasen (RLS + triggere) - denne
+// bruges KUN til at style UI'et. permissions === null = "ubegrænset"
+// (systemadmins).
 const canDo = (permissions, key) => permissions === null || (permissions || []).includes(key);
 
-// DASHBOARD-WIDGETS (august 2026): kataloget over widgets forsiden kan
-// sammensættes af, og hvad hver især kræver af rettighed for at give
-// mening at vise (null = altid relevant, ingen bestemt rettighed
-// nødvendig). "Forside" selv er IKKE en rettighed - alle med adgang til
-// en butik overhovedet har en forside, se DashboardPage.jsx.
+// DASHBOARD-WIDGETS: kataloget over widgets forsiden kan sammensættes af,
+// og hvad hver især kræver af rettighed (null = altid relevant).
+//
+// "quick_booking" kræver salg-rettigheden. Den er nu den PRIMÆRE indgang
+// til at oprette sager, efter at Salg-fanen er fjernet fra menuen - se
+// noten ved PAGES nedenfor.
 const DASHBOARD_WIDGET_CATALOG = [
   { key: "needs_action", label: "Kræver handling", icon: AlertCircle, requires: "planlaegning" },
   { key: "today_route", label: "Dagens rute", icon: Route, requires: "montor" },
   { key: "pick_list", label: "Dagens pluk", icon: Package, requires: "lager" },
-  { key: "quick_booking", label: "Hurtig booking", icon: ShoppingCart, requires: "salg" },
+  { key: "quick_booking", label: "Opret sag", icon: ShoppingCart, requires: "salg" },
   { key: "notifications", label: "Notifikationer", icon: Bell, requires: null },
   { key: "upcoming_today", label: "Sager i dag", icon: CalendarClock, requires: null },
 ];
 
-// Standard-widgets pr. rolle, indtil brugeren selv tilpasser sin forside
-// (se profiles.dashboard_widgets - null/tom betyder "brug denne standard").
+// Standard-widgets pr. rolle, indtil brugeren selv tilpasser sin forside.
+// "quick_booking" står højt for sælgere og admins: det er den handling,
+// de oftest kommer for.
 const DEFAULT_DASHBOARD_WIDGETS = {
-  admin: ["needs_action", "upcoming_today", "quick_booking", "notifications"],
-  saelger: ["needs_action", "quick_booking", "upcoming_today", "notifications"],
+  admin: ["needs_action", "quick_booking", "upcoming_today", "notifications"],
+  saelger: ["quick_booking", "needs_action", "upcoming_today", "notifications"],
   montor: ["today_route", "notifications"],
   lager: ["pick_list"],
 };
@@ -423,21 +385,14 @@ export {
   dailyOrderCompare, needsPlanning, computeNotifications, PAGES, PAGES_FOR_ROLE, canDo, DASHBOARD_WIDGET_CATALOG, DEFAULT_DASHBOARD_WIDGETS,
 };
 
-// Beregner, for en given bruger (profileId), hvilke af DERES EGNE bookede
-// sager (oprettetAf.id === profileId) der har en ULÆST notifikation:
-//  - materialer: nyt materialeforbrug tilføjet af montøren
-//  - problemer: montøren har markeret sagen med et problem/ikke gennemført
-//  - opfoelgninger: der er oprettet en opfølgningssag ud fra denne
-//  - manglendeVarer: lageret kan ikke finde en vare til sagen (august 2026)
-// En sag kan sagtens optræde i flere lister samtidig. Kun sagens EGEN
-// opretter tæller med - en admin der blot kigger på andres sager udløser
-// ingen notifikationer.
+// Beregner, for en given bruger, hvilke af DERES EGNE bookede sager der
+// har en ULÆST notifikation. Kun sagens EGEN opretter tæller med - en
+// admin, der blot kigger på andres sager, udløser ingen notifikationer.
 //
-// De tre første markeres LÆST, når opretteren selv åbner sagen (se
-// useOrders.js: dismissNotifications, kaldt fra App.jsx). manglendeVarer
-// gør IKKE - den er udledt af varelinjernes tilstand og forsvinder først,
-// når den manglende vare rent faktisk er håndteret. Se noten ved
-// isMissingActive ovenfor.
+// De tre første markeres LÆST, når opretteren åbner sagen (se
+// dismissNotifications). manglendeVarer gør IKKE - den er udledt af
+// varelinjernes tilstand og forsvinder først, når varen er håndteret. Se
+// noten ved isMissingActive ovenfor.
 function computeNotifications(orders, profileId) {
   if (!profileId) return { materialer: [], problemer: [], opfoelgninger: [], manglendeVarer: [] };
   const mine = (orders || []).filter((o) => o.oprettetAf?.id === profileId);
@@ -449,17 +404,29 @@ function computeNotifications(orders, profileId) {
   };
 }
 
-// Kørsel er fusioneret ind i Planlægning (august 2026) - de to sider
-// dækkede reelt samme arbejdsopgave. "koersel" findes derfor ikke længere
-// som selvstændig fane, se PlanningPage.jsx.
+// FANER I MENUEN.
 //
-// "dashboard" (august 2026): forsiden - se DashboardPage.jsx. Ikke
-// rettighedsstyret som de øvrige (alle med en butik har en forside),
-// derfor tilføjet direkte i allowedPages i App.jsx, ikke via
-// permissions-kataloget.
+// "koersel" blev fusioneret ind i Planlægning (august 2026) - de to sider
+// dækkede reelt samme arbejdsopgave.
+//
+// "salg" ER FJERNET FRA MENUEN (september 2026). At oprette en sag er en
+// HANDLING, man foretager et par gange om dagen - ikke et sted, man
+// opholder sig. En hel fane til to knapper og en formular var et
+// navigationspunkt, folk skulle igennem for at komme videre. Oprettelsen
+// sker nu fra forsidens "Opret sag"-widget (se DASHBOARD_WIDGET_CATALOG
+// ovenfor), som fører direkte ind i formularen.
+//
+// BEMÆRK at "salg" stadig findes som RETTIGHED og som rute i App.jsx -
+// det er kun MENUPUNKTET, der er væk. Rettigheden styrer fortsat, hvem der
+// må oprette sager (og dermed hvem der ser widgeten), og ruten er dét,
+// widgetens knapper navigerer til. Fjernes rettigheden også, mister
+// sælgere adgangen til at oprette overhovedet.
+//
+// "dashboard" er forsiden - ikke rettighedsstyret som de øvrige (alle med
+// en butik har en forside), derfor tilføjet direkte i allowedPages i
+// App.jsx.
 const PAGES = [
   { key: "dashboard", label: "Forside", icon: Home },
-  { key: "salg", label: "Salg", icon: ShoppingCart },
   { key: "planlaegning", label: "Planlægning", icon: Route },
   { key: "montor", label: "Montør", icon: Truck },
   { key: "lager", label: "Lager", icon: Package },
@@ -467,12 +434,9 @@ const PAGES = [
   { key: "admin", label: "Admin", icon: Settings2 },
   { key: "systemadmin", label: "System", icon: Building2 },
 ];
-// "lager" TILFØJET som rigtig, selvstændig rolle (august 2026):
-// databasens rolle-CHECK-constraint tillod den allerede (og WarehousePage
-// har eksisteret et stykke tid), men den var aldrig koblet op i frontend -
-// en bruger med den rolle ville falde tilbage til kun "salg". En
-// lagermedarbejder skal udelukkende bruge pluklisten, ikke resten af
-// systemet.
+// FORÆLDET: faneadgang styres nu af brugerens faktiske rettigheder, se
+// allowedPages i App.jsx. Beholdes indtil videre, da den stadig bruges som
+// opslag enkelte steder.
 const PAGES_FOR_ROLE = {
   admin: ["salg", "planlaegning", "montor", "lager", "arkiv", "admin"],
   saelger: ["salg", "planlaegning", "montor", "lager", "arkiv"],
