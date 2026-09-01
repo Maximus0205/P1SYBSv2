@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { KeyRound, Building2, Hash, Pencil, X, Check, Copy, AlertTriangle, User, Lock, Trash2, Plus, RotateCw } from "lucide-react";
 import { TIME_SLOTS, buildTitle, keyAccessText, timeSlotById, timeSlotText, lineItemLabel, canDo, createLineItem, missingLineItems, OTHER_PRODUCT_TYPE_ID } from "../data/domain";
 import { StatusBadge } from "../components/common";
-import { LineItemDetails, Notes, Photos, Reports, TimeLog, ClockWidget } from "../components/OrderParts";
+import { LineItemDetails, Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
 import { AddressInput } from "../components/AddressInput";
 
 // Hurtig-redigering af en booket sag: dato, tidsrum, montør og
@@ -332,7 +332,7 @@ function MissingItemsBanner({ order, onClearMissingItem, canFieldwork }) {
   );
 }
 
-// ÆNDRET (september 2026): STATUS-SKIFTEREN ER VÆK.
+// ÆNDRET (september 2026): STATUS-SKIFTEREN OG STEMPLINGEN ER VÆK HERFRA.
 //
 // Status var et badge, man kunne klikke på, og som cyklede planlagt ->
 // i gang -> afsluttet -> planlagt. To ting var galt med den. Det var
@@ -340,16 +340,17 @@ function MissingItemsBanner({ order, onClearMissingItem, canFieldwork }) {
 // vide, hvor man landede - og et fejlklik på en afsluttet sag sendte den
 // helt tilbage til "planlagt", uden at nogen blev spurgt.
 //
-// Status er nu udelukkende en VISNING her. Selve skiftet sker i
-// montørens flow gennem "Start opgave" og "Færdigmeld" (se
-// startOrder/finishOrder i useOrders.js), hvor det hører hjemme: det er
-// montøren, der ved, om arbejdet er i gang eller færdigt.
+// Stemplings-widgeten er også fjernet. Den hørte til montørens flow, hvor
+// den nu er afløst af "Start opgave" og "Færdigmeld" - og efter den
+// omlægning stod den her som en LÅST knap, en sælger hverken kunne eller
+// skulle bruge. Den registrerede tid kan stadig ses under fanen "Tid".
 //
-// En afsluttet sag kan dog GENÅBNES herfra af en med feltarbejde-
-// rettighed - fx hvis en montør færdigmeldte for tidligt. Uden den vej
-// ville en fejl-færdigmelding være en blindgyde, og det er præcis den
-// slags, der får folk til at oprette en dublet-sag i stedet.
-function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, onClockIn, onClockOut, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onSetLineItems, onClearMissingItem, onDeleteOrder, onReopenOrder }) {
+// Status er nu udelukkende en VISNING her. En afsluttet sag kan dog
+// GENÅBNES af en med feltarbejde-rettighed - fx hvis en montør
+// færdigmeldte for tidligt. Uden den vej ville en fejl-færdigmelding være
+// en blindgyde, og det er præcis den slags, der får folk til at oprette en
+// dublet-sag i stedet.
+function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onSetLineItems, onClearMissingItem, onDeleteOrder, onReopenOrder }) {
   const [tab, setTab] = useState("noter");
   // Kun ÉT panel ad gangen - to åbne redigeringer på samme sag ville både
   // fylde skærmen og gøre det uklart, hvad "Gem" gemmer.
@@ -470,7 +471,6 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
       )}
 
       <LineItemDetails order={order} onToggleAddOn={canFieldwork ? onToggleAddOn : undefined} onAddAddOn={canFieldwork ? onAddAddOn : undefined} onRemoveAddOn={canFieldwork ? onRemoveAddOn : undefined} />
-      <ClockWidget order={order} onClockIn={canFieldwork ? onClockIn : undefined} onClockOut={canFieldwork ? onClockOut : undefined} />
       <div className="flex border-b border-line mb-5 overflow-x-auto">
         {tabs.map((t) => (
           <button key={t.key} onClick={() => setTab(t.key)} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors shrink-0 focus:outline-none focus:ring-2 focus:ring-brand ${tab === t.key ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
