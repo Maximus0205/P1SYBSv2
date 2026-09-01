@@ -24,14 +24,10 @@ import { AdminPage } from "./pages/AdminPage";
 import { SystemAdminPage } from "./pages/SystemAdminPage";
 
 // ---------------------------------------------------------------------------
-// ARKITEKTUR-OPRYDNING FULDFØRT (august 2026, 4 faser) + RIGTIG URL-ROUTING
-// (samme måned): App.jsx var ved at blive for stor og blande for mange
-// ansvarsområder (se rapport 22. august 2026). Al domænelogik er udtrukket
-// til dedikerede hooks (se hooks/-mappen: useSession, useCatalog,
-// useVehicles, useTimeOff, useUsers, useOrders). Navigation er nu en RIGTIG
-// URL (via react-router-dom, HashRouter - se main.jsx for hvorfor hash), i
-// stedet for kun React-state. App.jsx's tilbageværende ansvar er nu: kalde
-// hooks, definere rute-opsætningen, og komponere sider.
+// App.jsx's ansvar er: kalde hooks, definere rute-opsætningen, og komponere
+// sider. Al domænelogik ligger i hooks/-mappen (useSession, useCatalog,
+// useVehicles, useTimeOff, useUsers, useOrders). Navigation er en rigtig
+// URL via react-router-dom (HashRouter - se main.jsx for hvorfor hash).
 // ---------------------------------------------------------------------------
 
 function Gate({ allowed, page, children }) {
@@ -79,14 +75,10 @@ function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder,
     addNote: (t) => ordersStore.addNote(order.id, t, { id: profile.id, navn: profile.navn }),
     addPhoto: (p) => ordersStore.addPhoto(order.id, p),
     addReport: (t, x) => ordersStore.addReport(order.id, t, x),
-    onCycleStatus: ordersStore.cycleStatus,
-    onClockIn: () => ordersStore.clockIn(order.id),
-    onClockOut: () => ordersStore.clockOut(order.id),
     onToggleAddOn: (lineItemId, addOnId) => ordersStore.toggleAddOn(order.id, lineItemId, addOnId),
     onAddAddOn: (lineItemId, navn) => ordersStore.addAddOn(order.id, lineItemId, navn),
     onRemoveAddOn: (lineItemId, addOnId) => ordersStore.removeAddOn(order.id, lineItemId, addOnId),
     onUpdateBooking: (fields) => ordersStore.updateBooking(order.id, fields),
-    onSaveSignature: (payload) => ordersStore.saveSignature(order.id, payload),
     onDuplicate: (selectedLineItems) => duplicateOrder(order, selectedLineItems),
     onAddMaterial: (fields) => ordersStore.addMaterial(order.id, fields),
     onRemoveMaterial: (materialId) => ordersStore.removeMaterial(order.id, materialId),
@@ -95,10 +87,21 @@ function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder,
     onOpenOrder: (targetId) => navigate(`/sag/${targetId}`),
     followUpOrder, originalOrder,
 
+    // ---- Start / færdigmelding (september 2026) ----
+    // Erstatter status-skifteren. Status er nu en KONSEKVENS af to
+    // handlinger, montøren foretager alligevel - og de to tidsstempler er
+    // samtidig grundlaget for tidsestimaterne (se data/estimates.js).
+    // Selve påmindelsen om dokumentation ligger i montørvisningens
+    // FinishPanel, ikke her: den skal vises FØR handlingen, mens montøren
+    // stadig står hos kunden.
+    onStartOrder: () => ordersStore.startOrder(order.id),
+    onFinishOrder: () => ordersStore.finishOrder(order.id),
+    onReopenOrder: () => ordersStore.reopenOrder(order.id),
+
     // ---- Varelinjer på en eksisterende sag (august 2026) ----
-    // Kataloget sendes med, fordi en varelinje-editor skal kunne tilbyde
-    // de samme varetyper/ydelser/tillæg som ved oprettelsen - ellers
-    // ville man kunne rette en sag til noget, butikken ikke udfører.
+    // Kataloget sendes med, fordi varelinje-editoren skal kunne tilbyde de
+    // samme varetyper/ydelser som ved oprettelsen - ellers ville man kunne
+    // rette en sag til noget, butikken ikke udfører.
     catalog,
     onUpdateLineItem: (lineItemId, fields) => ordersStore.updateLineItem(order.id, lineItemId, fields),
     onAddLineItem: (lineItem) => ordersStore.addLineItem(order.id, lineItem),
@@ -107,14 +110,11 @@ function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder,
 
     // Sælgeren kan fjerne en manglende-vare-markering direkte, hvis sagen
     // er afklaret med kunden på anden vis end at ombooke eller skifte
-    // varen (fx kunden vil hellere vente uden ny dato). Selve MELDINGEN
-    // kan kun lageret oprette - se WarehousePage.
+    // varen. Selve MELDINGEN kan kun lageret oprette - se WarehousePage.
     onClearMissingItem: (lineItemId) => ordersStore.clearMissingItem(order.id, lineItemId),
 
     // Sletning navigerer væk BAGEFTER og kun hvis det lykkedes - ellers
     // ville man ende på en tom side, mens sagen stadig lå i databasen.
-    // Selve bekræftelsen ligger i OrderView, tæt på knappen, hvor
-    // sagsnummer og kundenavn kan nævnes i teksten.
     onDeleteOrder: async () => {
       const ok = await ordersStore.deleteOrder(order.id);
       if (ok) navigate("/planlaegning", { replace: true });
@@ -135,7 +135,7 @@ function MontorRoute({ profile, orders, technicians, ordersStore, refresh, refre
     return (
       <TechnicianRouteView
         orders={orders} technician={own} selectedDate={selectedDate} onDateChange={onDateChange}
-        onOpen={onOpen} onCycleStatus={ordersStore.cycleStatus} onReorder={ordersStore.reorderOrder}
+        onOpen={onOpen} onReorder={ordersStore.reorderOrder}
         onRefresh={refresh} refreshing={refreshing}
       />
     );
@@ -148,34 +148,28 @@ function MontorRoute({ profile, orders, technicians, ordersStore, refresh, refre
   return (
     <TechnicianRouteView
       orders={orders} technician={technician} selectedDate={selectedDate} onDateChange={onDateChange}
-      onOpen={onOpen} onCycleStatus={ordersStore.cycleStatus} onReorder={ordersStore.reorderOrder}
+      onOpen={onOpen} onReorder={ordersStore.reorderOrder}
       onChangeTechnician={() => navigate("/montor")} onRefresh={refresh} refreshing={refreshing}
     />
   );
 }
 
 // Faste side-nøgler der har ét-til-ét-navn med en "side"-rettighed af
-// samme navn (se permissions-kataloget i databasen). "admin" er en
-// undtagelse - den er en PARAPLY over 5 finere admin_*-rettigheder (se
-// AdminPage.jsx, som selv viser/skjuler sine egne faner ud fra dem); har
-// man BLOT ÉN af dem, skal man kunne se Admin-fanen overhovedet.
+// samme navn. "admin" er en undtagelse - den er en PARAPLY over 5 finere
+// admin_*-rettigheder (AdminPage viser/skjuler selv sine faner ud fra
+// dem); har man BLOT ÉN af dem, skal man kunne se Admin-fanen.
 const PAGE_PERMISSION_KEYS = ["salg", "planlaegning", "montor", "lager", "arkiv"];
 
 export default function App() {
   const { loading, session, profile, permissions, logOut, reloadPermissions } = useSession();
 
-  // BUTIKS-SKIFT (august 2026): activeStoreId er den butik, hvis data der
-  // rent faktisk vises/hentes lige nu. For langt de fleste er det altid
-  // deres egen butik (profile.butikId) - men en SYSTEMADMIN kan skifte
-  // den til en ANDEN butik, for at se/hjælpe den, uden det ændrer noget
-  // på deres egen brugerkonto (se TopNav.jsx: StoreSwitcher, og migrationen
-  // "system_admin_can_read_write_any_store_data" i Supabase-projektet, som
-  // giver dem RLS-adgang til enhver butiks data). Ren UI-tilstand -
-  // nulstilles ved genindlæsning/login til egen butik (eller "ingen" for
-  // en systemadmin uden egen). undefined = "endnu ikke initialiseret fra
-  // profilen" (adskilt fra null = "bevidst ingen butik valgt"), så det
-  // korte øjeblik mellem profil-indlæsning og initialisering kan vises som
-  // en loading-tilstand i stedet for fejlagtigt at ramme "ingen butik".
+  // BUTIKS-SKIFT: activeStoreId er den butik, hvis data der vises lige nu.
+  // For de fleste er det altid deres egen (profile.butikId) - men en
+  // SYSTEMADMIN kan skifte til en anden butik for at hjælpe den, uden at
+  // det ændrer deres egen brugerkonto. Ren UI-tilstand.
+  // undefined = "endnu ikke initialiseret fra profilen" (adskilt fra null
+  // = "bevidst ingen butik"), så øjeblikket mellem profil-indlæsning og
+  // initialisering kan vises som loading i stedet for "ingen butik".
   const [activeStoreId, setActiveStoreId] = useState(undefined);
   const [allStores, setAllStores] = useState([]);
   const [activeStore, setActiveStore] = useState(null);
@@ -205,10 +199,8 @@ export default function App() {
 
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [refreshing, setRefreshing] = useState(false);
-  // Sygemeldingsvinduet (timer) kan rettes af butikkens admin (se
-  // AdminPage/SickLeaveWindowSetting) - hentes ikke automatisk igen efter
-  // det, så vi holder en lokal override her, der vinder over den
-  // oprindeligt indlæste værdi, indtil næste skift af butik/genindlæsning.
+  // Sygemeldingsvinduet kan rettes af butikkens admin og hentes ikke
+  // automatisk igen bagefter, så vi holder en lokal override her.
   const [sickLeaveWindowOverride, setSickLeaveWindowOverride] = useState(null);
   const effectiveStore = activeStore ? { ...activeStore, sygemeldingVindueTimer: sickLeaveWindowOverride ?? activeStore.sygemeldingVindueTimer } : activeStore;
 
@@ -251,16 +243,12 @@ export default function App() {
 
   const onOpen = (id) => navigate(`/sag/${id}`);
 
-  // MANGLENDE VARER (august 2026): lageret melder, at en vare ikke kan
-  // findes ved pluk. Hvem der meldte den gemmes med, så sælgeren kan
-  // spørge den rigtige kollega - og fordi en melding uden afsender er
-  // svær at handle på, når man står med kunden i telefonen.
+  // MANGLENDE VARER: lageret melder, at en vare ikke kan findes ved pluk.
+  // Hvem der meldte den gemmes med - en melding uden afsender er svær at
+  // handle på, når man står med kunden i telefonen.
   const reportMissingItem = (orderId, lineItemId, note) =>
     ordersStore.reportMissingItem(orderId, lineItemId, note, profile ? { id: profile.id, navn: profile.navn } : null);
 
-  // Forsidens widget-valg (august 2026) - brugerens egen (profile.
-  // dashboardWidgets), eller rollens standard, hvis de aldrig har
-  // tilpasset den. Se DashboardPage.jsx.
   const updateDashboardWidgetsFor = async (keys) => {
     if (!profile) return;
     await updateDashboardWidgets(profile.id, keys);
@@ -318,17 +306,10 @@ export default function App() {
     );
   }
 
-  // RETTET (august 2026): faneadgang styres nu af brugerens FAKTISKE,
-  // håndhævede rettigheder (permissions, hentet i useSession via
-  // my_effective_permissions() i databasen) i stedet for en fast
-  // PAGES_FOR_ROLE[rolle]-opslagstabel. En systemadmin ser altid alt (de
-  // går allerede udenom alle tilsvarende databasetjek, se
-  // orders_guard_field_groups/profiles_guard_privileged_fields-triggerne),
-  // uafhængigt af hvilke rettigheder deres egen butiks-profil måtte have -
-  // og uanset hvilken butik de lige nu er skiftet over til at se.
-  //
-  // "dashboard" er ALTID først (og altid tilgængelig) - det er den nye
-  // standard-forside, ikke en rettighedsstyret side, se DashboardPage.jsx.
+  // Faneadgang styres af brugerens FAKTISKE, håndhævede rettigheder
+  // (hentet via my_effective_permissions() i databasen). En systemadmin
+  // ser altid alt - de går allerede udenom de tilsvarende databasetjek.
+  // "dashboard" er altid først og altid tilgængelig.
   const allowedPages = profile.erSystemadmin
     ? ["dashboard", ...PAGE_PERMISSION_KEYS, "admin"]
     : [
@@ -337,10 +318,8 @@ export default function App() {
         ...(permissions.some((p) => p.startsWith("admin_")) ? ["admin"] : []),
       ];
   // Sendes videre til sider der låser ENKELTE felter/knapper efter
-  // finkornede sags-rettigheder (sag_kunde/sag_planlaegning/sag_pluk/
-  // sag_feltarbejde/sag_opret/sag_slet - se OrderView.jsx/
-  // WarehousePage.jsx). null for en systemadmin = "ubegrænset" (se
-  // canDo() i domain.js), ligesom for Admin-sidens egne faner ovenfor.
+  // finkornede sags-rettigheder. null for en systemadmin = "ubegrænset"
+  // (se canDo() i domain.js).
   const effectivePermissions = profile.erSystemadmin ? null : permissions;
   const dashboardWidgets = profile.dashboardWidgets || DEFAULT_DASHBOARD_WIDGETS[profile.rolle] || [];
   const currentPage = location.pathname.replace(/^\//, "").split("/")[0] || allowedPages[0];
@@ -446,15 +425,11 @@ export default function App() {
           } />
 
           {/* Systemadministration: styret af profiles.is_system_admin, IKKE af
-              PAGE_PERMISSION_KEYS/allowedPages (som kun kender de almindelige
-              butiks-rettigheder). Dækker den bruger, der er BÅDE systemadmin OG
-              koblet til sin egen butik - uden denne rute var "System"-fanen i
-              TopNav et dødt link for dem (RETTET august 2026, fejl fundet ved
-              test - se rapport 26. august 2026). Systemadmins UDEN egen butik
-              rammer aldrig denne rute, de får SystemAdminPage vist direkte
-              ovenfor (se "!activeStoreId"-grenen), før Routes overhovedet når at
-              blive nået - ligesom når de bevidst skifter tilbage dertil via
-              TopNav's "tilbage til systemadministration"-knap. */}
+              allowedPages (som kun kender de almindelige butiks-rettigheder).
+              Dækker den bruger, der er BÅDE systemadmin OG koblet til sin egen
+              butik - uden denne rute var "System"-fanen et dødt link for dem.
+              Systemadmins UDEN egen butik rammer aldrig ruten; de får
+              SystemAdminPage vist direkte i "!activeStoreId"-grenen ovenfor. */}
           <Route path="/systemadmin" element={
             profile.erSystemadmin ? <SystemAdminPage /> : <Navigate to={`/${allowedPages[0]}`} replace />
           } />
