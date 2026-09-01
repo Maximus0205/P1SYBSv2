@@ -4,56 +4,34 @@ import { uid, dailyOrderCompare, lineItemFingerprint } from "../data/domain";
 import { enqueueOrder, flushQueue, queueLength, subscribeQueue } from "../lib/offlineQueue";
 import { reportSaveFailure } from "../lib/saveStatus";
 
-// FASE 3 af arkitektur-oprydningen (august 2026) - se hooks/useCatalog.js
-// for den fulde begrundelse. Al state og CRUD for ORDRER - den suverænt
-// største og mest centrale del af appen (booking, status, pluk, besøgs-
-// rækkefølge, dupliker/opfølgning, noter/billeder/rapporter/tid/
-// underskrift/materialeforbrug/problem-markering/notifikationer) - er
-// samlet her.
+// Al state og CRUD for ORDRER - den suverænt største og mest centrale del
+// af appen. Se hooks/useCatalog.js for baggrunden om arkitektur-
+// oprydningen (august 2026).
 //
-// VIGTIGT (uændret fra da denne logik boede i App.jsx): saveOneOrder
-// gemmer/opdaterer ALTID ét enkelt element ad gangen, aldrig "gem hele
-// listen og slet resten" - se den oprindelige forklaring i dataStore.js
-// om hvorfor det er vigtigt ved flere samtidige brugere.
+// VIGTIGT: saveOneOrder gemmer/opdaterer ALTID ét enkelt element ad
+// gangen, aldrig "gem hele listen og slet resten" - se den oprindelige
+// forklaring i dataStore.js om hvorfor det er vigtigt ved flere samtidige
+// brugere.
 //
 // TILBAGERULNING VED FEJLET SKRIVNING (august 2026): alle ændringer her
-// er OPTIMISTISKE - de vises med det samme, og skrivningen til Supabase
-// sker bagefter. Fejler den skrivning, blev ændringen tidligere stående
-// på skærmen, som om alt var gået godt; først ved næste genindlæsning
-// opdagede man, at noten/statussen/plukket aldrig var blevet gemt.
-// saveOneOrder ruller derfor ændringen tilbage til den version, der står
-// i databasen - MEDMINDRE fejlen skyldes netværket, se nedenfor.
+// er OPTIMISTISKE. Fejler skrivningen, blev ændringen tidligere stående
+// på skærmen, som om alt var gået godt. saveOneOrder ruller derfor
+// ændringen tilbage - MEDMINDRE fejlen skyldes netværket, se nedenfor.
 //
-// OFFLINE-KØ (august 2026): en montør i en kælder eller elevator har
-// intet netværk. At rulle ændringen tilbage dér er teknisk korrekt, men
-// praktisk ubrugeligt: arbejdet ER udført, og montøren skal ikke huske at
-// gøre det hele igen senere. I praksis fører det til, at folk falder
-// tilbage på papir - og så er systemet ikke længere sandheden om, hvad
-// der er sket. Ved en NETVÆRKSFEJL beholdes ændringen derfor på skærmen
-// og lægges i kø (se lib/offlineQueue.js), og den sendes automatisk, når
-// forbindelsen er tilbage.
-//
-// Skelnen er afgørende: kun NETVÆRKSFEJL køes. En AFVIST skrivning
-// (manglende rettighed, RLS, ugyldige data) rulles stadig tilbage og
-// vises for brugeren - den ville fejle igen uanset hvor mange gange vi
-// prøvede, og at køe den ville genskabe præcis den tavse fejl, hele
-// tilbagerulningen blev bygget for at fjerne.
+// OFFLINE-KØ (august 2026): en montør i en kælder har intet netværk. At
+// rulle ændringen tilbage dér er teknisk korrekt, men praktisk
+// ubrugeligt: arbejdet ER udført. Ved NETVÆRKSFEJL beholdes ændringen
+// derfor på skærmen og lægges i kø (se lib/offlineQueue.js). Kun
+// netværksfejl køes - en AFVIST skrivning (manglende rettighed, RLS)
+// rulles stadig tilbage, da den ville fejle igen uanset hvad.
 //
 // Selve skelnen sker i dataStore (saveOrderResult -> { ok, netvaerk }),
-// IKKE her. Det er med vilje: supabase-js kaster ikke ved netværksfejl,
-// men returnerer den i { error } præcis som en afvisning, så forskellen
-// kan kun aflæses dér, hvor fejlobjektet findes.
-//
-// DATO ER VALGFRI (august 2026): en sag kan oprettes/duplikeres UDEN dato
-// (og dermed uden tidsrum/montør) - den lander så i "Skal planlægges" i
-// PlanningPage.jsx (se needsPlanning i domain.js), som kan foreslå BÅDE
-// dato og montør for den.
+// IKKE her: supabase-js kaster ikke ved netværksfejl, men returnerer den
+// i { error } præcis som en afvisning, så forskellen kan kun aflæses dér,
+// hvor fejlobjektet findes.
 export function useOrders(storeId) {
   const [orders, setOrders] = useState([]);
   const [queuedCount, setQueuedCount] = useState(0);
-  // Forhindrer to samtidige tømninger af køen (fx hvis "online" fyrer
-  // samtidig med det periodiske forsøg) - to på én gang ville sende de
-  // samme sager to gange.
   const flushingRef = useRef(false);
 
   const load = useCallback(async (id) => {
@@ -65,10 +43,9 @@ export function useOrders(storeId) {
 
   useEffect(() => subscribeQueue((k) => setQueuedCount(k.length)), []);
 
-  // Sender køen. Kaldes når browseren melder "online" igen, ved opstart,
-  // og med jævne mellemrum - "online"-hændelsen er notorisk upålidelig på
-  // mobil (telefonen kan melde forbindelse, længe før der reelt er hul
-  // igennem), så den må ikke stå alene.
+  // Sender køen. Kaldes ved "online", ved opstart, og hvert 30. sekund -
+  // "online"-hændelsen er notorisk upålidelig på mobil, hvor telefonen kan
+  // melde forbindelse længe før der reelt er hul igennem.
   const flush = useCallback(async () => {
     if (flushingRef.current || queueLength() === 0) return;
     flushingRef.current = true;
@@ -93,9 +70,9 @@ export function useOrders(storeId) {
   }, [flush]);
 
   // Gemmer ÉN ordre.
-  //   ok            -> færdig, intet mere at gøre
-  //   netvaerk      -> behold ændringen på skærmen, læg den i kø
-  //   afvist        -> rul tilbage (dataStore har allerede vist fejlen)
+  //   ok       -> færdig
+  //   netvaerk -> behold ændringen på skærmen, læg den i kø
+  //   afvist   -> rul tilbage (dataStore har allerede vist fejlen)
   const saveOneOrder = (order) => {
     const previous = orders.find((s) => s.id === order.id) || null;
     setOrders((prev) => (prev.some((s) => s.id === order.id) ? prev.map((s) => (s.id === order.id ? order : s)) : [...prev, order]));
@@ -122,10 +99,10 @@ export function useOrders(storeId) {
       });
   };
 
-  // Opretter en ny ordre med et midlertidigt sagsnummer (vises med det
-  // samme), og henter den friske, database-tildelte version bagefter (se
-  // assign_order_number-triggeren) - så det ENDELIGE, garanteret unikke
-  // sagsnummer altid vises korrekt, uden gæt fra browseren.
+  // Opretter en ny ordre med et midlertidigt sagsnummer, og henter den
+  // friske, database-tildelte version bagefter (se assign_order_number-
+  // triggeren) - så det ENDELIGE, garanteret unikke sagsnummer vises
+  // korrekt, uden gæt fra browseren.
   //
   // BEVIDST IKKE KØET: sagsnummeret tildeles af databasen, og en køet
   // oprettelse ville stå med "..." som nummer i timevis.
@@ -152,18 +129,10 @@ export function useOrders(storeId) {
 
   const findOrder = (orders_, id) => orders_.find((x) => x.id === id);
 
-  // SLETTER en sag permanent (august 2026). Kræver rettigheden sag_slet,
-  // håndhævet af RLS-policyen "delete orders with permission" i databasen
-  // - admin og sælger har den, montør og lager ikke.
-  //
-  // BEVIDST IKKE KØET OFFLINE, i modsætning til almindelige ændringer: en
-  // sletning er uigenkaldelig, og at udføre den timer senere - når
-  // brugeren for længst har glemt den, og en kollega måske har arbejdet
-  // videre på sagen i mellemtiden - er ikke en tjeneste. Uden forbindelse
-  // fejler den ærligt, og sagen bliver stående.
-  //
-  // Returnerer true/false, så den kaldende komponent ved, om den skal
-  // navigere væk fra en sag, der ikke længere findes.
+  // SLETTER en sag permanent. Kræver sag_slet (admin og sælger har den).
+  // BEVIDST IKKE KØET OFFLINE: en sletning er uigenkaldelig, og at udføre
+  // den timer senere - hvor brugeren for længst har glemt den, og en
+  // kollega måske har arbejdet videre på sagen - er ikke en tjeneste.
   const deleteOrder = async (orderId) => {
     if (!storeId) return false;
     const previous = findOrder(orders, orderId);
@@ -171,7 +140,6 @@ export function useOrders(storeId) {
     setOrders((prev) => prev.filter((s) => s.id !== orderId));
     const ok = await deleteOrderRow(storeId, orderId);
     if (!ok) {
-      // Læg den tilbage. dataStore har allerede vist fejlen for brugeren.
       setOrders((prev) => (prev.some((s) => s.id === orderId) ? prev : [...prev, previous]));
       return false;
     }
@@ -179,22 +147,16 @@ export function useOrders(storeId) {
   };
 
   // Opretter en ny sag ud fra en EKSISTERENDE (dupliker/opfølgning).
-  // Datoen, tidsrummet og montøren NULSTILLES bevidst til INTET SAT -
-  // opfølgningen lander i "Skal planlægges" og kan derfra få et rigtigt
-  // forslag til dato+montør, i stedet for at gætte på dags dato.
-  //
-  // Fejler selve oprettelsen af den nye sag, røres kilde-sagen slet ikke:
-  // ellers ville den stå med et harOpfoelgning-link til en sag, der ikke
-  // findes, og en notifikation om en opfølgning, der aldrig blev lavet.
+  // Dato, tidsrum og montør nulstilles bevidst - opfølgningen lander i
+  // "Skal planlægges" og kan derfra få et rigtigt forslag.
   const duplicateOrder = async (sourceOrder, selectedLineItems, createdBy) => {
     if (!storeId || !selectedLineItems || selectedLineItems.length === 0) return null;
     const clonedLineItems = selectedLineItems.map((v) => ({
       ...v,
       id: uid(),
       plukket: false,
-      // En manglende-vare-markering hører til den OPRINDELIGE sag og må
-      // ikke følge med over på opfølgningen - den nye sag er jo netop
-      // forsøget på at løse problemet.
+      // En manglende-vare-markering hører til den OPRINDELIGE sag - den
+      // nye sag er jo netop forsøget på at løse problemet.
       mangler: null,
       tillaeg: (v.tillaeg || []).map((y) => ({ ...y, udfoert: false })),
     }));
@@ -228,7 +190,6 @@ export function useOrders(storeId) {
     return newOrder.id;
   };
 
-  // Hurtig-redigering af en booket ordre (dato/tidsrum/montør/adresse).
   const updateBooking = (id, fields) => { const s = findOrder(orders, id); if (s) saveOneOrder({ ...s, ...fields }); };
 
   const importOrders = (newOrders) => newOrders.forEach((s) => saveOneOrder(s));
@@ -236,18 +197,12 @@ export function useOrders(storeId) {
   const assignTechnician = (orderId, technicianId) => { const s = findOrder(orders, orderId); if (s) saveOneOrder({ ...s, montorId: technicianId }); };
   const updateTimeSlot = (orderId, timeSlotId) => { const s = findOrder(orders, orderId); if (s) saveOneOrder({ ...s, tidsrumId: timeSlotId }); };
 
-  // ---------------- Varelinjer på en EKSISTERENDE sag (august 2026) ----------------
-  // Indtil nu kunne varelinjerne kun sættes ved oprettelsen af sagen. I
-  // praksis sker der løbende ændringer: kunden ombestemmer sig, en vare
-  // er oversolgt og erstattes af en tilsvarende model, eller der skal en
-  // ekstra ting med. Kræver rettigheden sag_feltarbejde (se
-  // orders_guard_field_groups i databasen), som sælger, montør og admin
-  // har - men lageret bevidst ikke: de må melde en vare manglende, ikke
-  // omskrive hvad der er solgt.
+  // ---------------- Varelinjer på en EKSISTERENDE sag ----------------
+  // Kræver sag_feltarbejde. Lageret har den bevidst ikke: de må melde en
+  // vare manglende, ikke omskrive hvad kunden har købt.
   //
   // Ordrens afledte "plukket"-flag genberegnes ved hver ændring: fjerner
-  // man den ene uplukkede linje, ER resten af sagen jo færdigplukket, og
-  // så skal lagerlisten også vise det.
+  // man den ene uplukkede linje, ER resten jo færdigplukket.
   const setLineItems = (orderId, varelinjer) => {
     const s = findOrder(orders, orderId);
     if (!s) return;
@@ -268,40 +223,23 @@ export function useOrders(storeId) {
     setLineItems(orderId, [...(s.varelinjer || []), { ...lineItem, id: lineItem.id || uid() }]);
   };
 
-  // Fjerner ÉN varelinje. Den kaldende komponent er ansvarlig for at
-  // bekræfte handlingen først - det er en ændring af, hvad kunden har
-  // købt, ikke en visningsdetalje.
   const removeLineItem = (orderId, lineItemId) => {
     const s = findOrder(orders, orderId);
     if (!s) return;
     setLineItems(orderId, (s.varelinjer || []).filter((v) => v.id !== lineItemId));
   };
 
-  // ---------------- Manglende varer (august 2026) ----------------
-  // Lageret melder ved pluk, at en vare ikke kan findes - oversolgt, eller
-  // en leverance der ikke er kommet. Sælgeren, der har booket sagen, får
-  // besked, så kunden kan kontaktes FØR montøren kører forgæves.
-  //
-  // meldtVedDato og meldtForVare er selve mekanikken bag, at
-  // notifikationen forsvinder AF SIG SELV, når problemet er håndteret -
-  // se isMissingActive i domain.js. Vi gemmer sagens dato og et
-  // fingeraftryk af varen, som den så ud PÅ MELDINGSTIDSPUNKTET; ændrer
-  // sælgeren enten dato eller vare, matcher det ikke længere, og
-  // meldingen er dermed besvaret.
-  //
-  // Bemærk at der IKKE røres ved notifikationSet her. Det er med vilje:
-  // det felt er beskyttet af sag_feltarbejde, som lageret ikke har - se
-  // migrationen "allow_warehouse_to_report_missing_items", der giver dem
-  // adgang til præcis 'plukket' og 'mangler' på en varelinje og intet
-  // andet.
+  // ---------------- Manglende varer ----------------
+  // meldtVedDato og meldtForVare er mekanikken bag, at notifikationen
+  // forsvinder AF SIG SELV, når problemet er håndteret - se
+  // isMissingActive i domain.js.
   const reportMissingItem = (orderId, lineItemId, note, reporter) => {
     const s = findOrder(orders, orderId);
     if (!s) return;
     const linje = (s.varelinjer || []).find((v) => v.id === lineItemId);
     if (!linje) return;
     updateLineItem(orderId, lineItemId, {
-      // En vare, der ikke kan findes, kan pr. definition ikke være plukket.
-      plukket: false,
+      plukket: false, // en vare der ikke kan findes, kan ikke være plukket
       mangler: {
         note: (note || "").trim() || "Varen kan ikke findes på lageret",
         tid: new Date().toLocaleString("da-DK"),
@@ -312,13 +250,79 @@ export function useOrders(storeId) {
     });
   };
 
-  // Varen dukkede op alligevel. Fjerner markeringen helt frem for at
-  // sætte et "løst"-flag: der er ikke noget at gemme på, og en tom
-  // markering ville bare ligge og forvirre næste gang nogen kigger.
   const clearMissingItem = (orderId, lineItemId) => updateLineItem(orderId, lineItemId, { mangler: null });
 
+  // ---------------- Start og færdigmelding (september 2026) ----------------
+  // ERSTATTER status-skifteren. Den var et badge, man klikkede sig igennem
+  // (planlagt -> i gang -> afsluttet -> planlagt), og det var uklart både
+  // hvad et klik ville gøre, og hvad status egentlig betød. Nu er status en
+  // KONSEKVENS af to konkrete handlinger, montøren foretager alligevel.
+  //
+  // Det løser samtidig et problem, der ikke lignede et UI-problem: uden
+  // pålidelige tidsstempler kan systemet aldrig lære, hvor lang tid en
+  // opgave FAKTISK tager (se data/estimates.js). Manuel stempling var
+  // frivillig og blev brugt 3 gange ud af 410 sager. Start og færdigmelding
+  // er derimod handlinger, montøren udfører for sin egen skyld - og så
+  // falder målingen ud af arbejdsgangen i stedet for at være en ekstra
+  // pligt, nogen skal huske.
+  //
+  // startetTidspunkt sættes KUN første gang. Bliver en montør afbrudt og
+  // starter igen, er den rigtige samlede varighed stadig fra første start
+  // til færdigmelding - ikke fra genoptagelsen.
+  const startOrder = (orderId) => {
+    const s = findOrder(orders, orderId);
+    if (!s) return;
+    const nu = new Date().toISOString();
+    saveOneOrder({
+      ...s,
+      status: "igang",
+      startetTidspunkt: s.startetTidspunkt || nu,
+      stemplerInd: s.stemplerInd || nu,
+      afsluttetTidspunkt: null,
+    });
+  };
+
+  // Færdigmelder sagen: lukker en eventuel åben stempling, sætter
+  // sluttidspunktet og markerer sagen afsluttet (= arkiveret).
+  //
+  // Selve PÅMINDELSEN om dokumentation og materialeforbrug ligger i UI'et
+  // (montørvisningen), ikke her - den skal vises FØR handlingen, mens
+  // montøren stadig står hos kunden og kan nå at tage billedet. En
+  // påmindelse efter færdigmelding ville være ubrugelig.
+  //
+  // Har sagen aldrig været startet (montøren glemte at trykke start),
+  // sættes startetTidspunkt IKKE bagudrettet til noget opfundet. Så står
+  // sagen uden varighed, og den indgår ikke i estimaterne - bedre end at
+  // fodre modellen med et gæt.
+  const finishOrder = (orderId) => {
+    const s = findOrder(orders, orderId);
+    if (!s) return;
+    const nu = new Date().toISOString();
+    const logs = [...(s.logs || [])];
+    if (s.stemplerInd) {
+      const minutter = Math.max(1, Math.round((new Date(nu) - new Date(s.stemplerInd)) / 60000));
+      logs.push({ id: uid(), ind: s.stemplerInd, ud: nu, minutter });
+    }
+    saveOneOrder({
+      ...s,
+      status: "afsluttet",
+      afsluttetTidspunkt: nu,
+      stemplerInd: null,
+      logs,
+    });
+  };
+
+  // Fortryd færdigmelding - fx hvis montøren trykkede for tidligt, eller
+  // sagen viste sig ikke at være færdig alligevel. Rydder sluttidspunktet,
+  // så en genåbnet sag ikke bidrager med en falsk varighed til
+  // estimaterne, indtil den bliver færdigmeldt rigtigt.
+  const reopenOrder = (orderId) => {
+    const s = findOrder(orders, orderId);
+    if (!s) return;
+    saveOneOrder({ ...s, status: "igang", afsluttetTidspunkt: null });
+  };
+
   // Ændrer besøgs-RÆKKEFØLGEN for sager hos samme montør, samme dag.
-  // Direction er -1 (flyt op/tidligere) eller +1 (flyt ned/senere).
   const reorderOrder = (technicianId, date, orderId, direction) => {
     const group = orders
       .filter((o) => o.montorId === technicianId && o.dato === date && o.status !== "afsluttet")
@@ -334,8 +338,6 @@ export function useOrders(storeId) {
     });
   };
 
-  // Sætter besøgs-RÆKKEFØLGEN for en montørs dag i ÉT hug - bruges af
-  // "Foreslå bedste rækkefølge" (se lib/geocoding.js: optimalVisitOrder).
   const setVisitOrder = (technicianId, date, orderedIds) => {
     orderedIds.forEach((id, i) => {
       const o = findOrder(orders, id);
@@ -345,8 +347,8 @@ export function useOrders(storeId) {
     });
   };
 
-  // Slår plukket til/fra for ÉN varelinje (se WarehousePage.jsx: dér er 1
-  // varelinje = 1 punkt på pluklisten).
+  // Slår plukket til/fra for ÉN varelinje (1 varelinje = 1 punkt på
+  // lagerlisten, se WarehousePage.jsx).
   const toggleLineItemPicked = (orderId, lineItemId) => {
     const s = findOrder(orders, orderId);
     if (!s) return;
@@ -355,7 +357,11 @@ export function useOrders(storeId) {
     saveOneOrder({ ...s, varelinjer, plukket: allPicked });
   };
 
-  // Cirkulerer status planlagt -> i gang -> afsluttet -> planlagt.
+  // FORÆLDET (september 2026): status-skifteren er på vej ud til fordel for
+  // startOrder/finishOrder ovenfor. Beholdes MIDLERTIDIGT, fordi flere
+  // liste-visninger stadig sender onCycleStatus med (OrderCardCompact,
+  // PlanningPage, DashboardPage, ArchivePage) - fjernes den, før de er
+  // lagt om, brækker de. Skal væk, når UI-omlægningen er gennemført.
   const cycleStatus = (id) => {
     const s = findOrder(orders, id);
     if (!s) return;
@@ -371,7 +377,7 @@ export function useOrders(storeId) {
   const addPhoto = (id, { src, navn }) => { const s = findOrder(orders, id); if (s) saveOneOrder({ ...s, billeder: [...s.billeder, { id: uid(), src, navn }] }); };
   const addReport = (id, title, text) => { const s = findOrder(orders, id); if (s) saveOneOrder({ ...s, rapporter: [...s.rapporter, { id: uid(), titel: title, tekst: text, tid: new Date().toLocaleString("da-DK") }] }); };
 
-  const clockIn = (id) => { const s = findOrder(orders, id); if (s) saveOneOrder({ ...s, stemplerInd: new Date().toISOString(), status: s.status === "planlagt" ? "igang" : s.status }); };
+  const clockIn = (id) => startOrder(id);
   const clockOut = (id) => {
     const s = findOrder(orders, id);
     if (!s || !s.stemplerInd) return;
@@ -393,15 +399,9 @@ export function useOrders(storeId) {
     if (s) saveOneOrder({ ...s, varelinjer: s.varelinjer.map((v) => (v.id === lineItemId ? { ...v, tillaeg: v.tillaeg.filter((y) => y.id !== addOnId) } : v)) });
   };
 
-  // Kundeunderskrift ved aflevering.
-  const saveSignature = (orderId, { navn, data }) => {
-    const s = findOrder(orders, orderId);
-    if (s) saveOneOrder({ ...s, underskrift: { navn, data, tid: new Date().toLocaleString("da-DK") } });
-  };
-
-  // Materialeforbrug UD OVER det oprindeligt planlagte. Nulstiller
-  // notifikationen til "ulæst" hver gang - så sælgeren får besked igen,
-  // selv hvis de allerede havde set et TIDLIGERE materiale på samme sag.
+  // Materialeforbrug UD OVER det planlagte. Nulstiller notifikationen til
+  // "ulæst" hver gang - så sælgeren får besked igen, selv hvis de allerede
+  // havde set et TIDLIGERE materiale på samme sag.
   const addMaterial = (orderId, { navn, antal }) => {
     const s = findOrder(orders, orderId);
     if (!s || !navn?.trim()) return;
@@ -416,9 +416,9 @@ export function useOrders(storeId) {
     if (s) saveOneOrder({ ...s, materialer: (s.materialer || []).filter((m) => m.id !== materialId) });
   };
 
-  // Markerer en sag som "afsluttet med et problem". Bevidst UAFHÆNGIG af
-  // status-cyklussen - "problem" er en selvstændig markering, ikke en
-  // fjerde status.
+  // "Problem" er en selvstændig markering oveni status, ikke en fjerde
+  // status - montøren kan sagtens færdigmelde en sag, der ikke kom i mål
+  // som planlagt, og markeringen fortæller sælgeren hvorfor.
   const markProblem = (orderId, note) => {
     const s = findOrder(orders, orderId);
     if (!s || !note?.trim()) return;
@@ -433,14 +433,8 @@ export function useOrders(storeId) {
     if (s) saveOneOrder({ ...s, problem: null });
   };
 
-  // Markerer notifikationstyper som SET (læst) for en given sag - kaldes
-  // automatisk når sagens EGEN opretter åbner den.
-  //
   // BEMÆRK at "manglendeVarer" IKKE kan afvises her. Den er ikke en
-  // besked, men en uafklaret tilstand: at have set den løser ingenting,
-  // kunden står stadig til at få en montør uden varen. Den forsvinder
-  // først, når sagen får en ny dato, varen ændres, eller lageret fjerner
-  // markeringen - se isMissingActive i domain.js.
+  // besked, men en uafklaret tilstand: at have set den løser ingenting.
   const dismissNotifications = (orderId, kinds) => {
     const s = findOrder(orders, orderId);
     if (!s || !kinds || kinds.length === 0) return;
@@ -457,11 +451,12 @@ export function useOrders(storeId) {
   return {
     orders,
     addOrder, duplicateOrder, deleteOrder, updateBooking, importOrders,
-    assignTechnician, updateTimeSlot, reorderOrder, setVisitOrder, toggleLineItemPicked, cycleStatus,
+    assignTechnician, updateTimeSlot, reorderOrder, setVisitOrder, toggleLineItemPicked,
+    startOrder, finishOrder, reopenOrder, cycleStatus,
     setLineItems, updateLineItem, addLineItem, removeLineItem,
     reportMissingItem, clearMissingItem,
     addNote, addPhoto, addReport, clockIn, clockOut,
-    toggleAddOn, addAddOn, removeAddOn, saveSignature,
+    toggleAddOn, addAddOn, removeAddOn,
     addMaterial, removeMaterial,
     markProblem, clearProblem, dismissNotifications,
     queuedCount,
