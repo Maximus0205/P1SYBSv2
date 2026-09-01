@@ -417,7 +417,7 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
 
               {order.problem && (
                 <div className="mt-2.5 rounded-lg bg-danger/10 border border-danger px-3 py-2">
-                  <p className="text-sm font-semibold text-danger flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" aria-hidden="true" /> Sagen kom ikke i mål</p>
+                  <p className="text-sm font-semibold text-danger flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" aria-hidden="true" /> Sagen blev ikke afsluttet</p>
                   <p className="text-xs text-danger mt-0.5">{order.problem.note} · {order.problem.tid}</p>
                   {onClearProblem && canFieldwork && <button onClick={onClearProblem} className="text-[11px] text-danger underline hover:no-underline mt-1 py-1">Ryd markering</button>}
                 </div>
