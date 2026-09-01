@@ -1,24 +1,21 @@
 import React, { useState } from "react";
-import { KeyRound, Building2, Hash, Pencil, X, Check, Copy, AlertTriangle, User, Lock, Trash2, Plus } from "lucide-react";
+import { KeyRound, Building2, Hash, Pencil, X, Check, Copy, AlertTriangle, User, Lock, Trash2, Plus, RotateCw } from "lucide-react";
 import { TIME_SLOTS, buildTitle, keyAccessText, timeSlotById, timeSlotText, lineItemLabel, canDo, createLineItem, missingLineItems, OTHER_PRODUCT_TYPE_ID } from "../data/domain";
 import { StatusBadge } from "../components/common";
-import { LineItemDetails, Notes, Photos, Reports, TimeLog, ClockWidget, Signature } from "../components/OrderParts";
+import { LineItemDetails, Notes, Photos, Reports, TimeLog, ClockWidget } from "../components/OrderParts";
 import { AddressInput } from "../components/AddressInput";
 
 // Hurtig-redigering af en booket sag: dato, tidsrum, montør og
-// leveringsadresse - de felter der oftest skal justeres efter oprettelse
-// (fx kunden ringer og vil rykke datoen). Varelinjerne har deres egen
-// editor (se LineItemEditor nedenfor).
+// leveringsadresse - de felter der oftest skal justeres efter oprettelse.
+// Varelinjerne har deres egen editor (se LineItemEditor nedenfor).
 //
-// RETTET (august 2026): dato/tidsrum/montør (sag_planlaegning) og
-// leveringsadresse (sag_kunde) er to FORSKELLIGE rettigheder - se
-// permissions-kataloget i databasen. Mangler man den ene, låses de
-// tilhørende felter (grå, ikke-redigerbare) i stedet for at hele
-// redigeringen skjules - man kan sagtens have lov til at flytte datoen
-// uden at måtte røre kundens adresse, eller omvendt. Kun de felter man
-// faktisk har rørt (og har lov til) sendes med i onSave - resten
-// udelades, så useOrders.js's updateBooking (som slår sammen med
-// eksisterende felter) ikke overskriver noget man ikke havde adgang til.
+// dato/tidsrum/montør (sag_planlaegning) og leveringsadresse (sag_kunde)
+// er to FORSKELLIGE rettigheder. Mangler man den ene, låses de tilhørende
+// felter i stedet for at hele redigeringen skjules - man kan sagtens have
+// lov til at flytte datoen uden at måtte røre kundens adresse. Kun de
+// felter man har lov til sendes med i onSave, så updateBooking (som slår
+// sammen med eksisterende felter) ikke overskriver noget, man ikke havde
+// adgang til.
 function BookingEditor({ order, technicians, onSave, onCancel, permissions }) {
   const canPlan = canDo(permissions, "sag_planlaegning");
   const canEditCustomer = canDo(permissions, "sag_kunde");
@@ -82,21 +79,19 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions }) {
 }
 
 // ---------------- Varelinje-editor (august 2026) ----------------
-// Indtil nu kunne varelinjerne kun sættes ved oprettelsen af sagen, og
-// bagefter var de låst. I praksis ændrer de sig løbende: kunden
-// ombestemmer sig, en vare er oversolgt og skal skiftes til en
-// tilsvarende model, eller der skal noget ekstra med.
+// Varelinjerne kunne kun sættes ved oprettelsen og var derefter låst. I
+// praksis ændrer de sig løbende: kunden ombestemmer sig, en vare er
+// oversolgt og skal skiftes til en tilsvarende model, eller der skal noget
+// ekstra med.
 //
 // Redigeres LOKALT og gemmes først ved "Gem" - i modsætning til de fleste
-// andre handlinger i appen, som gemmer med det samme. Grunden er, at man
-// her ofte laver flere sammenhængende rettelser (skift model OG ret
-// tiden), og hvert enkelt tastetryk må ikke udløse en skrivning til
-// databasen og en genberegning af hele planlægningen.
+// andre handlinger i appen. Man laver ofte flere sammenhængende rettelser
+// (skift model OG ret tiden), og hvert tastetryk må ikke udløse en
+// skrivning og en genberegning af hele planlægningen.
 //
 // Kræver sag_feltarbejde. Lageret har den bevidst ikke: de må melde en
-// vare manglende, ikke omskrive hvad kunden har købt (se
-// orders_guard_field_groups i databasen, som håndhæver det - UI'et her er
-// ikke sikkerhedsgrænsen).
+// vare manglende, ikke omskrive hvad kunden har købt (håndhævet af
+// orders_guard_field_groups i databasen - UI'et er ikke sikkerhedsgrænsen).
 function LineItemEditor({ order, catalog, onSave, onCancel }) {
   const productTypes = catalog?.productTypes || [];
   const primaryServices = catalog?.primaryServices || [];
@@ -222,9 +217,8 @@ function LineItemEditor({ order, catalog, onSave, onCancel }) {
 //
 // Bekræftelsen nævner sagsnummer OG kundenavn, og lister hvad der
 // forsvinder med. En sag er sjældent bare en linje i en liste: den kan
-// have noter fra to kolleger, billeder fra installationen og en
-// kundeunderskrift. Det skal man se, FØR man trykker - ikke opdage
-// bagefter.
+// have noter fra to kolleger, billeder fra installationen og registreret
+// tid. Det skal man se, FØR man trykker - ikke opdage bagefter.
 function DeleteOrderPanel({ order, onConfirm, onCancel }) {
   const [busy, setBusy] = useState(false);
   const mister = [
@@ -232,7 +226,6 @@ function DeleteOrderPanel({ order, onConfirm, onCancel }) {
     order.billeder?.length ? `${order.billeder.length} ${order.billeder.length === 1 ? "billede" : "billeder"}` : null,
     order.rapporter?.length ? `${order.rapporter.length} ${order.rapporter.length === 1 ? "rapport" : "rapporter"}` : null,
     order.logs?.length ? "registreret tid" : null,
-    order.underskrift ? "kundens underskrift" : null,
   ].filter(Boolean);
 
   return (
@@ -247,7 +240,7 @@ function DeleteOrderPanel({ order, onConfirm, onCancel }) {
         <p className="text-xs text-danger mt-2">Følgende slettes med og kan ikke hentes tilbage: {mister.join(", ")}.</p>
       )}
       <p className="text-xs text-muted mt-2">
-        Skal sagen bare ikke udføres, er det ofte bedre at markere den afsluttet — så bevares historikken. Slet kun, hvis sagen aldrig skulle have været oprettet.
+        Skal sagen bare ikke udføres, er det ofte bedre at færdigmelde den — så bevares historikken. Slet kun, hvis sagen aldrig skulle have været oprettet.
       </p>
 
       <div className="flex gap-2 mt-3">
@@ -339,7 +332,24 @@ function MissingItemsBanner({ order, onClearMissingItem, canFieldwork }) {
   );
 }
 
-function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, onCycleStatus, onClockIn, onClockOut, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onSaveSignature, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onSetLineItems, onClearMissingItem, onDeleteOrder }) {
+// ÆNDRET (september 2026): STATUS-SKIFTEREN ER VÆK.
+//
+// Status var et badge, man kunne klikke på, og som cyklede planlagt ->
+// i gang -> afsluttet -> planlagt. To ting var galt med den. Det var
+// uklart, hvad et klik ville gøre - man skulle kende rækkefølgen for at
+// vide, hvor man landede - og et fejlklik på en afsluttet sag sendte den
+// helt tilbage til "planlagt", uden at nogen blev spurgt.
+//
+// Status er nu udelukkende en VISNING her. Selve skiftet sker i
+// montørens flow gennem "Start opgave" og "Færdigmeld" (se
+// startOrder/finishOrder i useOrders.js), hvor det hører hjemme: det er
+// montøren, der ved, om arbejdet er i gang eller færdigt.
+//
+// En afsluttet sag kan dog GENÅBNES herfra af en med feltarbejde-
+// rettighed - fx hvis en montør færdigmeldte for tidligt. Uden den vej
+// ville en fejl-færdigmelding være en blindgyde, og det er præcis den
+// slags, der får folk til at oprette en dublet-sag i stedet.
+function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, onClockIn, onClockOut, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onSetLineItems, onClearMissingItem, onDeleteOrder, onReopenOrder }) {
   const [tab, setTab] = useState("noter");
   // Kun ÉT panel ad gangen - to åbne redigeringer på samme sag ville både
   // fylde skærmen og gøre det uklart, hvad "Gem" gemmer.
@@ -356,7 +366,6 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
     { key: "billeder", label: "Billeder", count: order.billeder.length },
     { key: "rapporter", label: "Rapporter", count: order.rapporter.length },
     { key: "tid", label: "Tid", count: order.logs.length },
-    { key: "underskrift", label: "Underskrift", count: order.underskrift ? 1 : 0 },
   ];
 
   return (
@@ -435,7 +444,14 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
               )}
             </div>
             <div className="flex flex-col items-end gap-2">
-              <button onClick={() => canFieldwork && onCycleStatus(order.id)} disabled={!canFieldwork} className="disabled:opacity-60 disabled:cursor-not-allowed"><StatusBadge status={order.status} /></button>
+              {/* Status vises, men kan ikke klikkes - se noten over
+                  komponenten. Skiftet sker i montørens flow. */}
+              <StatusBadge status={order.status} />
+              {order.status === "afsluttet" && onReopenOrder && canFieldwork && (
+                <button onClick={onReopenOrder} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-1 py-1.5 flex items-center gap-1" title="Sagen var ikke færdig alligevel">
+                  <RotateCw size={13} aria-hidden="true" /> Genåbn sag
+                </button>
+              )}
               {(canPlan || canEditCustomer) && (
                 <button onClick={() => setPanel("booking")} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-1 py-1.5 flex items-center gap-1"><Pencil size={13} aria-hidden="true" /> Redigér booking</button>
               )}
@@ -480,7 +496,6 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
       {tab === "billeder" && <Photos order={order} onAdd={canFieldwork ? addPhoto : undefined} />}
       {tab === "rapporter" && <Reports order={order} onAdd={canFieldwork ? addReport : undefined} />}
       {tab === "tid" && <TimeLog order={order} />}
-      {tab === "underskrift" && <Signature order={order} onSave={canFieldwork ? onSaveSignature : undefined} />}
     </div>
   );
 }
