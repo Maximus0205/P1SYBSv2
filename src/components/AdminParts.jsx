@@ -1,13 +1,17 @@
 import React, { useState } from "react";
-import { Trash2, X, Plus, Pencil, UserPlus, PalmtreeIcon, CalendarOff, KeyRound, Stethoscope, HeartPulse, ShieldCheck, ChevronDown, ChevronUp } from "lucide-react";
+import { Trash2, X, Plus, Pencil, UserPlus, PalmtreeIcon, CalendarOff, KeyRound, Stethoscope, HeartPulse, ShieldCheck, Truck } from "lucide-react";
 import { vehicleLabel, technicianColor, todayISO, activeSickLeave } from "../data/domain";
 import { suggestUsername, isValidUsername } from "../lib/username";
 import { updateSickLeaveWindow } from "../lib/dataStore";
 
-// En "tekniker" er en bruger med rolle montor — man opretter dem ikke separat
-// (det sker under fanen Brugere). Her kan man kun styre hvilken bil teknikeren
-// kører i lige nu, og registrere fraværsperioder for vedkommende (ferie ELLER
-// sygdom - se Sygemeld/Raskmeld nedenfor, august 2026).
+// En "montør" er ikke længere en ROLLE, men alle der KØRER: rollen montor,
+// eller enhver anden bruger, der har fået slået "kan køre rute" til (se
+// UserRow nedenfor og koererSelv i App.jsx). Her på Montør-fanen styres
+// hvilken bil personen kører i lige nu, og deres fraværsperioder.
+//
+// Selve TIL-/FRAVALGET af, om nogen kan køre, ligger bevidst på fanen
+// Brugere - ikke her. Denne fane viser kun folk, der ALLEREDE er montører,
+// så lå kontakten her, kunne man aldrig tilføje den første.
 function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTimeOff, onDeleteTimeOff, onSygemeld, onRaskmeld }) {
   const [showTimeOff, setShowTimeOff] = useState(false);
   const [start, setStart] = useState(todayISO());
@@ -103,22 +107,19 @@ function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTi
               ))}
             </div>
           )}
-          {linkedVehicle && <p className="text-[10px] text-muted mt-2">Bilen ({vehicleLabel(linkedVehicle)}) vises automatisk som blokeret i kørselsoverblikket i disse perioder — flytter teknikeren til en anden bil, følger blokeringen med.</p>}
+          {linkedVehicle && <p className="text-[10px] text-muted mt-2">Bilen ({vehicleLabel(linkedVehicle)}) vises automatisk som blokeret i kørselsoverblikket i disse perioder — flytter montøren til en anden bil, følger blokeringen med.</p>}
         </div>
       )}
     </div>
   );
 }
 
-// Butiksindstilling (august 2026): hvor mange timer frem en sygemeldt
-// montørs sager vises i "Sygemelding"-fanen i Planlægning, mens
-// sygemeldingen er aktiv. Kalder en snævert afgrænset databasefunktion
-// (se dataStore.js: updateSickLeaveWindow) - almindelige butiks-admins har
-// IKKE generel skriveadgang til butikkens øvrige indstillinger, kun denne
-// ene, bevidst afgrænsede indstilling. RETTET (august 2026): sender nu
-// eksplicit store.id med - ellers ville en systemadmin, der er skiftet
-// til at se en ANDEN butik end deres egen, ramme deres egen butik i
-// stedet (se App.jsx: butiks-skifteren).
+// Butiksindstilling: hvor mange timer frem en sygemeldt montørs sager
+// vises i "Sygemelding"-fanen i Planlægning. Kalder en snævert afgrænset
+// databasefunktion - IKKE et almindeligt tabelkald, fordi butiks-admins i
+// øvrigt ikke har skriveadgang til stores-tabellen. store.id sendes
+// eksplicit med, så en systemadmin, der er skiftet til en anden butik,
+// ikke rammer sin egen.
 function SickLeaveWindowSetting({ store, onUpdated }) {
   const [hours, setHours] = useState(store?.sygemeldingVindueTimer ?? 48);
   const [saving, setSaving] = useState(false);
@@ -193,17 +194,11 @@ function VehicleRow({ vehicle, usedBy, onUpdate, onDelete, onToggleClosed }) {
 
 const PERMISSION_CATEGORY_LABEL = { side: "Faner/sider", sag: "Redigering på sager" };
 
-// Rettigheds-editor for ÉN bruger (august 2026). En bruger har altid en
-// ROLLE (giver et fast sæt standardrettigheder, se role_default_
-// permissions i databasen) - denne editor lader en admin (med
-// admin_brugere-rettighed) TILFØJE noget ud over rollens standard, eller
-// FRATAGE noget rollen ellers ville give, for netop denne ene person. En
-// rettighed der kommer fra rollen vises med et "standard"-mærke; klikker
-// man den fra, lander den i revokedPermissions - klikker man en IKKE-
-// standard rettighed til, lander den i extraPermissions. Håndhæves også i
-// selve databasen (kan altså ikke omgås ved at redigere UI'et), se
-// migrationerne "profile_individual_permission_overrides" og
-// "enforce_permissions_on_writes".
+// Rettigheds-editor for ÉN bruger. En bruger har altid en ROLLE (et fast
+// sæt standardrettigheder) - denne editor lader en admin med
+// admin_brugere TILFØJE noget ud over standarden, eller FRATAGE noget
+// rollen ellers ville give, for netop denne person. Håndhæves også i
+// databasen, så det ikke kan omgås ved at redigere UI'et.
 function PermissionsEditor({ user, permissionsCatalog, roleDefaults, onUpdatePermissions }) {
   const [busy, setBusy] = useState(false);
   const roleDefaultSet = new Set(roleDefaults[user.rolle] || []);
@@ -218,13 +213,11 @@ function PermissionsEditor({ user, permissionsCatalog, roleDefaults, onUpdatePer
     let nextExtra = extra;
     let nextRevoked = revoked;
     if (checked) {
-      // Slå fra: hvis den kommer fra rollen, skal den eksplicit fratages;
-      // ellers er den bare en individuel tilføjelse der fjernes igen.
+      // Slå fra: kommer den fra rollen, skal den eksplicit fratages;
+      // ellers er den bare en individuel tilføjelse, der fjernes igen.
       nextExtra = extra.filter((k) => k !== key);
       nextRevoked = isFromRole(key) ? [...revoked.filter((k) => k !== key), key] : revoked;
     } else {
-      // Slå til: fjern en evt. fratagelse, og tilføj den (kun nødvendigt
-      // hvis den ikke allerede kommer fra rollen).
       nextRevoked = revoked.filter((k) => k !== key);
       nextExtra = isFromRole(key) ? extra : [...extra.filter((k) => k !== key), key];
     }
@@ -295,6 +288,19 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
 
   const canEditPermissions = user.id !== currentUserId && onUpdatePermissions && permissionsCatalog;
 
+  // KAN KØRE RUTE (september 2026). Rollen 'montor' kører altid - for dem
+  // er der intet at slå til eller fra, og knappen vises derfor ikke.
+  // For ALLE ANDRE roller er det et valg: en sælger eller en admin, der
+  // tager en rute en gang imellem, skal ikke have en ekstra brugerkonto.
+  // To konti for samme menneske spreder sagerne over to navne og sender
+  // notifikationer til den forkerte af dem.
+  //
+  // Slås det til, kan personen tildeles sager og en bil, og de får
+  // Montør-fanen med deres EGEN tur (se koererSelv i App.jsx). Rollen
+  // ændres ikke - de er stadig sælger i alt andet.
+  const erFastMontor = user.rolle === "montor";
+  const koerer = erFastMontor || user.kanKoere === true;
+
   return (
     <div className="rounded-xl bg-white border border-line overflow-hidden shadow-sm">
       <div className="p-3 flex items-center gap-3 flex-wrap">
@@ -311,13 +317,27 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
           <p className="text-xs text-muted truncate">
             {ROLE_LABEL[user.rolle] || user.rolle}
             {user.brugernavn && <span> · logger ind som "{user.brugernavn}"</span>}
-            {user.rolle === "montor" ? ` · ${vehicle ? vehicleLabel(vehicle) : "ingen bil endnu"}` : ""}
+            {koerer && <span> · {vehicle ? vehicleLabel(vehicle) : "kører rute, ingen bil endnu"}</span>}
+            {!erFastMontor && user.kanKoere && <span> · kører også rute</span>}
             {(user.extraPermissions?.length > 0 || user.revokedPermissions?.length > 0) && <span> · individuelt tilpasset</span>}
           </p>
         </div>
         <select value={user.rolle} onChange={(e) => onUpdate(user.id, { rolle: e.target.value })} aria-label={`Rolle for ${user.navn}`} className="rounded-lg border border-line bg-panel px-2 py-2 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-brand">
           {Object.entries(ROLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
+        {!erFastMontor && (
+          <button
+            onClick={() => onUpdate(user.id, { kanKoere: !user.kanKoere })}
+            aria-pressed={!!user.kanKoere}
+            aria-label={`${user.kanKoere ? "Fjern" : "Giv"} ${user.navn} mulighed for at køre montørrute`}
+            title={user.kanKoere ? "Kører rute — klik for at fjerne" : "Kan ikke køre rute — klik for at tilføje"}
+            className={`h-10 px-3 flex items-center gap-1.5 rounded-lg border text-xs font-semibold uppercase tracking-wide transition-colors focus:outline-none focus:ring-2 focus:ring-brand ${
+              user.kanKoere ? "border-success bg-success/10 text-success" : "border-line text-muted hover:border-brand hover:text-brand"
+            }`}
+          >
+            <Truck size={14} aria-hidden="true" /> Kører rute
+          </button>
+        )}
         {canEditPermissions && (
           <button onClick={() => setShowPermissions((v) => !v)} aria-expanded={showPermissions} aria-label={`Rettigheder for ${user.navn}`} className="w-10 h-10 flex items-center justify-center rounded-lg text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand" title="Rettigheder">
             <ShieldCheck size={15} aria-hidden="true" />
@@ -325,19 +345,20 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
         )}
         {!editing && <button onClick={() => { setName(user.navn); setEditing(true); }} aria-label={`Ret navn på ${user.navn}`} className="w-10 h-10 flex items-center justify-center rounded-lg text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand" title="Ret navn"><Pencil size={15} aria-hidden="true" /></button>}
         {onResetPassword && <button onClick={() => setShowReset((v) => !v)} aria-expanded={showReset} aria-label={`Nulstil adgangskode for ${user.navn}`} className="w-10 h-10 flex items-center justify-center rounded-lg text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand" title="Nulstil adgangskode"><KeyRound size={15} aria-hidden="true" /></button>}
-        {/* RETTET (august 2026): tooltip'en sagde "Fjern adgang", fordi
-            knappen dengang blot fjernede butikstilknytningen. Den SLETTER
-            nu brugeren permanent (login og profil), og en knap må ikke
-            beskrive sig selv mildere end den handler - det er præcis den
-            slags misforståelse, der koster en medarbejderkonto. Selve
-            bekræftelsen, med konsekvenserne hentet fra serveren, ligger i
-            useUsers.js. */}
+        {/* Tooltip'en sagde tidligere "Fjern adgang", fordi knappen dengang
+            blot fjernede butikstilknytningen. Den SLETTER nu brugeren
+            permanent, og en knap må ikke beskrive sig selv mildere end den
+            handler. Bekræftelsen, med konsekvenserne hentet fra serveren,
+            ligger i useUsers.js. */}
         {user.id !== currentUserId && (
           <button onClick={() => onDelete(user.id)} aria-label={`Slet brugeren ${user.navn} permanent`} className="w-10 h-10 flex items-center justify-center rounded-lg text-muted hover:text-danger focus:outline-none focus:ring-2 focus:ring-danger" title="Slet bruger permanent">
             <Trash2 size={15} aria-hidden="true" />
           </button>
         )}
       </div>
+      {!erFastMontor && user.kanKoere && !vehicle && (
+        <p className="px-3 pb-2 text-[11px] text-brand">Tildel en bil under fanen "Montører", før personen kan få sager.</p>
+      )}
       {showReset && (
         <div className="px-3 pb-3 flex items-center gap-2 flex-wrap">
           <input
@@ -408,13 +429,18 @@ function NewUserForm({ onAdd }) {
         )}
         <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Adgangskode (mindst 6 tegn)" aria-label="Adgangskode" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
         <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Rolle" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
-          <option value="saelger">Sælger (Salg, Planlægning, Kørsel, Montør, Lager)</option>
+          <option value="saelger">Sælger (opret sager, Planlægning, Lager, Arkiv)</option>
           <option value="montor">Montør (kun sin egen rute)</option>
           <option value="lager">Lager (kun Lager-siden)</option>
           <option value="admin">Administrator (alt, inkl. Opsætning)</option>
         </select>
       </div>
       {role === "montor" && <p className="text-[11px] text-muted mt-2">Bil tilknyttes bagefter under fanen "Montører".</p>}
+      {role !== "montor" && (
+        <p className="text-[11px] text-muted mt-2">
+          Skal personen også kunne køre en rute en gang imellem, slås "Kører rute" til på brugeren i listen nedenfor — det kræver ikke en ekstra konto.
+        </p>
+      )}
       {error && <p className="text-xs text-danger mt-2">{error}</p>}
       <button onClick={create} disabled={busy} className="mt-3 px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-60">
         <UserPlus size={15} aria-hidden="true" /> {busy ? "Opretter..." : "Opret bruger"}
@@ -525,10 +551,8 @@ function ProductTypeAdmin({ productTypes, productCategories, onAdd, onUpdate, on
 }
 
 // ---------- Primære ydelser ----------
-// Bevidst uden tidsestimat her - tidsforbrug tastes udelukkende manuelt for
-// den enkelte booking i sælgerens flow (se SagFormFields.jsx), da det varierer
-// for meget fra opgave til opgave til at et fast tal pr. ydelsestype giver
-// mening. Det ændrer sig når der er nok historik til automatiske estimater.
+// Bevidst uden tidsestimat her - tid tastes manuelt pr. booking og
+// foreslås efterhånden ud fra MÅLT tid, se data/estimates.js.
 
 function PrimaryServiceRow({ service, onUpdate, onDelete }) {
   const [editingName, setEditingName] = useState(false);
@@ -561,7 +585,7 @@ function PrimaryServiceAdmin({ primaryServices, onAdd, onUpdate, onDelete }) {
           <button onClick={() => { if (!newName.trim()) return; onAdd(newName.trim()); setNewName(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5"><Plus size={15} aria-hidden="true" /> Opret</button>
         </div>
       </div>
-      <p className="text-[11px] text-muted mb-2">Hvilke tillægsydelser der er tilgængelige under en given primær ydelse styres under fanen "Tillægsydelser". Tidsforbrug sættes ikke her — det tastes manuelt af sælgeren for hver enkelt booking.</p>
+      <p className="text-[11px] text-muted mb-2">Hvilke tillægsydelser der er tilgængelige under en given primær ydelse styres under fanen "Tillægsydelser". Tidsforbrug sættes ikke her — det tastes manuelt pr. booking.</p>
       <div className="space-y-2">
         {primaryServices.map((p) => (
           <PrimaryServiceRow key={p.id} service={p} onUpdate={onUpdate} onDelete={onDelete} />
@@ -573,9 +597,8 @@ function PrimaryServiceAdmin({ primaryServices, onAdd, onUpdate, onDelete }) {
 
 // ---------- Tillægsydelser ----------
 // Her styres relationerne ét sted: hvilke primære ydelser en tillægsydelse
-// gælder under (påkrævet), og valgfrit hvilke specifikke varetyper den er
-// begrænset til (tomt = gælder for alle varetyper). Heller ikke her sættes
-// et tidsestimat - det tastes manuelt pr. booking, se note ovenfor.
+// gælder under (påkrævet), og valgfrit hvilke varetyper den er begrænset
+// til (tomt = gælder alle).
 
 function AddOnServiceRow({ service, productTypes, primaryServices, onUpdate, onDelete }) {
   const togglePrimary = (pId) => {
