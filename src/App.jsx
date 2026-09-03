@@ -17,7 +17,7 @@ import { OrderView } from "./components/OrderView";
 import { DashboardPage } from "./pages/DashboardPage";
 import { SalesPage } from "./pages/SalesPage";
 import { PlanningPage } from "./pages/PlanningPage";
-import { TechnicianPicker, TechnicianRouteView, TechnicianOrderDetail } from "./pages/TechnicianPage";
+import { TechnicianRouteView, TechnicianOrderDetail } from "./pages/TechnicianPage";
 import { WarehousePage } from "./pages/WarehousePage";
 import { ArchivePage } from "./pages/ArchivePage";
 import { AdminPage } from "./pages/AdminPage";
@@ -30,8 +30,22 @@ import { SystemAdminPage } from "./pages/SystemAdminPage";
 // URL via react-router-dom (HashRouter - se main.jsx for hvorfor hash).
 // ---------------------------------------------------------------------------
 
+// KØRER DENNE PERSON SELV? (september 2026)
+//
+// Rollen 'montor' gør en bruger til montør som hidtil. can_drive gør det
+// samme for alle ANDRE roller, uden at ændre hvad de ellers må: en sælger
+// eller admin, der tager en rute en gang imellem, skal ikke have en ekstra
+// brugerkonto. To konti for samme menneske spreder sagerne over to navne
+// og sender notifikationer til den forkerte af dem.
+//
+// Bruges to steder, og det er vigtigt at det er DEN SAMME regel begge
+// steder: til at afgøre hvem der kan tildeles sager (technicians-listen),
+// og til at afgøre hvem der ser Montør-fanen. Faldt de to fra hinanden,
+// ville nogen kunne blive tildelt sager, de ikke selv kunne se.
+const koererSelv = (bruger) => bruger?.rolle === "montor" || bruger?.kanKoere === true;
+
 function Gate({ allowed, page, children }) {
-  if (!allowed.includes(page)) return <Navigate to={`/${allowed[0] || "salg"}`} replace />;
+  if (!allowed.includes(page)) return <Navigate to={`/${allowed[0] || "dashboard"}`} replace />;
   return children;
 }
 
@@ -91,9 +105,6 @@ function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder,
     // Erstatter status-skifteren. Status er nu en KONSEKVENS af to
     // handlinger, montøren foretager alligevel - og de to tidsstempler er
     // samtidig grundlaget for tidsestimaterne (se data/estimates.js).
-    // Selve påmindelsen om dokumentation ligger i montørvisningens
-    // FinishPanel, ikke her: den skal vises FØR handlingen, mens montøren
-    // stadig står hos kunden.
     onStartOrder: () => ordersStore.startOrder(order.id),
     onFinishOrder: () => ordersStore.finishOrder(order.id),
     onReopenOrder: () => ordersStore.reopenOrder(order.id),
@@ -122,34 +133,38 @@ function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder,
     },
   };
 
-  return profile.rolle === "montor" ? <TechnicianOrderDetail {...sharedProps} /> : <OrderView {...sharedProps} />;
+  // Montørvisningen af en sag er den, der har Start/Færdigmeld. Den vises
+  // til ALLE der selv kører - ikke kun til rollen 'montor'. En sælger med
+  // dobbeltrolle skal have præcis samme arbejdsskærm i bilen som en
+  // montør; det er den samme opgave, der skal udføres.
+  return koererSelv(profile) ? <TechnicianOrderDetail {...sharedProps} /> : <OrderView {...sharedProps} />;
 }
 
+// Montørvisningen er ARBEJDSSKÆRMEN for den, der sidder i bilen - ikke et
+// overblik over andres ruter. Derfor vises den KUN til folk, der selv
+// kører (se allowedPages nedenfor), og den viser altid ÉN persons tur:
+// din egen.
+//
+// FJERNET (september 2026): montør-VÆLGEREN, hvor en sælger eller admin
+// kunne bladre gennem alle montørers ruter. Den slags overblik hører
+// hjemme i Planlægning, hvor hele ugen kan ses på én gang - og efter at
+// sælgere og systemadmins ikke længere har fanen, var vælgeren kun en
+// omvej for de få, der havde den. Skal man se en andens dag, gør man det
+// i Planlægning.
 function MontorRoute({ profile, orders, technicians, ordersStore, refresh, refreshing, selectedDate, onDateChange, onOpen }) {
-  const { technicianId } = useParams();
-  const navigate = useNavigate();
-
-  if (profile.rolle === "montor") {
-    const own = technicians.find((m) => m.id === profile.id);
-    if (!own) return <p className="text-sm text-muted">Din bruger er ikke koblet til en montør/bil-profil endnu — kontakt en administrator.</p>;
+  const own = technicians.find((m) => m.id === profile.id);
+  if (!own) {
     return (
-      <TechnicianRouteView
-        orders={orders} technician={own} selectedDate={selectedDate} onDateChange={onDateChange}
-        onOpen={onOpen} onReorder={ordersStore.reorderOrder}
-        onRefresh={refresh} refreshing={refreshing}
-      />
+      <p className="text-sm text-muted">
+        Din bruger er ikke koblet til en bil endnu — bed en administrator om at tildele dig en under Admin → Montører.
+      </p>
     );
-  }
-
-  const technician = technicians.find((m) => m.id === technicianId);
-  if (!technician) {
-    return <TechnicianPicker technicians={technicians} onSelect={(id) => navigate(`/montor/${id}`)} />;
   }
   return (
     <TechnicianRouteView
-      orders={orders} technician={technician} selectedDate={selectedDate} onDateChange={onDateChange}
+      orders={orders} technician={own} selectedDate={selectedDate} onDateChange={onDateChange}
       onOpen={onOpen} onReorder={ordersStore.reorderOrder}
-      onChangeTechnician={() => navigate("/montor")} onRefresh={refresh} refreshing={refreshing}
+      onRefresh={refresh} refreshing={refreshing}
     />
   );
 }
@@ -158,7 +173,10 @@ function MontorRoute({ profile, orders, technicians, ordersStore, refresh, refre
 // samme navn. "admin" er en undtagelse - den er en PARAPLY over 5 finere
 // admin_*-rettigheder (AdminPage viser/skjuler selv sine faner ud fra
 // dem); har man BLOT ÉN af dem, skal man kunne se Admin-fanen.
-const PAGE_PERMISSION_KEYS = ["salg", "planlaegning", "montor", "lager", "arkiv"];
+//
+// "montor" står bevidst IKKE på listen. Den fane afhænger ikke af en
+// rettighed, men af om man FAKTISK KØRER - se allowedPages nedenfor.
+const PAGE_PERMISSION_KEYS = ["salg", "planlaegning", "lager", "arkiv"];
 
 export default function App() {
   const { loading, session, profile, permissions, logOut, reloadPermissions } = useSession();
@@ -210,8 +228,11 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Hvem kan tildeles sager? Alle der selv kører - se koererSelv ovenfor.
+  // Tidligere var det udelukkende rollen 'montor', og det var derfor
+  // umuligt at give en sælger en rute uden at oprette en ekstra bruger.
   const technicians = users
-    .filter((b) => b.rolle === "montor")
+    .filter(koererSelv)
     .map((b) => {
       const linkedVehicle = vehicles.find((v) => v.id === b.bilId);
       return { id: b.id, navn: b.navn, bilId: b.bilId || null, bil: linkedVehicle ? linkedVehicle.nummerplade : "" };
@@ -310,11 +331,20 @@ export default function App() {
   // (hentet via my_effective_permissions() i databasen). En systemadmin
   // ser altid alt - de går allerede udenom de tilsvarende databasetjek.
   // "dashboard" er altid først og altid tilgængelig.
+  //
+  // MONTØR-FANEN ER EN UNDTAGELSE (september 2026): den afhænger ikke af
+  // rettigheder eller af systemadmin-status, men af om man FAKTISK KØRER.
+  // Montørvisningen er arbejdsskærmen for den, der sidder i bilen - den
+  // har ingen værdi for en sælger på kontoret eller en systemadmin, der
+  // kigger ind i en butik. Skal en funktion fremvises eller testes,
+  // oprettes en demobruger, der rent faktisk har en rute.
+  const kanKoereRute = koererSelv(profile);
   const allowedPages = profile.erSystemadmin
-    ? ["dashboard", ...PAGE_PERMISSION_KEYS, "admin"]
+    ? ["dashboard", ...PAGE_PERMISSION_KEYS, ...(kanKoereRute ? ["montor"] : []), "admin"]
     : [
         "dashboard",
         ...PAGE_PERMISSION_KEYS.filter((k) => permissions.includes(k)),
+        ...(kanKoereRute ? ["montor"] : []),
         ...(permissions.some((p) => p.startsWith("admin_")) ? ["admin"] : []),
       ];
   // Sendes videre til sider der låser ENKELTE felter/knapper efter
@@ -324,7 +354,10 @@ export default function App() {
   const dashboardWidgets = profile.dashboardWidgets || DEFAULT_DASHBOARD_WIDGETS[profile.rolle] || [];
   const currentPage = location.pathname.replace(/^\//, "").split("/")[0] || allowedPages[0];
   const narrowPage = currentPage === "montor" || currentPage === "sag";
-  const hideTopNav = currentPage === "sag" && profile.rolle === "montor";
+  // Topmenuen skjules, mens en KØRENDE person har en sag åben - skærmen
+  // skal bruges på opgaven, ikke på navigation. Gælder nu alle der kører,
+  // ikke kun rollen 'montor'.
+  const hideTopNav = currentPage === "sag" && kanKoereRute;
 
   return (
     <div className="min-h-screen w-full bg-paper" style={{ fontFamily: "Inter, sans-serif" }}>
@@ -348,7 +381,7 @@ export default function App() {
             <DashboardPage
               profile={profile} permissions={effectivePermissions}
               orders={orders} technicians={technicians} vehicles={vehicles} timeOff={timeOff} store={effectiveStore}
-              notifications={notifications} onOpen={onOpen} onCycleStatus={ordersStore.cycleStatus}
+              notifications={notifications} onOpen={onOpen}
               onNavigate={(key) => navigate(`/${key}`)}
               dashboardWidgets={dashboardWidgets} onUpdateWidgets={updateDashboardWidgetsFor}
             />
@@ -368,7 +401,7 @@ export default function App() {
                 orders={orders} technicians={technicians} vehicles={vehicles} timeOff={timeOff}
                 store={effectiveStore}
                 selectedDate={selectedDate} onDateChange={setSelectedDate}
-                onOpen={onOpen} onCycleStatus={ordersStore.cycleStatus} onAssign={ordersStore.assignTechnician} onReorder={ordersStore.reorderOrder} onSetVisitOrder={ordersStore.setVisitOrder}
+                onOpen={onOpen} onAssign={ordersStore.assignTechnician} onReorder={ordersStore.reorderOrder} onSetVisitOrder={ordersStore.setVisitOrder}
                 onUpdateBooking={ordersStore.updateBooking} onClearProblem={ordersStore.clearProblem}
                 onUpdateTechnician={(technicianId, fields) => updateTechnicianVehicle(technicianId, fields.bilId)}
                 onRefresh={refresh} refreshing={refreshing}
@@ -376,12 +409,9 @@ export default function App() {
             </Gate>
           } />
 
+          {/* Kun én montør-rute: din egen. Den gamle /montor/:technicianId
+              (montør-vælgeren) er fjernet - se noten ved MontorRoute. */}
           <Route path="/montor" element={
-            <Gate allowed={allowedPages} page="montor">
-              <MontorRoute profile={profile} orders={orders} technicians={technicians} ordersStore={ordersStore} refresh={refresh} refreshing={refreshing} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} />
-            </Gate>
-          } />
-          <Route path="/montor/:technicianId" element={
             <Gate allowed={allowedPages} page="montor">
               <MontorRoute profile={profile} orders={orders} technicians={technicians} ordersStore={ordersStore} refresh={refresh} refreshing={refreshing} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} />
             </Gate>
