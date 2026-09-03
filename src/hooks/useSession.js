@@ -2,13 +2,9 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { getOwnProfile, getStore, getMyPermissions } from "../lib/dataStore";
 
-// FASE 4 (sidste) af arkitektur-oprydningen (august 2026) - se
-// hooks/useCatalog.js for den fulde begrundelse. Al state for SESSION,
-// PROFIL og BUTIK er samlet her - den sidste og mest følsomme del af
-// oprydningen, da den indeholder en kendt, skrøbelig fælde (se note
-// nedenfor), og derfor bevidst er gemt til sidst, efter mønsteret var
-// afprøvet på de mindre risikable dele (katalog, biler, fravær, brugere,
-// ordrer) først.
+// Al state for SESSION, PROFIL og BUTIK er samlet her (fase 4 af
+// arkitektur-oprydningen, august 2026) - den sidste og mest følsomme del,
+// da den indeholder en kendt, skrøbelig fælde, se nedenfor.
 //
 // VIGTIGT om onAuthStateChange: denne callback må ikke selv "await"'e
 // andre Supabase-kald (som fx reloadProfile -> supabase.from(...)).
@@ -17,31 +13,34 @@ import { getOwnProfile, getStore, getMyPermissions } from "../lib/dataStore";
 // supabase-js-fælde). setTimeout(..., 0) skubber arbejdet til næste "tick",
 // uden for låsen, så login rent faktisk kan fuldføre.
 //
-// Bevidst IKKE flyttet hertil: hvilken SIDE der vises (page) og hvilken
-// montør der er valgt (selectedTechnicianId) er navigations-UI-state, ikke
-// session-data - App.jsx reagerer selv på ændringer i profile via sin egen
-// useEffect, i stedet for at denne hook selv styrer navigation.
+// Bevidst IKKE flyttet hertil: hvilken SIDE der vises er navigations-UI-
+// state, ikke session-data - App.jsx reagerer selv på ændringer i profile.
 //
-// RETTIGHEDER (august 2026): permissions er brugerens FAKTISKE, håndhævede
-// rettigheder (rollens standard ∪ individuelle tilføjelser, minus
-// individuelle fratagelser - se my_effective_permissions() i databasen).
-// Hentes samme sted og på samme tidspunkt som resten af profilen, af
-// samme grund som resten af denne hook er samlet ét sted.
+// RETTIGHEDER: permissions er brugerens FAKTISKE, håndhævede rettigheder
+// (rollens standard ∪ individuelle tilføjelser, minus individuelle
+// fratagelser - se my_effective_permissions() i databasen).
 //
-// DASHBOARD-WIDGETS (august 2026): profile.dashboardWidgets er brugerens
-// egen valgte forside-sammensætning (null = brug rollens standard, se
-// DEFAULT_DASHBOARD_WIDGETS i domain.js) - se DashboardPage.jsx.
+// kanKoere (september 2026) = profiles.can_drive: må denne person tildeles
+// sager og en bil? Bevidst UAFHÆNGIG af rollen, så en sælger eller admin,
+// der tager en montørrute en gang imellem, ikke skal have en ekstra
+// brugerkonto. Hentes sammen med resten af profilen, fordi App.jsx skal
+// bruge den til at afgøre, om Montør-fanen overhovedet vises.
 export function useSession() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState(null);
-  const [profile, setProfile] = useState(null); // { id, navn, rolle, bilId, butikId, erSystemadmin, dashboardWidgets }
+  const [profile, setProfile] = useState(null); // { id, navn, rolle, bilId, butikId, erSystemadmin, kanKoere, dashboardWidgets }
   const [store, setStore] = useState(null); // { id, navn, adresse, lat, lon }
-  const [permissions, setPermissions] = useState([]); // string[] - se has_permission()/my_effective_permissions() i databasen
+  const [permissions, setPermissions] = useState([]); // string[]
 
   const reloadProfile = useCallback(async (userId) => {
     const p = await getOwnProfile(userId);
     if (!p) { setProfile(null); setStore(null); setPermissions([]); return null; }
-    const normalized = { id: p.id, navn: p.navn, rolle: p.rolle, bilId: p.bil_id, butikId: p.butik_id, erSystemadmin: !!p.er_systemadmin, dashboardWidgets: p.dashboard_widgets || null };
+    const normalized = {
+      id: p.id, navn: p.navn, rolle: p.rolle, bilId: p.bil_id, butikId: p.butik_id,
+      erSystemadmin: !!p.er_systemadmin,
+      kanKoere: !!p.kan_koere,
+      dashboardWidgets: p.dashboard_widgets || null,
+    };
     setProfile(normalized);
     if (normalized.butikId) {
       const [storeData, myPermissions] = await Promise.all([getStore(normalized.butikId), getMyPermissions()]);
