@@ -1,6 +1,6 @@
 import React from "react";
-import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, Loader2, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash, Package, X, Plus, User, Lock, PlayCircle, CheckCheck, Camera } from "lucide-react";
-import { buildTitle, isToday, formatLongDate, formatDuration, technicianColor, keyAccessText, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel, dailyOrderCompare, canDo } from "../data/domain";
+import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, Loader2, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash, X, Plus, User, Lock, PlayCircle, CheckCheck, Camera, CalendarCheck2 } from "lucide-react";
+import { buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, keyAccessText, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel, dailyOrderCompare, canDo, missingLineItems } from "../data/domain";
 import { StatusBadge, DateSelector } from "../components/common";
 import { Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
 import { BookingEditor, DuplicatePanel } from "../components/OrderView";
@@ -15,7 +15,7 @@ import { sendArrivalSms } from "../lib/dataStore";
 // et punkt med det samme uden den afhængighed.
 const mapsUrl = (address) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 
-// Normaliseret til rent cifre + evt. indledende "+" så tel:-links virker
+// Normaliseret til rene cifre + evt. indledende "+" så tel:-links virker
 // uanset om nummeret er skrevet med mellemrum ("12 34 56 78").
 const telHref = (phone) => `tel:${(phone || "").replace(/[^\d+]/g, "")}`;
 
@@ -23,10 +23,15 @@ const ARRIVAL_PRESETS_MIN = [5, 10, 15, 30, 60];
 
 // Popover til at vælge "ankomst om X minutter" og sende SMS'en MED DET
 // SAMME ved tryk - via en Edge Function der sender fra firmaets fælles
-// Twilio-nummer. IKKE via montørens egen telefon: montøren har typisk sin
-// egen private telefon, og skal hverken dele sit nummer eller selv afsende
-// noget manuelt.
-function ArrivalSmsButton({ phone, customerName }) {
+// nummer. IKKE via montørens egen telefon: montøren bruger typisk sin
+// private telefon og skal hverken dele sit nummer med kunden eller selv
+// afsende noget manuelt.
+//
+// variant="stak" (september 2026) gør knappen til ét lag i den lodrette
+// handlingsstak på rutekortet - se OrderStopCard. Selve popoveren er
+// uændret; kun knappens udseende skifter, så den passer ind mellem
+// Naviger og Ring.
+function ArrivalSmsButton({ phone, customerName, variant }) {
   const [open, setOpen] = React.useState(false);
   const [status, setStatus] = React.useState({ state: "idle" });
   const ref = React.useRef(null);
@@ -57,17 +62,29 @@ function ArrivalSmsButton({ phone, customerName }) {
     else setStatus({ state: "error", fejl: result.fejl });
   };
 
+  const erStak = variant === "stak";
+  const ikon = status.state === "sending"
+    ? <Loader2 size={erStak ? 15 : 13} className="animate-spin" aria-hidden="true" />
+    : status.state === "sent"
+      ? <Check size={erStak ? 15 : 13} className="text-success" aria-hidden="true" />
+      : <MessageSquare size={erStak ? 15 : 13} aria-hidden="true" />;
+
   return (
-    <div ref={ref} className="relative" onClick={(e) => e.stopPropagation()}>
+    <div ref={ref} className={erStak ? "relative" : "relative"} onClick={(e) => e.stopPropagation()}>
       <button
         onClick={() => setOpen((v) => !v)}
         disabled={status.state === "sending"}
         aria-expanded={open}
-        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-ink border border-line hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60"
+        aria-label="Send SMS om forventet ankomst"
+        className={erStak
+          ? "w-full h-[46px] flex flex-col items-center justify-center gap-0.5 text-ink hover:bg-panel focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand transition-colors disabled:opacity-60"
+          : "inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-ink border border-line hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60"}
         title="Send SMS om forventet ankomst"
       >
-        {status.state === "sending" ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : status.state === "sent" ? <Check size={13} className="text-success" aria-hidden="true" /> : <MessageSquare size={13} aria-hidden="true" />}
-        {status.state === "sent" ? "Sendt" : "SMS"}
+        {ikon}
+        <span className={erStak ? "text-[9px] font-semibold uppercase tracking-wide" : ""}>
+          {status.state === "sent" ? "Sendt" : "SMS"}
+        </span>
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-line rounded-xl shadow-lg p-2 w-56">
@@ -92,6 +109,12 @@ function ArrivalSmsButton({ phone, customerName }) {
   );
 }
 
+// FORÆLDET (september 2026): montør-vælgeren blev brugt, da sælgere og
+// admins kunne bladre gennem alle montørers ruter. Nu vises montørfanen
+// kun til dem, der selv kører, og de ser altid deres EGEN tur - se
+// MontorRoute i App.jsx. Komponenten er ikke længere i brug nogen steder,
+// men står tilbage indtil det er bekræftet, at ingen anden visning får
+// brug for den; den skal fjernes ved næste oprydning.
 function TechnicianPicker({ technicians, onSelect }) {
   return (
     <div>
@@ -116,109 +139,149 @@ function TechnicianPicker({ technicians, onSelect }) {
   );
 }
 
-// Op/ned-pile til at ændre BESØGSRÆKKEFØLGEN for dagens rute. Bevidst ikke
-// træk-og-slip (langt mindre pålideligt på touch, især med en scrollende
-// liste bagved) - to store knapper virker forudsigeligt med tommelfingeren.
+// Op/ned-pile til at ændre BESØGSRÆKKEFØLGEN. Bevidst ikke træk-og-slip
+// (langt mindre pålideligt på touch, især med en scrollende liste bagved)
+// - to knapper virker forudsigeligt med tommelfingeren.
 function ReorderButtons({ onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
   return (
-    <div className="flex flex-col shrink-0" onClick={(e) => e.stopPropagation()}>
-      <button onClick={onMoveUp} disabled={!canMoveUp} aria-label="Flyt tidligere i ruten" className="p-2 rounded-md text-muted hover:text-brand hover:bg-panel disabled:opacity-20 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-brand transition-colors" title="Flyt tidligere i ruten">
-        <ChevronUp size={16} aria-hidden="true" />
+    <div className="flex flex-col shrink-0 -ml-1" onClick={(e) => e.stopPropagation()}>
+      <button onClick={onMoveUp} disabled={!canMoveUp} aria-label="Flyt tidligere i ruten" className="p-1.5 rounded-md text-muted hover:text-brand hover:bg-panel disabled:opacity-20 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-brand transition-colors" title="Flyt tidligere i ruten">
+        <ChevronUp size={15} aria-hidden="true" />
       </button>
-      <button onClick={onMoveDown} disabled={!canMoveDown} aria-label="Flyt senere i ruten" className="p-2 rounded-md text-muted hover:text-brand hover:bg-panel disabled:opacity-20 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-brand transition-colors" title="Flyt senere i ruten">
-        <ChevronDown size={16} aria-hidden="true" />
+      <button onClick={onMoveDown} disabled={!canMoveDown} aria-label="Flyt senere i ruten" className="p-1.5 rounded-md text-muted hover:text-brand hover:bg-panel disabled:opacity-20 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-brand transition-colors" title="Flyt senere i ruten">
+        <ChevronDown size={15} aria-hidden="true" />
       </button>
     </div>
   );
 }
 
-// Ét kort pr. sag i montørens rute. Opdelt i tydeligt adskilte sektioner
-// (header / alerts / kontakt / varelinjer) i stedet for én lang stak
-// tekstlinjer - det gør kortet hurtigere at skimme i marken.
+// ---------------------------------------------------------------------------
+// RUTEKORTET (ombygget september 2026)
 //
-// ÆNDRET (september 2026): status-badget kan ikke længere klikkes. Det
-// cyklede planlagt -> i gang -> afsluttet -> planlagt, og et fejlklik på
-// en afsluttet sag sendte den tilbage til start uden at spørge. Start og
-// færdigmelding sker nu inde på sagen, hvor der er plads til at gøre det
-// tydeligt, hvad man er ved at gøre.
-function OrderStopCard({ order: s, onOpen, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
-  const hasAlerts = Boolean(s.noegle?.kraeves || s.kunde.leveringsnote);
-
+// Kortet følger nu samme kompakte layout som forsidens sagskort: én
+// tekstblok til venstre, én kolonne til handling i højre side. Montøren ser
+// de to visninger skiftevis i løbet af dagen, og to forskellige layouts
+// for den samme sag gjorde det langsommere at skimme.
+//
+// STATUSMÆRKET ER VÆK. Det fyldte den mest værdifulde plads på kortet -
+// øverste højre hjørne, hvor tommelfingeren når - og fortalte noget,
+// montøren allerede vidste. Status kan stadig ses: en igangværende sag har
+// en pulserende markering ved tiden, og en færdigmeldt sag har en grøn
+// linje nederst.
+//
+// I STEDET: de tre handlinger, der rent faktisk bruges ude i bilen -
+// Naviger, SMS og Ring - stablet som ét sammenhængende felt. Stakken er
+// bevidst ÉT afrundet felt med skillelinjer frem for tre løse knapper:
+// det læses som én "hvad vil du gøre?"-blok i stedet for tre konkurrerende
+// elementer, og hver knap er 46 px høj, så de kan rammes uden at kigge.
+//
+// Hele stakken skjules for en færdigmeldt sag: kunden er besøgt, og en
+// SMS om forventet ankomst dagen efter ville være pinlig.
+function ActionStack({ order }) {
+  const harTelefon = Boolean(order.kunde?.telefon);
   return (
-    <div className="rounded-xl bg-white border border-[#ECECEC] shadow-sm hover:shadow-md transition-shadow overflow-hidden">
-      <div className="p-4 pb-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2 min-w-0">
-            {(onMoveUp || onMoveDown) && <ReorderButtons onMoveUp={onMoveUp} onMoveDown={onMoveDown} canMoveUp={canMoveUp} canMoveDown={canMoveDown} />}
-            <div className="flex items-baseline gap-3 min-w-0">
-              <span className="font-mono text-lg font-semibold text-ink shrink-0">{s.start}–{s.slut}</span>
-              {s.stemplerInd ? (
-                <span className="font-mono text-[11px] text-brand flex items-center gap-1 shrink-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" /> i gang
-                </span>
-              ) : (
-                <span className="font-mono text-[11px] text-muted flex items-center gap-1 shrink-0" title="Forventet/registreret tidsforbrug">
-                  <Clock size={10} aria-hidden="true" /> {formatDuration(totalMinutes(s) > 0 ? totalMinutes(s) : orderExpectedMinutes(s))}
-                </span>
-              )}
-            </div>
-          </div>
-          <StatusBadge status={s.status} />
-        </div>
-        <button type="button" onClick={() => onOpen(s.id)} className="text-left w-full mt-1.5 focus:outline-none focus:ring-2 focus:ring-brand rounded">
-          <p className="font-semibold text-ink truncate">{buildTitle(s.varelinjer)}</p>
-          <p className="text-sm text-muted truncate">{s.kunde.navn}{s.koeber && <span className="text-muted"> · køber {s.koeber.navn}</span>}</p>
-        </button>
-        {s.problem && (
-          <p className="text-xs font-semibold text-danger flex items-center gap-1.5 mt-1"><AlertTriangle size={12} className="shrink-0" aria-hidden="true" /> Markeret: kom ikke i mål</p>
-        )}
-      </div>
+    <div className="shrink-0 w-[74px] rounded-xl border border-line overflow-hidden divide-y divide-line bg-white">
+      <a
+        href={mapsUrl(order.kunde?.adresse || "")}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        aria-label={`Naviger til ${order.kunde?.adresse || "adressen"}`}
+        title="Åbn adressen i Google Maps"
+        className="w-full h-[46px] flex flex-col items-center justify-center gap-0.5 text-ink hover:bg-panel focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand transition-colors"
+      >
+        <Navigation size={15} aria-hidden="true" />
+        <span className="text-[9px] font-semibold uppercase tracking-wide">Naviger</span>
+      </a>
 
-      {hasAlerts && (
-        <div className="mx-4 mb-3 rounded-lg bg-brand/5 border border-brand/20 px-3 py-2 space-y-1">
-          {s.noegle?.kraeves && (
-            <p className="text-xs font-semibold text-brand flex items-center gap-1.5"><KeyRound size={13} className="shrink-0" aria-hidden="true" /> {keyAccessText(s.noegle)}</p>
-          )}
-          {s.kunde.leveringsnote && (
-            <p className="text-xs font-semibold text-brand flex items-center gap-1.5"><AlertTriangle size={13} className="shrink-0" aria-hidden="true" /> {s.kunde.leveringsnote}</p>
-          )}
+      {harTelefon ? (
+        <ArrivalSmsButton phone={order.kunde.telefon} customerName={order.kunde.navn} variant="stak" />
+      ) : (
+        <div className="w-full h-[46px] flex flex-col items-center justify-center gap-0.5 text-line" title="Kunden har intet telefonnummer på sagen">
+          <MessageSquare size={15} aria-hidden="true" />
+          <span className="text-[9px] font-semibold uppercase tracking-wide">SMS</span>
         </div>
       )}
 
-      <div className="px-4 py-3 bg-panel/60 border-t border-divider space-y-2">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <p className="text-sm text-ink truncate min-w-0">{s.kunde.adresse}</p>
-          <a href={mapsUrl(s.kunde.adresse)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 shrink-0 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors" title="Åbn adressen i Google Maps">
-            <Navigation size={13} aria-hidden="true" /> Naviger
-          </a>
+      {harTelefon ? (
+        <a
+          href={telHref(order.kunde.telefon)}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Ring til ${order.kunde.navn || "kunden"}`}
+          title={order.kunde.telefon}
+          className="w-full h-[46px] flex flex-col items-center justify-center gap-0.5 text-ink hover:bg-panel focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand transition-colors"
+        >
+          <Phone size={15} aria-hidden="true" />
+          <span className="text-[9px] font-semibold uppercase tracking-wide">Ring</span>
+        </a>
+      ) : (
+        <div className="w-full h-[46px] flex flex-col items-center justify-center gap-0.5 text-line" title="Kunden har intet telefonnummer på sagen">
+          <Phone size={15} aria-hidden="true" />
+          <span className="text-[9px] font-semibold uppercase tracking-wide">Ring</span>
         </div>
+      )}
+    </div>
+  );
+}
 
-        {s.kunde.telefon && (
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <a href={telHref(s.kunde.telefon)} className="font-mono text-sm text-ink hover:text-brand transition-colors" title="Ring til kunden">{s.kunde.telefon}</a>
-            <div className="flex items-center gap-2">
-              <a href={telHref(s.kunde.telefon)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors" title="Ring til kunden">
-                <Phone size={13} aria-hidden="true" /> Ring
-              </a>
-              <ArrivalSmsButton phone={s.kunde.telefon} customerName={s.kunde.navn} />
-            </div>
+function OrderStopCard({ order: s, onOpen, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
+  const erAfsluttet = s.status === "afsluttet";
+  const mangler = missingLineItems(s);
+  const hasAlerts = Boolean(s.noegle?.kraeves || s.kunde.leveringsnote || s.problem || mangler.length > 0);
+
+  return (
+    <div className="rounded-xl bg-white border border-[#ECECEC] shadow-sm hover:shadow-md transition-shadow p-3.5">
+      <div className="flex items-start gap-3">
+        {(onMoveUp || onMoveDown) && <ReorderButtons onMoveUp={onMoveUp} onMoveDown={onMoveDown} canMoveUp={canMoveUp} canMoveDown={canMoveDown} />}
+
+        <button type="button" onClick={() => onOpen(s.id)} className="text-left min-w-0 flex-1 focus:outline-none focus:ring-2 focus:ring-brand rounded">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <span className="font-mono text-sm font-semibold text-ink">{s.start}–{s.slut}</span>
+            {s.stemplerInd ? (
+              <span className="font-mono text-[11px] text-brand flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" /> i gang
+              </span>
+            ) : (
+              <span className="font-mono text-[11px] text-muted flex items-center gap-1" title="Forventet/registreret tidsforbrug">
+                <Clock size={10} aria-hidden="true" /> {formatDuration(totalMinutes(s) > 0 ? totalMinutes(s) : orderExpectedMinutes(s))}
+              </span>
+            )}
+            <span className="font-mono text-[10px] text-faint">#{s.nr}</span>
           </div>
-        )}
+          <p className="font-semibold text-sm text-ink truncate">{buildTitle(s.varelinjer)}</p>
+          <p className="text-xs text-muted truncate">
+            {s.kunde.navn}{s.koeber ? ` · køber ${s.koeber.navn}` : ""}
+          </p>
+          <p className="text-xs text-muted truncate">{s.kunde.adresse}</p>
+          {erAfsluttet && (
+            <p className="text-[11px] text-success flex items-center gap-1 mt-0.5">
+              <CalendarCheck2 size={11} className="shrink-0" aria-hidden="true" /> Færdigmeldt
+            </p>
+          )}
+        </button>
+
+        {/* Handlingsstakken skjules for en færdigmeldt sag: kunden er
+            besøgt, og en ankomst-SMS dagen efter ville være pinlig. */}
+        {!erAfsluttet && <ActionStack order={s} />}
       </div>
 
-      {s.varelinjer && s.varelinjer.length > 0 && (
-        <div className="px-4 py-3 border-t border-divider space-y-2">
-          {s.varelinjer.map((v) => (
-            <div key={v.id}>
-              <p className="text-xs text-ink">
-                <span className="font-medium">{lineItemLabel(v)}</span>
-                {v.primaerYdelse?.navn && <span className="text-muted"> · {v.primaerYdelse.navn}</span>}
-              </p>
-              {(v.tillaeg || []).length > 0 && (
-                <p className="text-[11px] text-ink mt-0.5">{v.tillaeg.map((y) => y.navn).join(" · ")}</p>
-              )}
-            </div>
-          ))}
+      {hasAlerts && (
+        <div className="mt-2.5 rounded-lg bg-brand/5 border border-brand/20 px-3 py-2 space-y-1">
+          {s.noegle?.kraeves && (
+            <p className="text-xs font-semibold text-brand flex items-start gap-1.5"><KeyRound size={13} className="shrink-0 mt-0.5" aria-hidden="true" /> {keyAccessText(s.noegle)}</p>
+          )}
+          {s.kunde.leveringsnote && (
+            <p className="text-xs font-semibold text-brand flex items-start gap-1.5"><AlertTriangle size={13} className="shrink-0 mt-0.5" aria-hidden="true" /> {s.kunde.leveringsnote}</p>
+          )}
+          {mangler.length > 0 && (
+            <p className="text-xs font-semibold text-danger flex items-start gap-1.5">
+              <AlertTriangle size={13} className="shrink-0 mt-0.5" aria-hidden="true" />
+              {mangler.length === 1 ? "Lageret mangler en vare til sagen" : `Lageret mangler ${mangler.length} varer til sagen`}
+            </p>
+          )}
+          {s.problem && (
+            <p className="text-xs font-semibold text-danger flex items-start gap-1.5"><AlertTriangle size={13} className="shrink-0 mt-0.5" aria-hidden="true" /> Markeret: kom ikke i mål</p>
+          )}
         </div>
       )}
     </div>
@@ -263,7 +326,7 @@ function TechnicianRouteView({ orders, technician, selectedDate, onDateChange, o
           <div className="relative pl-8">
             <div className="absolute left-[7px] top-2 bottom-2 w-[2px] bg-line" />
             {myOrders.map((s, i) => (
-              <div key={s.id} className="relative mb-4">
+              <div key={s.id} className="relative mb-3">
                 <div className="absolute -left-8 top-5 w-4 h-4 rounded-full border-2 bg-paper" style={{ borderColor: STATUS_META[s.status].color }} />
                 <OrderStopCard
                   order={s}
@@ -388,21 +451,16 @@ function ProblemPanel({ order, onSubmit, onCancel }) {
 }
 
 // ---------------- FÆRDIGMELDING (september 2026) ----------------
-// Erstatter status-skifteren. Den var et badge, der cyklede planlagt ->
-// i gang -> afsluttet -> planlagt; det var uklart hvad et klik gjorde, og
-// et fejlklik på en afsluttet sag sendte den hele vejen tilbage til start.
-//
-// Færdigmelding er nu ÉN tydelig handling med ét formål - og med en
-// PÅMINDELSE om dokumentation lige før. Placeringen er hele pointen:
-// montøren står stadig hos kunden og kan nå at tage billedet eller taste
-// den ekstra vandslange. En påmindelse bagefter, når han sidder i bilen,
-// er ubrugelig.
+// Erstatter status-skifteren. Færdigmelding er ÉN tydelig handling med ét
+// formål - og med en PÅMINDELSE om dokumentation lige før. Placeringen er
+// hele pointen: montøren står stadig hos kunden og kan nå at tage billedet
+// eller taste den ekstra vandslange. En påmindelse bagefter, når han
+// sidder i bilen, er ubrugelig.
 //
 // Påmindelsen BLOKERER bevidst ikke. Der findes rigtige opgaver uden
 // billeder, og en tvungen upload ville få folk til at fotografere gulvet
 // for at komme videre - så ville vi have dokumentation, der ser ud af
-// noget, men intet siger. Den fortæller hvad der mangler, og lader
-// montøren bestemme.
+// noget, men intet siger.
 //
 // Færdigmeldingen sætter samtidig sluttidspunktet, som tidsestimaterne
 // bygger på (se data/estimates.js). Det er derfor, den skal være en
@@ -462,19 +520,10 @@ function FinishPanel({ order, onConfirm, onCancel, onGoToTab }) {
 
 // ---------------------------------------------------------------------------
 // MONTØR-SPECIFIK SAGSDETALJE - bevidst en HELT SEPARAT visning fra den
-// delte OrderView.jsx, som bruges af admin/sælger.
-//
-// ÆNDRET (september 2026): underskriften er fjernet helt (der er ingen til
-// at skrive under i et tomt lejemål, og billeddokumentationen er den
-// rigtige dokumentation), og status-skifteren er erstattet af "Start
-// opgave" og "Færdigmeld" - se FinishPanel ovenfor.
-//
-// RETTIGHEDER: montør-rollen får som standard alle sag_*-rettigheder, så
-// for de fleste montører ændrer låsningen nedenfor intet. Den betyder
-// noget for en montør, der individuelt har fået frataget en rettighed.
+// delte OrderView.jsx, som bruges af admin/sælger. Vises til alle, der selv
+// kører (se koererSelv i App.jsx), ikke kun til rollen montor.
 function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, addReport, onStartOrder, onFinishOrder, onReopenOrder, onUpdateBooking, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem, permissions }) {
   const [tab, setTab] = React.useState("noter");
-  // Kun ét panel ad gangen.
   const [panel, setPanel] = React.useState(null); // "booking" | "dupliker" | "problem" | "faerdig"
   const canFieldwork = canDo(permissions, "sag_feltarbejde");
   const canPlan = canDo(permissions, "sag_planlaegning");
@@ -572,24 +621,16 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
             </div>
           )}
 
-          <div className="mt-3 pt-3 border-t border-divider space-y-2">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <p className="text-sm text-ink truncate min-w-0">{order.kunde.adresse}</p>
-              <a href={mapsUrl(order.kunde.adresse)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 shrink-0 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors" title="Åbn adressen i Google Maps">
-                <Navigation size={13} aria-hidden="true" /> Naviger
-              </a>
+          {/* Samme handlingsstak som på rutekortet, så de to visninger
+              opfører sig ens. */}
+          <div className="mt-3 pt-3 border-t border-divider flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm text-ink">{order.kunde.adresse}</p>
+              {order.kunde.telefon && (
+                <a href={telHref(order.kunde.telefon)} className="font-mono text-sm text-muted hover:text-brand transition-colors">{order.kunde.telefon}</a>
+              )}
             </div>
-            {order.kunde.telefon && (
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <a href={telHref(order.kunde.telefon)} className="font-mono text-sm text-ink hover:text-brand transition-colors" title="Ring til kunden">{order.kunde.telefon}</a>
-                <div className="flex items-center gap-2">
-                  <a href={telHref(order.kunde.telefon)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors" title="Ring til kunden">
-                    <Phone size={13} aria-hidden="true" /> Ring
-                  </a>
-                  <ArrivalSmsButton phone={order.kunde.telefon} customerName={order.kunde.navn} />
-                </div>
-              </div>
-            )}
+            {!erAfsluttet && <ActionStack order={order} />}
           </div>
 
           <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-divider">
