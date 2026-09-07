@@ -4,6 +4,55 @@ import { vehicleLabel, technicianColor, todayISO, activeSickLeave } from "../dat
 import { suggestUsername, isValidUsername } from "../lib/username";
 import { updateSickLeaveWindow } from "../lib/dataStore";
 
+// ---------------------------------------------------------------------------
+// FÆLLES AFKRYDSNINGSLISTE (september 2026)
+//
+// Erstatter de "piller", til-/fravalg tidligere blev vist som overalt på
+// Admin-siden. Formatet er lavet til korte ord i en flydende blok, og det
+// var galt af to grunde: rettighedsnavnene er hele sætninger, som blev
+// centreret midt i ovaler og brød over flere linjer - og selv for de korte
+// navne var det svært at se, hvad der var slået til, fordi til/fra kun
+// blev vist med farve.
+//
+// Et afkrydsningsfelt siger det samme uden at man skal lære en konvention.
+// Rigtige <input type="checkbox"> frem for knapper med aria-pressed: det
+// ER afkrydsningsfelter, og så virker tastatur og skærmlæser af sig selv,
+// uden at vi skal efterligne noget.
+//
+// columns=2 bruges, hvor der er mange korte punkter (fx 17 varetyper) - en
+// enkelt lang søjle ville fylde en hel skærm for en indstilling, man
+// sjældent rører.
+function CheckboxList({ items, columns = 1, disabled }) {
+  return (
+    <div className={`rounded-lg border border-line bg-white overflow-hidden ${columns === 2 ? "grid sm:grid-cols-2" : "divide-y divide-divider"}`}>
+      {items.map((item, i) => (
+        <label
+          key={item.key}
+          className={`flex items-start gap-3 px-3 py-2.5 cursor-pointer transition-colors ${disabled ? "opacity-50 pointer-events-none" : "hover:bg-panel"} ${
+            columns === 2 ? "border-b border-divider" : ""
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={item.checked}
+            disabled={disabled}
+            onChange={item.onChange}
+            className="w-5 h-5 mt-0.5 shrink-0 accent-brand rounded focus:outline-none focus:ring-2 focus:ring-brand"
+          />
+          <span className="min-w-0 flex-1">
+            <span className={`block text-sm leading-snug ${item.checked ? "text-ink" : "text-muted"}`}>{item.label}</span>
+            {item.note && (
+              <span className={`block text-[10px] uppercase tracking-wide mt-0.5 ${item.noteTone === "danger" ? "text-danger" : "text-success"}`}>
+                {item.note}
+              </span>
+            )}
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 // En "montør" er ikke længere en ROLLE, men alle der KØRER: rollen montor,
 // eller enhver anden bruger, der har fået slået "kan køre rute" til (se
 // UserRow nedenfor og koererSelv i App.jsx). Her på Montør-fanen styres
@@ -117,9 +166,7 @@ function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTi
 // Butiksindstilling: hvor mange timer frem en sygemeldt montørs sager
 // vises i "Sygemelding"-fanen i Planlægning. Kalder en snævert afgrænset
 // databasefunktion - IKKE et almindeligt tabelkald, fordi butiks-admins i
-// øvrigt ikke har skriveadgang til stores-tabellen. store.id sendes
-// eksplicit med, så en systemadmin, der er skiftet til en anden butik,
-// ikke rammer sin egen.
+// øvrigt ikke har skriveadgang til stores-tabellen.
 function SickLeaveWindowSetting({ store, onUpdated }) {
   const [hours, setHours] = useState(store?.sygemeldingVindueTimer ?? 48);
   const [saving, setSaving] = useState(false);
@@ -199,20 +246,6 @@ const PERMISSION_CATEGORY_LABEL = { side: "Faner/sider", sag: "Redigering på sa
 // admin_brugere TILFØJE noget ud over standarden, eller FRATAGE noget
 // rollen ellers ville give, for netop denne person. Håndhæves også i
 // databasen, så det ikke kan omgås ved at redigere UI'et.
-//
-// ÆNDRET (september 2026): rettighederne blev vist som "pille"-knapper i
-// en flydende blok. Formatet er lavet til korte ord, men rettighedernes
-// navne er hele sætninger ("Tidsregistrering, noter, billeder, rapporter,
-// materialer, status, problem-markering") - de brød over flere linjer,
-// blev centreret midt i en oval, og "· standard" landede for sig selv i
-// højre side. Resultatet var en mur af grønne klatter, hvor det var svært
-// at se, hvad der var slået til.
-//
-// Nu en almindelig LISTE med afkrydsningsfelter: ét punkt pr. linje,
-// venstrestillet tekst, og feltet til venstre hvor øjet leder efter det.
-// Rigtige <input type="checkbox"> frem for knapper med aria-pressed -
-// afkrydsningsfelter er præcis dét, det her er, og de fungerer med
-// tastatur og skærmlæser uden at vi skal efterligne noget.
 function PermissionsEditor({ user, permissionsCatalog, roleDefaults, onUpdatePermissions }) {
   const [busy, setBusy] = useState(false);
   const roleDefaultSet = new Set(roleDefaults[user.rolle] || []);
@@ -251,40 +284,28 @@ function PermissionsEditor({ user, permissionsCatalog, roleDefaults, onUpdatePer
         Object.entries(byCategory).map(([category, perms]) => (
           <div key={category}>
             <p className="text-[10px] uppercase tracking-wide text-muted mb-1.5">{PERMISSION_CATEGORY_LABEL[category] || category}</p>
-            <div className="rounded-lg border border-line bg-white overflow-hidden divide-y divide-divider">
-              {perms.map((p) => {
+            <CheckboxList
+              disabled={busy}
+              items={perms.map((p) => {
                 const checked = isChecked(p.key);
                 const fromRole = isFromRole(p.key);
-                const afviger = (fromRole && !checked) || (!fromRole && checked);
-                return (
-                  <label
-                    key={p.key}
-                    className={`flex items-start gap-3 px-3 py-2.5 cursor-pointer transition-colors ${busy ? "opacity-50 pointer-events-none" : "hover:bg-panel"}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      disabled={busy}
-                      onChange={() => toggle(p.key)}
-                      className="w-5 h-5 mt-0.5 shrink-0 accent-brand focus:outline-none focus:ring-2 focus:ring-brand rounded"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className={`block text-sm leading-snug ${checked ? "text-ink" : "text-muted"}`}>{p.label}</span>
-                      {/* Kun de rettigheder, der AFVIGER fra rollens
-                          standard, får en mærkat. Stod der "standard" ved
-                          hver eneste afkrydsede linje, ville netop de
-                          individuelle ændringer - dem man skal kunne få
-                          øje på - drukne i gentagelser. */}
-                      {afviger && (
-                        <span className={`block text-[10px] uppercase tracking-wide mt-0.5 ${checked ? "text-success" : "text-danger"}`}>
-                          {checked ? "Tilføjet ud over rollen" : `Frataget (rollen ${ROLE_LABEL[user.rolle] || user.rolle} har den normalt)`}
-                        </span>
-                      )}
-                    </span>
-                  </label>
-                );
+                // Kun de rettigheder, der AFVIGER fra rollens standard, får
+                // en mærkat. Stod der "standard" ved hver eneste afkrydsede
+                // linje, ville netop de individuelle ændringer - dem man
+                // skal kunne få øje på - drukne i gentagelser.
+                const afviger = fromRole !== checked;
+                return {
+                  key: p.key,
+                  label: p.label,
+                  checked,
+                  onChange: () => toggle(p.key),
+                  note: afviger
+                    ? (checked ? "Tilføjet ud over rollen" : `Frataget (rollen ${ROLE_LABEL[user.rolle] || user.rolle} har den normalt)`)
+                    : null,
+                  noteTone: checked ? "success" : "danger",
+                };
               })}
-            </div>
+            />
           </div>
         ))
       )}
@@ -317,16 +338,12 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
 
   const canEditPermissions = user.id !== currentUserId && onUpdatePermissions && permissionsCatalog;
 
-  // KAN KØRE RUTE (september 2026). Rollen 'montor' kører altid - for dem
-  // er der intet at slå til eller fra, og knappen vises derfor ikke.
-  // For ALLE ANDRE roller er det et valg: en sælger eller en admin, der
-  // tager en rute en gang imellem, skal ikke have en ekstra brugerkonto.
-  // To konti for samme menneske spreder sagerne over to navne og sender
-  // notifikationer til den forkerte af dem.
-  //
-  // Slås det til, kan personen tildeles sager og en bil, og de får
-  // Montør-fanen med deres EGEN tur (se koererSelv i App.jsx). Rollen
-  // ændres ikke - de er stadig sælger i alt andet.
+  // KAN KØRE RUTE. Rollen 'montor' kører altid - for dem er der intet at
+  // slå til eller fra, og knappen vises derfor ikke. For alle andre roller
+  // er det et valg: en sælger eller admin, der tager en rute en gang
+  // imellem, skal ikke have en ekstra brugerkonto. To konti for samme
+  // menneske spreder sagerne over to navne og sender notifikationer til
+  // den forkerte af dem.
   const erFastMontor = user.rolle === "montor";
   const koerer = erFastMontor || user.kanKoere === true;
 
@@ -627,11 +644,9 @@ function PrimaryServiceAdmin({ primaryServices, onAdd, onUpdate, onDelete }) {
 // gælder under (påkrævet), og valgfrit hvilke varetyper den er begrænset
 // til (tomt = gælder alle).
 //
-// Her er "pillerne" beholdt, i modsætning til rettighedslisten ovenfor:
-// navnene er korte ord ("Køleskab", "Montering"), og der er mange af dem.
-// Til dét er en flydende blok det rigtige - en lodret liste med 17
-// varetyper ville fylde en hel skærm for en indstilling, man sjældent
-// rører.
+// Også her er pillerne væk. Varetyperne står i TO KOLONNER, så de 17
+// punkter ikke bliver til en meterlang søjle for en indstilling, man
+// sjældent rører - se CheckboxList øverst i filen.
 
 function AddOnServiceRow({ service, productTypes, primaryServices, onUpdate, onDelete }) {
   const togglePrimary = (pId) => {
@@ -653,35 +668,32 @@ function AddOnServiceRow({ service, productTypes, primaryServices, onUpdate, onD
         <div className="mt-3 pt-3 border-t border-divider space-y-3">
           <div>
             <p className="text-[10px] uppercase tracking-wide text-muted mb-1.5">Vises kun ved disse primære ydelser (påkrævet)</p>
-            <div className="flex flex-wrap gap-1.5">
-              {primaryServices.length === 0 ? (
-                <p className="text-xs text-muted italic">Opret først en primær ydelse.</p>
-              ) : (
-                primaryServices.map((p) => {
-                  const selected = (service.primaerYdelser || []).includes(p.id);
-                  return (
-                    <button key={p.id} onClick={() => togglePrimary(p.id)} aria-pressed={selected} className={`text-xs px-2.5 py-2 rounded-lg border transition-colors focus:outline-none focus:ring-2 focus:ring-brand ${selected ? "border-success bg-success/10 text-success" : "border-line text-muted hover:border-brand hover:text-brand"}`}>
-                      {p.navn}
-                    </button>
-                  );
-                })
-              )}
-            </div>
+            {primaryServices.length === 0 ? (
+              <p className="text-xs text-muted italic">Opret først en primær ydelse.</p>
+            ) : (
+              <CheckboxList
+                items={primaryServices.map((p) => ({
+                  key: p.id,
+                  label: p.navn,
+                  checked: (service.primaerYdelser || []).includes(p.id),
+                  onChange: () => togglePrimary(p.id),
+                }))}
+              />
+            )}
           </div>
           <div>
             <p className="text-[10px] uppercase tracking-wide text-muted mb-1.5">
-              Begræns til bestemte varetyper <span className="normal-case text-muted/70">({isUniversal ? "gælder lige nu for alle varetyper" : "kun de markerede"})</span>
+              Begræns til bestemte varetyper <span className="normal-case text-muted/70">({isUniversal ? "ingen markeret = gælder alle varetyper" : "kun de markerede"})</span>
             </p>
-            <div className="flex flex-wrap gap-1.5">
-              {productTypes.map((v) => {
-                const selected = (service.varetyper || []).includes(v.id);
-                return (
-                  <button key={v.id} onClick={() => toggleProductType(v.id)} aria-pressed={selected} className={`text-xs px-2.5 py-2 rounded-lg border transition-colors focus:outline-none focus:ring-2 focus:ring-brand ${selected ? "border-brand bg-brand/10 text-brand" : "border-line text-muted hover:border-brand hover:text-brand"}`}>
-                    {v.navn}
-                  </button>
-                );
-              })}
-            </div>
+            <CheckboxList
+              columns={2}
+              items={productTypes.map((v) => ({
+                key: v.id,
+                label: v.navn,
+                checked: (service.varetyper || []).includes(v.id),
+                onChange: () => toggleProductType(v.id),
+              }))}
+            />
           </div>
         </div>
       }
