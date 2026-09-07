@@ -199,6 +199,20 @@ const PERMISSION_CATEGORY_LABEL = { side: "Faner/sider", sag: "Redigering på sa
 // admin_brugere TILFØJE noget ud over standarden, eller FRATAGE noget
 // rollen ellers ville give, for netop denne person. Håndhæves også i
 // databasen, så det ikke kan omgås ved at redigere UI'et.
+//
+// ÆNDRET (september 2026): rettighederne blev vist som "pille"-knapper i
+// en flydende blok. Formatet er lavet til korte ord, men rettighedernes
+// navne er hele sætninger ("Tidsregistrering, noter, billeder, rapporter,
+// materialer, status, problem-markering") - de brød over flere linjer,
+// blev centreret midt i en oval, og "· standard" landede for sig selv i
+// højre side. Resultatet var en mur af grønne klatter, hvor det var svært
+// at se, hvad der var slået til.
+//
+// Nu en almindelig LISTE med afkrydsningsfelter: ét punkt pr. linje,
+// venstrestillet tekst, og feltet til venstre hvor øjet leder efter det.
+// Rigtige <input type="checkbox"> frem for knapper med aria-pressed -
+// afkrydsningsfelter er præcis dét, det her er, og de fungerer med
+// tastatur og skærmlæser uden at vi skal efterligne noget.
 function PermissionsEditor({ user, permissionsCatalog, roleDefaults, onUpdatePermissions }) {
   const [busy, setBusy] = useState(false);
   const roleDefaultSet = new Set(roleDefaults[user.rolle] || []);
@@ -230,38 +244,53 @@ function PermissionsEditor({ user, permissionsCatalog, roleDefaults, onUpdatePer
   permissionsCatalog.forEach((p) => { (byCategory[p.category] ||= []).push(p); });
 
   return (
-    <div className="border-t border-divider p-3 bg-panel space-y-3">
+    <div className="border-t border-divider p-3 bg-panel space-y-4">
       {permissionsCatalog.length === 0 ? (
         <p className="text-xs text-muted italic">Indlæser rettighedskatalog...</p>
       ) : (
         Object.entries(byCategory).map(([category, perms]) => (
           <div key={category}>
             <p className="text-[10px] uppercase tracking-wide text-muted mb-1.5">{PERMISSION_CATEGORY_LABEL[category] || category}</p>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="rounded-lg border border-line bg-white overflow-hidden divide-y divide-divider">
               {perms.map((p) => {
                 const checked = isChecked(p.key);
                 const fromRole = isFromRole(p.key);
+                const afviger = (fromRole && !checked) || (!fromRole && checked);
                 return (
-                  <button
+                  <label
                     key={p.key}
-                    disabled={busy}
-                    onClick={() => toggle(p.key)}
-                    aria-pressed={checked}
-                    title={p.label}
-                    className={`text-xs px-2.5 py-2 rounded-lg border transition-colors flex items-center gap-1 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brand ${
-                      checked ? "border-success bg-success/10 text-success" : "border-line text-muted hover:border-brand hover:text-brand"
-                    }`}
+                    className={`flex items-start gap-3 px-3 py-2.5 cursor-pointer transition-colors ${busy ? "opacity-50 pointer-events-none" : "hover:bg-panel"}`}
                   >
-                    {p.label}
-                    {checked && fromRole && <span className="text-[9px] uppercase tracking-wide opacity-70">· standard</span>}
-                  </button>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={busy}
+                      onChange={() => toggle(p.key)}
+                      className="w-5 h-5 mt-0.5 shrink-0 accent-brand focus:outline-none focus:ring-2 focus:ring-brand rounded"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className={`block text-sm leading-snug ${checked ? "text-ink" : "text-muted"}`}>{p.label}</span>
+                      {/* Kun de rettigheder, der AFVIGER fra rollens
+                          standard, får en mærkat. Stod der "standard" ved
+                          hver eneste afkrydsede linje, ville netop de
+                          individuelle ændringer - dem man skal kunne få
+                          øje på - drukne i gentagelser. */}
+                      {afviger && (
+                        <span className={`block text-[10px] uppercase tracking-wide mt-0.5 ${checked ? "text-success" : "text-danger"}`}>
+                          {checked ? "Tilføjet ud over rollen" : `Frataget (rollen ${ROLE_LABEL[user.rolle] || user.rolle} har den normalt)`}
+                        </span>
+                      )}
+                    </span>
+                  </label>
                 );
               })}
             </div>
           </div>
         ))
       )}
-      <p className="text-[10px] text-muted">Rettigheder mærket "standard" kommer fra brugerens rolle. Klik for at tilføje eller fratage en rettighed for præcis denne bruger - ændringer gemmes med det samme.</p>
+      <p className="text-[10px] text-muted">
+        Uden mærkat følger rettigheden rollens standard. Ændringer gemmes med det samme og gælder kun denne bruger.
+      </p>
     </div>
   );
 }
@@ -318,8 +347,7 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
             {ROLE_LABEL[user.rolle] || user.rolle}
             {user.brugernavn && <span> · logger ind som "{user.brugernavn}"</span>}
             {koerer && <span> · {vehicle ? vehicleLabel(vehicle) : "kører rute, ingen bil endnu"}</span>}
-            {!erFastMontor && user.kanKoere && <span> · kører også rute</span>}
-            {(user.extraPermissions?.length > 0 || user.revokedPermissions?.length > 0) && <span> · individuelt tilpasset</span>}
+            {(user.extraPermissions?.length > 0 || user.revokedPermissions?.length > 0) && <span> · rettigheder tilpasset</span>}
           </p>
         </div>
         <select value={user.rolle} onChange={(e) => onUpdate(user.id, { rolle: e.target.value })} aria-label={`Rolle for ${user.navn}`} className="rounded-lg border border-line bg-panel px-2 py-2 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-brand">
@@ -348,8 +376,7 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
         {/* Tooltip'en sagde tidligere "Fjern adgang", fordi knappen dengang
             blot fjernede butikstilknytningen. Den SLETTER nu brugeren
             permanent, og en knap må ikke beskrive sig selv mildere end den
-            handler. Bekræftelsen, med konsekvenserne hentet fra serveren,
-            ligger i useUsers.js. */}
+            handler. Bekræftelsen ligger i useUsers.js. */}
         {user.id !== currentUserId && (
           <button onClick={() => onDelete(user.id)} aria-label={`Slet brugeren ${user.navn} permanent`} className="w-10 h-10 flex items-center justify-center rounded-lg text-muted hover:text-danger focus:outline-none focus:ring-2 focus:ring-danger" title="Slet bruger permanent">
             <Trash2 size={15} aria-hidden="true" />
@@ -599,6 +626,12 @@ function PrimaryServiceAdmin({ primaryServices, onAdd, onUpdate, onDelete }) {
 // Her styres relationerne ét sted: hvilke primære ydelser en tillægsydelse
 // gælder under (påkrævet), og valgfrit hvilke varetyper den er begrænset
 // til (tomt = gælder alle).
+//
+// Her er "pillerne" beholdt, i modsætning til rettighedslisten ovenfor:
+// navnene er korte ord ("Køleskab", "Montering"), og der er mange af dem.
+// Til dét er en flydende blok det rigtige - en lodret liste med 17
+// varetyper ville fylde en hel skærm for en indstilling, man sjældent
+// rører.
 
 function AddOnServiceRow({ service, productTypes, primaryServices, onUpdate, onDelete }) {
   const togglePrimary = (pId) => {
