@@ -3,6 +3,7 @@ import { KeyRound, Building2, Hash, Pencil, X, Check, Copy, AlertTriangle, User,
 import { TIME_SLOTS, buildTitle, keyAccessText, timeSlotById, timeSlotText, lineItemLabel, canDo, createLineItem, missingLineItems, OTHER_PRODUCT_TYPE_ID } from "../data/domain";
 import { StatusBadge } from "../components/common";
 import { LineItemDetails, Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
+import { CustomerHistoryLookup } from "../components/OrderFormFields";
 import { AddressInput } from "../components/AddressInput";
 
 // Hurtig-redigering af en booket sag: dato, tidsrum, montør og
@@ -350,7 +351,12 @@ function MissingItemsBanner({ order, onClearMissingItem, canFieldwork }) {
 // færdigmeldte for tidligt. Uden den vej ville en fejl-færdigmelding være
 // en blindgyde, og det er præcis den slags, der får folk til at oprette en
 // dublet-sag i stedet.
-function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onSetLineItems, onClearMissingItem, onDeleteOrder, onReopenOrder }) {
+//
+// KUNDEHISTORIK (september 2026): en knap ved siden af de øvrige, der
+// åbner en popup forudfyldt med sagens telefon og adresse - se
+// CustomerHistoryLookup i OrderFormFields.jsx. Kræver den fulde ordreliste
+// (orders), som App.jsx sender med fra samme sted, sagen selv kommer fra.
+function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addReport, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onSetLineItems, onClearMissingItem, onDeleteOrder, onReopenOrder }) {
   const [tab, setTab] = useState("noter");
   // Kun ÉT panel ad gangen - to åbne redigeringer på samme sag ville både
   // fylde skærmen og gøre det uklart, hvad "Gem" gemmer.
@@ -452,6 +458,16 @@ function OrderView({ order, technicians, onBack, addNote, addPhoto, addReport, o
                 <button onClick={onReopenOrder} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-1 py-1.5 flex items-center gap-1" title="Sagen var ikke færdig alligevel">
                   <RotateCw size={13} aria-hidden="true" /> Genåbn sag
                 </button>
+              )}
+              {orders && (
+                <CustomerHistoryLookup
+                  orders={orders}
+                  currentOrderId={order.id}
+                  phone={order.kunde?.telefon}
+                  address={order.kunde?.adresse}
+                  name={order.kunde?.navn}
+                  onOpen={onOpenOrder}
+                />
               )}
               {(canPlan || canEditCustomer) && (
                 <button onClick={() => setPanel("booking")} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-1 py-1.5 flex items-center gap-1"><Pencil size={13} aria-hidden="true" /> Redigér booking</button>
