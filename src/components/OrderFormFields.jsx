@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin, Sparkles, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Check, Loader2, CheckCircle2, XCircle } from "lucide-react";
-import { OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID, KEY_ACCESS_TYPES, buildingKey, formatLongDate, formatDuration, lineItemMinutes, availableAddOns, serviceIcon, todayISO, addDays, weekDays, orderExpectedMinutes } from "../data/domain";
+import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin, Sparkles, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Check, Loader2, CheckCircle2, XCircle, Search, Phone } from "lucide-react";
+import { OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID, KEY_ACCESS_TYPES, buildingKey, formatLongDate, formatDuration, lineItemMinutes, availableAddOns, serviceIcon, todayISO, addDays, weekDays, orderExpectedMinutes, buildTitle } from "../data/domain";
 import { lookupPunkt1Product } from "../lib/dataStore";
 import { geocodeAddress, geocodeAddresses, drivingDistances } from "../lib/geocoding";
 import { suggestBookingDates } from "../lib/scheduling";
@@ -339,6 +339,134 @@ function CustomerHistory({ phone, name, orders, onOpen }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// ARKIVOPSLAG SOM POPUP (september 2026)
+//
+// Inspireret af et tidligere reparationssystem, hvor et arkiv-ikon på en
+// sag åbnede en popup forudfyldt med apparatets fabrikat/type/model, og
+// lod montøren søge tidligere reparationer på PRÆCIS det apparat.
+//
+// Vi monterer/leverer, vi reparerer ikke gentagne gange på samme apparat -
+// så det, der reelt er interessant her, er kunden/leveringsadressen, ikke
+// varen. Popuppen forudfylder derfor telefon OG adresse fra den sag, man
+// står på, og matcher øvrige sager på ENTEN:
+//   - samme telefonnummer (normaliseret, samme kunde ringer/har ringet)
+//   - samme "opgang" (buildingKey - samme funktion som Planlægning bruger
+//     til at opdage "samme opgang" ved ruteforslag), så en tidligere sag
+//     hos en anden beboer i samme opgang/ejendom også dukker op - relevant
+//     hvis fx en udlejer har fået lavet noget i en anden lejlighed i
+//     samme bygning.
+//
+// Begge felter er REDIGERBARE i popuppen, ikke kun forudfyldte labels -
+// står man med en anden telefon eller vil søge en anden adresse, skal man
+// ikke lukke popuppen og åbne en ny.
+function CustomerHistoryLookup({ orders, currentOrderId, phone, address, name, onOpen }) {
+  const [open, setOpen] = useState(false);
+  const [searchPhone, setSearchPhone] = useState(phone || "");
+  const [searchAddress, setSearchAddress] = useState(address || "");
+
+  // Genindlæs felterne med sagens aktuelle værdier, hver gang popuppen
+  // åbnes - ikke løbende, mens man redigerer resten af sagen i baggrunden,
+  // for så ville et åbent søgefelt blive overskrevet under næsen på en.
+  const openModal = () => {
+    setSearchPhone(phone || "");
+    setSearchAddress(address || "");
+    setOpen(true);
+  };
+
+  if (!open) {
+    return (
+      <button
+        onClick={openModal}
+        className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-1 py-1.5 flex items-center gap-1"
+      >
+        <History size={13} aria-hidden="true" /> Slå kunde op i arkivet
+      </button>
+    );
+  }
+
+  const normPhone = searchPhone.replace(/\D/g, "");
+  const searchKey = buildingKey(searchAddress);
+
+  const matches = (orders || [])
+    .filter((o) => o.id !== currentOrderId)
+    .filter((o) => {
+      const oPhone = (o.kunde?.telefon || "").replace(/\D/g, "");
+      const phoneMatch = normPhone.length >= 6 && oPhone && oPhone === normPhone;
+      const addressMatch = searchKey && buildingKey(o.kunde?.adresse) === searchKey;
+      return phoneMatch || addressMatch;
+    })
+    .sort((a, b) => (b.dato + b.start).localeCompare(a.dato + a.start));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-ink/40 p-3" role="dialog" aria-modal="true" aria-label="Slå kunde op i arkivet">
+      <div className="w-full sm:max-w-md max-h-[85vh] flex flex-col rounded-xl bg-white border border-line shadow-lg">
+        <div className="flex items-center justify-between gap-2 p-4 pb-3 border-b border-divider shrink-0">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink flex items-center gap-1.5"><History size={15} aria-hidden="true" /> Arkiv</h2>
+          <button onClick={() => setOpen(false)} aria-label="Luk" className="w-9 h-9 -m-1 flex items-center justify-center rounded-lg text-muted hover:text-ink focus:outline-none focus:ring-2 focus:ring-brand">
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="p-4 pb-3 space-y-2 shrink-0">
+          <label className="text-xs text-muted block">
+            Telefon
+            <div className="relative mt-1">
+              <Phone size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
+              <input
+                value={searchPhone}
+                onChange={(e) => setSearchPhone(e.target.value)}
+                placeholder="Telefonnummer"
+                className="w-full rounded-lg border border-line bg-panel pl-8 pr-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
+              />
+            </div>
+          </label>
+          <label className="text-xs text-muted block">
+            Adresse
+            <div className="relative mt-1">
+              <MapPin size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
+              <input
+                value={searchAddress}
+                onChange={(e) => setSearchAddress(e.target.value)}
+                placeholder="Adresse"
+                className="w-full rounded-lg border border-line bg-panel pl-8 pr-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
+              />
+            </div>
+          </label>
+          <p className="text-[10px] text-muted">Matcher på telefonnummer eller samme opgang/ejendom — begge felter kan rettes for at søge bredere eller mere præcist.</p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 pb-4 border-t border-divider pt-3">
+          {normPhone.length < 6 && !searchKey ? (
+            <p className="text-xs text-muted italic flex items-center gap-1.5"><Search size={13} className="shrink-0" aria-hidden="true" /> Udfyld telefon eller adresse for at søge.</p>
+          ) : matches.length === 0 ? (
+            <p className="text-xs text-muted italic">Ingen tidligere sager fundet.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {matches.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => { setOpen(false); onOpen?.(s.id); }}
+                  className="w-full text-left rounded-lg bg-white border border-line hover:border-brand transition-colors px-3 py-2"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-ink">{formatLongDate(s.dato)}</span>
+                    <span className="text-[10px] font-mono text-muted shrink-0">#{s.nr}</span>
+                  </div>
+                  <p className="text-xs text-ink truncate">{s.kunde?.navn}</p>
+                  <p className="text-[11px] text-muted truncate">{buildTitle(s.varelinjer)}</p>
+                  <p className="text-[11px] text-muted truncate">{s.kunde?.adresse}</p>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const WORKDAY_MINUTES = 450; // ~7,5 time
 function hoursLabel(minutes) {
   if (minutes === 0) return "–";
@@ -630,4 +758,4 @@ function SuggestedDates({ orders, technicians, date, address, jobSummary, onSele
   );
 }
 
-export { LineItemEditor, KeyAccessFields, CustomerHistory, SuggestedDates, InteractiveWeekPicker };
+export { LineItemEditor, KeyAccessFields, CustomerHistory, CustomerHistoryLookup, SuggestedDates, InteractiveWeekPicker };
