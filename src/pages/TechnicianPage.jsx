@@ -284,42 +284,9 @@ function OrderStopCard({ order: s, onOpen, onMoveUp, onMoveDown, canMoveUp, canM
   );
 }
 
-// Dagens fremdrift (september 2026). Bevidst regnet som FÆRDIGE AF
-// PÅBEGYNDTE, ikke af hele dagens sager - tallet skal svare på "af det jeg
-// er gået i gang med, hvor meget har jeg lukket", ikke "hvor langt er jeg
-// nået i dagens samlede mængde". Det er de to forskellige spørgsmål en
-// montør reelt kan finde på at stille sig selv midt på dagen, og det
-// første er det mere nyttige af de to.
-//
-// Vises kun når der ER påbegyndt noget - en dag der endnu ikke er startet
-// har ikke brug for en 0%-boks øverst på skærmen.
-function DayProgress({ started, done }) {
-  if (started === 0) return null;
-  const percent = Math.round((done / started) * 100);
-  return (
-    <div className="rounded-xl border border-line bg-white px-4 py-3 mb-4 flex items-center gap-6 shadow-sm">
-      <div>
-        <p className="font-display text-3xl leading-none text-ink">{started}</p>
-        <p className="text-[10px] uppercase tracking-wide text-muted mt-0.5">Påbegyndt</p>
-      </div>
-      <div>
-        <p className="font-display text-3xl leading-none text-success">{done}</p>
-        <p className="text-[10px] uppercase tracking-wide text-muted mt-0.5">Færdige</p>
-      </div>
-      <div className="ml-auto text-right">
-        <p className="font-display text-4xl leading-none text-brand">{percent}%</p>
-        <p className="text-[10px] uppercase tracking-wide text-muted mt-0.5">af det påbegyndte</p>
-      </div>
-    </div>
-  );
-}
-
 function TechnicianRouteView({ orders, technician, selectedDate, onDateChange, onOpen, onReorder, onChangeTechnician, onRefresh, refreshing }) {
   const myOrders = orders.filter((s) => s.montorId === technician.id && s.dato === selectedDate).sort(dailyOrderCompare);
   const done = myOrders.filter((s) => s.status === "afsluttet").length;
-  // "Påbegyndt" = ikke længere bare planlagt - dvs. i gang ELLER allerede
-  // færdig. En færdig sag var jo per definition også i gang på et tidspunkt.
-  const started = myOrders.filter((s) => s.status !== "planlagt").length;
 
   return (
     <div>
@@ -344,8 +311,6 @@ function TechnicianRouteView({ orders, technician, selectedDate, onDateChange, o
           )}
         </div>
       </div>
-
-      <DayProgress started={started} done={done} />
 
       {myOrders.length === 0 ? (
         <p className="text-sm text-muted italic">Ingen sager booket på din bil denne dag endnu.</p>
