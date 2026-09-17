@@ -83,6 +83,12 @@ function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder,
 
   const sharedProps = {
     order,
+    // "orders" (den FULDE liste) sendes med, så OrderView kan tilbyde
+    // kundehistorik-opslaget - se CustomerHistoryLookup i
+    // OrderFormFields.jsx. Manglede tidligere: sharedProps havde adgang
+    // til orders via lukningen, men glemte at lægge den i selve objektet,
+    // så OrderView aldrig modtog den og knappen aldrig blev vist.
+    orders,
     technicians,
     permissions,
     onBack: () => navigate(-1),
