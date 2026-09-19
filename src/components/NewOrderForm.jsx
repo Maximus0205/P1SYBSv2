@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Plus, Building2, Clock, Hash, ChevronLeft, ChevronRight, Check, KeyRound, AlertTriangle } from "lucide-react";
 import { TIME_SLOTS, buildTitle, formatDuration, createLineItem, lineItemMinutes, timeSlotById, timeSlotText, todayISO, emptyKeyAccess, keyAccessText } from "../data/domain";
 import { CASE_TYPES, SAGSTYPE_KUNDE, SAGSTYPE_TOMGANG, tomgangWarnings, TOMGANG_COLOR } from "../data/caseTypes";
+import { buildEstimateIndex } from "../data/estimates";
 import { ReceiptUpload } from "../components/ReceiptUpload";
 import { LineItemEditor, KeyAccessFields, CustomerHistory, SuggestedDates, InteractiveWeekPicker } from "../components/OrderFormFields";
 import { AddressInput } from "../components/AddressInput";
@@ -99,6 +100,13 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
   const erTomgang = caseTypeId === SAGSTYPE_TOMGANG;
   const titlePreview = buildTitle(lineItems);
   const expectedMinutes = lineItems.reduce((sum, l) => sum + lineItemMinutes(l), 0);
+
+  // Grundestimat ud fra MÅLT tid på tidligere afsluttede sager (se
+  // data/estimates.js). Bygges én gang pr. åbning af formularen (orders
+  // ændrer sig ikke undervejs i en booking) - ikke ved hvert tastetryk i
+  // en linje, hvilket ville genberegne hele indekset for hver bogstav en
+  // sælger skriver.
+  const estimateIndex = useMemo(() => buildEstimateIndex(orders), [orders]);
 
   // Skifter man TIL tomgang, slås nøgle/adgang til med det samme. Det er
   // ikke en antagelse om, at nøglen er på plads - det er at åbne felterne,
@@ -293,7 +301,18 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
           </div>
           <div className="space-y-2">
             {lineItems.map((l, idx) => (
-              <LineItemEditor key={l.id} lineItem={l} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} onChange={(next) => updateLineItem(idx, next)} onRemove={() => removeLineItem(idx)} canRemove={lineItems.length > 1} />
+              <LineItemEditor
+                key={l.id}
+                lineItem={l}
+                productTypes={productTypes}
+                productCategories={productCategories}
+                primaryServices={primaryServices}
+                addOnServices={addOnServices}
+                estimateIndex={estimateIndex}
+                onChange={(next) => updateLineItem(idx, next)}
+                onRemove={() => removeLineItem(idx)}
+                canRemove={lineItems.length > 1}
+              />
             ))}
           </div>
         </div>
