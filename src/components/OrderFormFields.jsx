@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin, Sparkles, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Check, Loader2, CheckCircle2, XCircle, Search, Phone } from "lucide-react";
 import { OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID, KEY_ACCESS_TYPES, buildingKey, formatLongDate, formatDuration, lineItemMinutes, availableAddOns, serviceIcon, todayISO, addDays, weekDays, orderExpectedMinutes, buildTitle } from "../data/domain";
-import { estimateForLineItem } from "../data/estimates";
+import { estimateForLineItem, estimateForCluster } from "../data/estimates";
 import { lookupPunkt1Product } from "../lib/dataStore";
 import { geocodeAddress, geocodeAddresses, drivingDistances } from "../lib/geocoding";
 import { suggestBookingDates } from "../lib/scheduling";
@@ -156,6 +156,56 @@ function EstimateSuggestion({ estimateIndex, lineItem, onApply }) {
       Målt gennemsnit: {suggestion.minutter} min {suggestion.grundlag} ({suggestion.antal} tidligere {suggestion.antal === 1 ? "sag" : "sager"}).
       <button type="button" onClick={() => onApply(suggestion.minutter)} className="font-semibold uppercase tracking-wide underline hover:no-underline">
         Brug
+      </button>
+    </p>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// KLYNGEESTIMAT: STORDRIFT PÅ SAMME SAG (september 2026)
+//
+// Dækker den simple, kendte situation: FLERE VARELINJER PÅ ÉN SAG (fx 4
+// enheder til samme lejlighed). Fire enheder tager typisk markant mindre
+// tid tilsammen end fire enkeltmonteringer, fordi bilen kun pakkes ud og
+// værktøjet kun stilles op én gang - se estimateForCluster i
+// data/estimates.js for selve beregningen.
+//
+// DÆKKER IKKE flere SEPARATE sager i samme opgang samme dag (fx 6
+// lejligheder, hver sin sag) - det kræver at kende dato og adresse, før
+// varelinjerne er endeligt sat, og hører hjemme ved tidspunkt-valget, ikke
+// her på vare-trinnet. Det er bevidst ikke bygget endnu.
+//
+// VISER INTET, FØR DER ER NOK DATA: estimateForCluster returnerer
+// maaltKlynge:false, indtil mindst tre tidligere klynger af samme
+// størrelse er målt. Indtil da er der intet at vise - motoren samler i
+// mellemtiden bare data i baggrunden, hver gang en sag med flere linjer
+// færdigmeldes.
+function ClusterEstimateNote({ estimateIndex, clusterIndex, lineItems, onApplyFactor }) {
+  if (!estimateIndex || !clusterIndex || !lineItems || lineItems.length < 2) return null;
+  const estimate = estimateForCluster(estimateIndex, clusterIndex, lineItems);
+  if (!estimate || !estimate.maaltKlynge) return null;
+
+  const nuvaerendeSum = lineItems.reduce((sum, l) => sum + (l.primaerYdelse?.minutter ?? 0), 0);
+  const antalKlyngerTekst = `${estimate.antal} tidligere ${estimate.antal === 1 ? "klynge" : "klynger"}`;
+
+  if (nuvaerendeSum === estimate.minutter) {
+    return (
+      <p className="text-[11px] text-success flex items-center gap-1.5 mt-2">
+        <Check size={11} className="shrink-0" aria-hidden="true" /> Tiden matcher det målte for {estimate.enheder} enheder samme sted ({antalKlyngerTekst}).
+      </p>
+    );
+  }
+
+  const diffTekst = estimate.faktor < 1
+    ? `${Math.round((1 - estimate.faktor) * 100)}% hurtigere end enkeltvis`
+    : `${Math.round((estimate.faktor - 1) * 100)}% langsommere end enkeltvis`;
+
+  return (
+    <p className="text-[11px] text-brand flex items-center gap-1.5 mt-2 flex-wrap">
+      <History size={11} className="shrink-0" aria-hidden="true" />
+      Målt for {estimate.enheder} enheder samme sted: {formatDuration(estimate.minutter)} ({diffTekst}, {antalKlyngerTekst}).
+      <button type="button" onClick={() => onApplyFactor(estimate.faktor)} className="font-semibold uppercase tracking-wide underline hover:no-underline">
+        Fordel på linjerne
       </button>
     </p>
   );
@@ -803,4 +853,4 @@ function SuggestedDates({ orders, technicians, date, address, jobSummary, onSele
   );
 }
 
-export { LineItemEditor, KeyAccessFields, CustomerHistory, CustomerHistoryLookup, SuggestedDates, InteractiveWeekPicker };
+export { LineItemEditor, KeyAccessFields, CustomerHistory, CustomerHistoryLookup, SuggestedDates, InteractiveWeekPicker, ClusterEstimateNote };
