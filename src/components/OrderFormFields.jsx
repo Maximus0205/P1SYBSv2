@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin, Sparkles, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Check, Loader2, CheckCircle2, XCircle, Search, Phone } from "lucide-react";
 import { OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID, KEY_ACCESS_TYPES, buildingKey, formatLongDate, formatDuration, lineItemMinutes, availableAddOns, serviceIcon, todayISO, addDays, weekDays, orderExpectedMinutes, buildTitle } from "../data/domain";
+import { estimateForLineItem } from "../data/estimates";
 import { lookupPunkt1Product } from "../lib/dataStore";
 import { geocodeAddress, geocodeAddresses, drivingDistances } from "../lib/geocoding";
 import { suggestBookingDates } from "../lib/scheduling";
@@ -117,7 +118,50 @@ function ModelNumberLookup({ model, onSelectProduct }) {
   );
 }
 
-function LineItemEditor({ lineItem, productTypes, productCategories, primaryServices, addOnServices, onChange, onRemove, canRemove }) {
+// ---------------------------------------------------------------------------
+// ESTIMATFORSLAG UD FRA MÅLT TID (september 2026)
+//
+// estimateIndex er valgfri - eksisterer kun når kaldende side (NewOrderForm)
+// har bygget den fra butikkens afsluttede sager (se data/estimates.js).
+// Formularen fungerer identisk uden den; den tilføjer blot et forslag
+// oven på det manuelle tidsfelt, der allerede fandtes.
+//
+// RÅDGIVENDE, IKKE AUTOMATISK: forslaget overskriver ALDRIG feltet af sig
+// selv - det kræver et bevidst tryk på "Brug". En sælger, der har tastet
+// et tal ud fra kendskab til DENNE konkrete kunde eller opgave, skal ikke
+// få det overskrevet af et gennemsnit, den ikke bad om.
+//
+// Matcher forslaget allerede feltets værdi (fx fordi sælgeren selv har
+// tastet det samme tal, eller allerede trykket Brug), vises det som en
+// bekræftelse i stedet for en foreslået handling - der er intet at trykke
+// på, når tallene allerede stemmer overens.
+function EstimateSuggestion({ estimateIndex, lineItem, onApply }) {
+  if (!estimateIndex) return null;
+  const suggestion = estimateForLineItem(estimateIndex, lineItem);
+  if (!suggestion) return null;
+
+  const current = lineItem.primaerYdelse?.minutter ?? 0;
+  const matches = suggestion.minutter === current;
+
+  if (matches) {
+    return (
+      <p className="text-[11px] text-success flex items-center gap-1.5 -mt-1 mb-2">
+        <Check size={11} className="shrink-0" aria-hidden="true" /> Matcher det målte gennemsnit ({suggestion.antal} tidligere {suggestion.antal === 1 ? "sag" : "sager"}).
+      </p>
+    );
+  }
+  return (
+    <p className="text-[11px] text-brand flex items-center gap-1.5 -mt-1 mb-2 flex-wrap">
+      <History size={11} className="shrink-0" aria-hidden="true" />
+      Målt gennemsnit: {suggestion.minutter} min {suggestion.grundlag} ({suggestion.antal} tidligere {suggestion.antal === 1 ? "sag" : "sager"}).
+      <button type="button" onClick={() => onApply(suggestion.minutter)} className="font-semibold uppercase tracking-wide underline hover:no-underline">
+        Brug
+      </button>
+    </p>
+  );
+}
+
+function LineItemEditor({ lineItem, productTypes, productCategories, primaryServices, addOnServices, estimateIndex, onChange, onRemove, canRemove }) {
   const isOther = lineItem.varetypeId === OTHER_PRODUCT_TYPE_ID;
   const selectedProductType = productTypes.find((v) => v.id === lineItem.varetypeId);
   const [categoryFilter, setCategoryFilter] = useState(selectedProductType?.kategoriId || "");
@@ -202,7 +246,7 @@ function LineItemEditor({ lineItem, productTypes, productCategories, primaryServ
       </div>
       <p className="text-[10px] text-muted mb-2">Modelnummer tjekkes automatisk mod punkt1.dk's varekartotek — grønt flueben = bekræftet, rødt kryds = ikke fundet.</p>
 
-      <label className="flex items-center gap-2 mb-2 text-xs text-muted">
+      <label className="flex items-center gap-2 mb-1 text-xs text-muted">
         <Clock size={12} className="shrink-0" />
         Estimeret tid til {lineItem.primaerYdelse?.navn?.toLowerCase() || "denne ydelse"}
         <input
@@ -213,6 +257,7 @@ function LineItemEditor({ lineItem, productTypes, productCategories, primaryServ
         />
         min
       </label>
+      <EstimateSuggestion estimateIndex={estimateIndex} lineItem={lineItem} onApply={changePrimaryServiceMinutes} />
 
       {available.length > 0 && (
         <div className="mb-2">
