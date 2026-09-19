@@ -1,6 +1,7 @@
 import React from "react";
-import { Clock, CalendarCheck2, AlertTriangle } from "lucide-react";
+import { Clock, CalendarCheck2, AlertTriangle, DoorOpen } from "lucide-react";
 import { TIME_SLOTS, buildTitle, formatDuration, orderExpectedMinutes, formatShortDate, isToday, missingLineItems } from "../data/domain";
+import { isTomgang, TOMGANG_COLOR } from "../data/caseTypes";
 import { StatusBadge, LineItemPills } from "../components/common";
 
 // accent: valgfri venstre-kantfarve (fx rød ved "kræver handling"), så
@@ -28,6 +29,13 @@ import { StatusBadge, LineItemPills } from "../components/common";
 // er nu ren visning, som alle andre steder: skiftet sker i montørens flow
 // gennem Start opgave og Færdigmeld.
 //
+// TOMGANG (september 2026): en lille mærkat ved siden af sagsnummeret, når
+// sagen er en tomgangskørsel - se data/caseTypes.js. Kortet er ofte det
+// eneste, en planlægger ser i en liste, og det er værd at vide UDEN at
+// åbne sagen: der er ingen kunde at kontakte, og nøglen er forudsætningen
+// for besøget. Farven er den samme TOMGANG_COLOR, der bruges i
+// oprettelsesformularen, så det er genkendeligt som samme markering.
+//
 // TILFØJET samtidig: en markering når lageret ikke kan finde en vare til
 // sagen. Kortet er ofte det eneste, en planlægger ser i en liste, og det
 // er præcis den slags, man skal opdage UDEN at åbne sagen - ellers ringer
@@ -42,6 +50,7 @@ import { StatusBadge, LineItemPills } from "../components/common";
 // ombryde/krympe som forventet. Sættes eksplicit her og på select-rækken.
 function OrderCardCompact({ order, technicians, onOpen, onAssign, onUpdateTimeSlot, reason, accent, minimal }) {
   const mangler = missingLineItems(order);
+  const tomgang = isTomgang(order);
 
   return (
     <div
@@ -59,6 +68,14 @@ function OrderCardCompact({ order, technicians, onOpen, onAssign, onUpdateTimeSl
             <span className="font-mono text-sm text-ink">{order.start}–{order.slut}</span>
             <span className={`font-mono text-[11px] font-semibold ${isToday(order.dato) ? "text-brand" : "text-muted"}`}>{formatShortDate(order.dato)}</span>
             <span className="font-mono text-[10px] text-faint">#{order.nr}</span>
+            {tomgang && (
+              <span
+                className="inline-flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md border"
+                style={{ color: TOMGANG_COLOR, borderColor: TOMGANG_COLOR }}
+              >
+                <DoorOpen size={9} aria-hidden="true" /> Tomgang
+              </span>
+            )}
           </div>
           <p className="font-semibold text-sm text-ink truncate">{buildTitle(order.varelinjer)}</p>
           <p className="text-xs text-muted truncate">{order.kunde.navn} · {order.kunde.adresse}{order.kunde.telefon ? ` · ${order.kunde.telefon}` : ""}</p>
