@@ -2,9 +2,9 @@ import React, { useMemo, useState } from "react";
 import { Plus, Building2, Clock, Hash, ChevronLeft, ChevronRight, Check, KeyRound, AlertTriangle } from "lucide-react";
 import { TIME_SLOTS, buildTitle, formatDuration, createLineItem, lineItemMinutes, timeSlotById, timeSlotText, todayISO, emptyKeyAccess, keyAccessText } from "../data/domain";
 import { CASE_TYPES, SAGSTYPE_KUNDE, SAGSTYPE_TOMGANG, tomgangWarnings, TOMGANG_COLOR } from "../data/caseTypes";
-import { buildEstimateIndex } from "../data/estimates";
+import { buildEstimateIndex, buildClusterIndex } from "../data/estimates";
 import { ReceiptUpload } from "../components/ReceiptUpload";
-import { LineItemEditor, KeyAccessFields, CustomerHistory, SuggestedDates, InteractiveWeekPicker } from "../components/OrderFormFields";
+import { LineItemEditor, KeyAccessFields, CustomerHistory, SuggestedDates, InteractiveWeekPicker, ClusterEstimateNote } from "../components/OrderFormFields";
 import { AddressInput } from "../components/AddressInput";
 
 // Bookingflowet er delt op i 4 mindre "kort" (trin) i stedet for én lang
@@ -108,6 +108,12 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
   // sælger skriver.
   const estimateIndex = useMemo(() => buildEstimateIndex(orders), [orders]);
 
+  // Klyngeestimat: stordrift, når flere enheder er på ÉN sag (fx 4 enheder
+  // til samme lejlighed). Se ClusterEstimateNote i OrderFormFields.jsx -
+  // den viser bevidst intet, før mindst tre tidligere klynger af samme
+  // størrelse er målt; indtil da samler systemet blot data i baggrunden.
+  const clusterIndex = useMemo(() => buildClusterIndex(orders, estimateIndex), [orders, estimateIndex]);
+
   // Skifter man TIL tomgang, slås nøgle/adgang til med det samme. Det er
   // ikke en antagelse om, at nøglen er på plads - det er at åbne felterne,
   // så man bliver mødt af dem frem for selv at skulle finde på at klikke
@@ -122,6 +128,19 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
   const updateLineItem = (idx, next) => setLineItems((prev) => prev.map((l, i) => (i === idx ? next : l)));
   const removeLineItem = (idx) => setLineItems((prev) => prev.filter((_, i) => i !== idx));
   const addLineItem = () => setLineItems((prev) => [...prev, createLineItem(productTypes, primaryServices)]);
+
+  // Fordeler den klynge-justerede samlede tid ud på de enkelte linjer, ved
+  // at skalere hver linjes PRIMÆRE tid med den målte faktor (tillæggenes
+  // egne minutter rører vi ikke - de er separate opgaver, ikke en del af
+  // "udpakning og opstilling", som klyngerabatten dækker). Runder op til
+  // mindst 1 minut, så en linje aldrig ender på 0.
+  const applyClusterFactor = (factor) => {
+    setLineItems((prev) => prev.map((l) => (
+      l.primaerYdelse
+        ? { ...l, primaerYdelse: { ...l.primaerYdelse, minutter: Math.max(1, Math.round((l.primaerYdelse.minutter || 0) * factor)) } }
+        : l
+    )));
+  };
 
   const fillFromPdf = (fields) => {
     if (fields.navn) setCustomerName(fields.navn);
@@ -295,7 +314,9 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
             </div>
           </div>
 
-          <div className="flex items-center justify-between mb-2">
+          <ClusterEstimateNote estimateIndex={estimateIndex} clusterIndex={clusterIndex} lineItems={lineItems} onApplyFactor={applyClusterFactor} />
+
+          <div className="flex items-center justify-between mb-2 mt-2">
             <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">Varelinjer & ydelser</h4>
             <button onClick={addLineItem} className="text-xs font-semibold uppercase tracking-wide text-ink border border-line rounded-full hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand px-3 py-2 flex items-center gap-1"><Plus size={13} aria-hidden="true" /> Tilføj varelinje</button>
           </div>
