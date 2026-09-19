@@ -1,6 +1,7 @@
 import React from "react";
-import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, Loader2, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash, X, Plus, User, Lock, PlayCircle, CheckCheck, Camera, CalendarCheck2 } from "lucide-react";
+import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, Loader2, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash, X, Plus, User, Lock, PlayCircle, CheckCheck, Camera, CalendarCheck2, DoorOpen } from "lucide-react";
 import { buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, keyAccessText, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel, dailyOrderCompare, canDo, missingLineItems } from "../data/domain";
+import { isTomgang, showsArrivalContact, TOMGANG_COLOR } from "../data/caseTypes";
 import { StatusBadge, DateSelector } from "../components/common";
 import { Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
 import { BookingEditor, DuplicatePanel } from "../components/OrderView";
@@ -20,6 +21,19 @@ const mapsUrl = (address) => `https://www.google.com/maps/search/?api=1&query=${
 const telHref = (phone) => `tel:${(phone || "").replace(/[^\d+]/g, "")}`;
 
 const ARRIVAL_PRESETS_MIN = [5, 10, 15, 30, 60];
+
+// Lille TOMGANG-mærkat - genbruges på både rutekortet og sagsdetaljen, så
+// den ser ens ud begge steder og i oprettelsesformularen/sagslisten.
+function TomgangBadge() {
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md border"
+      style={{ color: TOMGANG_COLOR, borderColor: TOMGANG_COLOR }}
+    >
+      <DoorOpen size={9} aria-hidden="true" /> Tomgang
+    </span>
+  );
+}
 
 // Popover til at vælge "ankomst om X minutter" og sende SMS'en MED DET
 // SAMME ved tryk - via en Edge Function der sender fra firmaets fælles
@@ -171,10 +185,18 @@ function ReorderButtons({ onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
 // I STEDET: de tre handlinger, der rent faktisk bruges ude i bilen -
 // Naviger, SMS og Ring - stablet som ét sammenhængende felt.
 //
+// TOMGANG (september 2026): SMS og Ring giver ikke mening, når der ingen
+// er på adressen - se showsArrivalContact i data/caseTypes.js. Stakken
+// viser da kun Naviger. Den vises stadig i egen kolonne (ikke bare en
+// almindelig knap i teksten) for at holde samme layout og bredde som på
+// alle andre kort - to forskellige kort-bredder ville gøre listen
+// urolig at skimme.
+//
 // Hele stakken skjules for en færdigmeldt sag: kunden er besøgt, og en
 // SMS om forventet ankomst dagen efter ville være pinlig.
 function ActionStack({ order }) {
   const harTelefon = Boolean(order.kunde?.telefon);
+  const kontaktRelevant = showsArrivalContact(order);
   return (
     <div className="shrink-0 w-[74px] rounded-xl border border-line overflow-hidden divide-y divide-line bg-white">
       <a
@@ -190,31 +212,35 @@ function ActionStack({ order }) {
         <span className="text-[9px] font-semibold uppercase tracking-wide">Naviger</span>
       </a>
 
-      {harTelefon ? (
-        <ArrivalSmsButton phone={order.kunde.telefon} customerName={order.kunde.navn} variant="stak" />
-      ) : (
-        <div className="w-full h-[46px] flex flex-col items-center justify-center gap-0.5 text-line" title="Kunden har intet telefonnummer på sagen">
-          <MessageSquare size={15} aria-hidden="true" />
-          <span className="text-[9px] font-semibold uppercase tracking-wide">SMS</span>
-        </div>
+      {kontaktRelevant && (
+        harTelefon ? (
+          <ArrivalSmsButton phone={order.kunde.telefon} customerName={order.kunde.navn} variant="stak" />
+        ) : (
+          <div className="w-full h-[46px] flex flex-col items-center justify-center gap-0.5 text-line" title="Kunden har intet telefonnummer på sagen">
+            <MessageSquare size={15} aria-hidden="true" />
+            <span className="text-[9px] font-semibold uppercase tracking-wide">SMS</span>
+          </div>
+        )
       )}
 
-      {harTelefon ? (
-        <a
-          href={telHref(order.kunde.telefon)}
-          onClick={(e) => e.stopPropagation()}
-          aria-label={`Ring til ${order.kunde.navn || "kunden"}`}
-          title={order.kunde.telefon}
-          className="w-full h-[46px] flex flex-col items-center justify-center gap-0.5 text-ink hover:bg-panel focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand transition-colors"
-        >
-          <Phone size={15} aria-hidden="true" />
-          <span className="text-[9px] font-semibold uppercase tracking-wide">Ring</span>
-        </a>
-      ) : (
-        <div className="w-full h-[46px] flex flex-col items-center justify-center gap-0.5 text-line" title="Kunden har intet telefonnummer på sagen">
-          <Phone size={15} aria-hidden="true" />
-          <span className="text-[9px] font-semibold uppercase tracking-wide">Ring</span>
-        </div>
+      {kontaktRelevant && (
+        harTelefon ? (
+          <a
+            href={telHref(order.kunde.telefon)}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`Ring til ${order.kunde.navn || "kunden"}`}
+            title={order.kunde.telefon}
+            className="w-full h-[46px] flex flex-col items-center justify-center gap-0.5 text-ink hover:bg-panel focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand transition-colors"
+          >
+            <Phone size={15} aria-hidden="true" />
+            <span className="text-[9px] font-semibold uppercase tracking-wide">Ring</span>
+          </a>
+        ) : (
+          <div className="w-full h-[46px] flex flex-col items-center justify-center gap-0.5 text-line" title="Kunden har intet telefonnummer på sagen">
+            <Phone size={15} aria-hidden="true" />
+            <span className="text-[9px] font-semibold uppercase tracking-wide">Ring</span>
+          </div>
+        )
       )}
     </div>
   );
@@ -223,6 +249,7 @@ function ActionStack({ order }) {
 function OrderStopCard({ order: s, onOpen, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
   const erAfsluttet = s.status === "afsluttet";
   const mangler = missingLineItems(s);
+  const tomgang = isTomgang(s);
   const hasAlerts = Boolean(s.noegle?.kraeves || s.kunde.leveringsnote || s.problem || mangler.length > 0);
 
   return (
@@ -243,6 +270,7 @@ function OrderStopCard({ order: s, onOpen, onMoveUp, onMoveDown, canMoveUp, canM
               </span>
             )}
             <span className="font-mono text-[10px] text-faint">#{s.nr}</span>
+            {tomgang && <TomgangBadge />}
           </div>
           <p className="font-semibold text-sm text-ink truncate">{buildTitle(s.varelinjer)}</p>
           <p className="text-xs text-muted truncate">
@@ -525,6 +553,7 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
   const canPlan = canDo(permissions, "sag_planlaegning");
   const canEditCustomer = canDo(permissions, "sag_kunde");
   const canCreate = canDo(permissions, "sag_opret");
+  const tomgang = isTomgang(order);
   const tabs = [
     { key: "noter", label: "Noter", count: order.noter.length },
     { key: "materialer", label: "Materialer", count: (order.materialer || []).length },
@@ -556,16 +585,24 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
       ) : (
         <div className="rounded-xl bg-white border border-line p-4 mb-4 shadow-sm">
           <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
-            <p className="font-mono text-xs text-muted">
-              #{order.nr} · {formatLongDate(order.dato)} · {order.start}–{order.slut}
-              {order.ordrenummer && <span className="ml-2 inline-flex items-center gap-0.5"><Hash size={10} aria-hidden="true" /> {order.ordrenummer}</span>}
+            <p className="font-mono text-xs text-muted flex items-center gap-2 flex-wrap">
+              <span>
+                #{order.nr} · {formatLongDate(order.dato)} · {order.start}–{order.slut}
+                {order.ordrenummer && <span className="ml-2 inline-flex items-center gap-0.5"><Hash size={10} aria-hidden="true" /> {order.ordrenummer}</span>}
+              </span>
+              {tomgang && <TomgangBadge />}
             </p>
             <StatusBadge status={order.status} />
           </div>
           {order.oprettetAf?.navn && (
             <p className="text-xs text-muted mb-1 flex items-center gap-1"><User size={11} className="shrink-0" aria-hidden="true" /> Booket af {order.oprettetAf.navn}</p>
           )}
-          <p className="text-lg font-semibold text-ink leading-snug">{order.varelinjer.length} {order.varelinjer.length === 1 ? "vare" : "varer"} til {order.kunde.navn}</p>
+          <p className="text-lg font-semibold text-ink leading-snug">
+            {order.varelinjer.length} {order.varelinjer.length === 1 ? "vare" : "varer"} {tomgang ? "til lejemålet hos" : "til"} {order.kunde.navn}
+          </p>
+          {tomgang && (
+            <p className="text-xs text-muted mt-0.5">Tomgang — ingen er på adressen. {order.kunde.navn} er rekvirenten, ikke en beboer.</p>
+          )}
           {order.kunde.leveringsnote && (
             <p className="text-sm text-brand font-semibold mt-1.5 flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" aria-hidden="true" /> {order.kunde.leveringsnote}</p>
           )}
@@ -618,7 +655,8 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
           )}
 
           {/* Samme handlingsstak som på rutekortet, så de to visninger
-              opfører sig ens. */}
+              opfører sig ens. Skjuler selv SMS/Ring ved tomgang - se
+              showsArrivalContact i ActionStack. */}
           <div className="mt-3 pt-3 border-t border-divider flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-sm text-ink">{order.kunde.adresse}</p>
