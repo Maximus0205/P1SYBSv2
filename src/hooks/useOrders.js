@@ -115,14 +115,17 @@ export function useOrders(storeId) {
   // der ikke står på listen bliver tavst droppet; sagstype blev derfor
   // tilføjet både her OG i newOrder nedenfor. Standardværdien sikrer, at
   // sager oprettet ad andre veje (CSV-import) også har en type.
-  const addOrder = async ({ sagstype, kunde, koeber, noegle, dato, tidsrumId, start, slut, montorId, varelinjer, ordrenummer, createdBy }) => {
+  //
+  // bilId (september 2026) erstatter montorId - en sag tildeles nu en
+  // BIL, ikke en person, se rebind_orders_to_vehicle_instead_of_person.
+  const addOrder = async ({ sagstype, kunde, koeber, noegle, dato, tidsrumId, start, slut, bilId, varelinjer, ordrenummer, createdBy }) => {
     if (!storeId) return;
     const newOrder = {
       id: uid(), nr: "...", ordrenummer: ordrenummer?.trim() || "",
       sagstype: sagstype || SAGSTYPE_KUNDE,
       kunde, koeber: koeber || null, noegle: noegle || {},
       dato: dato || null, tidsrumId: dato ? tidsrumId : null, start: dato ? start : null, slut: dato ? slut : null,
-      montorId: montorId || null,
+      bilId: bilId || null,
       status: "planlagt", plukket: false, varelinjer, noter: [], billeder: [], rapporter: [], materialer: [], stemplerInd: null, logs: [],
       oprettetAf: createdBy || null,
     };
@@ -157,7 +160,7 @@ export function useOrders(storeId) {
   };
 
   // Opretter en ny sag ud fra en EKSISTERENDE (dupliker/opfølgning).
-  // Dato, tidsrum og montør nulstilles bevidst - opfølgningen lander i
+  // Dato, tidsrum og bil nulstilles bevidst - opfølgningen lander i
   // "Skal planlægges" og kan derfra få et rigtigt forslag.
   //
   // SAGSTYPEN FØLGER MED: en opfølgning på en tomgangskørsel er også en
@@ -181,7 +184,7 @@ export function useOrders(storeId) {
       kunde: { ...sourceOrder.kunde },
       koeber: sourceOrder.koeber ? { ...sourceOrder.koeber } : null,
       noegle: sourceOrder.noegle ? { ...sourceOrder.noegle } : {},
-      dato: null, tidsrumId: null, start: null, slut: null, montorId: null,
+      dato: null, tidsrumId: null, start: null, slut: null, bilId: null,
       status: "planlagt", plukket: false, varelinjer: clonedLineItems,
       noter: [], billeder: [], rapporter: [], materialer: [], stemplerInd: null, logs: [],
       oprettetAf: createdBy || null,
@@ -210,7 +213,11 @@ export function useOrders(storeId) {
 
   const importOrders = (newOrders) => newOrders.forEach((s) => saveOneOrder(s));
 
-  const assignTechnician = (orderId, technicianId) => { const s = findOrder(orders, orderId); if (s) saveOneOrder({ ...s, montorId: technicianId }); };
+  // Tildeler sagen til en BIL (september 2026, erstatter assignTechnician/
+  // montorId - se rebind_orders_to_vehicle_instead_of_person). Navnet på
+  // funktionen er ændret for at gøre det tydeligt i resten af kodebasen,
+  // at det er en bil, der tildeles, ikke en bestemt person.
+  const assignVehicle = (orderId, vehicleId) => { const s = findOrder(orders, orderId); if (s) saveOneOrder({ ...s, bilId: vehicleId }); };
   const updateTimeSlot = (orderId, timeSlotId) => { const s = findOrder(orders, orderId); if (s) saveOneOrder({ ...s, tidsrumId: timeSlotId }); };
 
   // ---------------- Varelinjer på en EKSISTERENDE sag ----------------
@@ -323,10 +330,10 @@ export function useOrders(storeId) {
     saveOneOrder({ ...s, status: "igang", afsluttetTidspunkt: null });
   };
 
-  // Ændrer besøgs-RÆKKEFØLGEN for sager hos samme montør, samme dag.
-  const reorderOrder = (technicianId, date, orderId, direction) => {
+  // Ændrer besøgs-RÆKKEFØLGEN for sager hos samme BIL, samme dag.
+  const reorderOrder = (vehicleId, date, orderId, direction) => {
     const group = orders
-      .filter((o) => o.montorId === technicianId && o.dato === date && o.status !== "afsluttet")
+      .filter((o) => o.bilId === vehicleId && o.dato === date && o.status !== "afsluttet")
       .sort(dailyOrderCompare);
     const currentIndex = group.findIndex((o) => o.id === orderId);
     if (currentIndex === -1) return;
@@ -339,10 +346,10 @@ export function useOrders(storeId) {
     });
   };
 
-  const setVisitOrder = (technicianId, date, orderedIds) => {
+  const setVisitOrder = (vehicleId, date, orderedIds) => {
     orderedIds.forEach((id, i) => {
       const o = findOrder(orders, id);
-      if (o && o.montorId === technicianId && o.dato === date && o.raekkefolge !== i) {
+      if (o && o.bilId === vehicleId && o.dato === date && o.raekkefolge !== i) {
         saveOneOrder({ ...o, raekkefolge: i });
       }
     });
@@ -427,7 +434,7 @@ export function useOrders(storeId) {
   return {
     orders,
     addOrder, duplicateOrder, deleteOrder, updateBooking, importOrders,
-    assignTechnician, updateTimeSlot, reorderOrder, setVisitOrder, toggleLineItemPicked,
+    assignVehicle, updateTimeSlot, reorderOrder, setVisitOrder, toggleLineItemPicked,
     startOrder, finishOrder, reopenOrder,
     setLineItems, updateLineItem, addLineItem, removeLineItem,
     reportMissingItem, clearMissingItem,
