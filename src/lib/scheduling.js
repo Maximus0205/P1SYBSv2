@@ -9,7 +9,7 @@
 // ruterne, så systemet skal kunne planlægge så meget som muligt selv
 // (aftalt eksplicit august 2026).
 
-import { orderExpectedMinutes, isTechnicianAbsent, addDays } from "../data/domain";
+import { orderExpectedMinutes, isTechnicianAbsent, addDays, todayISO } from "../data/domain";
 
 const WORKDAY_MINUTES = 450; // ~7,5 time
 
@@ -60,6 +60,17 @@ export function planningWindow(startIso, days) {
 //     IKKE en hård begrænsning, en meget bedre kombination et par dage
 //     væk kan sagtens vinde over "uændret dato".
 //
+// PASSEREDE DATOER FRASORTERES (RETTET september 2026, fejl fundet ved
+// test): booking-flowet sender HELE ugen (mandag-søndag) omkring den
+// valgte dato via weekDays() - og er den valgte dato (typisk i dag) ikke
+// selv en mandag, indeholder den uge dage, der allerede er passeret. De
+// blev regnet som "helt ledige dage" (der er jo naturligvis ingen sager
+// booket på en dato, der er overstået) og fik derfor ofte den højeste
+// score, så et forslag om at booke i sidste uge kunne ende øverst på
+// listen. Filtreringen ligger HER, sammen med weekend-filtreringen, af
+// samme grund som dengang: ét sted, så en fremtidig tredje kalder ikke
+// falder i samme hul.
+//
 // WEEKENDER FRASORTERES (RETTET august 2026): begge kaldere sendte
 // weekender med i vinduet - booking-flowet via weekDays() (mandag-søndag)
 // og "Kræver handling"-fliserne via planningWindow(i dag, 14). Da lørdag
@@ -67,11 +78,9 @@ export function planningWindow(startIso, days) {
 // ledig-kapacitet-score ("Helt ledig dag") og lå derfor typisk ØVERST i
 // forslagslisten. Oveni forsvandt en sag, der blev booket på et sådant
 // forslag, ud af ugeoverblikket i PlanningPage, som bevidst kun viser
-// mandag-fredag. Filtreringen ligger HER (ét sted), ikke hos de to
-// kaldere, så en fremtidig tredje kalder ikke falder i samme hul.
-// Bemærk: dette begrænser kun hvad systemet SELV foreslår - vælger man
-// manuelt en lørdag i InteractiveWeekPicker (som stadig viser alle syv
-// dage), er det uændret muligt.
+// mandag-fredag. Bemærk: begge filtre begrænser kun hvad systemet SELV
+// foreslår - vælger man manuelt en lørdag eller (teoretisk) en passeret
+// dato i InteractiveWeekPicker, er det uændret muligt.
 //
 // orderMinutes (RETTET august 2026): SAGENS EGEN forventede varighed.
 // Kapacitetstjekket så tidligere KUN på, hvad der allerede lå på dagen -
@@ -99,6 +108,7 @@ export function planningWindow(startIso, days) {
 // "ikke tildelt" der er et legitimt, midlertidigt valg ved en ny booking.
 export function suggestPlan({ dates, orders, technicians, timeOff, sameBuildingDates, nearbyDates, excludeTechnicianIds, originalDate, requireTechnician, orderMinutes }) {
   const nyMinutter = Math.max(0, Number(orderMinutes) || 0);
+  const today = todayISO();
   const nearbyByDate = new Map();
   (nearbyDates || []).forEach(({ dato, km }) => {
     if (!nearbyByDate.has(dato) || nearbyByDate.get(dato) > km) nearbyByDate.set(dato, km);
@@ -111,6 +121,7 @@ export function suggestPlan({ dates, orders, technicians, timeOff, sameBuildingD
 
   const candidates = [];
   for (const dato of dates || []) {
+    if (dato < today) continue; // se noten om passerede datoer ovenfor
     if (isWeekend(dato)) continue; // se noten om weekender ovenfor
     const dayOrders = (orders || []).filter((o) => o.dato === dato && o.status !== "afsluttet");
     for (const t of rows) {
