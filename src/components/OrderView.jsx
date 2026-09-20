@@ -6,12 +6,16 @@ import { LineItemDetails, Notes, Photos, Reports, TimeLog } from "../components/
 import { CustomerHistoryLookup } from "../components/OrderFormFields";
 import { AddressInput } from "../components/AddressInput";
 
-// Hurtig-redigering af en booket sag: dato, tidsrum, montør og
+// Hurtig-redigering af en booket sag: dato, tidsrum, bil og
 // leveringsadresse - de felter der oftest skal justeres efter oprettelse.
 // Varelinjerne har deres egen editor (se LineItemEditor nedenfor).
 //
-// dato/tidsrum/montør (sag_planlaegning) og leveringsadresse (sag_kunde)
-// er to FORSKELLIGE rettigheder. Mangler man den ene, låses de tilhørende
+// BIL, IKKE MONTØR (september 2026): sager tildeles nu en BIL - se
+// rebind_orders_to_vehicle_instead_of_person. "technicians" herunder er
+// derfor BIL-rækker (se App.jsx), og feltet der gemmes er bilId.
+//
+// dato/tidsrum/bil (sag_planlaegning) og leveringsadresse (sag_kunde) er
+// to FORSKELLIGE rettigheder. Mangler man den ene, låses de tilhørende
 // felter i stedet for at hele redigeringen skjules - man kan sagtens have
 // lov til at flytte datoen uden at måtte røre kundens adresse. Kun de
 // felter man har lov til sendes med i onSave, så updateBooking (som slår
@@ -23,14 +27,14 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions }) {
 
   const [date, setDate] = useState(order.dato);
   const [timeSlotId, setTimeSlotId] = useState(order.tidsrumId);
-  const [technicianId, setTechnicianId] = useState(order.montorId || "");
+  const [vehicleId, setVehicleId] = useState(order.bilId || "");
   const [address, setAddress] = useState(order.kunde.adresse);
 
   const save = () => {
     const fields = {};
     if (canPlan) {
       const t = timeSlotById(timeSlotId);
-      Object.assign(fields, { dato: date, tidsrumId: timeSlotId, start: t.start, slut: t.slut, montorId: technicianId || null });
+      Object.assign(fields, { dato: date, tidsrumId: timeSlotId, start: t.start, slut: t.slut, bilId: vehicleId || null });
     }
     if (canEditCustomer) {
       fields.kunde = { ...order.kunde, adresse: address.trim() };
@@ -53,8 +57,8 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions }) {
           </select>
         </label>
         <label className="text-xs text-muted sm:col-span-2">
-          Montør/bil
-          <select value={technicianId} disabled={!canPlan} onChange={(e) => setTechnicianId(e.target.value)} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand disabled:opacity-60 disabled:cursor-not-allowed">
+          Bil
+          <select value={vehicleId} disabled={!canPlan} onChange={(e) => setVehicleId(e.target.value)} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand disabled:opacity-60 disabled:cursor-not-allowed">
             <option value="">Ikke tildelt</option>
             {technicians.map((m) => <option key={m.id} value={m.id}>{m.navn} — {m.bil}</option>)}
           </select>
@@ -275,7 +279,7 @@ function DuplicatePanel({ order, onDuplicate, onCancel }) {
   return (
     <div className="rounded-xl bg-white border border-brand p-4 mb-5 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-1.5"><Copy size={14} aria-hidden="true" /> Dupliker / opret opfølgning</h3>
-      <p className="text-xs text-muted mb-3">Opretter en ny sag med samme kunde, adresse og nøgleoplysninger — dato og montør er ikke sat endnu og skal vælges bagefter. Vælg hvilke varelinjer der skal med.</p>
+      <p className="text-xs text-muted mb-3">Opretter en ny sag med samme kunde, adresse og nøgleoplysninger — dato og bil er ikke sat endnu og skal vælges bagefter. Vælg hvilke varelinjer der skal med.</p>
       <div className="space-y-1.5 mb-3">
         {order.varelinjer.map((v) => (
           <label key={v.id} className="flex items-center gap-2 rounded-lg border border-line px-3 py-2 cursor-pointer hover:border-brand transition-colors">
@@ -356,12 +360,16 @@ function MissingItemsBanner({ order, onClearMissingItem, canFieldwork }) {
 // åbner en popup forudfyldt med sagens telefon og adresse - se
 // CustomerHistoryLookup i OrderFormFields.jsx. Kræver den fulde ordreliste
 // (orders), som App.jsx sender med fra samme sted, sagen selv kommer fra.
+//
+// BIL, IKKE MONTØR (september 2026): sagens tildeling vises nu via
+// order.bilId, og "technicians" er BIL-rækker (se App.jsx) - ikke længere
+// et opslag på en bestemt persons id.
 function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addReport, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onSetLineItems, onClearMissingItem, onDeleteOrder, onReopenOrder }) {
   const [tab, setTab] = useState("noter");
   // Kun ÉT panel ad gangen - to åbne redigeringer på samme sag ville både
   // fylde skærmen og gøre det uklart, hvad "Gem" gemmer.
   const [panel, setPanel] = useState(null); // "booking" | "varelinjer" | "dupliker" | "slet"
-  const technician = technicians.find((m) => m.id === order.montorId);
+  const technician = technicians.find((m) => m.id === order.bilId);
   const canFieldwork = canDo(permissions, "sag_feltarbejde");
   const canPlan = canDo(permissions, "sag_planlaegning");
   const canEditCustomer = canDo(permissions, "sag_kunde");
