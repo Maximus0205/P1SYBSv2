@@ -22,7 +22,12 @@ function matchesSearch(order, search) {
   return addressMatch || phoneMatch;
 }
 
-function SalesPage({ orders, technicians, productTypes, productCategories, primaryServices, addOnServices, selectedDate, onDateChange, onOpen, onAdd, onImport, storeFocus }) {
+// personnel/timeOff (september 2026): videresendes til NewOrderForm, som
+// selv videresender til SuggestedDates - så et nyt bookings-forslag kan
+// tjekke DÆKNING pr. bil (er der nogen til at køre den den dag) i stedet
+// for at antage alle biler altid er i spil. Se vehicleHasCoverage i
+// data/domain.js.
+function SalesPage({ orders, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, selectedDate, onDateChange, onOpen, onAdd, onImport, storeFocus }) {
   const [panel, setPanel] = useState("ny");
   const [search, setSearch] = useState("");
   const sortFn = (a, b) => (a.start || "").localeCompare(b.start || "");
@@ -50,7 +55,7 @@ function SalesPage({ orders, technicians, productTypes, productCategories, prima
         </div>
       </div>
 
-      {panel === "ny" && <div className="mb-6"><NewOrderForm technicians={technicians} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} orders={orders} selectedDate={selectedDate} onAdd={onAdd} onClose={() => setPanel(null)} onOpen={onOpen} storeFocus={storeFocus} /></div>}
+      {panel === "ny" && <div className="mb-6"><NewOrderForm technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} orders={orders} selectedDate={selectedDate} onAdd={onAdd} onClose={() => setPanel(null)} onOpen={onOpen} storeFocus={storeFocus} /></div>}
       {panel === "import" && <div className="mb-6"><CsvImport technicians={technicians} productTypes={productTypes} primaryServices={primaryServices} onImport={onImport} onClose={() => setPanel(null)} /></div>}
 
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
@@ -78,7 +83,7 @@ function SalesPage({ orders, technicians, productTypes, productCategories, prima
       ) : (
         <div className="grid sm:grid-cols-2 gap-2">
           {visibleOrders.map((s) => (
-            <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} onCycleStatus={() => {}} minimal />
+            <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} minimal />
           ))}
         </div>
       )}
