@@ -1,15 +1,23 @@
 // Ren, forklarlig planlægningslogik - INGEN AI. Én samlet forslagsmotor
 // (suggestPlan) bruges til BÅDE nye bookinger og omlægning af eksisterende
-// sager (montørproblem/sygemelding/skal planlægges) - den søger altid på
-// tværs af BÅDE dato og montør samtidig, aldrig kun "find en anden montør
-// samme dag". Det betyder, systemet frit kan foreslå at rykke en sag et
-// par dage, hvis det giver en bedre plan (fx samler den med en
-// nærliggende sag, eller undgår en overbooket dag) - vigtigt fordi
-// butikken ikke har en dedikeret planlægger til manuelt at gennemgå
-// ruterne, så systemet skal kunne planlægge så meget som muligt selv
-// (aftalt eksplicit august 2026).
+// sager (bilproblem/sygemelding/skal planlægges) - den søger altid på
+// tværs af BÅDE dato og bil samtidig, aldrig kun "find en anden bil samme
+// dag". Det betyder, systemet frit kan foreslå at rykke en sag et par
+// dage, hvis det giver en bedre plan (fx samler den med en nærliggende
+// sag, eller undgår en overbooket dag) - vigtigt fordi butikken ikke har
+// en dedikeret planlægger til manuelt at gennemgå ruterne, så systemet
+// skal kunne planlægge så meget som muligt selv (aftalt eksplicit august
+// 2026).
+//
+// BIL, IKKE PERSON (september 2026): sager tildeles nu en BIL - se
+// rebind_orders_to_vehicle_instead_of_person-migreringen og
+// vehicleHasCoverage i domain.js. "technicians" herunder er derfor
+// BIL-rækker ({id, navn, lukket}), og "personnel" er de MENNESKER, der
+// kan køre en rute ({id, bilId}) - adskilt, fordi fravær er en
+// PERSON-egenskab, mens selve tildelingen er en BIL-egenskab. To personer
+// kan dele én bil; er kun den ene fraværende, er bilen stadig i spil.
 
-import { orderExpectedMinutes, isTechnicianAbsent, addDays, todayISO } from "../data/domain";
+import { orderExpectedMinutes, vehicleHasCoverage, addDays, todayISO } from "../data/domain";
 
 const WORKDAY_MINUTES = 450; // ~7,5 time
 
@@ -49,16 +57,28 @@ export function planningWindow(startIso, days) {
   return Array.from({ length: days }, (_, i) => addDays(startIso, i));
 }
 
-// Den samlede forslagsmotor. Scorer hver (dato, montør)-kombination inden
-// for det givne vindue af dates, ud fra:
+// Den samlede forslagsmotor. Scorer hver (dato, bil)-kombination inden for
+// det givne vindue af dates, ud fra:
 //  1. Samme opgang/bygning som en anden sag samme dag (stærkeste signal)
 //  2. Køreafstand til andre sager samme dag (forudberegnet af den
 //     kaldende komponent - se sameBuildingDates/nearbyDates)
-//  3. Ledig kapacitet den dag (undgå at overbooke en montør)
+//  3. Ledig kapacitet den dag (undgå at overbooke en bil)
 //  4. Hvis originalDate er angivet: en MILD bias mod at blive tæt på den
 //     (så en triviel, ligegyldig flytning ikke sker uden grund) - men
 //     IKKE en hård begrænsning, en meget bedre kombination et par dage
 //     væk kan sagtens vinde over "uændret dato".
+//
+// BIL-DÆKNING (RETTET september 2026, se noten øverst i filen): en bil er
+// kun en gyldig kandidat, hvis den har mindst én person tilknyttet, der
+// ikke er fraværende den dag (vehicleHasCoverage) - OG ikke er lukket
+// (ude af drift). Der er BEVIDST ingen "excludeTechnicianIds"-mekanisme
+// længere: den ville tidligere tvinge motoren til at se bort fra DEN
+// bil/montør, der havde problemet, uanset dato. Nu er det unødvendigt -
+// en bil uden dækning (eller lukket) fejler dækningstjekket på ALLE
+// datoer, mens en bil, der får dækning igen (fx montøren er tilbage fra
+// ferie), naturligt bliver en gyldig kandidat på netop de datoer. Det er
+// mere fleksibelt: "vend tilbage til samme bil, når personen er tilbage"
+// er tit det rigtige forslag, ikke kun "find en helt anden bil".
 //
 // PASSEREDE DATOER FRASORTERES (RETTET september 2026, fejl fundet ved
 // test): booking-flowet sender HELE ugen (mandag-søndag) omkring den
@@ -76,9 +96,7 @@ export function planningWindow(startIso, days) {
 // og "Kræver handling"-fliserne via planningWindow(i dag, 14). Da lørdag
 // og søndag i praksis altid er helt tomme, gav de den HØJESTE
 // ledig-kapacitet-score ("Helt ledig dag") og lå derfor typisk ØVERST i
-// forslagslisten. Oveni forsvandt en sag, der blev booket på et sådant
-// forslag, ud af ugeoverblikket i PlanningPage, som bevidst kun viser
-// mandag-fredag. Bemærk: begge filtre begrænser kun hvad systemet SELV
+// forslagslisten. Bemærk: begge filtre begrænser kun hvad systemet SELV
 // foreslår - vælger man manuelt en lørdag eller (teoretisk) en passeret
 // dato i InteractiveWeekPicker, er det uændret muligt.
 //
@@ -90,32 +108,27 @@ export function planningWindow(startIso, days) {
 // Standard 0, så eksisterende kaldere er upåvirkede, og ugyldige værdier
 // (null/NaN/negative) behandles som 0 frem for at vælte beregningen.
 //
-// excludeTechnicianIds udelukker specifikke montører helt fra kandidat-
-// listen (fx den sygemeldte/defekte montør selv - der er jo netop
-// PROBLEMET, ikke løsningen). Springer fraværende montører og allerede
-// overbelastede dage over.
-//
 // requireTechnician (RETTET august 2026, fejl fundet ved test): når true,
 // udelader "ikke tildelt" HELT fra kandidatlisten - et forslag der ikke
-// rent faktisk tildeler en montør er ikke en løsning på "kræver handling",
+// rent faktisk tildeler en bil er ikke en løsning på "kræver handling",
 // det er bare en dato sat på en stadig utildelt sag, som blot ville blive
 // liggende i en ANDEN kræver-handling-kategori efter "Brug forslag" var
-// trykket. Bruges af ReplanTile i PlanningPage.jsx (montørproblem/
-// sygemelding/skal planlægges) - hvis INGEN rigtig montør kan tage sagen
-// inden for vinduet, returneres der nu ærligt INTET forslag, i stedet for
-// et der ser ud til at løse noget, men reelt ikke gør. Booking-flowets
-// egne datoforslag (SuggestedDates) beholder standardværdien false, da
-// "ikke tildelt" der er et legitimt, midlertidigt valg ved en ny booking.
-export function suggestPlan({ dates, orders, technicians, timeOff, sameBuildingDates, nearbyDates, excludeTechnicianIds, originalDate, requireTechnician, orderMinutes }) {
+// trykket. Bruges af ReplanTile i PlanningPage.jsx (bilproblem/
+// sygemelding/skal planlægges) - hvis INGEN bil med dækning kan tage
+// sagen inden for vinduet, returneres der nu ærligt INTET forslag, i
+// stedet for et der ser ud til at løse noget, men reelt ikke gør.
+// Booking-flowets egne datoforslag (SuggestedDates) beholder
+// standardværdien false, da "ikke tildelt" der er et legitimt,
+// midlertidigt valg ved en ny booking.
+export function suggestPlan({ dates, orders, technicians, personnel, timeOff, sameBuildingDates, nearbyDates, originalDate, requireTechnician, orderMinutes }) {
   const nyMinutter = Math.max(0, Number(orderMinutes) || 0);
   const today = todayISO();
   const nearbyByDate = new Map();
   (nearbyDates || []).forEach(({ dato, km }) => {
     if (!nearbyByDate.has(dato) || nearbyByDate.get(dato) > km) nearbyByDate.set(dato, km);
   });
-  const exclude = new Set(excludeTechnicianIds || []);
   const rows = [
-    ...(technicians || []).filter((t) => !exclude.has(t.id)),
+    ...(technicians || []).filter((t) => !t.lukket),
     ...(requireTechnician ? [] : [{ id: null, navn: "" }]),
   ];
 
@@ -125,8 +138,8 @@ export function suggestPlan({ dates, orders, technicians, timeOff, sameBuildingD
     if (isWeekend(dato)) continue; // se noten om weekender ovenfor
     const dayOrders = (orders || []).filter((o) => o.dato === dato && o.status !== "afsluttet");
     for (const t of rows) {
-      if (t.id && isTechnicianAbsent(t.id, dato, timeOff)) continue;
-      const loadMinutes = dayOrders.filter((o) => o.montorId === t.id).reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
+      if (t.id && !vehicleHasCoverage(t.id, dato, personnel, timeOff)) continue;
+      const loadMinutes = dayOrders.filter((o) => o.bilId === t.id).reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
       // Sagen skal kunne VÆRE der - ikke bare "dagen er ikke fuld endnu".
       if (loadMinutes + nyMinutter > WORKDAY_MINUTES) continue;
 
@@ -168,10 +181,13 @@ export function suggestPlan({ dates, orders, technicians, timeOff, sameBuildingD
 }
 
 // Tynd, bekvem indgang til suggestPlan for BOOKING-flowet (SuggestedDates i
-// OrderFormFields.jsx) - som ikke har brug for timeOff/excludeTechnicianIds/
-// originalDate/requireTechnician (en ny booking må gerne foreslås "ikke
-// tildelt", se requireTechnician-kommentaren på suggestPlan ovenfor).
-// Kalder blot suggestPlan med "week" omdøbt til "dates".
+// OrderFormFields.jsx) - som ikke har brug for timeOff/originalDate/
+// requireTechnician (en ny booking må gerne foreslås "ikke tildelt", se
+// requireTechnician-kommentaren på suggestPlan ovenfor). Kalder blot
+// suggestPlan med "week" omdøbt til "dates".
+//
+// personnel og timeOff sendes med, så et nyt forslag heller ikke peger på
+// en bil uden dækning den dag.
 //
 // orderMinutes sendes med, HVIS den kaldende komponent kender den -
 // booking-flowet bygger varelinjerne op undervejs, så varigheden kan
@@ -179,8 +195,8 @@ export function suggestPlan({ dates, orders, technicians, timeOff, sameBuildingD
 // acceptabelt her: en ny booking rettes typisk til manuelt bagefter, og
 // et forslag beregnet på et halvfærdigt grundlag er stadig bedre end
 // ingen forslag.
-export function suggestBookingDates({ week, orders, technicians, sameBuildingDates, nearbyDates, orderMinutes }) {
-  return suggestPlan({ dates: week, orders, technicians, sameBuildingDates, nearbyDates, orderMinutes });
+export function suggestBookingDates({ week, orders, technicians, personnel, timeOff, sameBuildingDates, nearbyDates, orderMinutes }) {
+  return suggestPlan({ dates: week, orders, technicians, personnel, timeOff, sameBuildingDates, nearbyDates, orderMinutes });
 }
 
 export { haversineKm, isWeekend, WORKDAY_MINUTES };
