@@ -44,10 +44,10 @@ function Stat({ label, value, color }) {
   );
 }
 
-function NeedsActionWidget({ orders, technicians, vehicles, timeOff, store, onNavigate }) {
+function NeedsActionWidget({ orders, technicians, personnel, vehicles, timeOff, store, onNavigate }) {
   const { technicianProblem, sickLeave, needsPlan, unresolved } = useMemo(
-    () => classify(orders, technicians, vehicles, timeOff, store?.sygemeldingVindueTimer),
-    [orders, technicians, vehicles, timeOff, store?.sygemeldingVindueTimer]
+    () => classify(orders, technicians, personnel, vehicles, timeOff, store?.sygemeldingVindueTimer),
+    [orders, technicians, personnel, vehicles, timeOff, store?.sygemeldingVindueTimer]
   );
   const total = technicianProblem.length + sickLeave.length + needsPlan.length + unresolved.length;
   const catalogEntry = DASHBOARD_WIDGET_CATALOG.find((w) => w.key === "needs_action");
@@ -67,18 +67,23 @@ function NeedsActionWidget({ orders, technicians, vehicles, timeOff, store, onNa
   );
 }
 
-function TodayRouteWidget({ orders, technicians, profile, onOpen, onNavigate }) {
+// BIL, IKKE MONTØR (september 2026): "din rute i dag" bestemmes af hvilken
+// BIL du kører (profile.bilId), ikke af dit eget id - se MontorRoute i
+// App.jsx, som løser præcis samme opgave samme måde. "technicians" her er
+// BIL-rækker og bruges kun til at style sagskortene, ikke til selve
+// opslaget på "hvad er min rute".
+function TodayRouteWidget({ orders, technicians, vehicles, profile, onOpen, onNavigate }) {
   const catalogEntry = DASHBOARD_WIDGET_CATALOG.find((w) => w.key === "today_route");
-  const own = technicians.find((m) => m.id === profile.id);
-  if (!own) {
+  const ownVehicle = (vehicles || []).find((v) => v.id === profile.bilId);
+  if (!ownVehicle) {
     return (
       <WidgetCard title={catalogEntry.label} icon={catalogEntry.icon}>
-        <p className="text-sm text-muted italic">Din bruger er ikke koblet til en montør/bil-profil endnu.</p>
+        <p className="text-sm text-muted italic">Din bruger er ikke koblet til en bil endnu.</p>
       </WidgetCard>
     );
   }
   const today = todayISO();
-  const myOrders = orders.filter((o) => o.montorId === own.id && o.dato === today).sort(dailyOrderCompare);
+  const myOrders = orders.filter((o) => o.bilId === ownVehicle.id && o.dato === today).sort(dailyOrderCompare);
   const shown = myOrders.slice(0, 4);
   return (
     <WidgetCard title={catalogEntry.label} icon={catalogEntry.icon} onTitleClick={() => onNavigate("montor")}>
@@ -96,12 +101,12 @@ function TodayRouteWidget({ orders, technicians, profile, onOpen, onNavigate }) 
   );
 }
 
-function PickListWidget({ orders, technicians, vehicles, onNavigate }) {
+function PickListWidget({ orders, vehicles, onNavigate }) {
   const catalogEntry = DASHBOARD_WIDGET_CATALOG.find((w) => w.key === "pick_list");
   const today = todayISO();
   const { missing, ready, kanIkkeFindes } = useMemo(() => {
     const todaysOrders = orders.filter((s) => s.dato === today);
-    const pickable = todaysOrders.filter((o) => isOrderPickable(o, technicians, vehicles));
+    const pickable = todaysOrders.filter((o) => isOrderPickable(o, vehicles));
     const points = pickable.flatMap((order) => (order.varelinjer || []).map((lineItem) => ({ order, lineItem })));
     const manglende = pickable.reduce((sum, o) => sum + missingLineItems(o).length, 0);
     return {
@@ -109,7 +114,7 @@ function PickListWidget({ orders, technicians, vehicles, onNavigate }) {
       ready: points.filter((p) => p.lineItem.plukket),
       kanIkkeFindes: manglende,
     };
-  }, [orders, technicians, vehicles, today]);
+  }, [orders, vehicles, today]);
   return (
     <WidgetCard title={catalogEntry.label} icon={catalogEntry.icon} onTitleClick={() => onNavigate("lager")}>
       <div className="grid grid-cols-2 gap-2">
@@ -323,13 +328,13 @@ function CustomizePanel({ activeKeys, availableCatalog, onSave }) {
   );
 }
 
-function DashboardPage({ profile, permissions, orders, technicians, vehicles, timeOff, store, notifications, onOpen, onNavigate, dashboardWidgets, onUpdateWidgets }) {
+function DashboardPage({ profile, permissions, orders, technicians, personnel, vehicles, timeOff, store, notifications, onOpen, onNavigate, dashboardWidgets, onUpdateWidgets }) {
   const [customizing, setCustomizing] = useState(false);
 
   const availableCatalog = DASHBOARD_WIDGET_CATALOG.filter((w) => canDo(permissions, w.requires));
   const activeKeys = dashboardWidgets.filter((k) => availableCatalog.some((w) => w.key === k));
 
-  const widgetProps = { orders, technicians, vehicles, timeOff, store, profile, notifications, onOpen, onNavigate };
+  const widgetProps = { orders, technicians, personnel, vehicles, timeOff, store, profile, notifications, onOpen, onNavigate };
 
   return (
     <div>
