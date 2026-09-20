@@ -157,7 +157,7 @@ export function estimateForLineItem(index, lineItem) {
 // Klyngefaktoren er derfor et selvstændigt lag ovenpå.
 //
 // SÅDAN LÆRES DEN: for hver gruppe af sager samme dag, samme opgang, samme
-// montør sammenlignes den FAKTISKE samlede tid med summen af
+// BIL sammenlignes den FAKTISKE samlede tid med summen af
 // grundestimaterne. Tog fire enheder tilsammen 150 minutter, hvor
 // grundestimatet siger 4 × 60 = 240, er faktoren 0,63. Faktoren læres pr.
 // klyngestørrelse, fordi besparelsen ikke er lineær - springet fra 1 til 2
@@ -174,10 +174,12 @@ export function buildClusterIndex(orders, baseIndex) {
     if (o.status !== "afsluttet") continue;
     const noegle = buildingKey(o.kunde?.adresse || "");
     if (!noegle || !o.dato) continue;
-    // Samme dag + samme opgang + samme montør. Uden montøren i nøglen
-    // ville to montører, der arbejdede i hver sin ende af samme opgang,
-    // se ud som én lang klynge og give en helt forkert faktor.
-    const k = `${o.dato}|${noegle}|${o.montorId || ""}`;
+    // Samme dag + samme opgang + samme BIL (september 2026: sager
+    // tildeles nu en bil, ikke en person - se
+    // rebind_orders_to_vehicle_instead_of_person-migreringen). Uden bilen
+    // i nøglen ville to biler, der arbejdede i hver sin ende af samme
+    // opgang, se ud som én lang klynge og give en helt forkert faktor.
+    const k = `${o.dato}|${noegle}|${o.bilId || ""}`;
     if (!grupper.has(k)) grupper.set(k, []);
     grupper.get(k).push(o);
   }
