@@ -572,14 +572,17 @@ function hoursLabel(minutes) {
 
 // Ugekapacitet - vist som en valgfri, klappet-sammen detalje under de
 // foreslåede datoer (se SuggestedDates), til den der vil dobbelttjekke selv.
+// "technicians" er BIL-rækker (se App.jsx) - kapaciteten vises altså pr.
+// BIL, og cellFor filtrerer på order.bilId (september 2026, erstatter
+// montorId - se rebind_orders_to_vehicle_instead_of_person).
 function WeeklyScheduleOverview({ orders, technicians, date }) {
   const anchor = date || todayISO();
   const week = weekDays(anchor);
   const today = todayISO();
   const rows = [...technicians, { id: null, navn: "Ikke tildelt" }];
 
-  const cellFor = (technicianId, day) => {
-    const dayOrders = (orders || []).filter((o) => o.montorId === technicianId && o.dato === day && o.status !== "afsluttet");
+  const cellFor = (vehicleId, day) => {
+    const dayOrders = (orders || []).filter((o) => o.bilId === vehicleId && o.dato === day && o.status !== "afsluttet");
     const minutes = dayOrders.reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
     return { count: dayOrders.length, minutes };
   };
@@ -589,7 +592,7 @@ function WeeklyScheduleOverview({ orders, technicians, date }) {
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-line">
-            <th className="text-left p-1.5 text-muted font-semibold uppercase tracking-wide">Montør</th>
+            <th className="text-left p-1.5 text-muted font-semibold uppercase tracking-wide">Bil</th>
             {week.map((d) => (
               <th key={d} className={`text-center p-1.5 font-semibold uppercase tracking-wide ${d === date ? "text-brand" : d === today ? "text-ink" : "text-muted"}`}>
                 {new Date(d + "T00:00:00").toLocaleDateString("da-DK", { weekday: "short" })}
@@ -631,11 +634,11 @@ function WeeklyScheduleOverview({ orders, technicians, date }) {
 
 // Interaktiv ugevisning til MANUELT datovalg - erstatter et rent
 // dato-inputfelt som eneste måde at vælge dato på. Blad frem/tilbage
-// mellem uger, se hvordan hver bil/montør er booket dag for dag, og klik
-// direkte på en dag (evt. under en bestemt montørs række) for at vælge
-// den - klik under en montørs række vælger BÅDE dato og den montør, klik
-// på selve dags-overskriften vælger kun dato. Let, overskueligt: samme
-// visuelle sprog som ugekapaciteten ovenfor, bare interaktiv og med egen
+// mellem uger, se hvordan hver bil er booket dag for dag, og klik direkte
+// på en dag (evt. under en bestemt bils række) for at vælge den - klik
+// under en bils række vælger BÅDE dato og den bil, klik på selve
+// dags-overskriften vælger kun dato. Let, overskueligt: samme visuelle
+// sprog som ugekapaciteten ovenfor, bare interaktiv og med egen
 // uge-navigation uafhængig af den valgte dato.
 function shortDayLabel(iso) {
   return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { weekday: "short" });
@@ -650,8 +653,8 @@ function InteractiveWeekPicker({ orders, technicians, date, onSelectDate }) {
   const today = todayISO();
   const rows = [...technicians, { id: null, navn: "Ikke tildelt" }];
 
-  const cellFor = (technicianId, day) => {
-    const dayOrders = (orders || []).filter((o) => o.montorId === technicianId && o.dato === day && o.status !== "afsluttet");
+  const cellFor = (vehicleId, day) => {
+    const dayOrders = (orders || []).filter((o) => o.bilId === vehicleId && o.dato === day && o.status !== "afsluttet");
     const minutes = dayOrders.reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
     return { count: dayOrders.length, minutes };
   };
@@ -677,7 +680,7 @@ function InteractiveWeekPicker({ orders, technicians, date, onSelectDate }) {
         <table className="w-full text-xs">
           <thead>
             <tr>
-              <th className="text-left p-1 text-muted font-semibold uppercase tracking-wide w-20">Montør</th>
+              <th className="text-left p-1 text-muted font-semibold uppercase tracking-wide w-20">Bil</th>
               {week.map((d) => (
                 <th key={d} className="p-0.5">
                   <button
@@ -720,7 +723,7 @@ function InteractiveWeekPicker({ orders, technicians, date, onSelectDate }) {
           </tbody>
         </table>
       </div>
-      <p className="text-[10px] text-muted mt-2">Klik på en dag for kun at vælge dato — klik under en montørs egen række for at vælge dato og montør samtidig. Rødt tal = mere end en arbejdsdag booket ({hoursLabel(WORKDAY_MINUTES)}).</p>
+      <p className="text-[10px] text-muted mt-2">Klik på en dag for kun at vælge dato — klik under en bils egen række for at vælge dato og bil samtidig. Rødt tal = mere end en arbejdsdag booket ({hoursLabel(WORKDAY_MINUTES)}).</p>
     </div>
   );
 }
@@ -738,13 +741,18 @@ function InteractiveWeekPicker({ orders, technicians, date, onSelectDate }) {
 // lib/scheduling.js) i stedet for et Gemini-kald - hurtigere, gratis, og
 // fejler aldrig fordi en sprogmodel er overbelastet.
 //
+// BIL-DÆKNING (september 2026): personnel/timeOff sendes med til
+// suggestBookingDates, så et forslag aldrig peger på en bil, der reelt
+// ikke har nogen til at køre den den dag - se vehicleHasCoverage i
+// domain.js. Uden dem ville motoren antage alle biler altid er i spil.
+//
 // Kører automatisk når trinnet vises (kræver adresse udfyldt fra kunde-
 // trinnet) - ingen knap man skal huske at trykke først.
 //
 // Forslagene er RÅDGIVENDE, ikke en automatisk booking - sælgeren skal
 // stadig trykke "Book sag" til sidst, og kan altid vælge en helt anden
 // dato manuelt nedenfor (se InteractiveWeekPicker ovenfor).
-function SuggestedDates({ orders, technicians, date, address, jobSummary, onSelectDate }) {
+function SuggestedDates({ orders, technicians, personnel, timeOff, date, address, jobSummary, onSelectDate }) {
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState(null);
   const [error, setError] = useState(null);
@@ -793,7 +801,7 @@ function SuggestedDates({ orders, technicians, date, address, jobSummary, onSele
       // Stille - se kommentar ovenfor.
     }
 
-    const result = suggestBookingDates({ week, orders: orders || [], technicians: technicians || [], sameBuildingDates, nearbyDates });
+    const result = suggestBookingDates({ week, orders: orders || [], technicians: technicians || [], personnel, timeOff, sameBuildingDates, nearbyDates });
     setLoading(false);
     setSuggestions(result);
     // eslint-disable-next-line react-hooks/exhaustive-deps
