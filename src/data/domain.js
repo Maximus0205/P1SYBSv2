@@ -315,6 +315,39 @@ const activeSickLeave = (technicianId, timeOff) => {
   return (timeOff || []).find((f) => f.montorId === technicianId && f.type === "sygdom" && f.startDato <= today && (!f.slutDato || f.slutDato >= today)) || null;
 };
 
+// ---------------- Bil-dækning (september 2026) ----------------
+// Sager tildeles nu en BIL, ikke en PERSON (se rebind_orders_to_vehicle_
+// instead_of_person-migreringen) - flere personer kan dele én bil, siden
+// "kan køre rute" blev indført. Fravær/sygdom forbliver en PERSON-
+// egenskab (et menneske er sygt, ikke en bil), så spørgsmålet "er der et
+// problem med denne sag" bliver til "har bilen mindst én person tilknyttet,
+// der ikke er fraværende i dag" - IKKE "er DEN SPECIFIKKE person fraværende".
+//
+// Er der to montører på en bil, og den ene bliver syg, er bilen stadig
+// AKTIV: den anden kører den. Er der derimod INGEN tilknyttet bilen
+// overhovedet, er det et problem uafhængigt af dato - der er ingen at
+// spørge, om de er fraværende.
+//
+// personnel: array af { id, bilId } - de mennesker der kan køre en rute
+// (rolle montor eller kanKoere), UAFHÆNGIGT af hvilke "technicians"-rækker
+// (nu bil-rækker, se App.jsx) der bruges til selve tildelingen.
+const vehicleAbsences = (vehicleId, date, personnel, timeOff) => {
+  const drivers = (personnel || []).filter((p) => p.bilId === vehicleId);
+  return drivers.map((p) => ({
+    person: p,
+    fravaer: (timeOff || []).find((f) => f.montorId === p.id && date >= f.startDato && (!f.slutDato || date <= f.slutDato)) || null,
+  }));
+};
+
+// Har bilen mindst én person tilknyttet, der er til rådighed (ikke
+// fraværende) på den givne dato? Ingen personer tilknyttet overhovedet =
+// ingen dækning, uanset dato.
+const vehicleHasCoverage = (vehicleId, date, personnel, timeOff) => {
+  const abs = vehicleAbsences(vehicleId, date, personnel, timeOff);
+  if (abs.length === 0) return false;
+  return abs.some((a) => !a.fravaer);
+};
+
 const emptyCustomer = () => ({ navn: "", telefon: "", email: "", adresse: "", leveringsnote: "" });
 const emptyKeyAccess = () => ({ kraeves: false, type: "", detaljer: "", placering: "" });
 
@@ -324,7 +357,7 @@ const STATUS_META = {
   afsluttet: { label: "Afsluttet", color: "#3D7A5C" },
 };
 
-// Rækkefølge for sager hos SAMME montør SAMME dag. Bookinger sker kun med
+// Rækkefølge for sager hos SAMME bil SAMME dag. Bookinger sker kun med
 // grove tidsrum (hel dag/formiddag/eftermiddag), så flere sager har ofte
 // identisk start/slut-tid, og rækkefølgen ville uden dette felt reelt være
 // tilfældig. `raekkefolge` sættes KUN når nogen aktivt har omfordelt - før
@@ -338,10 +371,13 @@ const dailyOrderCompare = (a, b) => {
   return (a.start || "").localeCompare(b.start || "");
 };
 
-// En sag "MANGLER PLANLÆGNING", hvis den ikke har dato ELLER montør (og
-// ikke er afsluttet). Bevidst IKKE inklusiv "dato passeret" - er datoen
+// En sag "MANGLER PLANLÆGNING", hvis den ikke har dato ELLER bil (og ikke
+// er afsluttet). Bevidst IKKE inklusiv "dato passeret" - er datoen
 // passeret uden problem-markering, antages sagen gennemført.
-const needsPlanning = (order) => order.status !== "afsluttet" && (!order.dato || !order.montorId);
+//
+// bilId (september 2026) erstatter montorId - se noten ved
+// vehicleHasCoverage ovenfor.
+const needsPlanning = (order) => order.status !== "afsluttet" && (!order.dato || !order.bilId);
 
 // RETTIGHEDER: fælles UI-hjælper til "må denne bruger X?". Den
 // AUTORITATIVE håndhævelse ligger i databasen (RLS + triggere) - denne
@@ -381,7 +417,8 @@ export {
   createLineItem, lineItemLabel, lineItemMinutes, orderExpectedMinutes, normalizeAddress, buildingKey, areaKey,
   lineItemFingerprint, isMissingActive, missingLineItems, orderHasMissingItems,
   weekDays, buildTitle, keyAccessText, TIME_SLOTS, timeSlotById, timeSlotText, KEY_ACCESS_TYPES, TECHNICIAN_COLORS, technicianColor,
-  DEFAULT_VEHICLES, vehicleLabel, vehicleBlockedByTimeOff, isTechnicianAbsent, activeSickLeave, emptyCustomer, emptyKeyAccess, STATUS_META,
+  DEFAULT_VEHICLES, vehicleLabel, vehicleBlockedByTimeOff, isTechnicianAbsent, activeSickLeave, vehicleAbsences, vehicleHasCoverage,
+  emptyCustomer, emptyKeyAccess, STATUS_META,
   dailyOrderCompare, needsPlanning, computeNotifications, PAGES, PAGES_FOR_ROLE, canDo, DASHBOARD_WIDGET_CATALOG, DEFAULT_DASHBOARD_WIDGETS,
 };
 
