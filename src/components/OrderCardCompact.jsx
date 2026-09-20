@@ -29,6 +29,11 @@ import { StatusBadge, LineItemPills } from "../components/common";
 // er nu ren visning, som alle andre steder: skiftet sker i montørens flow
 // gennem Start opgave og Færdigmeld.
 //
+// BIL, IKKE MONTØR (september 2026): sager tildeles nu en BIL, ikke en
+// person - se rebind_orders_to_vehicle_instead_of_person. Dropdownen
+// nedenfor viser derfor "technicians" (som nu er BIL-rækker, se App.jsx)
+// og skriver/læser order.bilId i stedet for order.montorId.
+//
 // TOMGANG (september 2026): en lille mærkat ved siden af sagsnummeret, når
 // sagen er en tomgangskørsel - se data/caseTypes.js. Kortet er ofte det
 // eneste, en planlægger ser i en liste, og det er værd at vide UDEN at
@@ -102,8 +107,8 @@ function OrderCardCompact({ order, technicians, onOpen, onAssign, onUpdateTimeSl
             </select>
           )}
           {onAssign && (
-            <select value={order.montorId || ""} onChange={(e) => onAssign(order.id, e.target.value || null)} aria-label={`Montør for sag ${order.nr}`} className={`w-full min-w-0 flex-1 rounded-lg text-xs border px-2 py-2 focus:outline-none focus:border-brand ${order.montorId ? "border-line text-ink" : "border-brand text-brand font-semibold"}`}>
-              <option value="">Vælg montør...</option>
+            <select value={order.bilId || ""} onChange={(e) => onAssign(order.id, e.target.value || null)} aria-label={`Bil for sag ${order.nr}`} className={`w-full min-w-0 flex-1 rounded-lg text-xs border px-2 py-2 focus:outline-none focus:border-brand ${order.bilId ? "border-line text-ink" : "border-brand text-brand font-semibold"}`}>
+              <option value="">Vælg bil...</option>
               {technicians.map((m) => <option key={m.id} value={m.id}>{m.navn}</option>)}
             </select>
           )}
