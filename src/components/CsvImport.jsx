@@ -2,6 +2,13 @@ import React, { useState, useRef } from "react";
 import Papa from "papaparse";
 import { OTHER_PRODUCT_TYPE_ID, createLineItem, createAddOn, timeSlotById, todayISO, uid } from "../data/domain";
 
+// BIL, IKKE MONTØR (september 2026): "technicians" er BIL-rækker (se
+// App.jsx) - CSV'ens "Montør"-kolonne matches derfor mod en bils navn
+// eller nummerplade, og resultatet gemmes som bilId. Kolonnenavnet i
+// CSV-skabelonen ("Montør") er bevidst urørt, selvom det nu reelt betyder
+// "hvilken bil" - de fleste eksisterende regneark bruger allerede det
+// ord, og folk der importerer skal ikke lære et nyt kolonnenavn for
+// samme information.
 function CsvImport({ technicians, productTypes, primaryServices, onImport, onClose }) {
   const inputRef = useRef(null);
   const [status, setStatus] = useState(null);
@@ -34,8 +41,8 @@ function CsvImport({ technicians, productTypes, primaryServices, onImport, onClo
           const rows = results.data;
           const newOrders = rows
             .map((row, i) => {
-              const technicianName = norm(pick(row, ["montor", "montør", "bil", "installatoer"]));
-              const matchedTechnician = technicians.find((m) => norm(m.navn) === technicianName || norm(m.bil).includes(technicianName));
+              const vehicleName = norm(pick(row, ["montor", "montør", "bil", "installatoer"]));
+              const matchedVehicle = technicians.find((m) => norm(m.navn) === vehicleName || norm(m.bil).includes(vehicleName));
               const rawProductType = pick(row, ["varetype", "produkttype", "vare"]);
               const matchedProductType = productTypes.find((v) => norm(v.navn) === norm(rawProductType));
               const timeSlotId = matchTimeSlot(pick(row, ["tidsrum", "tid", "periode"]));
@@ -58,7 +65,7 @@ function CsvImport({ technicians, productTypes, primaryServices, onImport, onClo
                 koeber: buyerName ? { navn: buyerName, telefon: pick(row, ["købertelefon", "koebertelefon"]), email: pick(row, ["købermail", "koebermail"]), adresse: pick(row, ["køberadresse", "koeberadresse"]) } : null,
                 noegle: { kraeves: /ja|true|1/i.test(pick(row, ["nøgle", "noegle"])), type: pick(row, ["nøgletype", "noegletype"]), detaljer: pick(row, ["nøgledetaljer", "noegledetaljer"]), placering: pick(row, ["nøgleplacering", "noegleplacering"]) },
                 dato: date, tidsrumId: timeSlotId, start: t.start, slut: t.slut,
-                montorId: matchedTechnician ? matchedTechnician.id : null,
+                bilId: matchedVehicle ? matchedVehicle.id : null,
                 status: "planlagt",
                 plukket: false,
                 varelinjer: [lineItem],
