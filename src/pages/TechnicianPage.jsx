@@ -312,8 +312,12 @@ function OrderStopCard({ order: s, onOpen, onMoveUp, onMoveDown, canMoveUp, canM
   );
 }
 
+// technician her er en BIL-række ({id, navn, bil}), sendt fra MontorRoute
+// i App.jsx via profile.bilId - IKKE den indloggede persons eget id. To
+// personer på samme bil ser derfor begge samme rute (september 2026, se
+// rebind_orders_to_vehicle_instead_of_person).
 function TechnicianRouteView({ orders, technician, selectedDate, onDateChange, onOpen, onReorder, onChangeTechnician, onRefresh, refreshing }) {
-  const myOrders = orders.filter((s) => s.montorId === technician.id && s.dato === selectedDate).sort(dailyOrderCompare);
+  const myOrders = orders.filter((s) => s.bilId === technician.id && s.dato === selectedDate).sort(dailyOrderCompare);
   const done = myOrders.filter((s) => s.status === "afsluttet").length;
 
   return (
