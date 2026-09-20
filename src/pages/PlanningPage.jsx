@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertCircle, ArrowLeftRight, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, RefreshCw, KeyRound, Clock, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid, MapPin, Phone, Route, Stethoscope, CalendarX2, AlertTriangle } from "lucide-react";
-import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, dailyOrderCompare, needsPlanning, activeSickLeave, buildingKey, timeSlotById } from "../data/domain";
+import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, dailyOrderCompare, needsPlanning, vehicleAbsences, vehicleHasCoverage, buildingKey, timeSlotById } from "../data/domain";
 import { geocodeAddress, geocodeAddresses, drivingDistances, routeDrivingTime, optimalVisitOrder } from "../lib/geocoding";
 import { suggestPlan, planningWindow, WORKDAY_MINUTES } from "../lib/scheduling";
 import { DateSelector } from "../components/common";
@@ -9,61 +9,55 @@ import { OrderCardCompact } from "../components/OrderCardCompact";
 // ---------------------------------------------------------------------------
 // Planlægning + Kørsel er fusioneret til ÉN fane (august 2026). Siden er
 // bygget med ÉT primært formål for øje: gøre det hurtigt at få OVERBLIK
-// over ugen og OMFORDELE sager, når en montør bliver syg, eller et besøg
-// var forgæves.
+// over ugen og OMFORDELE sager, når en bil mister sin eneste montør, eller
+// et besøg var forgæves.
 //
-// OVERBLIKKET ER OMBYGGET (august 2026, efter direkte feedback fra test):
-// KOLONNER = ugedage (mandag-fredag - bevidst ikke lørdag/søndag, se
-// WeekOverview), og INDEN I hver dag-kolonne er sagerne grupperet pr.
-// montør/bil, tydeligt visuelt adskilt (farvet venstre-kant + navn), i den
-// rækkefølge sagerne reelt ligger i montørens rute (dailyOrderCompare).
-// Det er den modsatte akse af den oprindelige udgave (montør som RÆKKE,
-// dag som KOLONNE), som viste sig uoverskuelig i praksis.
+// SAGER TILDELES EN BIL, IKKE EN PERSON (september 2026, se
+// rebind_orders_to_vehicle_instead_of_person). "technicians" herunder er
+// derfor BIL-rækker ({id, navn, bil, lukket}) - det man rent faktisk
+// tildeler en sag til. "personnel" er MENNESKERNE, der kan køre en rute
+// ({id, navn, bilId}) - adskilt, fordi FRAVÆR ER EN PERSON-EGENSKAB. Har
+// en bil to montører tilknyttet, og den ene bliver syg, er bilen stadig
+// AKTIV: den anden kører den. Er der derimod INGEN tilknyttet bilen
+// overhovedet, er det et problem, uanset dato.
+//
+// OVERBLIKKET (august 2026, efter direkte feedback fra test): KOLONNER =
+// ugedage (mandag-fredag - bevidst ikke lørdag/søndag, se WeekOverview),
+// og INDEN I hver dag-kolonne er sagerne grupperet pr. bil, tydeligt
+// visuelt adskilt (farvet venstre-kant + navn), i den rækkefølge sagerne
+// reelt ligger i ruten (dailyOrderCompare).
 //
 // "KRÆVER HANDLING" ER FIRE "dashboard-fliser" - kun ÉN kan være foldet ud
 // ad gangen:
-//   1. Montørproblem  - montøren findes ikke længere, bilen er blokeret,
-//                        eller montøren har fravær/ferie den dag
-//   2. Sygemelding     - sager for en AKTIVT sygemeldt montør, inden for
-//                        butikkens eget tidsvindue (se Admin)
-//   3. Skal planlægges - mangler dato ELLER montør (IKKE "dato passeret" -
+//   1. Montørproblem  - bilen findes ikke længere, er blokeret/lukket,
+//                        har ingen montør tilknyttet, eller ALLE dens
+//                        montører har FERIE denne dag
+//   2. Sygemelding     - bilen mangler dækning, og mindst én af årsagerne
+//                        er SYGDOM - inden for butikkens eget tidsvindue
+//                        (se Admin). Vises kun her, ikke også i
+//                        Montørproblem.
+//   3. Skal planlægges - mangler dato ELLER bil (IKKE "dato passeret" -
 //                        er den passeret uden et markeret problem, antages
 //                        sagen gennemført, se needsPlanning i domain.js)
 //   4. Uafsluttet/fejl - sagen er markeret med et PROBLEM af montøren,
 //                        uafhængigt af selve status-tagget
 // Tile 1-3 bruger ALLE samme forslagsmotor (suggestPlan, lib/scheduling.js)
-// - INGEN AI. RETTET (august 2026, fejl fundet ved test): forslagsmotoren
-// kunne tidligere "foreslå" ingen montør overhovedet, hvilket ikke løser
-// noget - se requireTechnician i scheduling.js. Tile 4 har bevidst intet
-// forslag - det kræver en menneskelig opfølgning.
+// - INGEN AI. Tile 4 har bevidst intet forslag - det kræver en menneskelig
+// opfølgning.
 // ---------------------------------------------------------------------------
 
-// RETTET (august 2026): FERIE blev slet ikke fanget her. En sag tildelt en
-// montør, der holder ferie den pågældende dag, landede i INGEN af
-// "kræver handling"-fliserne - den blev kun vist med et lille
-// "Fraværende"-mærke i ugeoverblikket, hvis nogen huskede at kigge.
-// Sygdom var dækket (egen flise), bilen ude af drift var dækket, men
-// ferie - den ENESTE af de tre, man kender uger i forvejen og derfor
-// burde kunne planlægge sig ud af i god tid - faldt igennem.
-//
-// Sygdom holdes bevidst UDE her: den har sin egen flise med sit eget
-// tidsvindue, og en sag skal ikke optræde to steder.
-function technicianIssue(order, technicians, vehicles, timeOff) {
-  if (!order.montorId) return null;
-  const technician = technicians.find((m) => m.id === order.montorId);
-  if (!technician) return "Montøren findes ikke længere";
-  if (technician.bilId) {
-    const vehicle = (vehicles || []).find((v) => v.id === technician.bilId);
-    if (vehicle?.lukket) return "Montørens bil er ude af drift";
-  }
-  if (order.dato) {
-    const fravaer = (timeOff || []).find((f) =>
-      f.montorId === order.montorId &&
-      (f.type || "ferie") !== "sygdom" &&
-      order.dato >= f.startDato &&
-      (!f.slutDato || order.dato <= f.slutDato)
-    );
-    if (fravaer) return "Montøren har fravær/ferie denne dag";
+// Er der et strukturelt eller planlagt problem med SELVE BILEN på denne
+// sag - uafhængigt af dagens dækning (den tjekkes separat i classify(),
+// FØR denne kaldes, for at kunne skelne sygdom fra ferie - se noten der).
+function technicianIssue(order, vehicles, personnel, timeOff) {
+  if (!order.bilId) return null;
+  const vehicle = (vehicles || []).find((v) => v.id === order.bilId);
+  if (!vehicle) return "Bilen findes ikke længere";
+  if (vehicle.lukket) return "Bilen er ude af drift";
+  const tilknyttede = (personnel || []).filter((p) => p.bilId === order.bilId);
+  if (tilknyttede.length === 0) return "Ingen montør er tilknyttet bilen";
+  if (order.dato && !vehicleHasCoverage(order.bilId, order.dato, personnel, timeOff)) {
+    return tilknyttede.length === 1 ? "Montøren har fravær/ferie denne dag" : "Alle montører på bilen har fravær/ferie denne dag";
   }
   return null;
 }
@@ -75,7 +69,7 @@ function technicianIssue(order, technicians, vehicles, timeOff) {
 // "Skal planlægges" samtidig, da problem-markeringen er uafhængig af
 // resten (se domain.js). Eksporteres (august 2026) så DashboardPage kan
 // genbruge samme klassificering til "Kræver handling"-widgeten.
-function classify(orders, technicians, vehicles, timeOff, windowHours) {
+function classify(orders, technicians, personnel, vehicles, timeOff, windowHours) {
   const today = todayISO();
   const windowDays = Math.max(1, Math.ceil((windowHours || 48) / 24));
   const windowEnd = addDays(today, windowDays);
@@ -91,15 +85,25 @@ function classify(orders, technicians, vehicles, timeOff, windowHours) {
   for (const s of orders) {
     if (s.status === "afsluttet") { done.push(s); continue; }
 
-    // Sygdom tjekkes FØR de øvrige montørproblemer: den har sin egen
-    // flise med butikkens eget tidsvindue, og skal ikke opsluges af den
-    // bredere "montørproblem"-kategori.
-    if (s.montorId && s.dato) {
-      const sick = activeSickLeave(s.montorId, timeOff);
-      if (sick && s.dato <= windowEnd) { sickLeave.push({ ...s, _sygemelding: sick }); continue; }
+    // Manglende dækning tjekkes FØR den strukturelle bil-fejl, så vi kan
+    // skelne SYGDOM (egen flise, eget tidsvindue) fra FERIE (den bredere
+    // "montørproblem"-kategori, uden vindue - ferie kendes typisk langt
+    // nok forud til, at den ikke skal vente på et vindue for at blive
+    // synlig). Er bilen dækket (mindst én tilgængelig montør), rammer
+    // hverken denne eller technicianIssue nedenfor - sagen er fin.
+    if (s.bilId && s.dato) {
+      const fravaer = vehicleAbsences(s.bilId, s.dato, personnel, timeOff);
+      const dækket = fravaer.length > 0 && fravaer.some((a) => !a.fravaer);
+      if (fravaer.length > 0 && !dækket) {
+        const harSygdom = fravaer.some((a) => a.fravaer?.type === "sygdom");
+        if (harSygdom && s.dato <= windowEnd) {
+          sickLeave.push({ ...s, _fravaer: fravaer });
+          continue;
+        }
+      }
     }
 
-    const issue = s.montorId ? technicianIssue(s, technicians, vehicles, timeOff) : null;
+    const issue = s.bilId ? technicianIssue(s, vehicles, personnel, timeOff) : null;
     if (issue) { technicianProblem.push({ ...s, _issue: issue }); continue; }
 
     if (needsPlanning(s)) { needsPlan.push(s); continue; }
@@ -134,14 +138,14 @@ function matchesSearch(order, search) {
 }
 
 // ---------------- Ét kort pr. sag i en "skal handles"-flise ----------------
-// Viser ALTID de manuelle dato/montør-vælgere (fuld kontrol bevaret), PLUS
+// Viser ALTID de manuelle dato/bil-vælgere (fuld kontrol bevaret), PLUS
 // et automatisk beregnet forslag (hvis der er ét), som kan anvendes med ét
 // klik. Forslaget beregnes af den kaldende flise (ReplanTile), ikke her.
 //
 // Årsagen til at sagen er havnet her (_issue) vises nu eksplicit: en
 // planlægger, der åbner "Montørproblem", skal kunne se HVILKET problem
-// hver enkelt sag har - "bilen er ude af drift" og "montøren har ferie"
-// kræver forskellige beslutninger.
+// hver enkelt sag har - "bilen er ude af drift" og "ingen montør
+// tilknyttet" kræver forskellige beslutninger.
 function ReplanCard({ order, technicians, suggestion, loadingSuggestion, onApplySuggestion, onManualChange, onOpen }) {
   return (
     <div className="rounded-lg bg-white border border-line p-3 mb-2 last:mb-0 shadow-sm">
@@ -169,7 +173,7 @@ function ReplanCard({ order, technicians, suggestion, loadingSuggestion, onApply
           <button onClick={() => onApplySuggestion(order, suggestion)} className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors rounded-lg px-3 py-2 flex items-center gap-1"><Check size={11} aria-hidden="true" /> Brug</button>
         </div>
       ) : (
-        <p className="text-[11px] text-muted italic mb-2">Intet forslag med en ledig montør fundet inden for de næste 14 dage — tildel manuelt nedenfor.</p>
+        <p className="text-[11px] text-muted italic mb-2">Intet forslag med en dækket bil fundet inden for de næste 14 dage — tildel manuelt nedenfor.</p>
       )}
 
       <div className="flex gap-1.5 flex-wrap">
@@ -181,9 +185,9 @@ function ReplanCard({ order, technicians, suggestion, loadingSuggestion, onApply
           className="rounded-lg border border-line bg-panel px-2 py-2 text-xs text-ink font-mono focus:outline-none focus:border-brand"
         />
         <select
-          value={order.montorId || ""}
-          onChange={(e) => onManualChange(order.id, { montorId: e.target.value || null })}
-          aria-label={`Montør for sag ${order.nr}`}
+          value={order.bilId || ""}
+          onChange={(e) => onManualChange(order.id, { bilId: e.target.value || null })}
+          aria-label={`Bil for sag ${order.nr}`}
           className="flex-1 min-w-[100px] rounded-lg border border-line bg-panel px-2 py-2 text-xs text-ink focus:outline-none focus:border-brand"
         >
           <option value="">Ikke tildelt</option>
@@ -195,9 +199,7 @@ function ReplanCard({ order, technicians, suggestion, loadingSuggestion, onApply
 }
 
 // ---------------- Fliens indhold: liste + automatisk beregnede forslag ----------------
-// excludeTechnicianIds: enten et fast array, eller en funktion pr. sag
-// (fx "udeluk den montør DENNE sag selv er ramt af problemet med").
-function ReplanTile({ items, orders, technicians, timeOff, excludeTechnicianIds, onUpdateBooking, onOpen }) {
+function ReplanTile({ items, orders, technicians, personnel, timeOff, onUpdateBooking, onOpen }) {
   const [suggestions, setSuggestions] = useState({});
   const [loading, setLoading] = useState(false);
   const key = items.map((o) => o.id).join(",");
@@ -232,16 +234,17 @@ function ReplanTile({ items, orders, technicians, timeOff, excludeTechnicianIds,
           }
         } catch (_) { /* stille - resten af forslaget bygger stadig på kapacitet/samme opgang */ }
 
-        const exclude = typeof excludeTechnicianIds === "function" ? excludeTechnicianIds(order) : excludeTechnicianIds;
         // requireTechnician: true - se scheduling.js. Et forslag der ikke
-        // rent faktisk tildeler en montør er ikke en løsning her.
+        // rent faktisk tildeler en bil er ikke en løsning her.
         //
-        // orderMinutes (august 2026): sagens EGEN forventede varighed
-        // sendes med, så en dag der allerede har 7 timer booket ikke
-        // foreslås til en 5-timers opgave. Uden den så motoren kun på
-        // hvad der lå der i forvejen, og kunne fylde en dag langt over
-        // arbejdsdagens længde.
-        const plan = suggestPlan({ dates, orders, technicians, timeOff, sameBuildingDates, nearbyDates, excludeTechnicianIds: exclude, originalDate: order.dato || null, requireTechnician: true, orderMinutes: orderExpectedMinutes(order) });
+        // personnel sendes med, så motoren kan tjekke DÆKNING pr. bil pr.
+        // dato (vehicleHasCoverage) i stedet for at antage alle biler
+        // altid er i spil.
+        //
+        // orderMinutes: sagens EGEN forventede varighed, så en dag der
+        // allerede har 7 timer booket ikke foreslås til en 5-timers
+        // opgave.
+        const plan = suggestPlan({ dates, orders, technicians, personnel, timeOff, sameBuildingDates, nearbyDates, originalDate: order.dato || null, requireTechnician: true, orderMinutes: orderExpectedMinutes(order) });
         if (plan[0] && !cancelled) results[order.id] = plan[0];
       }
       if (!cancelled) { setSuggestions(results); setLoading(false); }
@@ -253,7 +256,7 @@ function ReplanTile({ items, orders, technicians, timeOff, excludeTechnicianIds,
 
   const applySuggestion = (order, s) => {
     const t = timeSlotById("heldag");
-    onUpdateBooking(order.id, { dato: s.dato, tidsrumId: order.tidsrumId || "heldag", start: order.start || t.start, slut: order.slut || t.slut, montorId: s.montorId });
+    onUpdateBooking(order.id, { dato: s.dato, tidsrumId: order.tidsrumId || "heldag", start: order.start || t.start, slut: order.slut || t.slut, bilId: s.montorId });
   };
 
   return (
@@ -316,7 +319,7 @@ function TileButton({ icon: Icon, color, count, label, selected, onClick }) {
 // noget. Skal man finde en bestemt sag, bruger man søgefeltet øverst.
 const SECTION_PAGE_SIZE = 30;
 
-function CollapsibleSection({ title, icon: Icon, colorClass, items, technicians, onOpen, onCycleStatus, emptyText }) {
+function CollapsibleSection({ title, icon: Icon, colorClass, items, technicians, onOpen, emptyText }) {
   const [open, setOpen] = useState(false);
   const [visible, setVisible] = useState(SECTION_PAGE_SIZE);
 
@@ -347,7 +350,7 @@ function CollapsibleSection({ title, icon: Icon, colorClass, items, technicians,
           ) : (
             <>
               <div className="grid gap-2 sm:grid-cols-2">
-                {shown.map((s) => <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} />)}
+                {shown.map((s) => <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} />)}
               </div>
               {remaining > 0 && (
                 <button
@@ -379,22 +382,17 @@ function shortDayLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateStr
 function shortDateLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "short" }); }
 
 // ---------------- Overblik: ugekalender med kort og omfordeling ----------------
-// RETTET (august 2026): selve sagskortet var et <div onClick>. Det kan
-// ikke nås med tastatur, får ingen fokusmarkering, og en skærmlæser
-// fortæller ikke, at det kan trykkes. Det er nu en rigtig <button> med
-// venstrestillet tekst - samme udseende, men brugbar uden mus.
-//
 // MONTØR-VÆLGEREN ER FOLDET SAMMEN (august 2026, set på skærmbillede):
 // hvert eneste kort havde en fuldbredde-dropdown nederst, som gentog
-// præcis det, den farvede montør-overskrift over gruppen allerede sagde.
-// På en travl dag med 19 sager blev det 19 grå kasser med samme navn i,
-// og ~35 px ekstra højde pr. kort - altså en markant længere rulning for
+// præcis det, den farvede bil-overskrift over gruppen allerede sagde. På
+// en travl dag med 19 sager blev det 19 grå kasser med samme navn i, og
+// ~35 px ekstra højde pr. kort - altså en markant længere rulning for
 // information, man allerede havde. Dropdownen foldes nu frem med
 // "flyt"-knappen i kortets øverste højre hjørne.
 //
 // UNDTAGELSER, hvor den stadig er åben fra start:
-//   * sagen er IKKE tildelt nogen - dér ER vælgeren hele pointen
-//   * montøren er fraværende den dag - sagen SKAL flyttes, og så må
+//   * sagen er IKKE tildelt nogen bil - dér ER vælgeren hele pointen
+//   * bilen mangler dækning den dag - sagen SKAL flyttes, og så må
 //     handlingen ikke være gemt bag et ekstra tryk
 function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnicianId, color, onLeave, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
   const [showAssign, setShowAssign] = useState(!currentTechnicianId || !!onLeave);
@@ -424,8 +422,8 @@ function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnician
                 type="button"
                 onClick={() => setShowAssign((v) => !v)}
                 aria-expanded={showAssign}
-                aria-label={`Flyt ${order.kunde?.navn || "sagen"} til en anden montør`}
-                title="Flyt til anden montør"
+                aria-label={`Flyt ${order.kunde?.navn || "sagen"} til en anden bil`}
+                title="Flyt til anden bil"
                 className={`w-9 h-9 -mr-1 -my-1 flex items-center justify-center rounded focus:outline-none focus:ring-2 focus:ring-brand ${showAssign ? "text-brand" : "text-muted hover:text-brand"}`}
               >
                 <ArrowLeftRight size={13} aria-hidden="true" />
@@ -457,7 +455,7 @@ function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnician
           value={currentTechnicianId || ""}
           onChange={(e) => onAssign(order.id, e.target.value || null)}
           onClick={(e) => e.stopPropagation()}
-          aria-label={`Montør for ${order.kunde?.navn || "sagen"}`}
+          aria-label={`Bil for ${order.kunde?.navn || "sagen"}`}
           className={`w-full mt-1.5 rounded-md border px-1.5 py-2 text-[11px] focus:outline-none focus:ring-2 focus:ring-brand ${onLeave ? "border-danger text-danger font-semibold" : "border-line bg-panel text-muted focus:border-brand"}`}
         >
           <option value="">Ikke tildelt</option>
@@ -477,8 +475,8 @@ function DayTimeBadge({ minutes, overloaded, loading }) {
   );
 }
 
-// ÉT teknikersegment inden for én dag-kolonne: farvet venstre-kant + navn
-// tydeligt adskiller det fra næste montørs sager i samme kolonne. Bruges
+// ÉT bil-segment inden for én dag-kolonne: farvet venstre-kant + navn
+// tydeligt adskiller det fra næste bils sager i samme kolonne. Bruges
 // BÅDE i mobil- og pc-udgaven (kun selve kolonne-strukturen omkring det er
 // forskellig).
 function TechnicianDaySection({ row, day, dayOrders, technicians, onOpen, onAssign, onReorder, onSetVisitOrder, isOnLeave, timeInfo, optimizing, onOptimize }) {
@@ -497,7 +495,7 @@ function TechnicianDaySection({ row, day, dayOrders, technicians, onOpen, onAssi
           {row.id && timeInfo.loadMinutes > 0 && <DayTimeBadge minutes={timeInfo.total} overloaded={timeInfo.overloaded} loading={timeInfo.stillLoading} />}
         </div>
       </div>
-      {isOnLeave && <p className="text-[10px] font-semibold uppercase tracking-wide text-danger mb-1 flex items-center gap-0.5"><AlertCircle size={9} aria-hidden="true" /> Fraværende</p>}
+      {isOnLeave && <p className="text-[10px] font-semibold uppercase tracking-wide text-danger mb-1 flex items-center gap-0.5"><AlertCircle size={9} aria-hidden="true" /> Ingen montør til rådighed</p>}
       {dayOrders.map((o, i) => (
         <MiniOrderCard
           key={o.id}
@@ -521,15 +519,15 @@ function TechnicianDaySection({ row, day, dayOrders, technicians, onOpen, onAssi
 // KOLONNER = ugedage (mandag-fredag, bevidst IKKE lørdag/søndag - de
 // fleste sager ligger på hverdage, og fem faste kolonner giver et
 // forudsigeligt, roligt layout uden vagt "6-7 kolonner afhængig af uge").
-// INDEN I hver dag-kolonne grupperes sagerne pr. montør/bil (TekniskerDay-
-// Section ovenfor), i deres rigtige rækkefølge (dailyOrderCompare) - det
-// er den akse, der rent faktisk giver overblik: "hvad sker der på tirsdag"
-// er et langt hyppigere spørgsmål end "hvad laver Jens hele ugen".
+// INDEN I hver dag-kolonne grupperes sagerne pr. bil (TechnicianDaySection
+// ovenfor), i deres rigtige rækkefølge (dailyOrderCompare) - det er den
+// akse, der rent faktisk giver overblik: "hvad sker der på tirsdag" er et
+// langt hyppigere spørgsmål end "hvad kører bil 1 hele ugen".
 //
-// MOBIL har sin egen udgave: dag-faner øverst + montør-sektionerne stablet
+// MOBIL har sin egen udgave: dag-faner øverst + bil-sektionerne stablet
 // under hinanden. Fem kolonner ved siden af hinanden på en telefonskærm
 // ville give kort på under 70 px bredde - ulæselige og umulige at ramme.
-function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder, onSetVisitOrder, onOpen }) {
+function WeekOverview({ orders, technicians, personnel, timeOff, store, onAssign, onReorder, onSetVisitOrder, onOpen }) {
   const [open, setOpen] = useState(true);
   const [weekAnchor, setWeekAnchor] = useState(todayISO());
   const [selectedDay, setSelectedDay] = useState(todayISO());
@@ -547,12 +545,15 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
   }, [weekAnchor]);
 
   const weekOrders = orders.filter((o) => weekdays5.includes(o.dato) && o.status !== "afsluttet");
-  const unassignedThisWeek = weekOrders.filter((o) => !o.montorId).length;
+  const unassignedThisWeek = weekOrders.filter((o) => !o.bilId).length;
 
-  const ordersFor = (technicianId, day) =>
-    orders.filter((o) => o.montorId === technicianId && o.dato === day && o.status !== "afsluttet").sort(dailyOrderCompare);
+  const ordersFor = (vehicleId, day) =>
+    orders.filter((o) => o.bilId === vehicleId && o.dato === day && o.status !== "afsluttet").sort(dailyOrderCompare);
 
-  const isOnLeave = (technicianId, day) => !!technicianId && (timeOff || []).some((f) => f.montorId === technicianId && day >= f.startDato && (!f.slutDato || day <= f.slutDato));
+  // Bilen mangler dækning netop DEN dag - se vehicleHasCoverage i
+  // domain.js. "Ikke tildelt"-rækken (vehicleId null) har naturligt aldrig
+  // en dækningsstatus.
+  const manglerDaekning = (vehicleId, day) => !!vehicleId && !vehicleHasCoverage(vehicleId, day, personnel, timeOff);
 
   const storeCoord = store?.lat != null && store?.lon != null ? { lat: store.lat, lon: store.lon } : null;
   const minStopsForEstimate = storeCoord ? 1 : 2;
@@ -561,7 +562,7 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
     const map = {};
     technicians.forEach((m) => {
       weekDays(weekAnchor).slice(0, 5).forEach((d) => {
-        map[`${m.id}|${d}`] = orders.filter((o) => o.montorId === m.id && o.dato === d && o.status !== "afsluttet").sort(dailyOrderCompare);
+        map[`${m.id}|${d}`] = orders.filter((o) => o.bilId === m.id && o.dato === d && o.status !== "afsluttet").sort(dailyOrderCompare);
       });
     });
     return map;
@@ -595,19 +596,19 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature]);
 
-  const timeFor = (technicianId, day, dayOrdersForCell) => {
-    const key = `${technicianId}|${day}`;
+  const timeFor = (vehicleId, day, dayOrdersForCell) => {
+    const key = `${vehicleId}|${day}`;
     const loadMinutes = dayOrdersForCell.reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
-    const drive = technicianId ? driveMinutes[key] : undefined;
+    const drive = vehicleId ? driveMinutes[key] : undefined;
     const total = loadMinutes + (drive || 0);
     const overloaded = total > WORKDAY_MINUTES;
-    const stillLoading = !!technicianId && driveLoading && dayOrdersForCell.length >= minStopsForEstimate && drive === undefined;
+    const stillLoading = !!vehicleId && driveLoading && dayOrdersForCell.length >= minStopsForEstimate && drive === undefined;
     return { loadMinutes, total, overloaded, stillLoading };
   };
 
-  const optimizeDay = async (technicianId, day, dayOrders) => {
+  const optimizeDay = async (vehicleId, day, dayOrders) => {
     if (!onSetVisitOrder || dayOrders.length < 2) return;
-    const key = `${technicianId}|${day}`;
+    const key = `${vehicleId}|${day}`;
     setOptimizing((prev) => ({ ...prev, [key]: true }));
     const addresses = dayOrders.map((o) => o.kunde?.adresse).filter(Boolean);
     const coordMap = await geocodeAddresses(addresses);
@@ -621,7 +622,7 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
         const offset = storeCoord ? 1 : 0;
         const orderedIds = order.filter((idx) => idx >= offset).map((idx) => withCoords[idx - offset].id);
         const withoutCoordIds = dayOrders.filter((o) => !withCoords.some((x) => x.id === o.id)).map((o) => o.id);
-        onSetVisitOrder(technicianId, day, [...orderedIds, ...withoutCoordIds]);
+        onSetVisitOrder(vehicleId, day, [...orderedIds, ...withoutCoordIds]);
       }
     }
     setOptimizing((prev) => ({ ...prev, [key]: false }));
@@ -663,7 +664,7 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
             <span className="sm:hidden">Tal = arbejde + estimeret kørsel.</span>
           </p>
 
-          {/* ------- MOBIL: dag-faner (man-fre) + stak af montør-sektioner ------- */}
+          {/* ------- MOBIL: dag-faner (man-fre) + stak af bil-sektioner ------- */}
           <div className="md:hidden">
             <div className="flex gap-1.5 overflow-x-auto px-3 py-2 border-b border-divider" role="tablist" aria-label="Vælg ugedag">
               {weekdays5.map((d) => {
@@ -696,7 +697,7 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
                     key={r.id || "utildelt"}
                     row={r} day={selectedDay} dayOrders={dayOrders} technicians={technicians}
                     onOpen={onOpen} onAssign={onAssign} onReorder={onReorder} onSetVisitOrder={onSetVisitOrder}
-                    isOnLeave={isOnLeave(r.id, selectedDay)} timeInfo={timeFor(r.id, selectedDay, dayOrders)}
+                    isOnLeave={manglerDaekning(r.id, selectedDay)} timeInfo={timeFor(r.id, selectedDay, dayOrders)}
                     optimizing={optimizing} onOptimize={optimizeDay}
                   />
                 );
@@ -707,7 +708,7 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
             </div>
           </div>
 
-          {/* ------- PC/TABLET: fem dag-KOLONNER (md og bredere), montører grupperet inden i hver ------- */}
+          {/* ------- PC/TABLET: fem dag-KOLONNER (md og bredere), biler grupperet inden i hver ------- */}
           <div className="hidden md:grid gap-3 p-3" style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}>
             {weekdays5.map((d) => {
               const dayRows = rows.filter((r) => ordersFor(r.id, d).length > 0);
@@ -726,7 +727,7 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
                           key={r.id || "utildelt"}
                           row={r} day={d} dayOrders={ordersFor(r.id, d)} technicians={technicians}
                           onOpen={onOpen} onAssign={onAssign} onReorder={onReorder} onSetVisitOrder={onSetVisitOrder}
-                          isOnLeave={isOnLeave(r.id, d)} timeInfo={timeFor(r.id, d, ordersFor(r.id, d))}
+                          isOnLeave={manglerDaekning(r.id, d)} timeInfo={timeFor(r.id, d, ordersFor(r.id, d))}
                           optimizing={optimizing} onOptimize={optimizeDay}
                         />
                       ))
@@ -742,12 +743,12 @@ function WeekOverview({ orders, technicians, timeOff, store, onAssign, onReorder
   );
 }
 
-function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedDate, onDateChange, onOpen, onCycleStatus, onAssign, onReorder, onSetVisitOrder, onUpdateBooking, onClearProblem, onUpdateTechnician, onRefresh, refreshing }) {
+function PlanningPage({ orders, technicians, personnel, vehicles, timeOff, store, selectedDate, onDateChange, onOpen, onAssign, onReorder, onSetVisitOrder, onUpdateBooking, onClearProblem, onUpdateTechnician, onRefresh, refreshing }) {
   const [search, setSearch] = useState("");
   const [openTile, setOpenTile] = useState(null);
   const { technicianProblem, sickLeave, needsPlan, unresolved, inProgressToday, upcoming, done } = useMemo(
-    () => classify(orders, technicians, vehicles, timeOff, store?.sygemeldingVindueTimer),
-    [orders, technicians, vehicles, timeOff, store?.sygemeldingVindueTimer]
+    () => classify(orders, technicians, personnel, vehicles, timeOff, store?.sygemeldingVindueTimer),
+    [orders, technicians, personnel, vehicles, timeOff, store?.sygemeldingVindueTimer]
   );
 
   const searchResults = useMemo(() => {
@@ -794,13 +795,13 @@ function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedD
             <p className="text-sm text-muted italic">Ingen sager matcher søgningen.</p>
           ) : (
             <div className="grid sm:grid-cols-2 gap-2">
-              {searchResults.map((s) => <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} />)}
+              {searchResults.map((s) => <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} />)}
             </div>
           )}
         </div>
       ) : (
         <>
-          <WeekOverview orders={orders} technicians={technicians} timeOff={timeOff} store={store} onAssign={onAssign} onReorder={onReorder} onSetVisitOrder={onSetVisitOrder} onOpen={onOpen} />
+          <WeekOverview orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} store={store} onAssign={onAssign} onReorder={onReorder} onSetVisitOrder={onSetVisitOrder} onOpen={onOpen} />
 
           <div className="mb-4">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-ink mb-2 flex items-center gap-1.5"><AlertCircle size={15} className="text-danger" aria-hidden="true" /> Kræver handling</h2>
@@ -816,24 +817,24 @@ function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedD
                 {openTile === "problem" && (
                   technicianProblem.length === 0 ? <p className="text-sm text-muted italic">Ingen montørproblemer lige nu.</p> : (
                     <ReplanTile
-                      items={technicianProblem} orders={orders} technicians={technicians} timeOff={timeOff}
-                      excludeTechnicianIds={(o) => [o.montorId]} onUpdateBooking={onUpdateBooking} onOpen={onOpen}
+                      items={technicianProblem} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff}
+                      onUpdateBooking={onUpdateBooking} onOpen={onOpen}
                     />
                   )
                 )}
                 {openTile === "sygdom" && (
                   sickLeave.length === 0 ? <p className="text-sm text-muted italic">Ingen sager berørt af sygemelding lige nu.</p> : (
                     <ReplanTile
-                      items={sickLeave} orders={orders} technicians={technicians} timeOff={timeOff}
-                      excludeTechnicianIds={(o) => [o.montorId]} onUpdateBooking={onUpdateBooking} onOpen={onOpen}
+                      items={sickLeave} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff}
+                      onUpdateBooking={onUpdateBooking} onOpen={onOpen}
                     />
                   )
                 )}
                 {openTile === "planlaeg" && (
                   needsPlan.length === 0 ? <p className="text-sm text-success italic flex items-center gap-1.5"><Sparkles size={14} aria-hidden="true" /> Alle sager er planlagt.</p> : (
                     <ReplanTile
-                      items={needsPlan} orders={orders} technicians={technicians} timeOff={timeOff}
-                      excludeTechnicianIds={[]} onUpdateBooking={onUpdateBooking} onOpen={onOpen}
+                      items={needsPlan} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff}
+                      onUpdateBooking={onUpdateBooking} onOpen={onOpen}
                     />
                   )
                 )}
@@ -854,14 +855,14 @@ function PlanningPage({ orders, technicians, vehicles, timeOff, store, selectedD
                 <span className="text-xs font-mono px-1.5 py-0.5 rounded-full border border-line text-muted">{inProgressToday.length}</span>
               </div>
               <div className="p-3 grid gap-2 sm:grid-cols-2">
-                {inProgressToday.map((s) => <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} />)}
+                {inProgressToday.map((s) => <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} />)}
               </div>
             </div>
           )}
 
           <div className="space-y-2">
-            <CollapsibleSection title="Planlagt fremad" icon={CalendarClock} colorClass="text-muted" items={upcoming} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} emptyText="Ingen kommende planlagte sager." />
-            <CollapsibleSection title="Afsluttet" icon={CheckCircle2} colorClass="text-success" items={done} technicians={technicians} onOpen={onOpen} onCycleStatus={onCycleStatus} emptyText="Ingen afsluttede sager endnu." />
+            <CollapsibleSection title="Planlagt fremad" icon={CalendarClock} colorClass="text-muted" items={upcoming} technicians={technicians} onOpen={onOpen} emptyText="Ingen kommende planlagte sager." />
+            <CollapsibleSection title="Afsluttet" icon={CheckCircle2} colorClass="text-success" items={done} technicians={technicians} onOpen={onOpen} emptyText="Ingen afsluttede sager endnu." />
           </div>
         </>
       )}
