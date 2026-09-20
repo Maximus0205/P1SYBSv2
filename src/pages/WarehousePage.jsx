@@ -10,20 +10,23 @@ import { DateSelector } from "../components/common";
 // også opdaterer ordrens samlede plukket-flag, når ALLE dens varelinjer er
 // plukket.
 //
-// En ordre er kun "plukkeklar" (dvs. vises overhovedet her) hvis den reelt
-// kan køres ud: den skal have en montør tildelt, OG den montørs
-// nuværende bil skal være i drift (ikke lukket/på værksted). Er en af
-// delene ikke opfyldt, giver det ikke mening at bede lageret plukke varen
-// endnu - den kan jo ikke leveres. Sagen dukker i stedet op i
+// BIL, IKKE MONTØR (september 2026): en sag er kun "plukkeklar" (dvs.
+// vises overhovedet her) hvis den reelt kan køres ud - den skal have en
+// BIL tildelt, OG bilen skal være i drift (ikke lukket/på værksted). Er
+// en af delene ikke opfyldt, giver det ikke mening at bede lageret plukke
+// varen endnu - den kan jo ikke leveres. Sagen dukker i stedet op i
 // Planlægning under "Kræver handling", hvor det reelle problem (ingen
-// montør/bil) skal løses først. Eksporteres (august 2026) så DashboardPage
-// kan genbruge samme regel til "Dagens pluk"-widgeten, i stedet for at
+// bil/bilen lukket) skal løses først.
+//
+// FORENKLET (september 2026): tjekket gik tidligere via en montør
+// (order.montorId -> montørens bil -> bilens status). Nu order.bilId
+// direkte -> bilens status, uden mellemleddet - "technicians" er ikke
+// længere nødvendig her overhovedet. Eksporteres så DashboardPage kan
+// genbruge samme regel til "Dagens pluk"-widgeten, i stedet for at
 // duplikere den.
-function isOrderPickable(order, technicians, vehicles) {
-  if (!order.montorId) return false;
-  const technician = technicians.find((m) => m.id === order.montorId);
-  if (!technician || !technician.bilId) return false;
-  const vehicle = vehicles.find((v) => v.id === technician.bilId);
+function isOrderPickable(order, vehicles) {
+  if (!order.bilId) return false;
+  const vehicle = (vehicles || []).find((v) => v.id === order.bilId);
   return !!vehicle && !vehicle.lukket;
 }
 
@@ -97,12 +100,12 @@ function ReportMissingDialog({ order, lineItem, onConfirm, onCancel }) {
   );
 }
 
-function WarehousePage({ orders, technicians, vehicles, selectedDate, onDateChange, onToggleLineItemPicked, onReportMissingItem, onClearMissingItem, onOpen, permissions }) {
+function WarehousePage({ orders, vehicles, selectedDate, onDateChange, onToggleLineItemPicked, onReportMissingItem, onClearMissingItem, onOpen, permissions }) {
   const canPick = canDo(permissions, "sag_pluk") || canDo(permissions, "sag_feltarbejde");
   const [reporting, setReporting] = useState(null); // { order, lineItem }
 
   const todaysOrders = orders.filter((s) => s.dato === selectedDate);
-  const pickableOrders = todaysOrders.filter((o) => isOrderPickable(o, technicians, vehicles));
+  const pickableOrders = todaysOrders.filter((o) => isOrderPickable(o, vehicles));
   const hiddenCount = todaysOrders.length - pickableOrders.length;
 
   // Flad liste af { order, lineItem } - ét element pr. varelinje på tværs
@@ -119,7 +122,7 @@ function WarehousePage({ orders, technicians, vehicles, selectedDate, onDateChan
   const ready = points.filter((p) => p.lineItem.plukket && !isMissingActive(p.order, p.lineItem)).sort(sortFn);
 
   const Row = ({ order, lineItem, variant }) => {
-    const technician = technicians.find((m) => m.id === order.montorId);
+    const vehicle = (vehicles || []).find((v) => v.id === order.bilId);
     const erManglende = variant === "mangler";
     return (
       <div className={`rounded-xl bg-white border shadow-sm p-3 ${erManglende ? "border-danger" : "border-[#ECECEC]"}`}>
@@ -143,7 +146,7 @@ function WarehousePage({ orders, technicians, vehicles, selectedDate, onDateChan
               <span className="font-mono text-[10px] text-faint">#{order.nr}</span>
               {order.noegle?.kraeves && <KeyRound size={12} className="text-brand shrink-0" aria-label="Nøgle/adgang kræves" />}
             </div>
-            <p className="text-xs text-muted truncate">{order.kunde.navn} · {order.start}–{order.slut}{technician ? ` · ${technician.navn}` : ""}</p>
+            <p className="text-xs text-muted truncate">{order.kunde.navn} · {order.start}–{order.slut}{vehicle ? ` · ${vehicle.navn}` : ""}</p>
           </button>
 
           {/* "Kan ikke findes" ligger som en lille knap på hver linje, der
@@ -195,7 +198,7 @@ function WarehousePage({ orders, technicians, vehicles, selectedDate, onDateChan
       )}
       {hiddenCount > 0 && (
         <p className="text-xs text-muted italic mb-4 flex items-center gap-1.5">
-          <AlertTriangle size={12} className="shrink-0" aria-hidden="true" /> {hiddenCount} {hiddenCount === 1 ? "sag er" : "sager er"} skjult her, fordi den mangler montør eller montørens bil er ude af drift — se Planlægning under "Kræver handling".
+          <AlertTriangle size={12} className="shrink-0" aria-hidden="true" /> {hiddenCount} {hiddenCount === 1 ? "sag er" : "sager er"} skjult her, fordi den mangler en bil, eller bilen er ude af drift — se Planlægning under "Kræver handling".
         </p>
       )}
 
