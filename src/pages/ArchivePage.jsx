@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from "react";
-import { Search, X, MapPin, Phone, Calendar, User } from "lucide-react";
+import { Search, X, MapPin, Phone, Calendar, Truck } from "lucide-react";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 
 const norm = (s) => (s || "").toString().toLowerCase();
 const normPhone = (s) => (s || "").replace(/\D/g, "");
 
-function matchesFilters(order, { text, address, phone, technicianId, fromDate, toDate }) {
+function matchesFilters(order, { text, address, phone, vehicleId, fromDate, toDate }) {
   if (text.trim()) {
     const t = norm(text);
     const hit = norm(order.nr).includes(t) || norm(order.ordrenummer).includes(t) || norm(order.kunde?.navn).includes(t);
@@ -13,8 +13,8 @@ function matchesFilters(order, { text, address, phone, technicianId, fromDate, t
   }
   if (address.trim() && !norm(order.kunde?.adresse).includes(norm(address))) return false;
   if (phone.trim() && !normPhone(order.kunde?.telefon).includes(normPhone(phone))) return false;
-  if (technicianId === "unassigned" && order.montorId) return false;
-  if (technicianId && technicianId !== "unassigned" && order.montorId !== technicianId) return false;
+  if (vehicleId === "unassigned" && order.bilId) return false;
+  if (vehicleId && vehicleId !== "unassigned" && order.bilId !== vehicleId) return false;
   if (fromDate && order.dato < fromDate) return false;
   if (toDate && order.dato > toDate) return false;
   return true;
@@ -24,35 +24,40 @@ function matchesFilters(order, { text, address, phone, technicianId, fromDate, t
 // søgekriterie - med potentielt tusindvis af gamle sager over tid ville en
 // standardliste (som Kunder-udgaven havde) hverken være hurtig at bruge
 // eller rar at scrolle på mobil. I stedet er det en ren søgeflade: dato,
-// adresse, telefon og montør kombineres med OG-logik, og fritekst dækker
+// adresse, telefon og bil kombineres med OG-logik, og fritekst dækker
 // kundenavn/sagsnr./ordrenr. ovenpå det.
+//
+// BIL, IKKE MONTØR (september 2026): filteret hed tidligere "Montør" og
+// matchede order.montorId - sager tildeles nu en bil, ikke en person, så
+// filteret matcher order.bilId og "technicians" (allerede bil-rækker, se
+// App.jsx) viser sig korrekt uden ændring i selve listen.
 function ArchivePage({ orders, technicians, onOpen }) {
   const [text, setText] = useState("");
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
-  const [technicianId, setTechnicianId] = useState("");
+  const [vehicleId, setVehicleId] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [visibleCount, setVisibleCount] = useState(30);
 
-  const hasFilter = !!(text.trim() || address.trim() || phone.trim() || technicianId || fromDate || toDate);
+  const hasFilter = !!(text.trim() || address.trim() || phone.trim() || vehicleId || fromDate || toDate);
 
   const results = useMemo(() => {
     if (!hasFilter) return [];
     return [...orders]
-      .filter((o) => matchesFilters(o, { text, address, phone, technicianId, fromDate, toDate }))
+      .filter((o) => matchesFilters(o, { text, address, phone, vehicleId, fromDate, toDate }))
       .sort((a, b) => (b.dato + b.start).localeCompare(a.dato + a.start));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orders, text, address, phone, technicianId, fromDate, toDate, hasFilter]);
+  }, [orders, text, address, phone, vehicleId, fromDate, toDate, hasFilter]);
 
   const changeAndReset = (setter) => (val) => { setter(val); setVisibleCount(30); };
-  const clearAll = () => { setText(""); setAddress(""); setPhone(""); setTechnicianId(""); setFromDate(""); setToDate(""); setVisibleCount(30); };
+  const clearAll = () => { setText(""); setAddress(""); setPhone(""); setVehicleId(""); setFromDate(""); setToDate(""); setVisibleCount(30); };
 
   return (
     <div>
       <p className="font-mono text-[11px] tracking-widest uppercase text-brand mb-1">Overblik</p>
       <h1 className="font-display text-4xl uppercase tracking-tight text-ink mb-1">Arkiv</h1>
-      <p className="text-sm text-muted mb-4">Slå gamle sager op på dato, adresse, telefonnummer eller montør.</p>
+      <p className="text-sm text-muted mb-4">Slå gamle sager op på dato, adresse, telefonnummer eller bil.</p>
 
       <div className="rounded-xl border border-line bg-white p-4 mb-6 shadow-sm">
         <div className="grid gap-3 sm:grid-cols-2">
@@ -78,11 +83,11 @@ function ArchivePage({ orders, technicians, onOpen }) {
             </div>
           </label>
           <label className="text-xs text-muted">
-            Montør
+            Bil
             <div className="relative mt-1">
-              <User size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
-              <select value={technicianId} onChange={(e) => changeAndReset(setTechnicianId)(e.target.value)} className="w-full rounded-lg border border-line bg-panel pl-8 pr-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
-                <option value="">Alle montører</option>
+              <Truck size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+              <select value={vehicleId} onChange={(e) => changeAndReset(setVehicleId)(e.target.value)} className="w-full rounded-lg border border-line bg-panel pl-8 pr-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
+                <option value="">Alle biler</option>
                 <option value="unassigned">Ikke tildelt</option>
                 {technicians.map((m) => <option key={m.id} value={m.id}>{m.navn}</option>)}
               </select>
@@ -120,7 +125,7 @@ function ArchivePage({ orders, technicians, onOpen }) {
           ) : (
             <>
               <div className="grid gap-2 sm:grid-cols-2">
-                {results.slice(0, visibleCount).map((o) => <OrderCardCompact key={o.id} order={o} technicians={technicians} onOpen={onOpen} onCycleStatus={() => {}} />)}
+                {results.slice(0, visibleCount).map((o) => <OrderCardCompact key={o.id} order={o} technicians={technicians} onOpen={onOpen} />)}
               </div>
               {results.length > visibleCount && (
                 <button onClick={() => setVisibleCount((v) => v + 30)} className="mt-4 w-full py-2.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-ink border border-line hover:border-brand hover:text-brand transition-colors">
