@@ -22,11 +22,17 @@ import { AddressInput } from "../components/AddressInput";
 // stede på adressen, og nøglen går fra at være en detalje til at være
 // forudsætningen for, at montøren overhovedet kan komme ind - se
 // data/caseTypes.js.
+//
+// BIL, IKKE MONTØR (september 2026): "technicians" er BIL-rækker (se
+// App.jsx), og det er dét, sagen tildeles (order.bilId). "personnel" er
+// menneskerne, der kan køre en rute - sendes med til SuggestedDates, så
+// dato-forslaget kan tjekke DÆKNING pr. bil (er der nogen til at køre den
+// den dag) i stedet for at antage alle biler altid er i spil.
 const STEPS = [
   { key: "kunde", label: "Kunde" },
   { key: "levering", label: "Levering" },
   { key: "varer", label: "Varer & ydelser" },
-  { key: "tid", label: "Tidspunkt & montør" },
+  { key: "tid", label: "Tidspunkt & bil" },
 ];
 
 function StepProgress({ step }) {
@@ -74,7 +80,7 @@ function CaseTypePicker({ value, onChange }) {
   );
 }
 
-function NewOrderForm({ technicians, productTypes, productCategories, primaryServices, addOnServices, orders, selectedDate, onAdd, onClose, onOpen, storeFocus }) {
+function NewOrderForm({ technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, orders, selectedDate, onAdd, onClose, onOpen, storeFocus }) {
   const [step, setStep] = useState(0);
   const [caseTypeId, setCaseTypeId] = useState(SAGSTYPE_KUNDE);
   const [customerName, setCustomerName] = useState("");
@@ -92,7 +98,7 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
   const [keyAccess, setKeyAccess] = useState(emptyKeyAccess());
   const [date, setDate] = useState(selectedDate || todayISO());
   const [timeSlotId, setTimeSlotId] = useState("heldag");
-  const [technicianId, setTechnicianId] = useState("");
+  const [vehicleId, setVehicleId] = useState("");
   const [lineItems, setLineItems] = useState([createLineItem(productTypes, primaryServices)]);
   const [saving, setSaving] = useState(false);
   const [attemptedNext, setAttemptedNext] = useState(false);
@@ -170,9 +176,9 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
   };
   const goBack = () => { setAttemptedNext(false); setStep((s) => Math.max(s - 1, 0)); };
 
-  const applySuggestion = (suggestedDate, suggestedTechnicianId) => {
+  const applySuggestion = (suggestedDate, suggestedVehicleId) => {
     if (suggestedDate) setDate(suggestedDate);
-    if (suggestedTechnicianId) setTechnicianId(suggestedTechnicianId);
+    if (suggestedVehicleId) setVehicleId(suggestedVehicleId);
   };
 
   const jobSummary = {
@@ -195,7 +201,7 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
       koeber: hasBuyer ? { navn: buyerName.trim(), telefon: buyerPhone.trim(), email: buyerEmail.trim(), adresse: buyerAddress.trim() } : null,
       noegle: keyAccess,
       dato: date, tidsrumId: timeSlotId, start: t.start, slut: t.slut,
-      montorId: technicianId || null,
+      bilId: vehicleId || null,
       varelinjer: lineItems,
       ordrenummer: externalReference.trim(),
     });
@@ -341,7 +347,7 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
 
       {step === 3 && (
         <div>
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Tidspunkt & montør</h4>
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Tidspunkt & bil</h4>
           <p className="text-xs text-muted mb-3">
             Forslag til "{titlePreview}" {erTomgang ? "på" : "hos"} {address || (erTomgang ? "lejemålet" : "kunden")} herunder — tryk på ét for at bruge det, eller vælg selv i ugevisningen.
           </p>
@@ -349,6 +355,8 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
           <SuggestedDates
             orders={orders}
             technicians={technicians}
+            personnel={personnel}
+            timeOff={timeOff}
             date={date}
             address={address}
             jobSummary={jobSummary}
@@ -369,8 +377,8 @@ function NewOrderForm({ technicians, productTypes, productCategories, primarySer
               </select>
             </label>
             <label className="text-xs text-muted">
-              Montør/bil
-              <select value={technicianId} onChange={(e) => setTechnicianId(e.target.value)} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
+              Bil
+              <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
                 <option value="">Ikke tildelt endnu</option>
                 {technicians.map((m) => <option key={m.id} value={m.id}>{m.navn} — {m.bil}</option>)}
               </select>
