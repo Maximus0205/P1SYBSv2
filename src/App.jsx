@@ -37,11 +37,6 @@ import { SystemAdminPage } from "./pages/SystemAdminPage";
 // eller admin, der tager en rute en gang imellem, skal ikke have en ekstra
 // brugerkonto. To konti for samme menneske spreder sagerne over to navne
 // og sender notifikationer til den forkerte af dem.
-//
-// Bruges to steder, og det er vigtigt at det er DEN SAMME regel begge
-// steder: til at afgøre hvem der kan tildeles sager (technicians-listen),
-// og til at afgøre hvem der ser Montør-fanen. Faldt de to fra hinanden,
-// ville nogen kunne blive tildelt sager, de ikke selv kunne se.
 const koererSelv = (bruger) => bruger?.rolle === "montor" || bruger?.kanKoere === true;
 
 function Gate({ allowed, page, children }) {
@@ -85,9 +80,7 @@ function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder,
     order,
     // "orders" (den FULDE liste) sendes med, så OrderView kan tilbyde
     // kundehistorik-opslaget - se CustomerHistoryLookup i
-    // OrderFormFields.jsx. Manglede tidligere: sharedProps havde adgang
-    // til orders via lukningen, men glemte at lægge den i selve objektet,
-    // så OrderView aldrig modtog den og knappen aldrig blev vist.
+    // OrderFormFields.jsx.
     orders,
     technicians,
     permissions,
@@ -148,27 +141,27 @@ function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder,
 
 // Montørvisningen er ARBEJDSSKÆRMEN for den, der sidder i bilen - ikke et
 // overblik over andres ruter. Derfor vises den KUN til folk, der selv
-// kører (se allowedPages nedenfor), og den viser altid ÉN persons tur:
-// din egen.
+// kører (se allowedPages nedenfor).
 //
-// FJERNET (september 2026): montør-VÆLGEREN, hvor en sælger eller admin
-// kunne bladre gennem alle montørers ruter. Den slags overblik hører
-// hjemme i Planlægning, hvor hele ugen kan ses på én gang - og efter at
-// sælgere og systemadmins ikke længere har fanen, var vælgeren kun en
-// omvej for de få, der havde den. Skal man se en andens dag, gør man det
-// i Planlægning.
-function MontorRoute({ profile, orders, technicians, ordersStore, refresh, refreshing, selectedDate, onDateChange, onOpen }) {
-  const own = technicians.find((m) => m.id === profile.id);
-  if (!own) {
+// BIL, IKKE PERSON (september 2026): "din rute" bestemmes nu af hvilken
+// BIL du kører (profile.bilId), ikke af dit eget id. Det er netop pointen
+// - deler to personer én bil, ser de BEGGE den samme rute, fordi sagerne
+// er tildelt bilen. Vejen dertil går via den RÅ vehicles-liste, ikke via
+// "technicians" (som nu er assignment-rækker til dropdowns, se App() -
+// mere direkte og uafhængigt af, hvordan de rækker er sat sammen).
+function MontorRoute({ profile, vehicles, orders, ordersStore, refresh, refreshing, selectedDate, onDateChange, onOpen }) {
+  const ownVehicle = vehicles.find((v) => v.id === profile.bilId);
+  if (!ownVehicle) {
     return (
       <p className="text-sm text-muted">
-        Din bruger er ikke koblet til en bil endnu — bed en administrator om at tildele dig en under Admin → Montører.
+        Din bruger er ikke koblet til en bil endnu — bed en administrator om at tildele dig en under Admin → Brugere.
       </p>
     );
   }
+  const technician = { id: ownVehicle.id, navn: ownVehicle.navn, bil: ownVehicle.nummerplade };
   return (
     <TechnicianRouteView
-      orders={orders} technician={own} selectedDate={selectedDate} onDateChange={onDateChange}
+      orders={orders} technician={technician} selectedDate={selectedDate} onDateChange={onDateChange}
       onOpen={onOpen} onReorder={ordersStore.reorderOrder}
       onRefresh={refresh} refreshing={refreshing}
     />
@@ -234,15 +227,39 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Hvem kan tildeles sager? Alle der selv kører - se koererSelv ovenfor.
-  // Tidligere var det udelukkende rollen 'montor', og det var derfor
-  // umuligt at give en sælger en rute uden at oprette en ekstra bruger.
-  const technicians = users
+  // ---------------------------------------------------------------------
+  // BIL, IKKE PERSON (september 2026)
+  //
+  // Baggrunden: "kan køre rute" gør det muligt for flere mennesker at dele
+  // én bil. Med sager tildelt PERSONENS id kunne kun den ene af to
+  // delebiler-kolleger se sagen i sin rute - den anden, der lige så vel
+  // sad i samme bil, så intet. Løsningen: BOOKINGEN ligger på bilen
+  // (order.bilId, se rebind_orders_to_vehicle_instead_of_person), mens
+  // FRAVÆR/SYGDOM bliver på personen (et menneske er sygt, ikke en bil).
+  //
+  // Det giver TO forskellige lister, der bruges til hver sin ting:
+  //
+  //   personnel   - menneskerne der kan køre en rute ({id, navn, bilId}).
+  //                 Bruges KUN til at afgøre DÆKNING (har bilen nogen til
+  //                 at køre den i dag) og til Admins bil-tilknytnings-UI.
+  //
+  //   technicians - BILERNE selv, som det man rent faktisk TILDELER en
+  //                 sag til ({id, navn, bil, lukket}). "navn" viser også
+  //                 hvem der aktuelt kører bilen, så det er synligt i alle
+  //                 lister UDEN at skulle slå det op - fx "Bil 1 (Magnus,
+  //                 Test)" i stedet for bare "Bil 1".
+  //
+  // De to må ALDRIG blandes sammen: en sag kan ikke tildeles en person
+  // (det var netop fejlen), og et fravær kan ikke registreres på en bil.
+  const personnel = users
     .filter(koererSelv)
-    .map((b) => {
-      const linkedVehicle = vehicles.find((v) => v.id === b.bilId);
-      return { id: b.id, navn: b.navn, bilId: b.bilId || null, bil: linkedVehicle ? linkedVehicle.nummerplade : "" };
-    });
+    .map((b) => ({ id: b.id, navn: b.navn, bilId: b.bilId || null }));
+
+  const technicians = vehicles.map((v) => {
+    const drivere = personnel.filter((p) => p.bilId === v.id);
+    const navn = drivere.length > 0 ? `${v.navn} (${drivere.map((d) => d.navn).join(", ")})` : `${v.navn} (ingen montør)`;
+    return { id: v.id, navn, bil: v.nummerplade, lukket: v.lukket };
+  });
 
   const notifications = useMemo(() => computeNotifications(orders, profile?.id), [orders, profile?.id]);
 
@@ -254,7 +271,7 @@ export default function App() {
   };
 
   const deleteVehicleWithConfirm = (id) => {
-    if (technicians.some((m) => m.bilId === id) && !window.confirm("Denne bil er tildelt en montør. Slet alligevel?")) return;
+    if (personnel.some((p) => p.bilId === id) && !window.confirm("Denne bil er tildelt en montør. Slet alligevel?")) return;
     vehiclesStore.deleteVehicle(id);
   };
 
@@ -386,7 +403,7 @@ export default function App() {
           <Route path="/dashboard" element={
             <DashboardPage
               profile={profile} permissions={effectivePermissions}
-              orders={orders} technicians={technicians} vehicles={vehicles} timeOff={timeOff} store={effectiveStore}
+              orders={orders} technicians={technicians} personnel={personnel} vehicles={vehicles} timeOff={timeOff} store={effectiveStore}
               notifications={notifications} onOpen={onOpen}
               onNavigate={(key) => navigate(`/${key}`)}
               dashboardWidgets={dashboardWidgets} onUpdateWidgets={updateDashboardWidgetsFor}
@@ -397,17 +414,17 @@ export default function App() {
 
           <Route path="/salg" element={
             <Gate allowed={allowedPages} page="salg">
-              <SalesPage orders={orders} technicians={technicians} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={effectiveStore?.lat && effectiveStore?.lon ? { lat: effectiveStore.lat, lon: effectiveStore.lon } : null} />
+              <SalesPage orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={effectiveStore?.lat && effectiveStore?.lon ? { lat: effectiveStore.lat, lon: effectiveStore.lon } : null} />
             </Gate>
           } />
 
           <Route path="/planlaegning" element={
             <Gate allowed={allowedPages} page="planlaegning">
               <PlanningPage
-                orders={orders} technicians={technicians} vehicles={vehicles} timeOff={timeOff}
+                orders={orders} technicians={technicians} personnel={personnel} vehicles={vehicles} timeOff={timeOff}
                 store={effectiveStore}
                 selectedDate={selectedDate} onDateChange={setSelectedDate}
-                onOpen={onOpen} onAssign={ordersStore.assignTechnician} onReorder={ordersStore.reorderOrder} onSetVisitOrder={ordersStore.setVisitOrder}
+                onOpen={onOpen} onAssign={ordersStore.assignVehicle} onReorder={ordersStore.reorderOrder} onSetVisitOrder={ordersStore.setVisitOrder}
                 onUpdateBooking={ordersStore.updateBooking} onClearProblem={ordersStore.clearProblem}
                 onUpdateTechnician={(technicianId, fields) => updateTechnicianVehicle(technicianId, fields.bilId)}
                 onRefresh={refresh} refreshing={refreshing}
@@ -415,18 +432,19 @@ export default function App() {
             </Gate>
           } />
 
-          {/* Kun én montør-rute: din egen. Den gamle /montor/:technicianId
-              (montør-vælgeren) er fjernet - se noten ved MontorRoute. */}
+          {/* Kun én montør-rute: din egen bil. Den gamle
+              /montor/:technicianId (montør-vælgeren) er fjernet - se
+              noten ved MontorRoute. */}
           <Route path="/montor" element={
             <Gate allowed={allowedPages} page="montor">
-              <MontorRoute profile={profile} orders={orders} technicians={technicians} ordersStore={ordersStore} refresh={refresh} refreshing={refreshing} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} />
+              <MontorRoute profile={profile} vehicles={vehicles} orders={orders} ordersStore={ordersStore} refresh={refresh} refreshing={refreshing} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} />
             </Gate>
           } />
 
           <Route path="/lager" element={
             <Gate allowed={allowedPages} page="lager">
               <WarehousePage
-                orders={orders} technicians={technicians} vehicles={vehicles}
+                orders={orders} vehicles={vehicles}
                 selectedDate={selectedDate} onDateChange={setSelectedDate}
                 onToggleLineItemPicked={ordersStore.toggleLineItemPicked}
                 onReportMissingItem={reportMissingItem}
@@ -445,7 +463,7 @@ export default function App() {
           <Route path="/admin" element={
             <Gate allowed={allowedPages} page="admin">
               <AdminPage
-                technicians={technicians} vehicles={vehicles} users={users} timeOff={timeOff} currentUserId={profile.id} store={effectiveStore}
+                technicians={personnel} vehicles={vehicles} users={users} timeOff={timeOff} currentUserId={profile.id} store={effectiveStore}
                 productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices}
                 permissions={effectivePermissions}
                 onUpdateTechnicianVehicle={updateTechnicianVehicle} onAddVehicle={vehiclesStore.addVehicle} onUpdateVehicle={vehiclesStore.updateVehicle} onDeleteVehicle={deleteVehicleWithConfirm} onToggleVehicleClosed={vehiclesStore.toggleVehicleClosed}
