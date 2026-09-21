@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Trash2, Plus } from "lucide-react";
 import { TechnicianRow, SickLeaveWindowSetting, VehicleRow, UserRow, NewUserForm, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin } from "../components/AdminParts";
+import { PosIntegrationAdmin } from "../components/PosIntegrationAdmin";
 import { getPermissionsCatalog, getRoleDefaultPermissions } from "../lib/dataStore";
 
 // RETTET (august 2026): Admin-sidens FANER vises nu ud fra brugerens
@@ -27,6 +28,7 @@ function AdminPage({
     { k: "biler", l: "Biler", perm: "admin_biler" },
     { k: "brugere", l: "Brugere", perm: "admin_brugere" },
     { k: "varer", l: "Varer & ydelser", perm: "admin_katalog" },
+    { k: "integrationer", l: "Integrationer", perm: "admin_integrationer" },
   ];
   const visibleTabs = allTabs.filter((f) => hasPerm(permissions, f.perm));
   const visibleTabKeys = visibleTabs.map((f) => f.k).join(",");
@@ -169,6 +171,15 @@ function AdminPage({
           {productTab === "varetyper" && <ProductTypeAdmin productTypes={productTypes} productCategories={productCategories} onAdd={onAddProductType} onUpdate={onUpdateProductType} onDelete={onDeleteProductType} />}
           {productTab === "primaer" && <PrimaryServiceAdmin primaryServices={primaryServices} onAdd={onAddPrimaryService} onUpdate={onUpdatePrimaryService} onDelete={onDeletePrimaryService} />}
           {productTab === "tillaeg" && <AddOnServiceAdmin addOnServices={addOnServices} productTypes={productTypes} primaryServices={primaryServices} onAdd={onAddAddOnService} onUpdate={onUpdateAddOnService} onDelete={onDeleteAddOnService} />}
+        </div>
+      )}
+
+      {tab === "integrationer" && (
+        <div>
+          <p className="text-xs text-muted mb-4">
+            Forbindelse til butikkens POS-system. Bruges til at hente kundedata og varenummer ved oprettelse af en sag, og til automatisk fakturering og lagerudlevering, når en sag afsluttes.
+          </p>
+          <PosIntegrationAdmin storeId={store?.id} />
         </div>
       )}
     </div>
