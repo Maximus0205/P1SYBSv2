@@ -527,6 +527,118 @@ export async function lookupPunkt1Product(model) {
   return { ok: true, matchCount: data.matchCount, brand: data.brand, products: data.products };
 }
 
+// ---------- POS-integration (Flow Retail) - september 2026 ----------
+//
+// Forbereder appen til det kommende POS-system. Selve API-nøglen ligger
+// ALDRIG i en tabel, klienten kan læse - kun i Supabase Vault, tilgængelig
+// for en Edge Function (pos-integration), som klienten aldrig ser
+// indholdet af. Se supabase/functions/pos-integration for selve
+// autorisationen (RLS-baseret, ikke duplikeret her) og de fire steder, der
+// venter på Flow Retails tekniske dokumentation.
+//
+// getPosIntegration læser DIREKTE fra tabellen (ikke gennem funktionen) -
+// det er ren læsning af ikke-hemmelige felter, og RLS afgør allerede,
+// hvem der må se den (admin_integrationer for egen butik, eller
+// systemadmin). Skrivning af selve nøglen går derimod ALTID via
+// funktionen, fordi kun den kan tale med Vault.
+export async function getPosIntegration(storeId) {
+  if (!storeId) return null;
+  const { data, error } = await supabase
+    .from("pos_integrations")
+    .select("enabled, tenant_id, base_url, api_key_secret_id, last_test_at, last_test_ok, last_test_note")
+    .eq("store_id", storeId)
+    .maybeSingle();
+  if (error) {
+    logDbError("dataStore:getPosIntegration", "Could not load POS integration settings", error);
+    return null;
+  }
+  if (!data) return { aktiveret: false, tenantId: "", baseUrl: "", harNoegle: false, sidstTestet: null, sidstTestetOk: null, sidstTestetNote: "" };
+  return {
+    aktiveret: data.enabled,
+    tenantId: data.tenant_id || "",
+    baseUrl: data.base_url || "",
+    harNoegle: !!data.api_key_secret_id,
+    sidstTestet: data.last_test_at,
+    sidstTestetOk: data.last_test_ok,
+    sidstTestetNote: data.last_test_note || "",
+  };
+}
+
+// Systemadmin-overblik på tværs af ALLE butikker - RLS lukker automatisk
+// op for is_system_admin(), så det er samme select, blot uden .eq('store_id').
+export async function getAllPosIntegrationsAsSystemAdmin() {
+  const { data, error } = await supabase
+    .from("pos_integrations")
+    .select("store_id, enabled, tenant_id, api_key_secret_id, last_test_at, last_test_ok, last_test_note");
+  if (error) {
+    logDbError("dataStore:getAllPosIntegrationsAsSystemAdmin", "Could not load POS integrations overview", error);
+    return [];
+  }
+  return (data || []).map((r) => ({
+    butikId: r.store_id, aktiveret: r.enabled, tenantId: r.tenant_id || "", harNoegle: !!r.api_key_secret_id,
+    sidstTestet: r.last_test_at, sidstTestetOk: r.last_test_ok, sidstTestetNote: r.last_test_note || "",
+  }));
+}
+
+// Gemmer/erstatter API-nøglen (og evt. de øvrige felter på samme tid).
+// apiKey er valgfri her, KUN så admin kan ændre tenantId/baseUrl/aktiveret
+// uden at skulle indtaste nøglen igen - men selve funktionen kræver mindst
+// én af delene for at gøre noget meningsfuldt.
+export async function setPosIntegrationKey({ storeId, apiKey, tenantId, baseUrl, enabled }) {
+  const { data, error } = await supabase.functions.invoke("pos-integration", {
+    body: { action: "set-key", storeId, apiKey, tenantId, baseUrl, enabled },
+  });
+  if (error || data?.fejl) {
+    const fejl = await readEdgeFunctionError(data, error, "Kunne ikke gemme POS-forbindelsen");
+    logError("dataStore:setPosIntegrationKey", fejl);
+    return { ok: false, fejl };
+  }
+  return { ok: true };
+}
+
+// Forsøger en forbindelsestest. Resultatet (også en fejl) bliver ALTID
+// stående på raekken i databasen - se getPosIntegration ovenfor - så
+// statussen er synlig for enhver, der åbner siden, ikke kun den der
+// trykkede testknappen.
+export async function testPosIntegration(storeId) {
+  const { data, error } = await supabase.functions.invoke("pos-integration", { body: { action: "test", storeId } });
+  if (error || data?.fejl) {
+    const fejl = await readEdgeFunctionError(data, error, "Forbindelsestesten fejlede");
+    return { ok: false, fejl };
+  }
+  return { ok: true };
+}
+
+// POS-opslag til udfyldning af en ny sagsbooking - på telefonnummer eller
+// ordre-/fakturanummer. Returnerer { ok:false, fejl } indtil Flow Retails
+// API er koblet til - se pos-integration/index.ts, handleLookup.
+export async function lookupPosOrder({ storeId, query, queryType }) {
+  const { data, error } = await supabase.functions.invoke("pos-integration", {
+    body: { action: "lookup", storeId, query, queryType },
+  });
+  if (error || data?.fejl) {
+    const fejl = await readEdgeFunctionError(data, error, "POS-opslaget fejlede");
+    return { ok: false, fejl };
+  }
+  return { ok: true, resultat: data.resultat };
+}
+
+// Udløses når en sag færdigmeldes (se useOrders.js: finishOrder).
+// Funktionen skriver SELV posStatus-feltet på sagen (se
+// pos-integration/index.ts, handleFinishSync) - denne funktion returnerer
+// blot samme resultat, så UI'et kan reagere med det samme uden at vente
+// på næste synkronisering.
+export async function syncPosOnFinish({ storeId, orderId }) {
+  const { data, error } = await supabase.functions.invoke("pos-integration", {
+    body: { action: "finish-sync", storeId, orderId },
+  });
+  if (error) {
+    const fejl = await readEdgeFunctionError(data, error, "POS-synkroniseringen ved færdigmelding fejlede");
+    return { ok: false, fejl };
+  }
+  return { ok: true, posStatus: data?.posStatus || null };
+}
+
 // ---------- Fejl-log ----------
 // Kun læsbar af systemadmin (håndhævet af RLS på error_logs, ikke kun her
 // i klienten). Se lib/errorLog.js for selve INDSAMLINGEN.
