@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { KeyRound, Building2, Hash, Pencil, X, Check, Copy, AlertTriangle, User, Lock, Trash2, Plus, RotateCw } from "lucide-react";
+import { KeyRound, Building2, Hash, Pencil, X, Check, Copy, AlertTriangle, User, Lock, Trash2, Plus, RotateCw, Plug, RefreshCw } from "lucide-react";
 import { TIME_SLOTS, buildTitle, keyAccessText, timeSlotById, timeSlotText, lineItemLabel, canDo, createLineItem, missingLineItems, OTHER_PRODUCT_TYPE_ID } from "../data/domain";
 import { StatusBadge } from "../components/common";
 import { LineItemDetails, Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
@@ -337,6 +337,43 @@ function MissingItemsBanner({ order, onClearMissingItem, canFieldwork }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// POS-STATUS-BANNER (september 2026) - Flow Retail
+//
+// Vises KUN når sagen faktisk har en POS-relevant status ("relevant:
+// false" - fx integrationen ikke slået til for butikken - viser bevidst
+// intet, det ville bare være støj for de fleste sager). Er der en FEJL
+// (også en "ikke implementeret endnu"-fejl, mens vi venter på Flow
+// Retails dokumentation), vises den ALTID og ryger ALDRIG stille forbi -
+// det var et eksplicit krav: fejler faktureringen, skal nogen opdage det,
+// ikke først når kunden ringer og spørger efter sin faktura.
+//
+// "Prøv igen" kalder blot samme synkronisering forfra (onRetryPosSync) -
+// ingen grund til at kræve en tur gennem "Genåbn sag" og "Færdigmeld"
+// igen, fejlen kan jo rette sig af sig selv.
+function PosStatusBanner({ order, onRetry, canRetry }) {
+  const status = order.posStatus;
+  if (!status?.relevant) return null;
+
+  if (status.fejl) {
+    return (
+      <div className="rounded-xl bg-danger/10 border border-danger p-4 mb-5" role="alert">
+        <p className="text-sm font-semibold text-danger flex items-center gap-1.5">
+          <Plug size={15} className="shrink-0" aria-hidden="true" /> POS-synkronisering ({status.fejl.trin === "faktura" ? "fakturering" : status.fejl.trin === "opsaetning" ? "opsætning" : status.fejl.trin}) fejlede
+        </p>
+        <p className="text-xs text-danger mt-1">{status.fejl.besked}</p>
+        <p className="text-[11px] text-muted mt-1">Forsøgt {status.fejl.tid ? new Date(status.fejl.tid).toLocaleString("da-DK") : ""}. Varen er IKKE udleveret i lagerstyringen, og der er ikke faktureret, før dette er løst.</p>
+        {canRetry && onRetry && (
+          <button onClick={onRetry} className="mt-2 text-xs font-semibold uppercase tracking-wide text-danger underline hover:no-underline flex items-center gap-1.5 py-1">
+            <RefreshCw size={12} aria-hidden="true" /> Prøv igen
+          </button>
+        )}
+      </div>
+    );
+  }
+  return null;
+}
+
 // ÆNDRET (september 2026): STATUS-SKIFTEREN OG STEMPLINGEN ER VÆK HERFRA.
 //
 // Status var et badge, man kunne klikke på, og som cyklede planlagt ->
@@ -364,7 +401,7 @@ function MissingItemsBanner({ order, onClearMissingItem, canFieldwork }) {
 // BIL, IKKE MONTØR (september 2026): sagens tildeling vises nu via
 // order.bilId, og "technicians" er BIL-rækker (se App.jsx) - ikke længere
 // et opslag på en bestemt persons id.
-function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addReport, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onSetLineItems, onClearMissingItem, onDeleteOrder, onReopenOrder }) {
+function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addReport, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onSetLineItems, onClearMissingItem, onDeleteOrder, onReopenOrder, onRetryPosSync }) {
   const [tab, setTab] = useState("noter");
   // Kun ÉT panel ad gangen - to åbne redigeringer på samme sag ville både
   // fylde skærmen og gøre det uklart, hvad "Gem" gemmer.
@@ -388,6 +425,7 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
       <button onClick={onBack} className="text-sm text-muted hover:text-brand mb-4 flex items-center gap-1">← Tilbage</button>
 
       <MissingItemsBanner order={order} onClearMissingItem={onClearMissingItem} canFieldwork={canFieldwork} />
+      <PosStatusBanner order={order} onRetry={onRetryPosSync} canRetry={canFieldwork} />
 
       {panel === "booking" ? (
         <BookingEditor
@@ -524,4 +562,4 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
   );
 }
 
-export { OrderView, BookingEditor, DuplicatePanel, LineItemEditor, DeleteOrderPanel };
+export { OrderView, BookingEditor, DuplicatePanel, LineItemEditor, DeleteOrderPanel, PosStatusBanner };
