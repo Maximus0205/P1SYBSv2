@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { getOrders, saveOrder, saveOrderResult, deleteOrder as deleteOrderRow, getFreshOrder } from "../lib/dataStore";
+import { getOrders, saveOrder, saveOrderResult, deleteOrder as deleteOrderRow, getFreshOrder, syncPosOnFinish } from "../lib/dataStore";
 import { uid, dailyOrderCompare, lineItemFingerprint } from "../data/domain";
 import { SAGSTYPE_KUNDE } from "../data/caseTypes";
 import { enqueueOrder, flushQueue, queueLength, subscribeQueue } from "../lib/offlineQueue";
@@ -275,6 +275,37 @@ export function useOrders(storeId) {
 
   const clearMissingItem = (orderId, lineItemId) => updateLineItem(orderId, lineItemId, { mangler: null });
 
+  // ---------------- POS-synkronisering ved færdigmelding (september 2026) ----------------
+  // Fakturering + lagerudlevering hos Flow Retail, hvis integrationen er
+  // sat op for butikken (se pos-integration Edge Function og
+  // lib/dataStore.js: syncPosOnFinish). Skriver ALTID sit resultat (også
+  // en fejl) på sagens posStatus-felt - direkte i databasen fra Edge
+  // Function'en - og vi henter samme resultat her, så en evt. fejl-banner
+  // (se OrderView.jsx) kan vises med det samme uden at vente på en
+  // side-genindlæsning.
+  //
+  // BEVIDST ASYNKRON I FORHOLD TIL FÆRDIGMELDINGEN: selve montørarbejdet
+  // (status -> afsluttet) må ALDRIG blokeres eller rulles tilbage af en
+  // POS-fejl - montøren har rent faktisk udført opgaven, uanset om
+  // fakturaen går igennem. Fejlen skal være synlig og handles separat,
+  // ikke forhindre, at sagen kan færdigmeldes.
+  const runPosSync = (orderId) => {
+    if (!storeId) return;
+    syncPosOnFinish({ storeId, orderId }).then((result) => {
+      if (result.posStatus) {
+        setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, posStatus: result.posStatus } : o)));
+      } else if (!result.ok) {
+        reportSaveFailure(`POS-synkroniseringen ved færdigmelding kunne ikke gennemføres: ${result.fejl || ""}`.trim());
+      }
+    });
+  };
+
+  // Kan kaldes igen manuelt fra en fejl-banner (se OrderView.jsx), uden at
+  // skulle genåbne/genfærdigmelde sagen - fejlen kan jo rette sig af sig
+  // selv (fx nøglen bliver sat, eller Flow Retail er tilbage), og det skal
+  // ikke kræve en tur gennem "Genåbn sag" og "Færdigmeld" igen.
+  const retryPosSync = (orderId) => runPosSync(orderId);
+
   // ---------------- Start og færdigmelding (september 2026) ----------------
   // ERSTATTER status-skifteren. Status er nu en KONSEKVENS af to konkrete
   // handlinger, montøren foretager alligevel.
@@ -320,6 +351,7 @@ export function useOrders(storeId) {
       logs.push({ id: uid(), ind: s.stemplerInd, ud: nu, minutter });
     }
     saveOneOrder({ ...s, status: "afsluttet", afsluttetTidspunkt: nu, stemplerInd: null, logs });
+    runPosSync(orderId);
   };
 
   // Fortryd færdigmelding. Rydder sluttidspunktet, så en genåbnet sag ikke
@@ -435,7 +467,7 @@ export function useOrders(storeId) {
     orders,
     addOrder, duplicateOrder, deleteOrder, updateBooking, importOrders,
     assignVehicle, updateTimeSlot, reorderOrder, setVisitOrder, toggleLineItemPicked,
-    startOrder, finishOrder, reopenOrder,
+    startOrder, finishOrder, reopenOrder, retryPosSync,
     setLineItems, updateLineItem, addLineItem, removeLineItem,
     reportMissingItem, clearMissingItem,
     addNote, addPhoto, addReport,
