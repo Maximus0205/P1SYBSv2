@@ -44,7 +44,7 @@ function Gate({ allowed, page, children }) {
   return children;
 }
 
-function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder, permissions, catalog }) {
+function OrderRoute({ profile, storeId, orders, technicians, ordersStore, duplicateOrder, permissions, catalog }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const order = orders.find((o) => o.id === id);
@@ -107,6 +107,11 @@ function OrderRoute({ profile, orders, technicians, ordersStore, duplicateOrder,
     onStartOrder: () => ordersStore.startOrder(order.id),
     onFinishOrder: () => ordersStore.finishOrder(order.id),
     onReopenOrder: () => ordersStore.reopenOrder(order.id),
+
+    // POS-synkronisering (september 2026): finishOrder udløser den
+    // automatisk, men en fejl (se order.posStatus) skal kunne forsøges
+    // igen direkte fra sagen, uden en tur gennem "Genåbn" + "Færdigmeld".
+    onRetryPosSync: () => ordersStore.retryPosSync(order.id),
 
     // ---- Varelinjer på en eksisterende sag (august 2026) ----
     // Kataloget sendes med, fordi varelinje-editoren skal kunne tilbyde de
@@ -410,11 +415,11 @@ export default function App() {
             />
           } />
 
-          <Route path="/sag/:id" element={<OrderRoute profile={profile} orders={orders} technicians={technicians} ordersStore={ordersStore} duplicateOrder={duplicateOrder} permissions={effectivePermissions} catalog={catalog} />} />
+          <Route path="/sag/:id" element={<OrderRoute profile={profile} storeId={activeStoreId} orders={orders} technicians={technicians} ordersStore={ordersStore} duplicateOrder={duplicateOrder} permissions={effectivePermissions} catalog={catalog} />} />
 
           <Route path="/salg" element={
             <Gate allowed={allowedPages} page="salg">
-              <SalesPage orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={effectiveStore?.lat && effectiveStore?.lon ? { lat: effectiveStore.lat, lon: effectiveStore.lon } : null} />
+              <SalesPage storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={effectiveStore?.lat && effectiveStore?.lon ? { lat: effectiveStore.lat, lon: effectiveStore.lon } : null} />
             </Gate>
           } />
 
