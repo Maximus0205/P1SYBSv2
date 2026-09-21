@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from "react";
-import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus, X, Bug, RefreshCw } from "lucide-react";
-import { getAllStores, createStoreAsSystemAdmin, updateStoreAsSystemAdmin, deleteStoreAsSystemAdmin, getAllUsersAsSystemAdmin, updateProfile, resetPasswordAsAdmin, createUserAsAdmin, getErrorLogs, deleteErrorLog, clearErrorLogs } from "../lib/dataStore";
+import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus, X, Bug, RefreshCw, Plug, ChevronLeft } from "lucide-react";
+import { getAllStores, createStoreAsSystemAdmin, updateStoreAsSystemAdmin, deleteStoreAsSystemAdmin, getAllUsersAsSystemAdmin, updateProfile, resetPasswordAsAdmin, createUserAsAdmin, getErrorLogs, deleteErrorLog, clearErrorLogs, getAllPosIntegrationsAsSystemAdmin } from "../lib/dataStore";
 import { geocodeAddresses } from "../lib/geocoding";
 import { suggestUsername, isValidUsername } from "../lib/username";
 import { AddressInput } from "../components/AddressInput";
+import { PosIntegrationAdmin } from "../components/PosIntegrationAdmin";
 
 const ROLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montør" };
 
-// Kun synlig for brugere med profiles.is_system_admin = true. To faner:
-// "Butikker" (opret/redigér/slet butikker, opret/koble brugere - som før)
-// og "Fejl-log" (august 2026, ny) - automatisk opsamlede fejl fra hele
-// systemet, se lib/errorLog.js for selve indsamlingen.
+// Kun synlig for brugere med profiles.is_system_admin = true. Tre faner:
+// "Butikker" (opret/redigér/slet butikker, opret/koble brugere), "Fejl-log"
+// (automatisk opsamlede fejl fra hele systemet), og "POS-integrationer"
+// (september 2026, ny) - overblik på tværs af ALLE butikker over
+// forbindelsen til Flow Retail, med mulighed for at konfigurere den på
+// vegne af en butik, der ikke selv kan/vil gøre det endnu.
 function SystemAdminPage() {
   const [tab, setTab] = useState("butikker");
   const [stores, setStores] = useState([]);
@@ -21,20 +24,21 @@ function SystemAdminPage() {
 
   return (
     <div>
-      <div className="flex border-b border-line mb-6">
+      <div className="flex border-b border-line mb-6 flex-wrap">
         <button onClick={() => setTab("butikker")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "butikker" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
           <Building2 size={15} /> Butikker
+        </button>
+        <button onClick={() => setTab("integrationer")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "integrationer" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
+          <Plug size={15} /> POS-integrationer
         </button>
         <button onClick={() => setTab("fejl")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "fejl" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
           <Bug size={15} /> Fejl-log
         </button>
       </div>
 
-      {tab === "butikker" ? (
-        <StoresTab stores={stores} loading={loading} reload={reloadStores} />
-      ) : (
-        <ErrorLogTab stores={stores} />
-      )}
+      {tab === "butikker" && <StoresTab stores={stores} loading={loading} reload={reloadStores} />}
+      {tab === "integrationer" && <PosIntegrationsTab stores={stores} />}
+      {tab === "fejl" && <ErrorLogTab stores={stores} />}
     </div>
   );
 }
@@ -182,6 +186,63 @@ function StoresTab({ stores, loading, reload }) {
 
       <CreateUserDirect stores={stores} />
       <AllUsers stores={stores} />
+    </div>
+  );
+}
+
+// POS-INTEGRATIONER PÅ TVÆRS AF BUTIKKER (september 2026). Et overblik,
+// ikke en dublet af Admin-sidens fane: systemadmin ser her hvilke butikker
+// der har sat Flow Retail op, om det virker, og kan klikke ind for at
+// konfigurere det PÅ VEGNE AF en butik, der ikke selv har en admin med
+// rettigheden endnu, eller som har brug for hjælp med opsætningen.
+function PosIntegrationsTab({ stores }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedStoreId, setSelectedStoreId] = useState(null);
+
+  const reload = () => { setLoading(true); getAllPosIntegrationsAsSystemAdmin().then((r) => { setRows(r); setLoading(false); }); };
+  useEffect(reload, []);
+
+  if (selectedStoreId) {
+    const store = stores.find((s) => s.id === selectedStoreId);
+    return (
+      <div>
+        <button onClick={() => { setSelectedStoreId(null); reload(); }} className="text-sm text-muted hover:text-brand mb-4 flex items-center gap-1"><ChevronLeft size={15} /> Tilbage til oversigten</button>
+        <PosIntegrationAdmin storeId={selectedStoreId} storeLabel={store?.navn} />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-2"><Plug size={16} /> POS-integrationer</h3>
+      <p className="text-xs text-muted mb-4">Overblik over hver butiks forbindelse til Flow Retail. Klik en butik for at konfigurere den — fx hvis butikken selv mangler en admin med rettigheden, eller har brug for hjælp.</p>
+      {loading ? (
+        <p className="text-sm text-muted">Indlæser...</p>
+      ) : stores.length === 0 ? (
+        <p className="text-sm text-muted italic">Ingen butikker oprettet endnu.</p>
+      ) : (
+        <div className="space-y-2">
+          {stores.map((store) => {
+            const row = rows.find((r) => r.butikId === store.id);
+            return (
+              <button key={store.id} onClick={() => setSelectedStoreId(store.id)} className="w-full text-left rounded-xl bg-white border border-line hover:border-brand transition-colors p-3 flex items-center gap-3 flex-wrap shadow-sm">
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-sm text-ink">{store.navn}</p>
+                  <p className="text-xs text-muted">
+                    {!row || !row.aktiveret ? "Ikke sat op" : row.harNoegle ? "Aktiveret · nøgle sat" : "Aktiveret · mangler nøgle"}
+                  </p>
+                </div>
+                {row?.sidstTestet && (
+                  <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full ${row.sidstTestetOk ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}>
+                    {row.sidstTestetOk ? "Forbindelse OK" : "Sidste test fejlede"}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
