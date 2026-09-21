@@ -27,7 +27,12 @@ function matchesSearch(order, search) {
 // tjekke DÆKNING pr. bil (er der nogen til at køre den den dag) i stedet
 // for at antage alle biler altid er i spil. Se vehicleHasCoverage i
 // data/domain.js.
-function SalesPage({ orders, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, selectedDate, onDateChange, onOpen, onAdd, onImport, storeFocus }) {
+//
+// storeId (september 2026): videresendes til NewOrderForm, som bruger den
+// til "Hent fra POS"-opslaget (se lib/dataStore.js: lookupPosOrder) - uden
+// den kan Edge Function-kaldet ikke vide, hvilken butiks POS-forbindelse
+// der skal bruges.
+function SalesPage({ storeId, orders, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, selectedDate, onDateChange, onOpen, onAdd, onImport, storeFocus }) {
   const [panel, setPanel] = useState("ny");
   const [search, setSearch] = useState("");
   const sortFn = (a, b) => (a.start || "").localeCompare(b.start || "");
@@ -55,7 +60,7 @@ function SalesPage({ orders, technicians, personnel, timeOff, productTypes, prod
         </div>
       </div>
 
-      {panel === "ny" && <div className="mb-6"><NewOrderForm technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} orders={orders} selectedDate={selectedDate} onAdd={onAdd} onClose={() => setPanel(null)} onOpen={onOpen} storeFocus={storeFocus} /></div>}
+      {panel === "ny" && <div className="mb-6"><NewOrderForm storeId={storeId} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} orders={orders} selectedDate={selectedDate} onAdd={onAdd} onClose={() => setPanel(null)} onOpen={onOpen} storeFocus={storeFocus} /></div>}
       {panel === "import" && <div className="mb-6"><CsvImport technicians={technicians} productTypes={productTypes} primaryServices={primaryServices} onImport={onImport} onClose={() => setPanel(null)} /></div>}
 
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
