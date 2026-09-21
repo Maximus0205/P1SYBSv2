@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from "react";
-import { Plus, Building2, Clock, Hash, ChevronLeft, ChevronRight, Check, KeyRound, AlertTriangle } from "lucide-react";
+import { Plus, Building2, Clock, Hash, ChevronLeft, ChevronRight, Check, KeyRound, AlertTriangle, Search, Loader2, Sparkles } from "lucide-react";
 import { TIME_SLOTS, buildTitle, formatDuration, createLineItem, lineItemMinutes, timeSlotById, timeSlotText, todayISO, emptyKeyAccess, keyAccessText } from "../data/domain";
 import { CASE_TYPES, SAGSTYPE_KUNDE, SAGSTYPE_TOMGANG, tomgangWarnings, TOMGANG_COLOR } from "../data/caseTypes";
 import { buildEstimateIndex, buildClusterIndex } from "../data/estimates";
+import { lookupPosOrder } from "../lib/dataStore";
 import { ReceiptUpload } from "../components/ReceiptUpload";
 import { LineItemEditor, KeyAccessFields, CustomerHistory, SuggestedDates, InteractiveWeekPicker, ClusterEstimateNote } from "../components/OrderFormFields";
 import { AddressInput } from "../components/AddressInput";
@@ -80,7 +81,59 @@ function CaseTypePicker({ value, onChange }) {
   );
 }
 
-function NewOrderForm({ technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, orders, selectedDate, onAdd, onClose, onOpen, storeFocus }) {
+// ---------------------------------------------------------------------------
+// POS-OPSLAG (Flow Retail) - september 2026
+//
+// Henter kundedata + evt. varenummer fra en leveringslinje, ud fra
+// telefonnummer ELLER ordre-/fakturanummer - så sælgeren slipper for at
+// genindtaste noget, POS-systemet allerede har. Kaldet går gennem den
+// samme Edge Function som resten af integrationen (se
+// supabase/functions/pos-integration) og fejler ÆRLIGT ("afventer
+// dokumentation fra Flow Retail"), indtil det rigtige opslag er koblet på
+// - panelet viser fejlen tydeligt, i stedet for at lade formularen se ud
+// som om intet blev forsøgt.
+function PosLookupPanel({ storeId, onApply }) {
+  const [queryType, setQueryType] = useState("telefon");
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [fejl, setFejl] = useState(null);
+
+  const search = async () => {
+    if (!query.trim() || !storeId) return;
+    setLoading(true); setFejl(null);
+    const result = await lookupPosOrder({ storeId, query: query.trim(), queryType });
+    setLoading(false);
+    if (!result.ok) { setFejl(result.fejl); return; }
+    onApply(result.resultat);
+  };
+
+  return (
+    <div className="mb-4 rounded-xl border border-line bg-panel p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-ink mb-2 flex items-center gap-1.5"><Sparkles size={13} aria-hidden="true" /> Hent fra POS</p>
+      <div className="flex rounded-full border border-line mb-2 text-[11px] font-semibold uppercase tracking-wide w-fit overflow-hidden">
+        <button type="button" onClick={() => setQueryType("telefon")} aria-pressed={queryType === "telefon"} className={`px-3 py-1.5 transition-colors ${queryType === "telefon" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>Telefon</button>
+        <button type="button" onClick={() => setQueryType("ordrenummer")} aria-pressed={queryType === "ordrenummer"} className={`px-3 py-1.5 transition-colors ${queryType === "ordrenummer" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>Ordre-/fakturanr.</button>
+      </div>
+      <div className="flex gap-2">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); search(); } }}
+          placeholder={queryType === "telefon" ? "Telefonnummer" : "Ordre- eller fakturanummer"}
+          aria-label={queryType === "telefon" ? "Telefonnummer" : "Ordre- eller fakturanummer"}
+          className="flex-1 rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
+        />
+        <button onClick={search} disabled={loading || !query.trim()} className="px-4 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-50 flex items-center gap-1.5 shrink-0">
+          {loading ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Search size={14} aria-hidden="true" />} Søg
+        </button>
+      </div>
+      {fejl && <p className="text-xs text-danger mt-2 flex items-start gap-1.5"><AlertTriangle size={12} className="shrink-0 mt-0.5" aria-hidden="true" /> {fejl}</p>}
+      <p className="text-[10px] text-muted mt-2">Udfylder navn, telefon, e-mail og adresse — samt varenummer, hvis sagen fandtes med en leveringslinje.</p>
+    </div>
+  );
+}
+
+function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, orders, selectedDate, onAdd, onClose, onOpen, storeFocus }) {
   const [step, setStep] = useState(0);
   const [caseTypeId, setCaseTypeId] = useState(SAGSTYPE_KUNDE);
   const [customerName, setCustomerName] = useState("");
@@ -134,6 +187,23 @@ function NewOrderForm({ technicians, personnel, timeOff, productTypes, productCa
   const updateLineItem = (idx, next) => setLineItems((prev) => prev.map((l, i) => (i === idx ? next : l)));
   const removeLineItem = (idx) => setLineItems((prev) => prev.filter((_, i) => i !== idx));
   const addLineItem = () => setLineItems((prev) => [...prev, createLineItem(productTypes, primaryServices)]);
+
+  // Anvender et POS-opslag: udfylder kunden, og lægger et evt. varenummer
+  // ind på den FØRSTE varelinjes model-felt - kun hvis der endnu ikke selv
+  // er skrevet noget der, så et opslag sent i flowet ikke overskriver, hvad
+  // sælgeren allerede har rettet manuelt.
+  const applyPosResult = (resultat) => {
+    if (!resultat) return;
+    if (resultat.navn) setCustomerName(resultat.navn);
+    if (resultat.telefon) setPhone(resultat.telefon);
+    if (resultat.email) setEmail(resultat.email);
+    if (resultat.adresse) setAddress(resultat.adresse);
+    if (resultat.varenummer) {
+      setLineItems((prev) => (
+        prev[0] && !prev[0].model ? prev.map((l, i) => (i === 0 ? { ...l, model: resultat.varenummer } : l)) : prev
+      ));
+    }
+  };
 
   // Fordeler den klynge-justerede samlede tid ud på de enkelte linjer, ved
   // at skalere hver linjes PRIMÆRE tid med den målte faktor (tillæggenes
@@ -224,6 +294,7 @@ function NewOrderForm({ technicians, personnel, timeOff, productTypes, productCa
           <CaseTypePicker value={caseTypeId} onChange={changeCaseType} />
 
           {!erTomgang && <ReceiptUpload productTypes={productTypes} onFill={fillFromPdf} />}
+          {!erTomgang && storeId && <PosLookupPanel storeId={storeId} onApply={applyPosResult} />}
 
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">
             {erTomgang ? "Rekvirent (hvem har bestilt arbejdet)" : "Kunde"}
