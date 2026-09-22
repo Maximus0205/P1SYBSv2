@@ -381,6 +381,15 @@ function hoursLabel(minutes) {
 function shortDayLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { weekday: "short" }); }
 function shortDateLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "short" }); }
 
+// Tidsrums-etiket til en sag, ud fra dens EGNE start/slut-tider (ikke bare
+// dens tidsrumId) - det er de faktiske tider, der er gemt og vist andre
+// steder på sagen, og de er altid til stede, selv på ældre sager uden
+// tidsrumId. "08:00–16:00" osv.
+function orderTimeWindow(order) {
+  if (!order.start && !order.slut) return null;
+  return `${order.start || "?"}–${order.slut || "?"}`;
+}
+
 // ---------------- Overblik: ugekalender med kort og omfordeling ----------------
 // MONTØR-VÆLGEREN ER FOLDET SAMMEN (august 2026, set på skærmbillede):
 // hvert eneste kort havde en fuldbredde-dropdown nederst, som gentog
@@ -479,6 +488,16 @@ function DayTimeBadge({ minutes, overloaded, loading }) {
 // tydeligt adskiller det fra næste bils sager i samme kolonne. Bruges
 // BÅDE i mobil- og pc-udgaven (kun selve kolonne-strukturen omkring det er
 // forskellig).
+//
+// TIDSRUMS-OVERSKRIFTER (september 2026, efter feedback fra en tester):
+// listen var svær at skimme, fordi intet i selve visningen viste, HVORNÅR
+// på dagen en sag reelt ligger - en 8-12-sag og en 12-16-sag så ens ud,
+// bortset fra klokkeslættet inde i det enkelte kort. Der indsættes nu en
+// lille overskrift, hver gang tidsrummet skifter i forhold til sagen
+// LIGE OVER - ikke en fast 3-sektions-opdeling, men en markering af hvert
+// sammenhængende afsnit i den (nu korrekt tidssorterede, se
+// dailyOrderCompare) liste. Rører IKKE ved selve rækkefølgen: op/ned-
+// pilene virker som hidtil på hele dagens liste.
 function TechnicianDaySection({ row, day, dayOrders, technicians, onOpen, onAssign, onReorder, onSetVisitOrder, isOnLeave, timeInfo, optimizing, onOptimize }) {
   const color = row.id ? technicianColor(row.id, technicians) : "#C8232E";
   const optKey = `${row.id}|${day}`;
@@ -496,22 +515,32 @@ function TechnicianDaySection({ row, day, dayOrders, technicians, onOpen, onAssi
         </div>
       </div>
       {isOnLeave && <p className="text-[10px] font-semibold uppercase tracking-wide text-danger mb-1 flex items-center gap-0.5"><AlertCircle size={9} aria-hidden="true" /> Ingen montør til rådighed</p>}
-      {dayOrders.map((o, i) => (
-        <MiniOrderCard
-          key={o.id}
-          order={o}
-          onOpen={onOpen}
-          onAssign={onAssign}
-          technicians={technicians}
-          currentTechnicianId={row.id}
-          color={color}
-          onLeave={isOnLeave}
-          onMoveUp={row.id && onReorder ? () => onReorder(row.id, day, o.id, -1) : undefined}
-          onMoveDown={row.id && onReorder ? () => onReorder(row.id, day, o.id, 1) : undefined}
-          canMoveUp={i > 0}
-          canMoveDown={i < dayOrders.length - 1}
-        />
-      ))}
+      {dayOrders.map((o, i) => {
+        const window = orderTimeWindow(o);
+        const showHeader = window && window !== orderTimeWindow(dayOrders[i - 1]);
+        return (
+          <React.Fragment key={o.id}>
+            {showHeader && (
+              <p className={`text-[10px] font-semibold uppercase tracking-wide text-muted flex items-center gap-1 mb-1 ${i === 0 ? "" : "mt-2"}`}>
+                <Clock size={9} aria-hidden="true" /> {window}
+              </p>
+            )}
+            <MiniOrderCard
+              order={o}
+              onOpen={onOpen}
+              onAssign={onAssign}
+              technicians={technicians}
+              currentTechnicianId={row.id}
+              color={color}
+              onLeave={isOnLeave}
+              onMoveUp={row.id && onReorder ? () => onReorder(row.id, day, o.id, -1) : undefined}
+              onMoveDown={row.id && onReorder ? () => onReorder(row.id, day, o.id, 1) : undefined}
+              canMoveUp={i > 0}
+              canMoveDown={i < dayOrders.length - 1}
+            />
+          </React.Fragment>
+        );
+      })}
     </div>
   );
 }
