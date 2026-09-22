@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AlertCircle, ArrowLeftRight, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, RefreshCw, KeyRound, Clock, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid, MapPin, Phone, Route, Stethoscope, CalendarX2, AlertTriangle } from "lucide-react";
+import { AlertCircle, ArrowLeftRight, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, RefreshCw, KeyRound, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid, MapPin, Phone, Route, Stethoscope, CalendarX2, AlertTriangle } from "lucide-react";
 import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, dailyOrderCompare, needsPlanning, vehicleAbsences, vehicleHasCoverage, buildingKey, timeSlotById } from "../data/domain";
 import { geocodeAddress, geocodeAddresses, drivingDistances, routeDrivingTime, optimalVisitOrder } from "../lib/geocoding";
 import { suggestPlan, planningWindow, WORKDAY_MINUTES } from "../lib/scheduling";
@@ -25,7 +25,9 @@ import { OrderCardCompact } from "../components/OrderCardCompact";
 // ugedage (mandag-fredag - bevidst ikke lørdag/søndag, se WeekOverview),
 // og INDEN I hver dag-kolonne er sagerne grupperet pr. bil, tydeligt
 // visuelt adskilt (farvet venstre-kant + navn), i den rækkefølge sagerne
-// reelt ligger i ruten (dailyOrderCompare).
+// reelt ligger i ruten (dailyOrderCompare - se domain.js: en manuel
+// omrokering eller "Foreslå bedste besøgsrækkefølge" bestemmer
+// rækkefølgen fuldt ud; ellers er det sagens starttidspunkt).
 //
 // "KRÆVER HANDLING" ER FIRE "dashboard-fliser" - kun ÉN kan være foldet ud
 // ad gangen:
@@ -381,15 +383,6 @@ function hoursLabel(minutes) {
 function shortDayLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { weekday: "short" }); }
 function shortDateLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "short" }); }
 
-// Tidsrums-etiket til en sag, ud fra dens EGNE start/slut-tider (ikke bare
-// dens tidsrumId) - det er de faktiske tider, der er gemt og vist andre
-// steder på sagen, og de er altid til stede, selv på ældre sager uden
-// tidsrumId. "08:00–16:00" osv.
-function orderTimeWindow(order) {
-  if (!order.start && !order.slut) return null;
-  return `${order.start || "?"}–${order.slut || "?"}`;
-}
-
 // ---------------- Overblik: ugekalender med kort og omfordeling ----------------
 // MONTØR-VÆLGEREN ER FOLDET SAMMEN (august 2026, set på skærmbillede):
 // hvert eneste kort havde en fuldbredde-dropdown nederst, som gentog
@@ -489,15 +482,10 @@ function DayTimeBadge({ minutes, overloaded, loading }) {
 // BÅDE i mobil- og pc-udgaven (kun selve kolonne-strukturen omkring det er
 // forskellig).
 //
-// TIDSRUMS-OVERSKRIFTER (september 2026, efter feedback fra en tester):
-// listen var svær at skimme, fordi intet i selve visningen viste, HVORNÅR
-// på dagen en sag reelt ligger - en 8-12-sag og en 12-16-sag så ens ud,
-// bortset fra klokkeslættet inde i det enkelte kort. Der indsættes nu en
-// lille overskrift, hver gang tidsrummet skifter i forhold til sagen
-// LIGE OVER - ikke en fast 3-sektions-opdeling, men en markering af hvert
-// sammenhængende afsnit i den (nu korrekt tidssorterede, se
-// dailyOrderCompare) liste. Rører IKKE ved selve rækkefølgen: op/ned-
-// pilene virker som hidtil på hele dagens liste.
+// RETTET (september 2026): et forsøg på tidsrums-overskrifter herinde
+// crashede siden (læste dayOrders[-1] for den første sag i listen, som er
+// undefined) og er fjernet igen efter ønske - listen er en almindelig,
+// tidssorteret liste (dailyOrderCompare) uden opdeling.
 function TechnicianDaySection({ row, day, dayOrders, technicians, onOpen, onAssign, onReorder, onSetVisitOrder, isOnLeave, timeInfo, optimizing, onOptimize }) {
   const color = row.id ? technicianColor(row.id, technicians) : "#C8232E";
   const optKey = `${row.id}|${day}`;
@@ -515,32 +503,22 @@ function TechnicianDaySection({ row, day, dayOrders, technicians, onOpen, onAssi
         </div>
       </div>
       {isOnLeave && <p className="text-[10px] font-semibold uppercase tracking-wide text-danger mb-1 flex items-center gap-0.5"><AlertCircle size={9} aria-hidden="true" /> Ingen montør til rådighed</p>}
-      {dayOrders.map((o, i) => {
-        const window = orderTimeWindow(o);
-        const showHeader = window && window !== orderTimeWindow(dayOrders[i - 1]);
-        return (
-          <React.Fragment key={o.id}>
-            {showHeader && (
-              <p className={`text-[10px] font-semibold uppercase tracking-wide text-muted flex items-center gap-1 mb-1 ${i === 0 ? "" : "mt-2"}`}>
-                <Clock size={9} aria-hidden="true" /> {window}
-              </p>
-            )}
-            <MiniOrderCard
-              order={o}
-              onOpen={onOpen}
-              onAssign={onAssign}
-              technicians={technicians}
-              currentTechnicianId={row.id}
-              color={color}
-              onLeave={isOnLeave}
-              onMoveUp={row.id && onReorder ? () => onReorder(row.id, day, o.id, -1) : undefined}
-              onMoveDown={row.id && onReorder ? () => onReorder(row.id, day, o.id, 1) : undefined}
-              canMoveUp={i > 0}
-              canMoveDown={i < dayOrders.length - 1}
-            />
-          </React.Fragment>
-        );
-      })}
+      {dayOrders.map((o, i) => (
+        <MiniOrderCard
+          key={o.id}
+          order={o}
+          onOpen={onOpen}
+          onAssign={onAssign}
+          technicians={technicians}
+          currentTechnicianId={row.id}
+          color={color}
+          onLeave={isOnLeave}
+          onMoveUp={row.id && onReorder ? () => onReorder(row.id, day, o.id, -1) : undefined}
+          onMoveDown={row.id && onReorder ? () => onReorder(row.id, day, o.id, 1) : undefined}
+          canMoveUp={i > 0}
+          canMoveDown={i < dayOrders.length - 1}
+        />
+      ))}
     </div>
   );
 }
@@ -635,25 +613,85 @@ function WeekOverview({ orders, technicians, personnel, timeOff, store, onAssign
     return { loadMinutes, total, overloaded, stillLoading };
   };
 
+  // FORESLÅ BEDSTE BESØGSRÆKKEFØLGE - RETTET (september 2026)
+  //
+  // Tog tidligere IKKE højde for den bookede tidsramme (heldag/formiddag/
+  // eftermiddag) på den enkelte sag - den beregnede simpelthen den
+  // køremæssigt korteste rute over ALLE dagens stop under ét. Resultatet
+  // kunne foreslå at besøge en "eftermiddag"-sag (12-16) først på dagen,
+  // eller en "formiddag"-sag (skal være færdig kl. 12) sidst - begge dele
+  // ville betyde et besøg uden for det tidsrum, kunden faktisk har fået
+  // stillet i udsigt.
+  //
+  // Løsning: sagerne deles op i tre puljer efter tidsrum (formiddag,
+  // eftermiddag, heldag - "heldag" er fleksibel og kan lægges hvor som
+  // helst), og ruteoptimering køres SEPARAT for formiddags- og
+  // eftermiddags-puljen (som hver har en reel deadline), mens
+  // heldag-sagerne fordeles ind imellem efter, hvilken nærmeste nabo i den
+  // allerede fastlagte rute de ligger tættest på. Endeligt resultat:
+  // [formiddag i optimeret rækkefølge] + [heldag-sager, indsat hvor de
+  // passer bedst ind] + [eftermiddag i optimeret rækkefølge] - som
+  // GARANTERER at ingen formiddags-sag lander efter en eftermiddags-sag,
+  // og omvendt.
   const optimizeDay = async (vehicleId, day, dayOrders) => {
     if (!onSetVisitOrder || dayOrders.length < 2) return;
     const key = `${vehicleId}|${day}`;
     setOptimizing((prev) => ({ ...prev, [key]: true }));
+
     const addresses = dayOrders.map((o) => o.kunde?.adresse).filter(Boolean);
     const coordMap = await geocodeAddresses(addresses);
-    const withCoords = dayOrders
-      .map((o) => ({ id: o.id, coord: o.kunde?.adresse ? coordMap.get(o.kunde.adresse.trim().toLowerCase()) : null }))
-      .filter((x) => x.coord);
-    if (withCoords.length >= 2) {
+    const withCoord = (o) => (o.kunde?.adresse ? coordMap.get(o.kunde.adresse.trim().toLowerCase()) : null);
+
+    // Del op efter tidsramme. "eftermiddag" afgøres af starttidspunktet
+    // (>= 12:00) - dækker både det faste tidsrum og en sag, der manuelt
+    // er sat til at starte om eftermiddagen. Alt andet (heldag/formiddag)
+    // behandles som fleksibelt frem til middag.
+    const formiddag = dayOrders.filter((o) => (o.start || "00:00") < "12:00" && (o.slut || "23:59") <= "12:00");
+    const eftermiddag = dayOrders.filter((o) => (o.start || "00:00") >= "12:00");
+    const heldag = dayOrders.filter((o) => !formiddag.includes(o) && !eftermiddag.includes(o));
+
+    // Optimerer ÉN pulje for sig, ud fra firmaets adresse som startpunkt
+    // (hvis kendt) - returnerer sagerne i den rækkefølge, ruten foreslår.
+    const optimizePool = async (pool) => {
+      const withCoords = pool.map((o) => ({ o, coord: withCoord(o) })).filter((x) => x.coord);
+      if (withCoords.length < 2) return pool;
       const points = storeCoord ? [storeCoord, ...withCoords.map((x) => x.coord)] : withCoords.map((x) => x.coord);
-      const order = await optimalVisitOrder(points);
-      if (order && order.length > 1) {
-        const offset = storeCoord ? 1 : 0;
-        const orderedIds = order.filter((idx) => idx >= offset).map((idx) => withCoords[idx - offset].id);
-        const withoutCoordIds = dayOrders.filter((o) => !withCoords.some((x) => x.id === o.id)).map((o) => o.id);
-        onSetVisitOrder(vehicleId, day, [...orderedIds, ...withoutCoordIds]);
+      const visitOrder = await optimalVisitOrder(points);
+      if (!visitOrder || visitOrder.length < 2) return pool;
+      const offset = storeCoord ? 1 : 0;
+      const orderedWithCoords = visitOrder.filter((idx) => idx >= offset).map((idx) => withCoords[idx - offset].o);
+      const withoutCoords = pool.filter((o) => !withCoords.some((x) => x.o.id === o.id));
+      return [...orderedWithCoords, ...withoutCoords];
+    };
+
+    // Indsætter hver heldag-sag, hvor den ligger geografisk tættest på i
+    // den allerede fastlagte rute - en simpel "nærmeste nabo i sekvensen"-
+    // indsættelse, ikke en fuld reoptimering, så formiddags-/eftermiddags-
+    // rækkefølgen ikke selv rykkes rundt af det.
+    const insertFlexible = (sequence, flexible) => {
+      const result = [...sequence];
+      for (const o of flexible) {
+        const coord = withCoord(o);
+        if (!coord || result.length === 0) { result.push(o); continue; }
+        let bestIndex = result.length;
+        let bestDist = Infinity;
+        for (let i = 0; i <= result.length; i++) {
+          const neighbour = result[i] || result[i - 1];
+          const neighbourCoord = neighbour ? withCoord(neighbour) : null;
+          if (!neighbourCoord) continue;
+          const dist = Math.hypot(coord.lat - neighbourCoord.lat, coord.lon - neighbourCoord.lon);
+          if (dist < bestDist) { bestDist = dist; bestIndex = i; }
+        }
+        result.splice(bestIndex, 0, o);
       }
-    }
+      return result;
+    };
+
+    const optimizedFormiddag = await optimizePool(formiddag);
+    const optimizedEftermiddag = await optimizePool(eftermiddag);
+    const finalOrder = insertFlexible([...optimizedFormiddag, ...optimizedEftermiddag], heldag);
+
+    onSetVisitOrder(vehicleId, day, finalOrder.map((o) => o.id));
     setOptimizing((prev) => ({ ...prev, [key]: false }));
   };
 
@@ -687,7 +725,7 @@ function WeekOverview({ orders, technicians, personnel, timeOff, store, onAssign
             {storeCoord ? <Building2 size={11} className="shrink-0" aria-hidden="true" /> : <Car size={11} className="shrink-0" aria-hidden="true" />}
             <span className="hidden sm:inline">
               {storeCoord
-                ? "Tidstal inkluderer kørsel fra firmaets adresse og mellem dagens stop, samt arbejdstid. Rute-ikonet foreslår bedste besøgsrækkefølge."
+                ? "Tidstal inkluderer kørsel fra firmaets adresse og mellem dagens stop, samt arbejdstid. Rute-ikonet foreslår bedste besøgsrækkefølge inden for hver sags tidsramme."
                 : "Tidstal inkluderer kørsel mellem dagens stop og arbejdstid (sæt butikkens adresse op under Admin for turen ud fra firmaet)."}
             </span>
             <span className="sm:hidden">Tal = arbejde + estimeret kørsel.</span>
