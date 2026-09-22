@@ -419,7 +419,7 @@ export default function App() {
 
           <Route path="/salg" element={
             <Gate allowed={allowedPages} page="salg">
-              <SalesPage storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={effectiveStore?.lat && effectiveStore?.lon ? { lat: effectiveStore.lat, lon: effectiveStore.lon } : null} />
+              <SalesPage storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} defaultTimeEstimates={catalog.defaultTimeEstimates} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={effectiveStore?.lat && effectiveStore?.lon ? { lat: effectiveStore.lat, lon: effectiveStore.lon } : null} />
             </Gate>
           } />
 
@@ -469,7 +469,7 @@ export default function App() {
             <Gate allowed={allowedPages} page="admin">
               <AdminPage
                 technicians={personnel} vehicles={vehicles} users={users} timeOff={timeOff} currentUserId={profile.id} store={effectiveStore}
-                productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices}
+                productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} defaultTimeEstimates={catalog.defaultTimeEstimates}
                 permissions={effectivePermissions}
                 onUpdateTechnicianVehicle={updateTechnicianVehicle} onAddVehicle={vehiclesStore.addVehicle} onUpdateVehicle={vehiclesStore.updateVehicle} onDeleteVehicle={deleteVehicleWithConfirm} onToggleVehicleClosed={vehiclesStore.toggleVehicleClosed}
                 onAddUser={usersStore.addUser} onUpdateUser={usersStore.updateUser} onDeleteUser={usersStore.deleteUser} onResetPassword={usersStore.resetPassword} onUpdatePermissions={usersStore.updatePermissions}
@@ -477,6 +477,7 @@ export default function App() {
                 onAddProductType={catalog.addProductType} onUpdateProductType={catalog.updateProductType} onDeleteProductType={catalog.deleteProductType}
                 onAddPrimaryService={catalog.addPrimaryService} onUpdatePrimaryService={catalog.updatePrimaryService} onDeletePrimaryService={catalog.deletePrimaryService}
                 onAddAddOnService={catalog.addAddOnService} onUpdateAddOnService={catalog.updateAddOnService} onDeleteAddOnService={catalog.deleteAddOnService}
+                onSetDefaultTimeEstimate={catalog.setDefaultTimeEstimate}
                 onAddTimeOff={timeOffStore.addTimeOff} onDeleteTimeOff={timeOffStore.deleteTimeOff}
                 onSygemeld={timeOffStore.sygemeld} onRaskmeld={timeOffStore.raskmeld} onSickLeaveWindowUpdated={setSickLeaveWindowOverride}
               />
