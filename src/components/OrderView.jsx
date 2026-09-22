@@ -100,6 +100,7 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions }) {
 function LineItemEditor({ order, catalog, onSave, onCancel }) {
   const productTypes = catalog?.productTypes || [];
   const primaryServices = catalog?.primaryServices || [];
+  const defaultTimeEstimates = catalog?.defaultTimeEstimates || [];
   const [items, setItems] = useState(() => order.varelinjer.map((v) => ({ ...v })));
   const [confirmRemove, setConfirmRemove] = useState(null);
 
@@ -118,7 +119,7 @@ function LineItemEditor({ order, catalog, onSave, onCancel }) {
 
   const addNew = () => {
     if (productTypes.length === 0 || primaryServices.length === 0) return;
-    setItems((prev) => [...prev, createLineItem(productTypes, primaryServices)]);
+    setItems((prev) => [...prev, createLineItem(productTypes, primaryServices, undefined, "", defaultTimeEstimates)]);
   };
 
   return (
