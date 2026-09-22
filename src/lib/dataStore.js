@@ -177,6 +177,52 @@ export const saveAddOnService = (storeId, service) => saveRow("add_on_services",
 export const deleteAddOnService = (storeId, id) => deleteRow("add_on_services", storeId, id);
 export const seedDefaultAddOnServices = (storeId, services) => seedDefaults("add_on_services", storeId, services);
 
+// ---------- Standardtider (varetype × primær ydelse) - september 2026 ----------
+// Admin-sat UDGANGSPUNKT for en ny varelinje - se domain.js:
+// getDefaultEstimateMinutes og createLineItem. Erstatter IKKE det målte
+// estimat fra afsluttede sager (data/estimates.js), som stadig vises som
+// et separat forslag, når der er nok historik.
+export async function getDefaultTimeEstimates(storeId) {
+  if (!storeId) return [];
+  const { data, error } = await supabase
+    .from("default_time_estimates")
+    .select("varetype_id, primaer_ydelse_id, minutter")
+    .eq("store_id", storeId);
+  if (error) {
+    logDbError("dataStore:getDefaultTimeEstimates", "Could not load default time estimates", error);
+    return [];
+  }
+  return (data || []).map((r) => ({ varetypeId: r.varetype_id, primaerYdelseId: r.primaer_ydelse_id, minutter: r.minutter }));
+}
+
+// minutter: heltal >= 0. Der findes bevidst ingen "0 betyder ikke sat"-
+// konvention - 0 er en gyldig, bevidst sat standardtid (fx en ren
+// levering uden montering). "Ikke sat" udtrykkes ved slet ikke at have en
+// række - se deleteDefaultTimeEstimate.
+export async function saveDefaultTimeEstimate(storeId, varetypeId, primaerYdelseId, minutter) {
+  if (!storeId || !varetypeId || !primaerYdelseId) return false;
+  const { error } = await supabase.from("default_time_estimates").upsert({
+    store_id: storeId, varetype_id: varetypeId, primaer_ydelse_id: primaerYdelseId,
+    minutter: Math.max(0, Number(minutter) || 0), updated_at: new Date().toISOString(),
+  }, { onConflict: "store_id,varetype_id,primaer_ydelse_id" });
+  if (error) {
+    logWriteError("dataStore:saveDefaultTimeEstimate", "Could not save default time estimate", error, "Standardtiden blev ikke gemt:");
+    return false;
+  }
+  return true;
+}
+
+export async function deleteDefaultTimeEstimate(storeId, varetypeId, primaerYdelseId) {
+  if (!storeId || !varetypeId || !primaerYdelseId) return false;
+  const { error } = await supabase.from("default_time_estimates")
+    .delete().eq("store_id", storeId).eq("varetype_id", varetypeId).eq("primaer_ydelse_id", primaerYdelseId);
+  if (error) {
+    logWriteError("dataStore:deleteDefaultTimeEstimate", "Could not delete default time estimate", error, "Standardtiden blev ikke fjernet:");
+    return false;
+  }
+  return true;
+}
+
 // Læser den RIGTIGE fejlbesked ud af et Edge Function-svar. Uden dette
 // viser supabase-js kun "non-2xx status code" - den rigtige besked (som
 // vores funktioner sender som { fejl: "..." }) ligger i error.context.
