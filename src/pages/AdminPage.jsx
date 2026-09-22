@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Trash2, Plus } from "lucide-react";
-import { TechnicianRow, SickLeaveWindowSetting, VehicleRow, UserRow, NewUserForm, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin } from "../components/AdminParts";
+import { TechnicianRow, SickLeaveWindowSetting, VehicleRow, UserRow, NewUserForm, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin, DefaultTimeEstimateAdmin } from "../components/AdminParts";
 import { PosIntegrationAdmin } from "../components/PosIntegrationAdmin";
 import { getPermissionsCatalog, getRoleDefaultPermissions } from "../lib/dataStore";
 
@@ -13,7 +13,7 @@ const hasPerm = (permissions, key) => permissions === null || permissions.includ
 
 function AdminPage({
   technicians, vehicles, users, timeOff, currentUserId, store,
-  productTypes, productCategories, primaryServices, addOnServices,
+  productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates,
   permissions,
   onUpdateTechnicianVehicle, onAddVehicle, onUpdateVehicle, onDeleteVehicle, onToggleVehicleClosed,
   onAddUser, onUpdateUser, onDeleteUser, onResetPassword, onUpdatePermissions,
@@ -21,6 +21,7 @@ function AdminPage({
   onAddProductType, onUpdateProductType, onDeleteProductType,
   onAddPrimaryService, onUpdatePrimaryService, onDeletePrimaryService,
   onAddAddOnService, onUpdateAddOnService, onDeleteAddOnService,
+  onSetDefaultTimeEstimate,
   onAddTimeOff, onDeleteTimeOff, onSygemeld, onRaskmeld, onSickLeaveWindowUpdated,
 }) {
   const allTabs = [
@@ -160,10 +161,10 @@ function AdminPage({
       {tab === "varer" && (
         <div>
           <p className="text-xs text-muted mb-4">
-            En sag vælger for hver varelinje: en varetype, mærke/model, én primær ydelse (fx "Montering" — bestemmer grundtiden) og valgfrit tillægsydelser. Hvilke tillægsydelser der kan vælges styres samlet under fanen "Tillægsydelser" nedenfor: der sættes for hver tillægsydelse, hvilke primære ydelser den gælder under, og eventuelt hvilke varetyper den er begrænset til. Tidsestimaterne her er kun udgangspunkter — de kan altid rettes for den enkelte booking. Ændringer her påvirker kun nye bookinger; allerede bookede sager beholder deres egne tal.
+            En sag vælger for hver varelinje: en varetype, mærke/model, én primær ydelse (fx "Montering" — bestemmer grundtiden) og valgfrit tillægsydelser. Hvilke tillægsydelser der kan vælges styres samlet under fanen "Tillægsydelser" nedenfor: der sættes for hver tillægsydelse, hvilke primære ydelser den gælder under, og eventuelt hvilke varetyper den er begrænset til. Standardtider (fanen "Standardtider") er kun udgangspunkter — de kan altid rettes for den enkelte booking. Ændringer her påvirker kun nye bookinger; allerede bookede sager beholder deres egne tal.
           </p>
           <div className="flex gap-1.5 mb-4 flex-wrap">
-            {[{ k: "kategorier", l: "Kategorier" }, { k: "varetyper", l: "Varetyper" }, { k: "primaer", l: "Primære ydelser" }, { k: "tillaeg", l: "Tillægsydelser" }].map((f) => (
+            {[{ k: "kategorier", l: "Kategorier" }, { k: "varetyper", l: "Varetyper" }, { k: "primaer", l: "Primære ydelser" }, { k: "tillaeg", l: "Tillægsydelser" }, { k: "standardtider", l: "Standardtider" }].map((f) => (
               <button key={f.k} onClick={() => setProductTab(f.k)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide border transition-colors ${productTab === f.k ? "bg-ink text-white border-ink" : "text-muted border-line hover:border-brand hover:text-brand"}`}>{f.l}</button>
             ))}
           </div>
@@ -171,6 +172,7 @@ function AdminPage({
           {productTab === "varetyper" && <ProductTypeAdmin productTypes={productTypes} productCategories={productCategories} onAdd={onAddProductType} onUpdate={onUpdateProductType} onDelete={onDeleteProductType} />}
           {productTab === "primaer" && <PrimaryServiceAdmin primaryServices={primaryServices} onAdd={onAddPrimaryService} onUpdate={onUpdatePrimaryService} onDelete={onDeletePrimaryService} />}
           {productTab === "tillaeg" && <AddOnServiceAdmin addOnServices={addOnServices} productTypes={productTypes} primaryServices={primaryServices} onAdd={onAddAddOnService} onUpdate={onUpdateAddOnService} onDelete={onDeleteAddOnService} />}
+          {productTab === "standardtider" && <DefaultTimeEstimateAdmin productTypes={productTypes} primaryServices={primaryServices} defaultTimeEstimates={defaultTimeEstimates || []} onSetEstimate={onSetDefaultTimeEstimate} />}
         </div>
       )}
 
