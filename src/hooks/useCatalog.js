@@ -4,6 +4,7 @@ import {
   getProductCategories, saveProductCategory, deleteProductCategory, seedDefaultProductCategories,
   getPrimaryServices, savePrimaryService, deletePrimaryService, seedDefaultPrimaryServices,
   getAddOnServices, saveAddOnService, deleteAddOnService, seedDefaultAddOnServices,
+  getDefaultTimeEstimates, saveDefaultTimeEstimate, deleteDefaultTimeEstimate,
 } from "../lib/dataStore";
 import {
   uid,
@@ -29,22 +30,28 @@ import {
 // varetyper/primære ydelser ligger UDELUKKENDE på addOnServices selv (se
 // domain.js) - derfor rydder delete-funktionerne her op i addOnServices,
 // når en varetype eller primær ydelse slettes, så der ikke bliver
-// hængende referencer til noget der ikke findes mere. Der sættes IKKE
-// noget tidsestimat her - det tastes udelukkende manuelt for den enkelte
-// booking i sælgerens flow.
+// hængende referencer til noget der ikke findes mere.
+//
+// STANDARDTIDER (september 2026): defaultTimeEstimates er en FLAD liste
+// ({varetypeId, primaerYdelseId, minutter}) - en matrix, ikke en liste af
+// navngivne ting som resten af kataloget, og har derfor sin egen, lidt
+// simplere save/delete-form (ingen "opret nyt element med uid()", kun
+// "sæt eller fjern værdien for denne kombination"). Se domain.js:
+// getDefaultEstimateMinutes/createLineItem for hvordan den bruges.
 export function useCatalog(storeId) {
   const [productTypes, setProductTypes] = useState([]);
   const [productCategories, setProductCategories] = useState([]);
   const [primaryServices, setPrimaryServices] = useState([]);
   const [addOnServices, setAddOnServices] = useState([]);
+  const [defaultTimeEstimates, setDefaultTimeEstimates] = useState([]);
 
   const load = useCallback(async (id) => {
     if (!id) {
-      setProductTypes([]); setProductCategories([]); setPrimaryServices([]); setAddOnServices([]);
+      setProductTypes([]); setProductCategories([]); setPrimaryServices([]); setAddOnServices([]); setDefaultTimeEstimates([]);
       return;
     }
-    const [pt, pc, ps, aos] = await Promise.all([
-      getProductTypes(id), getProductCategories(id), getPrimaryServices(id), getAddOnServices(id),
+    const [pt, pc, ps, aos, dte] = await Promise.all([
+      getProductTypes(id), getProductCategories(id), getPrimaryServices(id), getAddOnServices(id), getDefaultTimeEstimates(id),
     ]);
     // Første gang butikken bruges, er listerne tomme - sæt fornuftige standarder.
     const finalCategories = pc.length > 0 ? pc : DEFAULT_PRODUCT_CATEGORIES;
@@ -57,6 +64,7 @@ export function useCatalog(storeId) {
     if (aos.length === 0) seedDefaultAddOnServices(id, finalAddOnServices);
     setProductCategories(finalCategories); setProductTypes(finalProductTypes);
     setPrimaryServices(finalPrimaryServices); setAddOnServices(finalAddOnServices);
+    setDefaultTimeEstimates(dte); // ingen standardværdier at seede - "ikke sat" er en gyldig, forventet starttilstand
   }, []);
 
   useEffect(() => { load(storeId); }, [storeId, load]);
@@ -87,6 +95,10 @@ export function useCatalog(storeId) {
     if (!window.confirm("Slet denne varetype? Allerede bookede sager beholder deres oplysninger uændret.")) return;
     removeOneProductType(id);
     addOnServices.filter((t) => (t.varetyper || []).includes(id)).forEach((t) => saveOneAddOnService({ ...t, varetyper: t.varetyper.filter((vid) => vid !== id) }));
+    // Standardtider for denne varetype giver ikke længere mening - ryd dem
+    // med, så matrixen ikke bliver stående med rækker for noget, der ikke
+    // findes mere.
+    defaultTimeEstimates.filter((e) => e.varetypeId === id).forEach((e) => removeOneDefaultTimeEstimate(e.varetypeId, e.primaerYdelseId));
   };
 
   const addPrimaryService = (navn) => saveOnePrimaryService({ id: uid(), navn });
@@ -95,6 +107,7 @@ export function useCatalog(storeId) {
     if (!window.confirm("Slet denne primære ydelse? Allerede bookede sager beholder deres oplysninger uændret.")) return;
     removeOnePrimaryService(id);
     addOnServices.filter((t) => (t.primaerYdelser || []).includes(id)).forEach((t) => saveOneAddOnService({ ...t, primaerYdelser: t.primaerYdelser.filter((pid) => pid !== id) }));
+    defaultTimeEstimates.filter((e) => e.primaerYdelseId === id).forEach((e) => removeOneDefaultTimeEstimate(e.varetypeId, e.primaerYdelseId));
   };
 
   const addAddOnService = (navn) => saveOneAddOnService({ id: uid(), navn, primaerYdelser: [], varetyper: [] });
@@ -104,12 +117,36 @@ export function useCatalog(storeId) {
     removeOneAddOnService(id);
   };
 
+  // Standardtider (varetype × primær ydelse). minutter === null/undefined
+  // FJERNER estimatet igen (tomt felt i UI'et) fremfor at gemme det som 0 -
+  // "ikke sat" og "sat til 0 minutter" er to forskellige, gyldige
+  // tilstande (se domain.js: getDefaultEstimateMinutes).
+  const removeOneDefaultTimeEstimate = (varetypeId, primaerYdelseId) => {
+    setDefaultTimeEstimates((prev) => prev.filter((e) => !(e.varetypeId === varetypeId && e.primaerYdelseId === primaerYdelseId)));
+    if (storeId) deleteDefaultTimeEstimate(storeId, varetypeId, primaerYdelseId);
+  };
+  const setDefaultTimeEstimateFn = (varetypeId, primaerYdelseId, minutter) => {
+    if (minutter === null || minutter === undefined || minutter === "") {
+      removeOneDefaultTimeEstimate(varetypeId, primaerYdelseId);
+      return;
+    }
+    const val = Math.max(0, Number(minutter) || 0);
+    setDefaultTimeEstimates((prev) => {
+      const exists = prev.some((e) => e.varetypeId === varetypeId && e.primaerYdelseId === primaerYdelseId);
+      return exists
+        ? prev.map((e) => (e.varetypeId === varetypeId && e.primaerYdelseId === primaerYdelseId ? { ...e, minutter: val } : e))
+        : [...prev, { varetypeId, primaerYdelseId, minutter: val }];
+    });
+    if (storeId) saveDefaultTimeEstimate(storeId, varetypeId, primaerYdelseId, val);
+  };
+
   return {
-    productTypes, productCategories, primaryServices, addOnServices,
+    productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates,
     addProductCategory, updateProductCategory, deleteProductCategory: deleteProductCategoryFn,
     addProductType, updateProductType, deleteProductType: deleteProductTypeFn,
     addPrimaryService, updatePrimaryService, deletePrimaryService: deletePrimaryServiceFn,
     addAddOnService, updateAddOnService, deleteAddOnService: deleteAddOnServiceFn,
+    setDefaultTimeEstimate: setDefaultTimeEstimateFn,
     reload: () => load(storeId),
   };
 }
