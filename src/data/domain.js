@@ -362,12 +362,27 @@ const STATUS_META = {
 // identisk start/slut-tid, og rækkefølgen ville uden dette felt reelt være
 // tilfældig. `raekkefolge` sættes KUN når nogen aktivt har omfordelt - før
 // det sorteres efter tidsrummets starttid.
+//
+// RETTET (september 2026, fejl fanget af tester): kun at kigge på "har A
+// en raekkefolge, har B en raekkefolge" var util-strækkeligt. Et enkelt
+// tryk på op/ned-pilene, eller "Foreslå bedste besøgsrækkefølge", sætter
+// raekkefolge på ALLE sager, der findes for den bil/dag PÅ DET TIDSPUNKT.
+// Enhver sag der bookes ind BAGEFTER mangler stadig sin egen raekkefolge -
+// og den gamle logik ("har den ene raekkefolge, kommer den altid først")
+// betød, at en helt ny sag ALTID endte sidst i listen, uanset dens eget
+// tidsrum. En 8-12-sag booket efter en manuel omrokering kunne dermed
+// havne under en 12-16-sag, som tilfældigvis allerede havde en
+// raekkefolge - præcis det testeren så.
+//
+// Nu bruges raekkefolge KUN, når BEGGE sager har fået sat den (dvs. begge
+// var med i samme bevidste omrokering, og deres indbyrdes rækkefølge er
+// derfor et bevidst valg). Har kun den ene en raekkefolge - eller ingen af
+// dem - afgøres rækkefølgen af starttidspunktet, ligesom for helt
+// upåvirkede dage.
 const dailyOrderCompare = (a, b) => {
   const ar = typeof a.raekkefolge === "number" ? a.raekkefolge : null;
   const br = typeof b.raekkefolge === "number" ? b.raekkefolge : null;
   if (ar !== null && br !== null) return ar - br;
-  if (ar !== null) return -1;
-  if (br !== null) return 1;
   return (a.start || "").localeCompare(b.start || "");
 };
 
