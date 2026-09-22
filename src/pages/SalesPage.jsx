@@ -32,7 +32,11 @@ function matchesSearch(order, search) {
 // til "Hent fra POS"-opslaget (se lib/dataStore.js: lookupPosOrder) - uden
 // den kan Edge Function-kaldet ikke vide, hvilken butiks POS-forbindelse
 // der skal bruges.
-function SalesPage({ storeId, orders, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, selectedDate, onDateChange, onOpen, onAdd, onImport, storeFocus }) {
+//
+// defaultTimeEstimates (september 2026): videresendes til NewOrderForm,
+// som bruger den til at foreslå en starttid, når en ny varelinje
+// oprettes - se domain.js: getDefaultEstimateMinutes/createLineItem.
+function SalesPage({ storeId, orders, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, selectedDate, onDateChange, onOpen, onAdd, onImport, storeFocus }) {
   const [panel, setPanel] = useState("ny");
   const [search, setSearch] = useState("");
   const sortFn = (a, b) => (a.start || "").localeCompare(b.start || "");
@@ -60,7 +64,7 @@ function SalesPage({ storeId, orders, technicians, personnel, timeOff, productTy
         </div>
       </div>
 
-      {panel === "ny" && <div className="mb-6"><NewOrderForm storeId={storeId} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} orders={orders} selectedDate={selectedDate} onAdd={onAdd} onClose={() => setPanel(null)} onOpen={onOpen} storeFocus={storeFocus} /></div>}
+      {panel === "ny" && <div className="mb-6"><NewOrderForm storeId={storeId} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} defaultTimeEstimates={defaultTimeEstimates} orders={orders} selectedDate={selectedDate} onAdd={onAdd} onClose={() => setPanel(null)} onOpen={onOpen} storeFocus={storeFocus} /></div>}
       {panel === "import" && <div className="mb-6"><CsvImport technicians={technicians} productTypes={productTypes} primaryServices={primaryServices} onImport={onImport} onClose={() => setPanel(null)} /></div>}
 
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
