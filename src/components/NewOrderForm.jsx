@@ -133,7 +133,7 @@ function PosLookupPanel({ storeId, onApply }) {
   );
 }
 
-function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, orders, selectedDate, onAdd, onClose, onOpen, storeFocus }) {
+function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, orders, selectedDate, onAdd, onClose, onOpen, storeFocus }) {
   const [step, setStep] = useState(0);
   const [caseTypeId, setCaseTypeId] = useState(SAGSTYPE_KUNDE);
   const [customerName, setCustomerName] = useState("");
@@ -152,7 +152,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
   const [date, setDate] = useState(selectedDate || todayISO());
   const [timeSlotId, setTimeSlotId] = useState("heldag");
   const [vehicleId, setVehicleId] = useState("");
-  const [lineItems, setLineItems] = useState([createLineItem(productTypes, primaryServices)]);
+  const [lineItems, setLineItems] = useState([createLineItem(productTypes, primaryServices, undefined, "", defaultTimeEstimates)]);
   const [saving, setSaving] = useState(false);
   const [attemptedNext, setAttemptedNext] = useState(false);
 
@@ -186,7 +186,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
 
   const updateLineItem = (idx, next) => setLineItems((prev) => prev.map((l, i) => (i === idx ? next : l)));
   const removeLineItem = (idx) => setLineItems((prev) => prev.filter((_, i) => i !== idx));
-  const addLineItem = () => setLineItems((prev) => [...prev, createLineItem(productTypes, primaryServices)]);
+  const addLineItem = () => setLineItems((prev) => [...prev, createLineItem(productTypes, primaryServices, undefined, "", defaultTimeEstimates)]);
 
   // Anvender et POS-opslag: udfylder kunden, og lægger et evt. varenummer
   // ind på den FØRSTE varelinjes model-felt - kun hvis der endnu ikke selv
@@ -226,7 +226,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
     if (fields.varetyper?.length) {
       setLineItems(fields.varetyper.map((navn) => {
         const vt = productTypes.find((v) => v.navn === navn);
-        return createLineItem(productTypes, primaryServices, vt ? vt.id : undefined, vt ? "" : navn);
+        return createLineItem(productTypes, primaryServices, vt ? vt.id : undefined, vt ? "" : navn, defaultTimeEstimates);
       }));
     }
   };
