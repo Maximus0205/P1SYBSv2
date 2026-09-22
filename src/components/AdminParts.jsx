@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Trash2, X, Plus, Pencil, UserPlus, PalmtreeIcon, CalendarOff, KeyRound, Stethoscope, HeartPulse, ShieldCheck, Truck } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Trash2, X, Plus, Pencil, UserPlus, PalmtreeIcon, CalendarOff, KeyRound, Stethoscope, HeartPulse, ShieldCheck, Truck, Clock } from "lucide-react";
 import { vehicleLabel, technicianColor, todayISO, activeSickLeave } from "../data/domain";
 import { suggestUsername, isValidUsername } from "../lib/username";
 import { updateSickLeaveWindow } from "../lib/dataStore";
@@ -595,8 +595,11 @@ function ProductTypeAdmin({ productTypes, productCategories, onAdd, onUpdate, on
 }
 
 // ---------- Primære ydelser ----------
-// Bevidst uden tidsestimat her - tid tastes manuelt pr. booking og
-// foreslås efterhånden ud fra MÅLT tid, se data/estimates.js.
+// INTET fast tidsestimat sidder direkte på den primære ydelse selv - tiden
+// afhænger nemlig også af HVILKEN VARETYPE den bruges på (montering af et
+// TV og montering af et køleskab er ikke samme opgave). Standardtiden
+// sættes derfor i sin egen fane ("Standardtider"), som en matrix af
+// varetype × primær ydelse - se DefaultTimeEstimateAdmin nedenfor.
 
 function PrimaryServiceRow({ service, onUpdate, onDelete }) {
   const [editingName, setEditingName] = useState(false);
@@ -629,7 +632,7 @@ function PrimaryServiceAdmin({ primaryServices, onAdd, onUpdate, onDelete }) {
           <button onClick={() => { if (!newName.trim()) return; onAdd(newName.trim()); setNewName(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5"><Plus size={15} aria-hidden="true" /> Opret</button>
         </div>
       </div>
-      <p className="text-[11px] text-muted mb-2">Hvilke tillægsydelser der er tilgængelige under en given primær ydelse styres under fanen "Tillægsydelser". Tidsforbrug sættes ikke her — det tastes manuelt pr. booking.</p>
+      <p className="text-[11px] text-muted mb-2">Hvilke tillægsydelser der er tilgængelige under en given primær ydelse styres under fanen "Tillægsydelser". Standardtid pr. varetype sættes under fanen "Standardtider".</p>
       <div className="space-y-2">
         {primaryServices.map((p) => (
           <PrimaryServiceRow key={p.id} service={p} onUpdate={onUpdate} onDelete={onDelete} />
@@ -647,7 +650,14 @@ function PrimaryServiceAdmin({ primaryServices, onAdd, onUpdate, onDelete }) {
 // Også her er pillerne væk. Varetyperne står i TO KOLONNER, så de 17
 // punkter ikke bliver til en meterlang søjle for en indstilling, man
 // sjældent rører - se CheckboxList øverst i filen.
-
+//
+// STANDARDTID (september 2026): i modsætning til primære ydelser (hvor
+// tiden afhænger af varetypen, se DefaultTimeEstimateAdmin) er en
+// tillægsydelse typisk samme opgave uanset hvilken vare den udføres på
+// ("dørvending" tager cirka det samme uanset køleskabsmærke) - derfor ét
+// enkelt tal her, ikke en matrix. Bruges som starttid, når tillægget
+// vælges på en varelinje (se OrderFormFields.jsx: toggleAddOn, som læser
+// service.minutter direkte) - kan altid rettes for den enkelte booking.
 function AddOnServiceRow({ service, productTypes, primaryServices, onUpdate, onDelete }) {
   const togglePrimary = (pId) => {
     const has = (service.primaerYdelser || []).includes(pId);
@@ -664,6 +674,20 @@ function AddOnServiceRow({ service, productTypes, primaryServices, onUpdate, onD
       item={service}
       onUpdate={(navn) => onUpdate(service.id, { navn })}
       onDelete={() => onDelete(service.id)}
+      extra={
+        <label className="flex items-center gap-1.5 text-xs text-muted shrink-0" title="Standardtid, foreslås når tillægget vælges på en varelinje">
+          <Clock size={13} className="shrink-0" aria-hidden="true" />
+          <input
+            type="number" min="0" inputMode="numeric"
+            value={service.minutter ?? ""}
+            placeholder="0"
+            onChange={(e) => onUpdate(service.id, { minutter: Math.max(0, Number(e.target.value) || 0) })}
+            aria-label={`Standardtid for ${service.navn} (minutter)`}
+            className="w-14 rounded-lg border border-line bg-panel px-1.5 py-1.5 text-center text-xs text-ink focus:outline-none focus:border-brand"
+          />
+          <span className="text-[10px]">min</span>
+        </label>
+      }
       extraContent={
         <div className="mt-3 pt-3 border-t border-divider space-y-3">
           <div>
@@ -722,4 +746,78 @@ function AddOnServiceAdmin({ addOnServices, productTypes, primaryServices, onAdd
   );
 }
 
-export { TechnicianRow, SickLeaveWindowSetting, VehicleRow, UserRow, NewUserForm, ROLE_LABEL, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin };
+// ---------- Standardtider (varetype × primær ydelse) ----------
+// Matrix-visning: rækker = varetyper, kolonner = primære ydelser. Hver
+// celle er et frit tal (minutter), gemt på blur (ikke pr. tastetryk - se
+// TimeEstimateCell) frem for en ekstra "Gem"-knap pr. celle, som ville
+// være uoverkommeligt med op til 17 × 3 = 51 felter.
+//
+// Tomt felt = intet admin-sat estimat for netop den kombination - sælgeren
+// taster tiden manuelt, som hidtil. Se getDefaultEstimateMinutes/
+// createLineItem i domain.js for hvordan et sat tal bruges.
+function TimeEstimateCell({ value, onCommit, label }) {
+  const [local, setLocal] = useState(value ?? "");
+  useEffect(() => { setLocal(value ?? ""); }, [value]);
+  const commit = () => {
+    if (String(local) === String(value ?? "")) return;
+    onCommit(local === "" ? null : local);
+  };
+  return (
+    <input
+      type="number" min="0" inputMode="numeric"
+      value={local}
+      placeholder="—"
+      aria-label={label}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+      className="w-16 rounded-lg border border-line bg-panel px-1.5 py-1.5 text-center text-sm text-ink focus:outline-none focus:border-brand"
+    />
+  );
+}
+
+function DefaultTimeEstimateAdmin({ productTypes, primaryServices, defaultTimeEstimates, onSetEstimate }) {
+  if (productTypes.length === 0 || primaryServices.length === 0) {
+    return <p className="text-sm text-muted italic">Opret først mindst én varetype og én primær ydelse, under de andre faner ovenfor.</p>;
+  }
+  const lookup = (varetypeId, primaerYdelseId) => defaultTimeEstimates.find((e) => e.varetypeId === varetypeId && e.primaerYdelseId === primaerYdelseId)?.minutter ?? null;
+
+  return (
+    <div>
+      <p className="text-xs text-muted mb-4">
+        Et udgangspunkt for tiden, når en sælger opretter en ny varelinje med denne kombination af varetype og ydelse - tastes stadig frit for den enkelte booking bagefter. Tomt felt = intet forslag, sælgeren taster selv, som hidtil. Erstatter ikke det målte estimat fra tidligere afsluttede sager, som stadig vises som et separat forslag, når der er nok historik.
+      </p>
+      <div className="overflow-x-auto rounded-xl border border-line bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-line bg-panel">
+              <th className="text-left p-2.5 text-xs font-semibold uppercase tracking-wide text-muted whitespace-nowrap">Varetype</th>
+              {primaryServices.map((p) => (
+                <th key={p.id} className="p-2.5 text-xs font-semibold uppercase tracking-wide text-muted text-center min-w-[110px]">{p.navn}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {productTypes.map((v) => (
+              <tr key={v.id} className="border-b border-divider last:border-b-0">
+                <td className="p-2.5 text-ink font-medium whitespace-nowrap">{v.navn}</td>
+                {primaryServices.map((p) => (
+                  <td key={p.id} className="p-1.5 text-center">
+                    <TimeEstimateCell
+                      value={lookup(v.id, p.id)}
+                      onCommit={(val) => onSetEstimate(v.id, p.id, val)}
+                      label={`Standardtid for ${v.navn} · ${p.navn} (minutter)`}
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[11px] text-muted mt-2">Gemmes automatisk, når du forlader feltet.</p>
+    </div>
+  );
+}
+
+export { TechnicianRow, SickLeaveWindowSetting, VehicleRow, UserRow, NewUserForm, ROLE_LABEL, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin, DefaultTimeEstimateAdmin };
