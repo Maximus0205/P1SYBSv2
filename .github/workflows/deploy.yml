@@ -1,4 +1,4 @@
-name: Deploy Kædeplan to GitHub Pages
+name: Deploy P1SYBS to GitHub Pages
 
 on:
   push:
@@ -31,6 +31,10 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+      - name: Write version marker
+        run: echo "{\"build\":\"${{ github.sha }}\"}" > dist/version.json
+
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
