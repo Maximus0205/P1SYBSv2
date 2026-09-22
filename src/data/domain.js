@@ -84,9 +84,14 @@ const OTHER_PRODUCT_TYPE = "Andet (skriv selv)";
 // valgfrit TILLÆGSYDELSER. Relationerne (hvilke tillæg der gælder under
 // hvilke primære ydelser/varetyper) ligger udelukkende på selve tillægget.
 //
-// Bevidst INTET tidsestimat på varetyper/ydelser/tillæg i Admin - tid
-// tastes manuelt pr. booking, og foreslås efterhånden ud fra MÅLT tid, se
-// data/estimates.js.
+// STANDARDTIDER (september 2026): Admin kan sætte et UDGANGSPUNKT for
+// tiden på en ny varelinje - se getDefaultEstimateMinutes/createLineItem
+// nedenfor og lib/dataStore.js: default_time_estimates. Det erstatter
+// IKKE det MÅLTE estimat fra afsluttede sager (data/estimates.js), som
+// stadig vises som et separat, opdateret forslag, når der er nok historik
+// - det admin-satte tal er blot et fornuftigt sted at starte, især for en
+// helt ny butik eller en helt ny varetype uden historik endnu. Tallet
+// tastes stadig frit for den enkelte booking bagefter, ligesom hidtil.
 
 const DEFAULT_PRODUCT_CATEGORIES = [
   { id: "vk1", navn: "Hvidevare" },
@@ -137,15 +142,33 @@ const availableAddOns = (productTypeId, primaryServiceId, addOnServices) => {
   });
 };
 
+// Slår en admin-sat standardtid op for en (varetype, primær ydelse)-
+// kombination - eller null, hvis der ikke er sat nogen (så feltet i
+// stedet starter på 0, som hidtil). defaultTimeEstimates er den flade
+// liste fra lib/dataStore.js: getDefaultTimeEstimates.
+const getDefaultEstimateMinutes = (defaultTimeEstimates, varetypeId, primaerYdelseId) => {
+  const entry = (defaultTimeEstimates || []).find((e) => e.varetypeId === varetypeId && e.primaerYdelseId === primaerYdelseId);
+  return entry ? entry.minutter : null;
+};
+
 // NB: "plukket" (afkrydset på lager) sidder HER, pr. varelinje - se
 // WarehousePage.jsx, hvor 1 varelinje = 1 punkt på pluklisten. Bevidst
 // forskelligt fra order.plukket, som blot er et afledt "hele ordren er
 // samlet"-flag.
-const createLineItem = (productTypes, primaryServices, productTypeId, text = "") => {
+//
+// defaultTimeEstimates (september 2026, valgfrit 5. argument): bruges KUN
+// til at foreslå en START-værdi for varelinjens tid, når den oprettes -
+// se noten ved getDefaultEstimateMinutes. Ændrer sælgeren siden hen
+// varetype eller ydelse på linjen, opdateres tiden IKKE automatisk igen -
+// det ville kunne overskrive et tal, sælgeren bevidst har rettet, uden at
+// blive spurgt (samme rådgivende, ikke-automatiske princip som det MÅLTE
+// estimat i EstimateSuggestion, se OrderFormFields.jsx).
+const createLineItem = (productTypes, primaryServices, productTypeId, text = "", defaultTimeEstimates = []) => {
   const firstProductType = productTypes[0];
   const id = productTypeId || (firstProductType ? firstProductType.id : OTHER_PRODUCT_TYPE_ID);
   const productType = productTypes.find((v) => v.id === id);
   const primaryService = primaryServices[0];
+  const defaultMinutes = primaryService ? getDefaultEstimateMinutes(defaultTimeEstimates, id, primaryService.id) : null;
   return {
     id: uid(),
     varetypeId: id,
@@ -153,7 +176,7 @@ const createLineItem = (productTypes, primaryServices, productTypeId, text = "")
     varetypeTekst: text,
     maerke: "",
     model: "",
-    primaerYdelse: primaryService ? { id: primaryService.id, navn: primaryService.navn, minutter: 0 } : null,
+    primaerYdelse: primaryService ? { id: primaryService.id, navn: primaryService.navn, minutter: defaultMinutes ?? 0 } : null,
     tillaeg: [],
     plukket: false,
   };
@@ -429,7 +452,7 @@ export {
   uid, now, todayISO, addDays, formatLongDate, formatShortDate, isToday, formatDuration, formatTime, totalMinutes, serviceIcon,
   DEFAULT_SERVICE_MINUTES, createAddOn, OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID,
   DEFAULT_PRODUCT_CATEGORIES, DEFAULT_PRODUCT_TYPES, DEFAULT_PRIMARY_SERVICES, DEFAULT_ADD_ON_SERVICES, availableAddOns,
-  createLineItem, lineItemLabel, lineItemMinutes, orderExpectedMinutes, normalizeAddress, buildingKey, areaKey,
+  createLineItem, getDefaultEstimateMinutes, lineItemLabel, lineItemMinutes, orderExpectedMinutes, normalizeAddress, buildingKey, areaKey,
   lineItemFingerprint, isMissingActive, missingLineItems, orderHasMissingItems,
   weekDays, buildTitle, keyAccessText, TIME_SLOTS, timeSlotById, timeSlotText, KEY_ACCESS_TYPES, TECHNICIAN_COLORS, technicianColor,
   DEFAULT_VEHICLES, vehicleLabel, vehicleBlockedByTimeOff, isTechnicianAbsent, activeSickLeave, vehicleAbsences, vehicleHasCoverage,
