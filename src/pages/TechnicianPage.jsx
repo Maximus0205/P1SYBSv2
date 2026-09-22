@@ -4,7 +4,7 @@ import { buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, t
 import { isTomgang, showsArrivalContact, TOMGANG_COLOR } from "../data/caseTypes";
 import { StatusBadge, DateSelector } from "../components/common";
 import { Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
-import { BookingEditor, DuplicatePanel } from "../components/OrderView";
+import { BookingEditor, DuplicatePanel, PosStatusBanner } from "../components/OrderView";
 import { sendArrivalSms } from "../lib/dataStore";
 
 // Universelt Google Maps-link: åbner Google Maps-appen hvis den er
@@ -550,7 +550,7 @@ function FinishPanel({ order, onConfirm, onCancel, onGoToTab }) {
 // MONTØR-SPECIFIK SAGSDETALJE - bevidst en HELT SEPARAT visning fra den
 // delte OrderView.jsx, som bruges af admin/sælger. Vises til alle, der selv
 // kører (se koererSelv i App.jsx), ikke kun til rollen montor.
-function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, addReport, onStartOrder, onFinishOrder, onReopenOrder, onUpdateBooking, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem, permissions }) {
+function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, addReport, onStartOrder, onFinishOrder, onReopenOrder, onUpdateBooking, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem, onRetryPosSync, permissions }) {
   const [tab, setTab] = React.useState("noter");
   const [panel, setPanel] = React.useState(null); // "booking" | "dupliker" | "problem" | "faerdig"
   const canFieldwork = canDo(permissions, "sag_feltarbejde");
@@ -572,6 +572,11 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
   return (
     <div>
       <button onClick={onBack} className="text-sm text-muted hover:text-brand mb-4 flex items-center gap-1">← Tilbage</button>
+
+      {/* Samme banner som sælgeren/admin ser i OrderView.jsx - montøren
+          skal opdage en mislykket fakturering/lagerudlevering lige så
+          tydeligt, uden at skulle bede en kollega tjekke sagen for dem. */}
+      <PosStatusBanner order={order} onRetry={onRetryPosSync} canRetry={canFieldwork} />
 
       {panel === "booking" ? (
         <BookingEditor order={order} technicians={technicians} permissions={permissions} onCancel={() => setPanel(null)} onSave={(fields) => { onUpdateBooking(fields); setPanel(null); }} />
