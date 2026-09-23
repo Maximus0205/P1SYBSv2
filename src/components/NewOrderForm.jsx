@@ -134,7 +134,7 @@ function PosLookupPanel({ storeId, onApply }) {
   );
 }
 
-function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, addressNotes, onAddAddressNote, orders, selectedDate, onAdd, onClose, onOpen, storeFocus }) {
+function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, addressNotes, orders, selectedDate, onAdd, onClose, onOpen, storeFocus }) {
   const [step, setStep] = useState(0);
   const [caseTypeId, setCaseTypeId] = useState(SAGSTYPE_KUNDE);
   const [customerName, setCustomerName] = useState("");
@@ -353,15 +353,18 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
             <p className="text-xs text-danger mb-4">Bemærk: adressen kunne ikke bekræftes af korttjenesten — dobbelttjek den.</p>
           )}
 
-          {/* VIDENSDELING (september 2026): viser evt. kendt info om
-              PRÆCIS denne adresse/opgang (flaget af en tidligere montør
-              eller sælger), og lader sælgeren tilføje ny viden med det
-              samme, mens de har kunden i røret - se AddressNotes.jsx. */}
+          {/* VIDENSDELING (september 2026, rettet): kun en ADVARSEL her, hvis
+              nogen tidligere har flaget noget ved denne adresse (fx "smal
+              opgang, kræver 2 mand") - se AddressNotes.jsx. Man kan bevidst
+              IKKE oprette et nyt flag herfra: det ville kræve at kende det
+              på forhånd, før man overhovedet ved om det er relevant - selve
+              FLAGNINGEN sker i stedet på den bookede sag bagefter (se
+              OrderView.jsx/TechnicianPage.jsx), typisk af montøren der reelt
+              opdager forholdet på stedet. */}
           <AddressNotesPanel
             addressNotes={addressNotes}
             address={address}
-            onAdd={(note) => onAddAddressNote?.(address, note)}
-            canAdd={!!onAddAddressNote}
+            canAdd={false}
           />
 
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2 flex items-center gap-1.5">
