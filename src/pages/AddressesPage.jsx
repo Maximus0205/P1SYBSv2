@@ -18,7 +18,14 @@ import { AddressInput } from "../components/AddressInput";
 // (NewOrderForm.jsx) viser stadig en RÅDGIVENDE ADVARSEL, hvis adressen
 // allerede er flaget her - men opret/fjern sker udelukkende på denne
 // side. Se hooks/useAddressNotes.js og lib/dataStore.js: address_notes.
-function NewAddressNoteForm({ onAdd }) {
+//
+// storeFocus (september 2026): butikkens egne koordinater ({lat, lon}),
+// samme prop-navn/form som NewOrderForm allerede bruger - sendes videre
+// til AddressInput, så adresseforslagene her OGSÅ prioriteres efter
+// nærhed til butikken (se lib/geocoding.js: searchAddressSuggestions).
+// Uden den ville denne ene formular være det eneste sted i appen, hvor
+// forslagene IKKE var sorteret efter afstand.
+function NewAddressNoteForm({ onAdd, storeFocus }) {
   const [address, setAddress] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -37,7 +44,7 @@ function NewAddressNoteForm({ onAdd }) {
     <div className="rounded-xl border border-line bg-white p-5 mb-6 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3 flex items-center gap-1.5"><Plus size={15} aria-hidden="true" /> Tilføj adresse-info</h3>
       <div className="grid gap-3 mb-3">
-        <AddressInput value={address} onChange={setAddress} placeholder="Adresse" />
+        <AddressInput value={address} onChange={setAddress} placeholder="Adresse" focus={storeFocus} />
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -79,7 +86,7 @@ function groupByAddress(addressNotes) {
   return groups;
 }
 
-function AddressesPage({ addressNotes, onAdd, onDelete, canManage }) {
+function AddressesPage({ addressNotes, onAdd, onDelete, canManage, storeFocus }) {
   const [search, setSearch] = useState("");
 
   const groups = useMemo(() => groupByAddress(addressNotes), [addressNotes]);
@@ -98,7 +105,7 @@ function AddressesPage({ addressNotes, onAdd, onDelete, canManage }) {
       </p>
 
       {canManage ? (
-        <NewAddressNoteForm onAdd={onAdd} />
+        <NewAddressNoteForm onAdd={onAdd} storeFocus={storeFocus} />
       ) : (
         <p className="text-xs text-muted italic mb-6">Du kan se, men ikke tilføje eller fjerne, adresse-info.</p>
       )}
