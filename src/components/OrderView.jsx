@@ -403,13 +403,12 @@ function PosStatusBanner({ order, onRetry, canRetry }) {
 // order.bilId, og "technicians" er BIL-rækker (se App.jsx) - ikke længere
 // et opslag på en bestemt persons id.
 //
-// VIDENSDELING (september 2026): AddressNotesPanel vises lige under
-// adressen - samme komponent som i bookingflowet og montørens skærm, se
-// AddressNotes.jsx. Både SE og TILFØJE kræver enten sag_feltarbejde eller
-// sag_opret (samme grænse som RLS'en på address_notes håndhæver i
-// databasen) - eksisterende noter vises dog for alle, der kan se sagen;
-// kun selve "tilføj/fjern" er gated.
-function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addReport, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onSetLineItems, onClearMissingItem, onDeleteOrder, onReopenOrder, onRetryPosSync, addressNotes, onAddAddressNote, onDeleteAddressNote }) {
+// VIDENSDELING (september 2026, rettet): AddressNotesPanel vises lige
+// under adressen, men KUN som en RÅDGIVENDE ADVARSEL - opret/fjern af et
+// adresse-flag hører ikke til på sagskortet (det handler om adressen, ikke
+// den konkrete sag) og sker i stedet udelukkende på den selvstændige fane
+// "Adresser", se pages/AddressesPage.jsx.
+function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addReport, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onSetLineItems, onClearMissingItem, onDeleteOrder, onReopenOrder, onRetryPosSync, addressNotes }) {
   const [tab, setTab] = useState("noter");
   // Kun ÉT panel ad gangen - to åbne redigeringer på samme sag ville både
   // fylde skærmen og gøre det uklart, hvad "Gem" gemmer.
@@ -420,7 +419,6 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
   const canEditCustomer = canDo(permissions, "sag_kunde");
   const canCreate = canDo(permissions, "sag_opret");
   const canDelete = canDo(permissions, "sag_slet");
-  const canAddressNote = canFieldwork || canCreate;
   const tabs = [
     { key: "noter", label: "Noter", count: order.noter.length },
     { key: "materialer", label: "Materialer", count: (order.materialer || []).length },
@@ -540,14 +538,7 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
           </div>
 
           <div className="mt-4 pt-4 border-t border-divider">
-            <AddressNotesPanel
-              addressNotes={addressNotes}
-              address={order.kunde?.adresse}
-              onAdd={(note) => onAddAddressNote?.(order.kunde?.adresse, note)}
-              canAdd={canAddressNote && !!onAddAddressNote}
-              canDelete={canAddressNote}
-              onDelete={onDeleteAddressNote}
-            />
+            <AddressNotesPanel addressNotes={addressNotes} address={order.kunde?.adresse} canAdd={false} />
           </div>
         </div>
       )}
