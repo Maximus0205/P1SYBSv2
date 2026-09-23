@@ -27,6 +27,24 @@ function guessBrandAndModel(title) {
   return { brand, model };
 }
 
+// RETTET (september 2026): punkt1.dk's egen produkttitel indeholder som
+// regel VARETYPEN i almindeligt sprog (fx "...opvaskemaskine") - men det
+// blev ikke brugt til noget, så en bekræftet, entydig titel som "Point
+// PODW5620W opvaskemaskine" endte alligevel med varetypen stående på
+// "Andet (skriv selv)", selvom "Opvaskemaskine" allerede findes i
+// butikkens eget varekatalog. Denne funktion slår titlen op mod
+// varetype-listen og finder den bedste match.
+//
+// De LÆNGSTE varetypenavne prøves først, så en mere specifik betegnelse
+// (fx "Kompakt ovn") vindes over en kortere, mere generisk en ("Ovn"),
+// hvis titlen indeholder begge dele af navnet.
+function guessProductType(title, productTypes) {
+  const lower = (title || "").toLowerCase();
+  if (!lower) return null;
+  const sorted = [...(productTypes || [])].sort((a, b) => b.navn.length - a.navn.length);
+  return sorted.find((v) => lower.includes(v.navn.toLowerCase())) || null;
+}
+
 // Modelnummer-opslag mod punkt1.dk's EGET, offentlige søge-API. Kører live
 // mens sælgeren skriver ELLER indsætter (paste) et modelnummer, og giver et
 // TYDELIGT, definitivt svar - ikke kun en liste af forslag:
@@ -40,8 +58,9 @@ function guessBrandAndModel(title) {
 //    at skrive, eller har fat i den forkerte variant. Her vises forslagene
 //    i stedet for at påstå noget definitivt.
 //
-// Et klik på et forslag udfylder BÅDE mærke- og modelnummer-feltet, og
-// markerer det med det samme som bekræftet.
+// Et klik på et forslag udfylder BÅDE mærke- og modelnummer-feltet (og,
+// hvis titlen indeholder en genkendelig varetype, VARETYPEN med - se
+// guessProductType), og markerer det med det samme som bekræftet.
 function ModelNumberLookup({ model, onSelectProduct }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null); // { matchCount, products } | null
@@ -71,7 +90,7 @@ function ModelNumberLookup({ model, onSelectProduct }) {
     confirmedRef.current = guess.model;
     setCheckedTerm(guess.model);
     setResult({ matchCount: 1, products: [product] }); // synteser et "bekræftet" resultat - ingen genopslag nødvendigt
-    onSelectProduct(guess);
+    onSelectProduct({ ...guess, title: product.title });
   };
 
   if (!model || model.trim().length < 3) return null;
@@ -82,6 +101,15 @@ function ModelNumberLookup({ model, onSelectProduct }) {
     const guess = guessBrandAndModel(p.title);
     return guess.model && checkedTerm && guess.model.toUpperCase() === checkedTerm.toUpperCase();
   });
+
+  // Sagen der udløste denne rettelse: et BEKRÆFTET, entydigt match (grønt
+  // flueben, ovenfor) blev IKKE brugt til at udfylde varetypen automatisk,
+  // selvom titlen tydeligt sagde det. Her har vi allerede det bekræftede
+  // produkt - så samme oplysning bruges også her.
+  useEffect(() => {
+    if (exactMatch) onSelectProduct({ ...guessBrandAndModel(exactMatch.title), title: exactMatch.title });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exactMatch?.title]);
 
   return (
     <div className="mt-1">
@@ -213,23 +241,106 @@ function ClusterEstimateNote({ estimateIndex, clusterIndex, lineItems, onApplyFa
 }
 
 // ---------------------------------------------------------------------------
+// VARETYPE: KOMBINERET TEKSTFELT + FORSLAGSLISTE (september 2026)
+//
+// Erstatter den rene dropdown (kun ét af de foruddefinerede navne, ellers
+// "Andet (skriv selv)" + et EKSTRA felt nedenunder). Det var både stift
+// (skal ramme et eksakt navn i listen) og gav to felter for "Andet"-sagen.
+//
+// Her er det ÉT felt: skriv frit, ELLER vælg et forslag fra listen, der
+// filtreres mens man skriver. Skrives noget der PRÆCIS matcher et
+// eksisterende varetypenavn (uanset store/små bogstaver), bruges den
+// varetype - ellers gemmes teksten som en fri "Andet"-betegnelse, præcis
+// som hidtil, blot uden et ekstra felt at holde styr på.
+function ProductTypeInput({ lineItem, productTypes, onSelectType, onFreeText }) {
+  const isOther = lineItem.varetypeId === OTHER_PRODUCT_TYPE_ID;
+  const currentText = isOther ? (lineItem.varetypeTekst || "") : (productTypes.find((v) => v.id === lineItem.varetypeId)?.navn || "");
+  const [query, setQuery] = useState(currentText);
+  const [open, setOpen] = useState(false);
+  const blurTimerRef = useRef(null);
+
+  // Synkroniserer feltets tekst, når varetypen ændres UDEFRA (fx et
+  // bekræftet modelopslag, der selv genkender varetypen - se
+  // guessProductType/ModelNumberLookup) - ikke ved hvert tastetryk her,
+  // ellers ville vores egen opdatering (som jo rundtripper via lineItem)
+  // konstant nulstille det, brugeren er ved at skrive.
+  useEffect(() => {
+    if (query.trim().toLowerCase() !== currentText.trim().toLowerCase()) setQuery(currentText);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentText]);
+
+  const filtered = query.trim()
+    ? productTypes.filter((v) => v.navn.toLowerCase().includes(query.trim().toLowerCase()))
+    : productTypes;
+
+  const handleInput = (text) => {
+    setQuery(text);
+    setOpen(true);
+    const exact = productTypes.find((v) => v.navn.toLowerCase() === text.trim().toLowerCase());
+    if (exact) onSelectType(exact.id);
+    else onFreeText(text);
+  };
+
+  const selectOption = (v) => {
+    setQuery(v.navn);
+    setOpen(false);
+    onSelectType(v.id);
+  };
+
+  return (
+    <div className="relative mb-2">
+      <input
+        value={query}
+        onChange={(e) => handleInput(e.target.value)}
+        onFocus={() => { if (blurTimerRef.current) { clearTimeout(blurTimerRef.current); blurTimerRef.current = null; } setOpen(true); }}
+        onBlur={() => { blurTimerRef.current = setTimeout(() => setOpen(false), 150); }}
+        placeholder="Skriv eller vælg varetype"
+        aria-label="Varetype"
+        className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand"
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute z-20 left-0 right-0 mt-1 rounded-xl bg-white border border-line shadow-lg max-h-56 overflow-auto">
+          {filtered.map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => selectOption(v)}
+              className="w-full text-left px-3 py-2 text-sm text-ink hover:bg-panel border-b border-divider last:border-b-0"
+            >
+              {v.navn}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // VARELINJE-EDITOR (rettet september 2026)
 //
-// To ændringer, begge ud fra direkte tilbagemelding om bookingflowet på en
+// Ændringer, alle ud fra direkte tilbagemelding om bookingflowet på en
 // telefon:
 //
 //  1. VAREKATEGORI-FELTET ER FJERNET HERFRA. Det var kun et FILTER på
 //     varetype-listen (fx "Hvidevare" for kun at vise hvidevarer) - ikke et
-//     felt, der selv blev gemt på sagen. På en telefon var det bare endnu
-//     et felt at forholde sig til for en beskeden gevinst (17 varetyper er
-//     til at overskue i én liste). Varetyper har stadig deres kategori i
-//     Admin (bruges bl.a. i standardtider-matrixen) - kun selve FILTRERET i
-//     denne formular er væk. Rækkefølgen er samtidig ændret til
-//     Modelnummer -> Mærke -> Varetype -> Primær ydelse, så de to felter
-//     man typisk har ved hånden fra kundens emballage/faktura (model,
-//     mærke) kommer FØRST.
+//     felt, der selv blev gemt på sagen. Varetyper har stadig deres
+//     kategori i Admin (bruges bl.a. i standardtider-matrixen) - kun selve
+//     FILTRERET i denne formular er væk. Rækkefølgen er samtidig ændret
+//     til Modelnummer -> Mærke -> Varetype -> Primær ydelse, så de felter
+//     man typisk har ved hånden fra kundens emballage/faktura kommer
+//     FØRST.
 //
-//  2. TILLÆGSYDELSER er nu ÉN samlet afkrydsningsliste i stedet for
+//  2. VARETYPE er nu ET kombineret tekstfelt/forslag (se ProductTypeInput
+//     ovenfor) i stedet for en ren dropdown + et ekstra felt for "Andet".
+//     Modelopslaget udfylder den nu også automatisk, når punkt1.dk's
+//     produkttitel indeholder en genkendelig varetype (se
+//     guessProductType) - det var netop den slags fejl (bekræftet
+//     "opvaskemaskine" endte på "Andet"), der gjorde det nødvendigt at
+//     kunne rette varetypen frit i forvejen.
+//
+//  3. TILLÆGSYDELSER er nu ÉN samlet afkrydsningsliste i stedet for
 //     "klikbare chips foroven" + "en ekstra, redigerbar liste nedenfor,
 //     når man har valgt en". Det så ud som om tillægget dukkede op TO
 //     gange - én gang som en grøn chip, én gang som en ny linje man også
@@ -238,18 +349,28 @@ function ClusterEstimateNote({ estimateIndex, clusterIndex, lineItems, onApplyFa
 //     og er derfor fjernet herfra; det sidder stadig, hvor det giver
 //     mening, i sagens egen visning (se OrderParts.jsx: LineItemDetails).
 function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices, defaultTimeEstimates, estimateIndex, onChange, onRemove, canRemove }) {
-  const isOther = lineItem.varetypeId === OTHER_PRODUCT_TYPE_ID;
   const available = availableAddOns(lineItem.varetypeId, lineItem.primaerYdelse?.id, addOnServices);
 
   const changeProductType = (newId) => {
     if (newId === lineItem.varetypeId) return;
-    const vt = newId === OTHER_PRODUCT_TYPE_ID ? null : productTypes.find((v) => v.id === newId);
+    const vt = productTypes.find((v) => v.id === newId);
     const newAvailable = availableAddOns(newId, lineItem.primaerYdelse?.id, addOnServices);
     onChange({
       ...lineItem,
       varetypeId: newId,
       varetypeNavn: vt ? vt.navn : OTHER_PRODUCT_TYPE,
       varetypeTekst: "",
+      tillaeg: lineItem.tillaeg.filter((t) => newAvailable.some((n) => n.navn === t.navn)),
+    });
+  };
+
+  const changeProductTypeFreeText = (text) => {
+    const newAvailable = availableAddOns(OTHER_PRODUCT_TYPE_ID, lineItem.primaerYdelse?.id, addOnServices);
+    onChange({
+      ...lineItem,
+      varetypeId: OTHER_PRODUCT_TYPE_ID,
+      varetypeNavn: OTHER_PRODUCT_TYPE,
+      varetypeTekst: text,
       tillaeg: lineItem.tillaeg.filter((t) => newAvailable.some((n) => n.navn === t.navn)),
     });
   };
@@ -287,6 +408,23 @@ function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices
   };
   const changeAddOnMinutes = (id, min) => onChange({ ...lineItem, tillaeg: lineItem.tillaeg.map((y) => (y.id === id ? { ...y, minutter: Number(min) || 0 } : y)) });
 
+  // Ét modelopslag kan opdatere op til tre felter på samme tid: mærke,
+  // model (allerede skrevet, blot renset op) og - hvis punkt1.dk's titel
+  // indeholder en genkendelig varetype - selve varetypen. Sidstnævnte
+  // OVERSKRIVER bevidst, uden at spørge: det er samme princip som mærke,
+  // som allerede blev overskrevet automatisk her - et bekræftet match fra
+  // punkt1.dk's eget katalog er en stærkere kilde end en tom/forkert
+  // varetype, sælgeren endnu ikke har rettet.
+  const applyProductLookup = ({ brand, model: matchedModel, title }) => {
+    const matchedType = guessProductType(title, productTypes);
+    onChange({
+      ...lineItem,
+      maerke: brand || lineItem.maerke,
+      model: matchedModel || lineItem.model,
+      ...(matchedType ? { varetypeId: matchedType.id, varetypeNavn: matchedType.navn, varetypeTekst: "" } : {}),
+    });
+  };
+
   return (
     <div className="rounded-xl border border-line bg-panel p-3">
       <div className="flex items-start gap-2 mb-1">
@@ -297,10 +435,7 @@ function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices
             placeholder="Modelnummer"
             className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand"
           />
-          <ModelNumberLookup
-            model={lineItem.model}
-            onSelectProduct={({ brand, model: matchedModel }) => onChange({ ...lineItem, maerke: brand || lineItem.maerke, model: matchedModel || lineItem.model })}
-          />
+          <ModelNumberLookup model={lineItem.model} onSelectProduct={applyProductLookup} />
         </div>
         {canRemove && <button onClick={onRemove} className="p-1.5 text-muted hover:text-danger shrink-0" title="Fjern varelinje"><Trash2 size={15} /></button>}
       </div>
@@ -313,19 +448,7 @@ function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices
         className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink mb-2 focus:outline-none focus:border-brand"
       />
 
-      <select value={lineItem.varetypeId} onChange={(e) => changeProductType(e.target.value)} className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink mb-2 focus:outline-none focus:border-brand">
-        {productTypes.map((v) => <option key={v.id} value={v.id}>{v.navn}</option>)}
-        <option value={OTHER_PRODUCT_TYPE_ID}>{OTHER_PRODUCT_TYPE}</option>
-      </select>
-
-      {isOther && (
-        <input
-          value={lineItem.varetypeTekst}
-          onChange={(e) => onChange({ ...lineItem, varetypeTekst: e.target.value })}
-          placeholder="Beskriv varen/opgaven, fx 'Specialbygget vinkøleskab'"
-          className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink mb-2 focus:outline-none focus:border-brand"
-        />
-      )}
+      <ProductTypeInput lineItem={lineItem} productTypes={productTypes} onSelectType={changeProductType} onFreeText={changeProductTypeFreeText} />
 
       <select value={lineItem.primaerYdelse?.id || ""} onChange={(e) => changePrimaryService(e.target.value)} className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink mb-2 focus:outline-none focus:border-brand">
         {primaryServices.map((p) => <option key={p.id} value={p.id}>{p.navn}</option>)}
