@@ -1,17 +1,12 @@
 // ---------------------------------------------------------------------------
-// PARALLELT FORSØG (september 2026): Klimadatastyrelsens Adressevælger
-// (adressevaelger.dk) - den officielle, statslige erstatning for DAWA's
-// autocomplete. DAWA lukker permanent 1. oktober 2026.
-//
-// Dette modul er BEVIDST ADSKILT fra lib/geocoding.js (den eksisterende,
-// levende tjeneste via OpenRouteService/ors-proxy) - ingen af appens rigtige
-// adressefelter (AddressInput.jsx m.fl.) bruger dette endnu. Det er kun
-// koblet til den isolerede test-side, se components/AdressevaelgerTest.jsx
-// under Admin -> Integrationer, hvor det kan afprøves og sammenlignes uden
-// nogen risiko for det, der allerede virker i produktion.
+// LIVE (september 2026): Klimadatastyrelsens Adressevælger (adressevaelger.dk)
+// - den officielle, statslige erstatning for DAWA's autocomplete. DAWA
+// lukker permanent 1. oktober 2026. Bruges nu direkte af AddressInput.jsx
+// (den gamle OpenRouteService-baserede løsning i lib/geocoding.js er
+// udkommenteret, ikke fjernet - se AddressInput.jsx).
 //
 // Se supabase/functions/adressevaelger-proxy for selve proxy-kaldet
-// (kræver login, ligesom ors-proxy) og noten om token dér.
+// (kræver login) og noten om token dér.
 import { supabase } from "./supabaseClient";
 
 async function callProxy(body) {
@@ -76,20 +71,48 @@ export function utm32ToWgs84(easting, northing) {
 }
 
 // ---------------------------------------------------------------------------
-// Fonetisk søgning (autocomplete). postnummer er en RIGTIG, struktureret
-// parameter her - Adressevælgeren garanterer selv, at "postnummeret sikrer
-// vejnavnets og adressernes entydighed" (deres egen dokumentation). Det er
-// præcis det, ORS/Pelias IKKE kan (se den kendte, bekræftede fejl i
-// lib/geocoding.js) - "Fuglebakken" + postnummer 5750 bør her give Ringe
-// direkte, uden gæt eller heuristik.
+// RETTET: den forrige udgave sendte "tekst" OG "postnummer" i SAMME kald.
+// Det virkede ikke, fordi Adressevælgerens egen dokumentation siger det
+// eksplicit: "Der ses bort fra disse parametre [vejnavn/husnummer/
+// postnummer] hvis tekst er angivet som parameter" - postnummeret blev
+// altså stille og roligt IGNORERET, præcis som hos ORS, blot af en helt
+// anden årsag (parameter-forrang, ikke en tolkningsfejl).
+//
+// Det korrekte mønster (som Adressevælgeren selv viser i deres
+// dokumentation: "vejnavn=sankt keld&postnummer=2100") er at sende
+// gadenavn og postnummer som ADSKILTE, strukturerede felter i stedet for
+// at blande dem i "tekst". Denne funktion splitter derfor selv søgeteksten
+// op, når der er et postnummer at finde: et afsluttende 4-cifret tal i
+// postnummer-intervallet bliver til `postnummer`, og et evt. resterende
+// afsluttende tal (husnummer, med eller uden bogstav) bliver til
+// `husnummer` - resten sendes som `vejnavn`, ALDRIG sammen med `tekst`.
+function parseQuery(raw) {
+  const trimmed = (raw || "").trim();
+  const postalMatch = trimmed.match(/^(.*\S)\s+(\d{4})$/);
+  if (!postalMatch) return { tekst: trimmed };
+  const postnr = Number(postalMatch[2]);
+  if (postnr < 1000 || postnr > 9990) return { tekst: trimmed };
+
+  const rest = postalMatch[1];
+  const houseMatch = rest.match(/^(.*\S)\s+(\d+[a-zA-Z]?)$/);
+  if (houseMatch) {
+    return { vejnavn: houseMatch[1], husnummer: houseMatch[2], postnummer: postalMatch[2] };
+  }
+  return { vejnavn: rest, postnummer: postalMatch[2] };
+}
+
+// ---------------------------------------------------------------------------
+// Fonetisk søgning (autocomplete). Se parseQuery ovenfor for hvorfor et
+// postnummer sendes som sin egen parameter, ikke blandet ind i "tekst".
 //
 // GIVER BEVIDST INGEN KOORDINATER her - fonetisk søgning returnerer kun
 // tekst-felter (type, titel, vejnavn, postnr...). Koordinater kræver et
 // ekstra opslag pr. id, se lookupAdressevaelgerCoordinates nedenfor - kaldes
 // derfor kun for DEN adresse, brugeren rent faktisk vælger, ikke for hele
 // listen af forslag (ville ellers kræve ét ekstra kald pr. vist forslag).
-export async function searchAdressevaelger(tekst, { postnummer } = {}) {
-  const data = await callProxy({ handling: "soeg-adresser", tekst, postnummer, maksimum: 10 });
+export async function searchAdressevaelger(raw) {
+  const query = parseQuery(raw);
+  const data = await callProxy({ handling: "soeg-adresser", maksimum: 10, ...query });
   if (!data || data.status !== "ok") return { ok: false, fejl: data?.beskrivelse || "Kunne ikke søge lige nu.", fund: [] };
   return {
     ok: true,
