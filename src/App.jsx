@@ -8,6 +8,7 @@ import { useVehicles } from "./hooks/useVehicles";
 import { useTimeOff } from "./hooks/useTimeOff";
 import { useUsers } from "./hooks/useUsers";
 import { useOrders } from "./hooks/useOrders";
+import { useAddressNotes } from "./hooks/useAddressNotes";
 import { getAllStores, getStore, updateDashboardWidgets } from "./lib/dataStore";
 
 import { TopNav } from "./components/TopNav";
@@ -26,8 +27,9 @@ import { SystemAdminPage } from "./pages/SystemAdminPage";
 // ---------------------------------------------------------------------------
 // App.jsx's ansvar er: kalde hooks, definere rute-opsætningen, og komponere
 // sider. Al domænelogik ligger i hooks/-mappen (useSession, useCatalog,
-// useVehicles, useTimeOff, useUsers, useOrders). Navigation er en rigtig
-// URL via react-router-dom (HashRouter - se main.jsx for hvorfor hash).
+// useVehicles, useTimeOff, useUsers, useOrders, useAddressNotes). Navigation
+// er en rigtig URL via react-router-dom (HashRouter - se main.jsx for
+// hvorfor hash).
 // ---------------------------------------------------------------------------
 
 // KØRER DENNE PERSON SELV? (september 2026)
@@ -44,7 +46,7 @@ function Gate({ allowed, page, children }) {
   return children;
 }
 
-function OrderRoute({ profile, storeId, orders, technicians, ordersStore, duplicateOrder, permissions, catalog }) {
+function OrderRoute({ profile, storeId, orders, technicians, ordersStore, duplicateOrder, permissions, catalog, addressNotes, onAddAddressNote, onDeleteAddressNote }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const order = orders.find((o) => o.id === id);
@@ -135,6 +137,15 @@ function OrderRoute({ profile, storeId, orders, technicians, ordersStore, duplic
       if (ok) navigate("/planlaegning", { replace: true });
       return ok;
     },
+
+    // ---- Vidensdeling om adressen (september 2026) ----
+    // Fælles for sælgerens (OrderView) og montørens (TechnicianOrderDetail)
+    // visning - se AddressNotes.jsx. address gives med af hver visning
+    // selv (de kender deres egen order.kunde.adresse); her sendes kun
+    // selve listen og tilføj/fjern-funktionerne.
+    addressNotes,
+    onAddAddressNote,
+    onDeleteAddressNote,
   };
 
   // Montørvisningen af en sag er den, der har Start/Færdigmeld. Den vises
@@ -214,6 +225,7 @@ export default function App() {
   const timeOffStore = useTimeOff(activeStoreId || null);
   const usersStore = useUsers(activeStoreId || null);
   const ordersStore = useOrders(activeStoreId || null);
+  const addressNotesStore = useAddressNotes(activeStoreId || null);
   const { vehicles } = vehiclesStore;
   const { timeOff } = timeOffStore;
   const { users } = usersStore;
@@ -271,7 +283,7 @@ export default function App() {
   const refresh = async () => {
     if (!activeStoreId) return;
     setRefreshing(true);
-    await Promise.all([ordersStore.reload(), catalog.reload(), vehiclesStore.reload(), timeOffStore.reload(), usersStore.reload()]);
+    await Promise.all([ordersStore.reload(), catalog.reload(), vehiclesStore.reload(), timeOffStore.reload(), usersStore.reload(), addressNotesStore.reload()]);
     setRefreshing(false);
   };
 
@@ -291,6 +303,13 @@ export default function App() {
   };
 
   const onOpen = (id) => navigate(`/sag/${id}`);
+
+  // Vidensdeling om en adresse (september 2026) - se hooks/useAddressNotes.js
+  // og components/AddressNotes.jsx. Én fælles funktion her, brugt fra
+  // BÅDE bookingflowet (NewOrderForm via SalesPage) og en eksisterende
+  // sags visning (OrderRoute) - "createdBy" sættes altid ud fra den
+  // faktisk indloggede profil, aldrig noget kaldende kode selv angiver.
+  const addAddressNote = (address, note) => addressNotesStore.addAddressNote(address, note, profile ? { id: profile.id, navn: profile.navn } : null);
 
   // MANGLENDE VARER: lageret melder, at en vare ikke kan findes ved pluk.
   // Hvem der meldte den gemmes med - en melding uden afsender er svær at
@@ -415,11 +434,11 @@ export default function App() {
             />
           } />
 
-          <Route path="/sag/:id" element={<OrderRoute profile={profile} storeId={activeStoreId} orders={orders} technicians={technicians} ordersStore={ordersStore} duplicateOrder={duplicateOrder} permissions={effectivePermissions} catalog={catalog} />} />
+          <Route path="/sag/:id" element={<OrderRoute profile={profile} storeId={activeStoreId} orders={orders} technicians={technicians} ordersStore={ordersStore} duplicateOrder={duplicateOrder} permissions={effectivePermissions} catalog={catalog} addressNotes={addressNotesStore.addressNotes} onAddAddressNote={addAddressNote} onDeleteAddressNote={addressNotesStore.deleteAddressNote} />} />
 
           <Route path="/salg" element={
             <Gate allowed={allowedPages} page="salg">
-              <SalesPage storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} defaultTimeEstimates={catalog.defaultTimeEstimates} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={effectiveStore?.lat && effectiveStore?.lon ? { lat: effectiveStore.lat, lon: effectiveStore.lon } : null} />
+              <SalesPage storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} defaultTimeEstimates={catalog.defaultTimeEstimates} addressNotes={addressNotesStore.addressNotes} onAddAddressNote={addAddressNote} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={effectiveStore?.lat && effectiveStore?.lon ? { lat: effectiveStore.lat, lon: effectiveStore.lon } : null} />
             </Gate>
           } />
 
