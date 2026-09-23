@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Trash2, Plus } from "lucide-react";
 import { TechnicianRow, SickLeaveWindowSetting, VehicleRow, UserRow, NewUserForm, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin, DefaultTimeEstimateAdmin } from "../components/AdminParts";
 import { PosIntegrationAdmin } from "../components/PosIntegrationAdmin";
+import { AdressevaelgerTest } from "../components/AdressevaelgerTest";
 import { getPermissionsCatalog, getRoleDefaultPermissions } from "../lib/dataStore";
 
 // RETTET (august 2026): Admin-sidens FANER vises nu ud fra brugerens
@@ -182,6 +183,7 @@ function AdminPage({
             Forbindelse til butikkens POS-system. Bruges til at hente kundedata og varenummer ved oprettelse af en sag, og til automatisk fakturering og lagerudlevering, når en sag afsluttes.
           </p>
           <PosIntegrationAdmin storeId={store?.id} />
+          <AdressevaelgerTest />
         </div>
       )}
     </div>
