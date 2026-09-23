@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight, Calendar, KeyRound } from "lucide-react";
 import { isToday, addDays, keyAccessText, STATUS_META, todayISO, lineItemLabel, serviceIcon } from "../data/domain";
 
@@ -90,4 +90,63 @@ function DateSelector({ date, onChange }) {
   );
 }
 
-export { StatusBadge, AddOnPill, KeyAccessPill, LineItemPills, DateSelector };
+// ---------------------------------------------------------------------------
+// MINUTTAL-INPUT (september 2026) - RETTER "025"-FEJLEN
+//
+// Ethvert minuttal-felt i appen (tid pr. ydelse, pr. tillæg, standardtider
+// i Admin) er bundet til et TAL i den underliggende linje/objekt - og et
+// tal på 0 vises som bogstaveligt "0" i et almindeligt <input
+// type="number">. Det var problemet: en bruger, der ville rette "0" til
+// "25", fik i stedet "025" - fordi cursoren ikke automatisk stiller sig
+// EFTER hele feltets indhold ved fokus på mange mobile tastaturer, og
+// tastetryk derfor blev INDSAT foran det eksisterende "0" i stedet for at
+// erstatte det.
+//
+// Løsningen er ikke at rette cursor-placeringen (browserens ansvar, ikke
+// vores) - den er at vise et TOMT felt, når værdien er 0, i stedet for det
+// tal, der udløser problemet. Feltet holder sin egen rå tekst-tilstand
+// (så et tomt felt kan eksistere midlertidigt, uden at det øjeblikkeligt
+// bliver tvunget tilbage til "0"), men melder stadig et rigtigt tal til
+// forælderen ved hvert tastetryk, så alt der regner videre på tiden (fx
+// "I alt for denne linje") stadig opdateres live.
+//
+// Synkroniseres fra `value`, når ÆNDRINGEN IKKE KOM FRA VORES EGEN
+// TEKST (fx et klik på "Brug" ved et målt estimatforslag, eller skift af
+// primær ydelse) - ikke ved hvert tastetryk, for så ville vores egen
+// opdatering (der jo netop RUNDTRIPPER via forælderen) konstant
+// overskrive det, brugeren lige har skrevet.
+function MinutesInput({ value, onChange, className, ...props }) {
+  const toText = (v) => (v === 0 || v === null || v === undefined ? "" : String(v));
+  const [text, setText] = useState(toText(value));
+
+  useEffect(() => {
+    // Kun overskriv den viste tekst, hvis den reelt afviger fra den nye
+    // værdi - ellers ville vi overskrive et tomt felt, brugeren er midt i
+    // at taste i (fx lige har slettet "0"), med "" igen, hvilket er
+    // harmløst, MEN også overskrive et tastetryk, der er på vej ind, hvis
+    // effekten når at køre mellem to tastetryk.
+    if (Number(text || 0) !== Number(value || 0)) setText(toText(value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  const handleChange = (e) => {
+    const raw = e.target.value;
+    setText(raw);
+    onChange(raw === "" ? 0 : Number(raw) || 0);
+  };
+
+  return (
+    <input
+      type="number"
+      min="0"
+      inputMode="numeric"
+      placeholder="0"
+      value={text}
+      onChange={handleChange}
+      className={className}
+      {...props}
+    />
+  );
+}
+
+export { StatusBadge, AddOnPill, KeyAccessPill, LineItemPills, DateSelector, MinutesInput };
