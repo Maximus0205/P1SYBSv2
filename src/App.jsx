@@ -21,6 +21,7 @@ import { PlanningPage } from "./pages/PlanningPage";
 import { TechnicianRouteView, TechnicianOrderDetail } from "./pages/TechnicianPage";
 import { WarehousePage } from "./pages/WarehousePage";
 import { ArchivePage } from "./pages/ArchivePage";
+import { AddressesPage } from "./pages/AddressesPage";
 import { AdminPage } from "./pages/AdminPage";
 import { SystemAdminPage } from "./pages/SystemAdminPage";
 
@@ -46,7 +47,7 @@ function Gate({ allowed, page, children }) {
   return children;
 }
 
-function OrderRoute({ profile, storeId, orders, technicians, ordersStore, duplicateOrder, permissions, catalog, addressNotes, onAddAddressNote, onDeleteAddressNote }) {
+function OrderRoute({ profile, storeId, orders, technicians, ordersStore, duplicateOrder, permissions, catalog, addressNotes }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const order = orders.find((o) => o.id === id);
@@ -138,17 +139,13 @@ function OrderRoute({ profile, storeId, orders, technicians, ordersStore, duplic
       return ok;
     },
 
-    // ---- Vidensdeling om adressen (september 2026) ----
-    // Fælles for sælgerens (OrderView) og montørens (TechnicianOrderDetail)
-    // visning - se AddressNotes.jsx. address gives med af hver visning
-    // selv (de kender deres egen order.kunde.adresse); her sendes kun
-    // selve listen og tilføj/fjern-funktionerne. Modsat bookingflowet
-    // (NewOrderForm) må man her BÅDE se og tilføje/fjerne et flag - det er
-    // netop på den bookede/igangværende sag, en montør typisk opdager og
-    // noterer forholdet.
+    // ---- Vidensdeling om adressen (september 2026, rettet) ----
+    // Sagskortet viser kun en RÅDGIVENDE ADVARSEL, hvis adressen allerede
+    // er flaget - se AddressNotes.jsx. Opret/fjern af selve flaget hører
+    // ikke til her (det handler om ADRESSEN, ikke sagen), og sker i stedet
+    // udelukkende på den selvstændige fane "Adresser" - se
+    // pages/AddressesPage.jsx og ruten /adresser nedenfor.
     addressNotes,
-    onAddAddressNote,
-    onDeleteAddressNote,
   };
 
   // Montørvisningen af en sag er den, der har Start/Færdigmeld. Den vises
@@ -192,8 +189,9 @@ function MontorRoute({ profile, vehicles, orders, ordersStore, refresh, refreshi
 // admin_*-rettigheder (AdminPage viser/skjuler selv sine faner ud fra
 // dem); har man BLOT ÉN af dem, skal man kunne se Admin-fanen.
 //
-// "montor" står bevidst IKKE på listen. Den fane afhænger ikke af en
-// rettighed, men af om man FAKTISK KØRER - se allowedPages nedenfor.
+// "montor" og "adresser" står bevidst IKKE på listen. Ingen af dem
+// afhænger af en enkelt navngiven rettighed - se kanKoereRute/
+// kanSeAdresser i App().
 const PAGE_PERMISSION_KEYS = ["salg", "planlaegning", "lager", "arkiv"];
 
 export default function App() {
@@ -308,12 +306,10 @@ export default function App() {
   const onOpen = (id) => navigate(`/sag/${id}`);
 
   // Vidensdeling om en adresse (september 2026) - se hooks/useAddressNotes.js
-  // og components/AddressNotes.jsx. Én fælles funktion her, brugt fra en
-  // eksisterende sags visning (OrderRoute - sælger ELLER montør). Kan
-  // BEVIDST IKKE kaldes fra selve bookingflowet (SalesPage/NewOrderForm) -
-  // der vises kun en advarsel om et allerede oprettet flag, se noten i
-  // SalesPage.jsx. "createdBy" sættes altid ud fra den faktisk indloggede
-  // profil, aldrig noget kaldende kode selv angiver.
+  // og pages/AddressesPage.jsx, som er det ENESTE sted opret/fjern reelt
+  // sker (se noten ved OrderRoute ovenfor og i SalesPage.jsx for hvorfor
+  // det bevidst er fjernet fra sagskortet og bookingflowet). "createdBy"
+  // sættes altid ud fra den faktisk indloggede profil.
   const addAddressNote = (address, note) => addressNotesStore.addAddressNote(address, note, profile ? { id: profile.id, navn: profile.navn } : null);
 
   // MANGLENDE VARER: lageret melder, at en vare ikke kan findes ved pluk.
@@ -390,13 +386,21 @@ export default function App() {
   // har ingen værdi for en sælger på kontoret eller en systemadmin, der
   // kigger ind i en butik. Skal en funktion fremvises eller testes,
   // oprettes en demobruger, der rent faktisk har en rute.
+  //
+  // ADRESSER ER LIGELEDES EN UNDTAGELSE (september 2026): siden dækker
+  // "opret sag" (sag_opret) OG "arbejder i felten" (sag_feltarbejde) -
+  // altså både sælger og montør, ligesom RLS'en på selve address_notes-
+  // tabellen håndhæver. Ingen enkelt admin_*-rettighed dækker den
+  // kombination, så den kan ikke stå i PAGE_PERMISSION_KEYS.
   const kanKoereRute = koererSelv(profile);
+  const kanSeAdresser = profile.erSystemadmin || permissions.includes("sag_feltarbejde") || permissions.includes("sag_opret");
   const allowedPages = profile.erSystemadmin
-    ? ["dashboard", ...PAGE_PERMISSION_KEYS, ...(kanKoereRute ? ["montor"] : []), "admin"]
+    ? ["dashboard", ...PAGE_PERMISSION_KEYS, ...(kanKoereRute ? ["montor"] : []), "adresser", "admin"]
     : [
         "dashboard",
         ...PAGE_PERMISSION_KEYS.filter((k) => permissions.includes(k)),
         ...(kanKoereRute ? ["montor"] : []),
+        ...(kanSeAdresser ? ["adresser"] : []),
         ...(permissions.some((p) => p.startsWith("admin_")) ? ["admin"] : []),
       ];
   // Sendes videre til sider der låser ENKELTE felter/knapper efter
@@ -439,7 +443,7 @@ export default function App() {
             />
           } />
 
-          <Route path="/sag/:id" element={<OrderRoute profile={profile} storeId={activeStoreId} orders={orders} technicians={technicians} ordersStore={ordersStore} duplicateOrder={duplicateOrder} permissions={effectivePermissions} catalog={catalog} addressNotes={addressNotesStore.addressNotes} onAddAddressNote={addAddressNote} onDeleteAddressNote={addressNotesStore.deleteAddressNote} />} />
+          <Route path="/sag/:id" element={<OrderRoute profile={profile} storeId={activeStoreId} orders={orders} technicians={technicians} ordersStore={ordersStore} duplicateOrder={duplicateOrder} permissions={effectivePermissions} catalog={catalog} addressNotes={addressNotesStore.addressNotes} />} />
 
           <Route path="/salg" element={
             <Gate allowed={allowedPages} page="salg">
@@ -486,6 +490,21 @@ export default function App() {
           <Route path="/arkiv" element={
             <Gate allowed={allowedPages} page="arkiv">
               <ArchivePage orders={orders} technicians={technicians} onOpen={onOpen} />
+            </Gate>
+          } />
+
+          {/* ADRESSER (september 2026): selvstændig fane, uafhængig af den
+              enkelte sag - se AddressesPage.jsx og noten ved kanSeAdresser
+              ovenfor. canManage = samme grænse som RLS'en på
+              address_notes håndhæver (sag_feltarbejde eller sag_opret). */}
+          <Route path="/adresser" element={
+            <Gate allowed={allowedPages} page="adresser">
+              <AddressesPage
+                addressNotes={addressNotesStore.addressNotes}
+                onAdd={addAddressNote}
+                onDelete={addressNotesStore.deleteAddressNote}
+                canManage={kanSeAdresser}
+              />
             </Gate>
           } />
 
