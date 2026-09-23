@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin, Sparkles, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Check, Loader2, CheckCircle2, XCircle, Search, Phone } from "lucide-react";
-import { OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID, KEY_ACCESS_TYPES, buildingKey, formatLongDate, formatDuration, lineItemMinutes, availableAddOns, serviceIcon, todayISO, addDays, weekDays, orderExpectedMinutes, buildTitle } from "../data/domain";
+import { OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID, KEY_ACCESS_TYPES, buildingKey, formatLongDate, formatDuration, lineItemMinutes, availableAddOns, serviceIcon, todayISO, addDays, weekDays, orderExpectedMinutes, buildTitle, getDefaultEstimateMinutes } from "../data/domain";
 import { estimateForLineItem, estimateForCluster } from "../data/estimates";
 import { lookupPunkt1Product } from "../lib/dataStore";
 import { geocodeAddress, geocodeAddresses, drivingDistances } from "../lib/geocoding";
 import { suggestBookingDates } from "../lib/scheduling";
+import { MinutesInput } from "../components/common";
 
 // Forsøger at splitte en punkt1.dk-produkttitel (fx "Point 5-Series
 // PODW56042W opvaskemaskine") op i mærke + modelnummer. Mærket antages at
@@ -211,7 +212,7 @@ function ClusterEstimateNote({ estimateIndex, clusterIndex, lineItems, onApplyFa
   );
 }
 
-function LineItemEditor({ lineItem, productTypes, productCategories, primaryServices, addOnServices, estimateIndex, onChange, onRemove, canRemove }) {
+function LineItemEditor({ lineItem, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, estimateIndex, onChange, onRemove, canRemove }) {
   const isOther = lineItem.varetypeId === OTHER_PRODUCT_TYPE_ID;
   const selectedProductType = productTypes.find((v) => v.id === lineItem.varetypeId);
   const [categoryFilter, setCategoryFilter] = useState(selectedProductType?.kategoriId || "");
@@ -245,12 +246,22 @@ function LineItemEditor({ lineItem, productTypes, productCategories, primaryServ
 
   const changePrimaryServiceMinutes = (min) => onChange({ ...lineItem, primaerYdelse: { ...lineItem.primaerYdelse, minutter: Number(min) || 0 } });
 
+  // Standardtid for et tillæg (september 2026): slår FØRST op i
+  // standardtider-matrixen for netop DENNE varetype (admin kan sætte en
+  // mere præcis tid pr. varetype, se AdminParts.jsx: DefaultTimeEstimateAdmin)
+  // - findes ingen matrix-værdi, falder den tilbage til tillæggets egen,
+  // flade standardtid (t.minutter, sat under "Tillægsydelser" i Admin).
+  const defaultAddOnMinutes = (t) => {
+    const fraMatrix = getDefaultEstimateMinutes(defaultTimeEstimates, lineItem.varetypeId, t.id);
+    return fraMatrix ?? (Number(t.minutter) || 0);
+  };
+
   const toggleAddOn = (t) => {
     const has = lineItem.tillaeg.some((x) => x.id === t.id || x.navn === t.navn);
     if (has) {
       onChange({ ...lineItem, tillaeg: lineItem.tillaeg.filter((x) => x.id !== t.id && x.navn !== t.navn) });
     } else {
-      onChange({ ...lineItem, tillaeg: [...lineItem.tillaeg, { id: t.id, navn: t.navn, minutter: Number(t.minutter) || 0, udfoert: false }] });
+      onChange({ ...lineItem, tillaeg: [...lineItem.tillaeg, { id: t.id, navn: t.navn, minutter: defaultAddOnMinutes(t), udfoert: false }] });
     }
   };
   const toggleDone = (id) => onChange({ ...lineItem, tillaeg: lineItem.tillaeg.map((y) => (y.id === id ? { ...y, udfoert: !y.udfoert } : y)) });
@@ -299,10 +310,9 @@ function LineItemEditor({ lineItem, productTypes, productCategories, primaryServ
       <label className="flex items-center gap-2 mb-1 text-xs text-muted">
         <Clock size={12} className="shrink-0" />
         Estimeret tid til {lineItem.primaerYdelse?.navn?.toLowerCase() || "denne ydelse"}
-        <input
-          type="number" min="0"
+        <MinutesInput
           value={lineItem.primaerYdelse?.minutter ?? 0}
-          onChange={(e) => changePrimaryServiceMinutes(e.target.value)}
+          onChange={changePrimaryServiceMinutes}
           className="w-16 rounded-lg border border-line bg-white px-2 py-1 text-right text-ink focus:outline-none focus:border-brand"
         />
         min
@@ -324,7 +334,7 @@ function LineItemEditor({ lineItem, productTypes, productCategories, primaryServ
                 >
                   <Icon size={12} strokeWidth={2.5} />
                   {t.navn}
-                  <span className="text-[10px] opacity-70">{t.minutter}m</span>
+                  <span className="text-[10px] opacity-70">{defaultAddOnMinutes(t)}m</span>
                 </button>
               );
             })}
@@ -341,10 +351,9 @@ function LineItemEditor({ lineItem, productTypes, productCategories, primaryServ
                 <input type="checkbox" checked={y.udfoert} onChange={() => toggleDone(y.id)} className="w-4 h-4 accent-success shrink-0" title="Udført" />
                 <Icon size={13} className="text-muted shrink-0" strokeWidth={2.5} />
                 <span className="text-sm text-ink flex-1 truncate">{y.navn}</span>
-                <input
-                  type="number" min="0"
+                <MinutesInput
                   value={y.minutter}
-                  onChange={(e) => changeAddOnMinutes(y.id, e.target.value)}
+                  onChange={(min) => changeAddOnMinutes(y.id, min)}
                   className="w-14 rounded-lg border border-line bg-white px-1.5 py-0.5 text-right text-[10px] text-ink focus:outline-none focus:border-brand"
                   title="Estimeret tid for denne tillægsydelse"
                 />
