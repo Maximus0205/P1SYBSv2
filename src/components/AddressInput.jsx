@@ -12,21 +12,12 @@ import { searchAdressevaelger } from "../lib/geocodingAdressevaelger";
 // fjerne kommentar-markørerne og fjerne det aktive afsnit ovenfor nok til
 // at være tilbage, hvor vi slap. Se lib/geocodingAdressevaelger.js og
 // supabase/functions/adressevaelger-proxy.
+//
+// Selve postnummer-splitningen (RETTET september 2026 - se
+// lib/geocodingAdressevaelger.js: parseQuery) sker nu INDE I
+// searchAdressevaelger, ikke her - komponenten sender bare den rå,
+// tastede tekst videre.
 const DEBOUNCE_MS = 350;
-
-// Splitter et afsluttende 4-cifret postnummer fra selve søgeteksten, så det
-// kan sendes som sin EGEN, strukturerede parameter til Adressevælgeren
-// (som selv anbefaler præcis dette i deres dokumentation: "vejnavn=...
-// &postnummer=..." for at undgå tvetydige gadenavne) - i stedet for at
-// overlade til fritekst-parseren at gætte, om tallet er et husnummer eller
-// et postnummer.
-function splitTextAndPostnummer(raw) {
-  const match = (raw || "").trim().match(/^(.*\S)\s+(\d{4})$/);
-  if (!match) return { tekst: raw, postnummer: undefined };
-  const num = Number(match[2]);
-  if (num < 1000 || num > 9990) return { tekst: raw, postnummer: undefined };
-  return { tekst: match[1], postnummer: match[2] };
-}
 
 // Forslag med en KONKRET adgang (husnummer/adresse) frem for blot et
 // gadenavn eller "gadenavn + postnummer" (som betyder søgningen endnu er
@@ -58,8 +49,7 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus 
     setStatus("tjekker");
 
     const timer = setTimeout(async () => {
-      const { tekst, postnummer } = splitTextAndPostnummer(value);
-      const result = await searchAdressevaelger(tekst, { postnummer });
+      const result = await searchAdressevaelger(value);
       if (cancelled) return;
       const fund = [...(result.fund || [])].sort((a, b) => (SPECIFICITY[a.type] ?? 9) - (SPECIFICITY[b.type] ?? 9));
       setSuggestions(fund);
