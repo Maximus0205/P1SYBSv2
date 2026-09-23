@@ -3,6 +3,7 @@ import { Trash2, X, Plus, Pencil, UserPlus, PalmtreeIcon, CalendarOff, KeyRound,
 import { vehicleLabel, technicianColor, todayISO, activeSickLeave } from "../data/domain";
 import { suggestUsername, isValidUsername } from "../lib/username";
 import { updateSickLeaveWindow } from "../lib/dataStore";
+import { MinutesInput } from "../components/common";
 
 // ---------------------------------------------------------------------------
 // FÆLLES AFKRYDSNINGSLISTE (september 2026)
@@ -651,13 +652,13 @@ function PrimaryServiceAdmin({ primaryServices, onAdd, onUpdate, onDelete }) {
 // punkter ikke bliver til en meterlang søjle for en indstilling, man
 // sjældent rører - se CheckboxList øverst i filen.
 //
-// STANDARDTID (september 2026): i modsætning til primære ydelser (hvor
-// tiden afhænger af varetypen, se DefaultTimeEstimateAdmin) er en
-// tillægsydelse typisk samme opgave uanset hvilken vare den udføres på
-// ("dørvending" tager cirka det samme uanset køleskabsmærke) - derfor ét
-// enkelt tal her, ikke en matrix. Bruges som starttid, når tillægget
-// vælges på en varelinje (se OrderFormFields.jsx: toggleAddOn, som læser
-// service.minutter direkte) - kan altid rettes for den enkelte booking.
+// STANDARDTID (september 2026, udvidet): tallet her er et FLADT
+// UDGANGSPUNKT, der gælder alle varetyper ("dørvending tager cirka det
+// samme uanset køleskabsmærke") - bruges når tillægget vælges på en
+// varelinje, hvis der IKKE er sat en mere præcis tid for netop den
+// varetype i "Standardtider"-matrixen (se DefaultTimeEstimateAdmin
+// nedenfor, og getDefaultEstimateMinutes i domain.js: matrixen har
+// forrang, dette tal er faldbacken).
 function AddOnServiceRow({ service, productTypes, primaryServices, onUpdate, onDelete }) {
   const togglePrimary = (pId) => {
     const has = (service.primaerYdelser || []).includes(pId);
@@ -675,13 +676,11 @@ function AddOnServiceRow({ service, productTypes, primaryServices, onUpdate, onD
       onUpdate={(navn) => onUpdate(service.id, { navn })}
       onDelete={() => onDelete(service.id)}
       extra={
-        <label className="flex items-center gap-1.5 text-xs text-muted shrink-0" title="Standardtid, foreslås når tillægget vælges på en varelinje">
+        <label className="flex items-center gap-1.5 text-xs text-muted shrink-0" title="Standardtid, foreslås når tillægget vælges - kan overstyres pr. varetype under fanen 'Standardtider'">
           <Clock size={13} className="shrink-0" aria-hidden="true" />
-          <input
-            type="number" min="0" inputMode="numeric"
-            value={service.minutter ?? ""}
-            placeholder="0"
-            onChange={(e) => onUpdate(service.id, { minutter: Math.max(0, Number(e.target.value) || 0) })}
+          <MinutesInput
+            value={service.minutter ?? 0}
+            onChange={(min) => onUpdate(service.id, { minutter: min })}
             aria-label={`Standardtid for ${service.navn} (minutter)`}
             className="w-14 rounded-lg border border-line bg-panel px-1.5 py-1.5 text-center text-xs text-ink focus:outline-none focus:border-brand"
           />
@@ -746,15 +745,21 @@ function AddOnServiceAdmin({ addOnServices, productTypes, primaryServices, onAdd
   );
 }
 
-// ---------- Standardtider (varetype × primær ydelse) ----------
-// Matrix-visning: rækker = varetyper, kolonner = primære ydelser. Hver
-// celle er et frit tal (minutter), gemt på blur (ikke pr. tastetryk - se
-// TimeEstimateCell) frem for en ekstra "Gem"-knap pr. celle, som ville
-// være uoverkommeligt med op til 17 × 3 = 51 felter.
+// ---------- Standardtider (varetype × ydelse - primær ELLER tillæg) ----------
+// Matrix-visning: rækker = varetyper, kolonner = ALLE ydelser (både primære
+// ydelser og tillægsydelser, adskilt af en tykkere kantlinje mellem de to
+// grupper). Hver celle er et frit tal (minutter), gemt på blur (ikke pr.
+// tastetryk - se TimeEstimateCell) frem for en ekstra "Gem"-knap pr.
+// celle, som ville være uoverkommeligt med op til 17 varetyper × (3
+// ydelser + N tillæg) felter.
 //
-// Tomt felt = intet admin-sat estimat for netop den kombination - sælgeren
-// taster tiden manuelt, som hidtil. Se getDefaultEstimateMinutes/
-// createLineItem i domain.js for hvordan et sat tal bruges.
+// Tomt felt = intet admin-sat estimat for netop den kombination. For en
+// primær ydelse betyder det, at sælgeren taster tiden manuelt, som hidtil.
+// For et tillæg betyder det, at tillæggets egen FLADE standardtid bruges
+// i stedet (sat under fanen "Tillægsydelser") - matrixen er kun til at
+// OVERSTYRE for specifikke varetyper, ikke et krav om at udfylde alt. Se
+// getDefaultEstimateMinutes/createLineItem i domain.js og toggleAddOn i
+// OrderFormFields.jsx for hvordan et sat tal bruges.
 function TimeEstimateCell({ value, onCommit, label }) {
   const [local, setLocal] = useState(value ?? "");
   useEffect(() => { setLocal(value ?? ""); }, [value]);
@@ -776,24 +781,34 @@ function TimeEstimateCell({ value, onCommit, label }) {
   );
 }
 
-function DefaultTimeEstimateAdmin({ productTypes, primaryServices, defaultTimeEstimates, onSetEstimate }) {
+function DefaultTimeEstimateAdmin({ productTypes, primaryServices, addOnServices, defaultTimeEstimates, onSetEstimate }) {
   if (productTypes.length === 0 || primaryServices.length === 0) {
     return <p className="text-sm text-muted italic">Opret først mindst én varetype og én primær ydelse, under de andre faner ovenfor.</p>;
   }
-  const lookup = (varetypeId, primaerYdelseId) => defaultTimeEstimates.find((e) => e.varetypeId === varetypeId && e.primaerYdelseId === primaerYdelseId)?.minutter ?? null;
+  const addOns = addOnServices || [];
+  const lookup = (varetypeId, ydelseId) => defaultTimeEstimates.find((e) => e.varetypeId === varetypeId && e.primaerYdelseId === ydelseId)?.minutter ?? null;
 
   return (
     <div>
       <p className="text-xs text-muted mb-4">
-        Et udgangspunkt for tiden, når en sælger opretter en ny varelinje med denne kombination af varetype og ydelse - tastes stadig frit for den enkelte booking bagefter. Tomt felt = intet forslag, sælgeren taster selv, som hidtil. Erstatter ikke det målte estimat fra tidligere afsluttede sager, som stadig vises som et separat forslag, når der er nok historik.
+        Et udgangspunkt for tiden, når en sælger opretter en ny varelinje eller vælger en tillægsydelse med denne kombination af varetype og ydelse - tastes stadig frit for den enkelte booking bagefter. Tomt felt under en primær ydelse = intet forslag, sælgeren taster selv. Tomt felt under et tillæg = tillæggets egen standardtid (fanen "Tillægsydelser") bruges i stedet. Erstatter ikke det målte estimat fra tidligere afsluttede sager, som stadig vises som et separat forslag, når der er nok historik.
       </p>
       <div className="overflow-x-auto rounded-xl border border-line bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead>
+            <tr className="border-b border-divider bg-panel">
+              <th rowSpan={2} className="text-left p-2.5 text-xs font-semibold uppercase tracking-wide text-muted whitespace-nowrap align-bottom">Varetype</th>
+              <th colSpan={primaryServices.length} className="p-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted text-center">Primære ydelser</th>
+              {addOns.length > 0 && (
+                <th colSpan={addOns.length} className="p-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted text-center border-l-2 border-line">Tillægsydelser</th>
+              )}
+            </tr>
             <tr className="border-b border-line bg-panel">
-              <th className="text-left p-2.5 text-xs font-semibold uppercase tracking-wide text-muted whitespace-nowrap">Varetype</th>
               {primaryServices.map((p) => (
                 <th key={p.id} className="p-2.5 text-xs font-semibold uppercase tracking-wide text-muted text-center min-w-[110px]">{p.navn}</th>
+              ))}
+              {addOns.map((t, i) => (
+                <th key={t.id} className={`p-2.5 text-xs font-semibold uppercase tracking-wide text-muted text-center min-w-[110px] ${i === 0 ? "border-l-2 border-line" : ""}`}>{t.navn}</th>
               ))}
             </tr>
           </thead>
@@ -807,6 +822,15 @@ function DefaultTimeEstimateAdmin({ productTypes, primaryServices, defaultTimeEs
                       value={lookup(v.id, p.id)}
                       onCommit={(val) => onSetEstimate(v.id, p.id, val)}
                       label={`Standardtid for ${v.navn} · ${p.navn} (minutter)`}
+                    />
+                  </td>
+                ))}
+                {addOns.map((t, i) => (
+                  <td key={t.id} className={`p-1.5 text-center ${i === 0 ? "border-l-2 border-line" : ""}`}>
+                    <TimeEstimateCell
+                      value={lookup(v.id, t.id)}
+                      onCommit={(val) => onSetEstimate(v.id, t.id, val)}
+                      label={`Standardtid for ${v.navn} · ${t.navn} (tillæg, minutter)`}
                     />
                   </td>
                 ))}
