@@ -1,10 +1,11 @@
 import React, { useState } from "react";
 import { KeyRound, Building2, Hash, Pencil, X, Check, Copy, AlertTriangle, User, Lock, Trash2, Plus, RotateCw, Plug, RefreshCw } from "lucide-react";
 import { TIME_SLOTS, buildTitle, keyAccessText, timeSlotById, timeSlotText, lineItemLabel, canDo, createLineItem, missingLineItems, OTHER_PRODUCT_TYPE_ID } from "../data/domain";
-import { StatusBadge } from "../components/common";
+import { StatusBadge, MinutesInput } from "../components/common";
 import { LineItemDetails, Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
 import { CustomerHistoryLookup } from "../components/OrderFormFields";
 import { AddressInput } from "../components/AddressInput";
+import { AddressNotesPanel } from "../components/AddressNotes";
 
 // Hurtig-redigering af en booket sag: dato, tidsrum, bil og
 // leveringsadresse - de felter der oftest skal justeres efter oprettelse.
@@ -183,11 +184,10 @@ function LineItemEditor({ order, catalog, onSave, onCancel }) {
                 </label>
                 <label className="text-xs text-muted">
                   Forventet tid (minutter)
-                  <input
-                    type="number" min="0" inputMode="numeric"
+                  <MinutesInput
                     value={v.primaerYdelse?.minutter ?? 0}
                     disabled={!v.primaerYdelse}
-                    onChange={(e) => patch(v.id, { primaerYdelse: { ...v.primaerYdelse, minutter: Number(e.target.value) || 0 } })}
+                    onChange={(min) => patch(v.id, { primaerYdelse: { ...v.primaerYdelse, minutter: min } })}
                     className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand disabled:opacity-60"
                   />
                 </label>
@@ -402,7 +402,14 @@ function PosStatusBanner({ order, onRetry, canRetry }) {
 // BIL, IKKE MONTØR (september 2026): sagens tildeling vises nu via
 // order.bilId, og "technicians" er BIL-rækker (se App.jsx) - ikke længere
 // et opslag på en bestemt persons id.
-function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addReport, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onSetLineItems, onClearMissingItem, onDeleteOrder, onReopenOrder, onRetryPosSync }) {
+//
+// VIDENSDELING (september 2026): AddressNotesPanel vises lige under
+// adressen - samme komponent som i bookingflowet og montørens skærm, se
+// AddressNotes.jsx. Både SE og TILFØJE kræver enten sag_feltarbejde eller
+// sag_opret (samme grænse som RLS'en på address_notes håndhæver i
+// databasen) - eksisterende noter vises dog for alle, der kan se sagen;
+// kun selve "tilføj/fjern" er gated.
+function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addReport, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onSetLineItems, onClearMissingItem, onDeleteOrder, onReopenOrder, onRetryPosSync, addressNotes, onAddAddressNote, onDeleteAddressNote }) {
   const [tab, setTab] = useState("noter");
   // Kun ÉT panel ad gangen - to åbne redigeringer på samme sag ville både
   // fylde skærmen og gøre det uklart, hvad "Gem" gemmer.
@@ -413,6 +420,7 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
   const canEditCustomer = canDo(permissions, "sag_kunde");
   const canCreate = canDo(permissions, "sag_opret");
   const canDelete = canDo(permissions, "sag_slet");
+  const canAddressNote = canFieldwork || canCreate;
   const tabs = [
     { key: "noter", label: "Noter", count: order.noter.length },
     { key: "materialer", label: "Materialer", count: (order.materialer || []).length },
@@ -529,6 +537,17 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
                 <button onClick={() => setPanel("slet")} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-danger focus:outline-none focus:ring-2 focus:ring-danger rounded px-1 py-1.5 flex items-center gap-1"><Trash2 size={13} aria-hidden="true" /> Slet sag</button>
               )}
             </div>
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-divider">
+            <AddressNotesPanel
+              addressNotes={addressNotes}
+              address={order.kunde?.adresse}
+              onAdd={(note) => onAddAddressNote?.(order.kunde?.adresse, note)}
+              canAdd={canAddressNote && !!onAddAddressNote}
+              canDelete={canAddressNote}
+              onDelete={onDeleteAddressNote}
+            />
           </div>
         </div>
       )}
