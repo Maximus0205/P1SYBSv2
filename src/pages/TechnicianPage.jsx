@@ -5,6 +5,7 @@ import { isTomgang, showsArrivalContact, TOMGANG_COLOR } from "../data/caseTypes
 import { StatusBadge, DateSelector } from "../components/common";
 import { Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
 import { BookingEditor, DuplicatePanel, PosStatusBanner } from "../components/OrderView";
+import { AddressNotesPanel } from "../components/AddressNotes";
 import { sendArrivalSms } from "../lib/dataStore";
 
 // Universelt Google Maps-link: åbner Google Maps-appen hvis den er
@@ -550,7 +551,13 @@ function FinishPanel({ order, onConfirm, onCancel, onGoToTab }) {
 // MONTØR-SPECIFIK SAGSDETALJE - bevidst en HELT SEPARAT visning fra den
 // delte OrderView.jsx, som bruges af admin/sælger. Vises til alle, der selv
 // kører (se koererSelv i App.jsx), ikke kun til rollen montor.
-function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, addReport, onStartOrder, onFinishOrder, onReopenOrder, onUpdateBooking, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem, onRetryPosSync, permissions }) {
+//
+// VIDENSDELING (september 2026): AddressNotesPanel er den PRIMÆRE plads
+// for denne funktion - montøren er den, der reelt STÅR på adressen og
+// opdager forhold værd at vide (se AddressNotes.jsx). Både SE og TILFØJE
+// styres af canFieldwork, samme rettighed montøren i øvrigt bruger til alt
+// andet aktivt på sagen.
+function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, addReport, onStartOrder, onFinishOrder, onReopenOrder, onUpdateBooking, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem, onRetryPosSync, permissions, addressNotes, onAddAddressNote, onDeleteAddressNote }) {
   const [tab, setTab] = React.useState("noter");
   const [panel, setPanel] = React.useState(null); // "booking" | "dupliker" | "problem" | "faerdig"
   const canFieldwork = canDo(permissions, "sag_feltarbejde");
@@ -686,6 +693,17 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
             {onMarkProblem && canFieldwork && !order.problem && (
               <button onClick={() => setPanel("problem")} className="text-xs font-semibold uppercase tracking-wide text-danger hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-danger rounded px-1 py-1.5 flex items-center gap-1"><AlertTriangle size={13} aria-hidden="true" /> Marker: kom ikke i mål</button>
             )}
+          </div>
+
+          <div className="mt-3 pt-3 border-t border-divider">
+            <AddressNotesPanel
+              addressNotes={addressNotes}
+              address={order.kunde?.adresse}
+              onAdd={(note) => onAddAddressNote?.(order.kunde?.adresse, note)}
+              canAdd={canFieldwork && !!onAddAddressNote}
+              canDelete={canFieldwork}
+              onDelete={onDeleteAddressNote}
+            />
           </div>
         </div>
       )}
