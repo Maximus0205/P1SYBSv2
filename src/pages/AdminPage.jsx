@@ -172,7 +172,7 @@ function AdminPage({
           {productTab === "varetyper" && <ProductTypeAdmin productTypes={productTypes} productCategories={productCategories} onAdd={onAddProductType} onUpdate={onUpdateProductType} onDelete={onDeleteProductType} />}
           {productTab === "primaer" && <PrimaryServiceAdmin primaryServices={primaryServices} onAdd={onAddPrimaryService} onUpdate={onUpdatePrimaryService} onDelete={onDeletePrimaryService} />}
           {productTab === "tillaeg" && <AddOnServiceAdmin addOnServices={addOnServices} productTypes={productTypes} primaryServices={primaryServices} onAdd={onAddAddOnService} onUpdate={onUpdateAddOnService} onDelete={onDeleteAddOnService} />}
-          {productTab === "standardtider" && <DefaultTimeEstimateAdmin productTypes={productTypes} primaryServices={primaryServices} defaultTimeEstimates={defaultTimeEstimates || []} onSetEstimate={onSetDefaultTimeEstimate} />}
+          {productTab === "standardtider" && <DefaultTimeEstimateAdmin productTypes={productTypes} primaryServices={primaryServices} addOnServices={addOnServices} defaultTimeEstimates={defaultTimeEstimates || []} onSetEstimate={onSetDefaultTimeEstimate} />}
         </div>
       )}
 
