@@ -212,12 +212,33 @@ function ClusterEstimateNote({ estimateIndex, clusterIndex, lineItems, onApplyFa
   );
 }
 
-function LineItemEditor({ lineItem, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, estimateIndex, onChange, onRemove, canRemove }) {
+// ---------------------------------------------------------------------------
+// VARELINJE-EDITOR (rettet september 2026)
+//
+// To ændringer, begge ud fra direkte tilbagemelding om bookingflowet på en
+// telefon:
+//
+//  1. VAREKATEGORI-FELTET ER FJERNET HERFRA. Det var kun et FILTER på
+//     varetype-listen (fx "Hvidevare" for kun at vise hvidevarer) - ikke et
+//     felt, der selv blev gemt på sagen. På en telefon var det bare endnu
+//     et felt at forholde sig til for en beskeden gevinst (17 varetyper er
+//     til at overskue i én liste). Varetyper har stadig deres kategori i
+//     Admin (bruges bl.a. i standardtider-matrixen) - kun selve FILTRERET i
+//     denne formular er væk. Rækkefølgen er samtidig ændret til
+//     Modelnummer -> Mærke -> Varetype -> Primær ydelse, så de to felter
+//     man typisk har ved hånden fra kundens emballage/faktura (model,
+//     mærke) kommer FØRST.
+//
+//  2. TILLÆGSYDELSER er nu ÉN samlet afkrydsningsliste i stedet for
+//     "klikbare chips foroven" + "en ekstra, redigerbar liste nedenfor,
+//     når man har valgt en". Det så ud som om tillægget dukkede op TO
+//     gange - én gang som en grøn chip, én gang som en ny linje man også
+//     kunne krydse af som "udført". "Udført" hører til, når montøren rent
+//     faktisk har lavet arbejdet - ikke ved oprettelse af en helt ny sag -
+//     og er derfor fjernet herfra; det sidder stadig, hvor det giver
+//     mening, i sagens egen visning (se OrderParts.jsx: LineItemDetails).
+function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices, defaultTimeEstimates, estimateIndex, onChange, onRemove, canRemove }) {
   const isOther = lineItem.varetypeId === OTHER_PRODUCT_TYPE_ID;
-  const selectedProductType = productTypes.find((v) => v.id === lineItem.varetypeId);
-  const [categoryFilter, setCategoryFilter] = useState(selectedProductType?.kategoriId || "");
-
-  const visibleProductTypes = categoryFilter ? productTypes.filter((v) => v.kategoriId === categoryFilter) : productTypes;
   const available = availableAddOns(lineItem.varetypeId, lineItem.primaerYdelse?.id, addOnServices);
 
   const changeProductType = (newId) => {
@@ -264,27 +285,38 @@ function LineItemEditor({ lineItem, productTypes, productCategories, primaryServ
       onChange({ ...lineItem, tillaeg: [...lineItem.tillaeg, { id: t.id, navn: t.navn, minutter: defaultAddOnMinutes(t), udfoert: false }] });
     }
   };
-  const toggleDone = (id) => onChange({ ...lineItem, tillaeg: lineItem.tillaeg.map((y) => (y.id === id ? { ...y, udfoert: !y.udfoert } : y)) });
   const changeAddOnMinutes = (id, min) => onChange({ ...lineItem, tillaeg: lineItem.tillaeg.map((y) => (y.id === id ? { ...y, minutter: Number(min) || 0 } : y)) });
 
   return (
     <div className="rounded-xl border border-line bg-panel p-3">
-      <div className="grid gap-2 sm:grid-cols-3 mb-2">
-        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand">
-          <option value="">Alle kategorier</option>
-          {productCategories.map((k) => <option key={k.id} value={k.id}>{k.navn}</option>)}
-        </select>
-        <select value={lineItem.varetypeId} onChange={(e) => changeProductType(e.target.value)} className="rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand">
-          {visibleProductTypes.map((v) => <option key={v.id} value={v.id}>{v.navn}</option>)}
-          <option value={OTHER_PRODUCT_TYPE_ID}>{OTHER_PRODUCT_TYPE}</option>
-        </select>
-        <div className="flex items-center gap-1.5">
-          <select value={lineItem.primaerYdelse?.id || ""} onChange={(e) => changePrimaryService(e.target.value)} className="flex-1 rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand">
-            {primaryServices.map((p) => <option key={p.id} value={p.id}>{p.navn}</option>)}
-          </select>
-          {canRemove && <button onClick={onRemove} className="p-1.5 text-muted hover:text-danger shrink-0" title="Fjern varelinje"><Trash2 size={15} /></button>}
+      <div className="flex items-start gap-2 mb-1">
+        <div className="flex-1 min-w-0">
+          <input
+            value={lineItem.model}
+            onChange={(e) => onChange({ ...lineItem, model: e.target.value })}
+            placeholder="Modelnummer"
+            className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand"
+          />
+          <ModelNumberLookup
+            model={lineItem.model}
+            onSelectProduct={({ brand, model: matchedModel }) => onChange({ ...lineItem, maerke: brand || lineItem.maerke, model: matchedModel || lineItem.model })}
+          />
         </div>
+        {canRemove && <button onClick={onRemove} className="p-1.5 text-muted hover:text-danger shrink-0" title="Fjern varelinje"><Trash2 size={15} /></button>}
       </div>
+      <p className="text-[10px] text-muted mb-2">Modelnummer tjekkes automatisk mod punkt1.dk's varekartotek — grønt flueben = bekræftet, rødt kryds = ikke fundet.</p>
+
+      <input
+        value={lineItem.maerke}
+        onChange={(e) => onChange({ ...lineItem, maerke: e.target.value })}
+        placeholder="Mærke, fx 'Bosch'"
+        className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink mb-2 focus:outline-none focus:border-brand"
+      />
+
+      <select value={lineItem.varetypeId} onChange={(e) => changeProductType(e.target.value)} className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink mb-2 focus:outline-none focus:border-brand">
+        {productTypes.map((v) => <option key={v.id} value={v.id}>{v.navn}</option>)}
+        <option value={OTHER_PRODUCT_TYPE_ID}>{OTHER_PRODUCT_TYPE}</option>
+      </select>
 
       {isOther && (
         <input
@@ -295,17 +327,9 @@ function LineItemEditor({ lineItem, productTypes, productCategories, primaryServ
         />
       )}
 
-      <div className="grid gap-2 sm:grid-cols-2 mb-1">
-        <input value={lineItem.maerke} onChange={(e) => onChange({ ...lineItem, maerke: e.target.value })} placeholder="Mærke, fx 'Bosch'" className="rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand" />
-        <div>
-          <input value={lineItem.model} onChange={(e) => onChange({ ...lineItem, model: e.target.value })} placeholder="Modelnummer" className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand" />
-          <ModelNumberLookup
-            model={lineItem.model}
-            onSelectProduct={({ brand, model: matchedModel }) => onChange({ ...lineItem, maerke: brand || lineItem.maerke, model: matchedModel || lineItem.model })}
-          />
-        </div>
-      </div>
-      <p className="text-[10px] text-muted mb-2">Modelnummer tjekkes automatisk mod punkt1.dk's varekartotek — grønt flueben = bekræftet, rødt kryds = ikke fundet.</p>
+      <select value={lineItem.primaerYdelse?.id || ""} onChange={(e) => changePrimaryService(e.target.value)} className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink mb-2 focus:outline-none focus:border-brand">
+        {primaryServices.map((p) => <option key={p.id} value={p.id}>{p.navn}</option>)}
+      </select>
 
       <label className="flex items-center gap-2 mb-1 text-xs text-muted">
         <Clock size={12} className="shrink-0" />
@@ -320,47 +344,32 @@ function LineItemEditor({ lineItem, productTypes, productCategories, primaryServ
       <EstimateSuggestion estimateIndex={estimateIndex} lineItem={lineItem} onApply={changePrimaryServiceMinutes} />
 
       {available.length > 0 && (
-        <div className="mb-2">
+        <div className="mb-2 border-t border-divider pt-2">
           <p className="text-[10px] uppercase tracking-wide text-muted mb-1">Tillægsydelser</p>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="space-y-1">
             {available.map((t) => {
               const selected = lineItem.tillaeg.find((x) => x.id === t.id || x.navn === t.navn);
               const Icon = serviceIcon(t.navn);
               return (
-                <button
-                  key={t.id}
-                  onClick={() => toggleAddOn(t)}
-                  className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border transition-colors ${selected ? "border-success bg-success/10 text-success" : "border-line text-muted hover:border-brand hover:text-brand"}`}
-                >
-                  <Icon size={12} strokeWidth={2.5} />
-                  {t.navn}
-                  <span className="text-[10px] opacity-70">{defaultAddOnMinutes(t)}m</span>
-                </button>
+                <div key={t.id} className="flex items-center gap-2 px-1.5 py-1 rounded-lg hover:bg-white">
+                  <input type="checkbox" checked={!!selected} onChange={() => toggleAddOn(t)} className="w-4 h-4 accent-success shrink-0" />
+                  <Icon size={13} className="text-muted shrink-0" strokeWidth={2.5} />
+                  <span className="text-sm text-ink flex-1 truncate">{t.navn}</span>
+                  {selected ? (
+                    <MinutesInput
+                      value={selected.minutter}
+                      onChange={(min) => changeAddOnMinutes(selected.id, min)}
+                      className="w-14 rounded-lg border border-line bg-white px-1.5 py-0.5 text-right text-[10px] text-ink focus:outline-none focus:border-brand"
+                      title="Estimeret tid for denne tillægsydelse"
+                    />
+                  ) : (
+                    <span className="text-[10px] text-muted w-14 text-right">{defaultAddOnMinutes(t)}m</span>
+                  )}
+                  <span className="text-[10px] text-muted">min</span>
+                </div>
               );
             })}
           </div>
-        </div>
-      )}
-
-      {lineItem.tillaeg.length > 0 && (
-        <div className="space-y-1 mb-2 border-t border-divider pt-2">
-          {lineItem.tillaeg.map((y) => {
-            const Icon = serviceIcon(y.navn);
-            return (
-              <div key={y.id} className="flex items-center gap-2 px-1.5 py-1 rounded-lg hover:bg-white group">
-                <input type="checkbox" checked={y.udfoert} onChange={() => toggleDone(y.id)} className="w-4 h-4 accent-success shrink-0" title="Udført" />
-                <Icon size={13} className="text-muted shrink-0" strokeWidth={2.5} />
-                <span className="text-sm text-ink flex-1 truncate">{y.navn}</span>
-                <MinutesInput
-                  value={y.minutter}
-                  onChange={(min) => changeAddOnMinutes(y.id, min)}
-                  className="w-14 rounded-lg border border-line bg-white px-1.5 py-0.5 text-right text-[10px] text-ink focus:outline-none focus:border-brand"
-                  title="Estimeret tid for denne tillægsydelse"
-                />
-                <span className="text-[10px] text-muted">min</span>
-              </div>
-            );
-          })}
         </div>
       )}
 
