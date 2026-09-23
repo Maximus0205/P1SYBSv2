@@ -7,6 +7,7 @@ import { lookupPosOrder } from "../lib/dataStore";
 import { ReceiptUpload } from "../components/ReceiptUpload";
 import { LineItemEditor, KeyAccessFields, CustomerHistory, SuggestedDates, InteractiveWeekPicker, ClusterEstimateNote } from "../components/OrderFormFields";
 import { AddressInput } from "../components/AddressInput";
+import { AddressNotesPanel } from "../components/AddressNotes";
 
 // Bookingflowet er delt op i 4 mindre "kort" (trin) i stedet for én lang
 // formular:
@@ -133,7 +134,7 @@ function PosLookupPanel({ storeId, onApply }) {
   );
 }
 
-function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, orders, selectedDate, onAdd, onClose, onOpen, storeFocus }) {
+function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, addressNotes, onAddAddressNote, orders, selectedDate, onAdd, onClose, onOpen, storeFocus }) {
   const [step, setStep] = useState(0);
   const [caseTypeId, setCaseTypeId] = useState(SAGSTYPE_KUNDE);
   const [customerName, setCustomerName] = useState("");
@@ -352,6 +353,17 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
             <p className="text-xs text-danger mb-4">Bemærk: adressen kunne ikke bekræftes af korttjenesten — dobbelttjek den.</p>
           )}
 
+          {/* VIDENSDELING (september 2026): viser evt. kendt info om
+              PRÆCIS denne adresse/opgang (flaget af en tidligere montør
+              eller sælger), og lader sælgeren tilføje ny viden med det
+              samme, mens de har kunden i røret - se AddressNotes.jsx. */}
+          <AddressNotesPanel
+            addressNotes={addressNotes}
+            address={address}
+            onAdd={(note) => onAddAddressNote?.(address, note)}
+            canAdd={!!onAddAddressNote}
+          />
+
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2 flex items-center gap-1.5">
             <KeyRound size={13} className="shrink-0" style={{ color: erTomgang ? TOMGANG_COLOR : undefined }} aria-hidden="true" />
             Nøgle & adgang
@@ -406,6 +418,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
                 productCategories={productCategories}
                 primaryServices={primaryServices}
                 addOnServices={addOnServices}
+                defaultTimeEstimates={defaultTimeEstimates}
                 estimateIndex={estimateIndex}
                 onChange={(next) => updateLineItem(idx, next)}
                 onRemove={() => removeLineItem(idx)}
