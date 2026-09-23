@@ -31,31 +31,38 @@ const suggestionCache = new Map();
 const normalize = (address) => (address || "").trim().toLowerCase();
 
 // ---------------------------------------------------------------------------
-// POSTNUMMER-GENKENDELSE (september 2026)
+// POSTNUMMER-GENKENDELSE (september 2026, RETTET)
 //
-// ORS' underliggende adresseparser (libpostal, via Pelias) modtager
-// SØGETEKSTEN som én sammenhængende streng og skal selv gætte, hvilken del
-// der er gadenavn, husnummer og postnummer. Skriver man fx "Fuglebakken
-// 5750" (gadenavn + postnummer, INGEN by), gætter parseren ofte, at "5750"
-// er et HUSNUMMER i stedet for et postnummer - og falder derefter tilbage
-// til den mest "vigtige" gade med det navn på landsplan (typisk en større
-// by som Odense), uanset hvilken by brugeren faktisk mente. Det var netop
-// den observerede fejl: "Fuglebakken 5750" viste kun Odense, ikke Ringe.
+// Første forsøg her var at omskrive "Fuglebakken 5750" til "Fuglebakken,
+// 5750" for at hjælpe ORS' adresseparser med at genkende postnummeret. Det
+// virkede IKKE i praksis (bekræftet ved test) - og det er ikke en fejl i
+// formateringen, men i selve tjenesten: ORS' geocoding (bygget på Pelias)
+// har en KENDT, ubekræftet fejl i deres egen bug-tracker, hvor postnummeret
+// reelt ignoreres af søgningen, uanset hvordan det sendes (se
+// github.com/GIScience/openrouteservice, issue #1003 - "Structured query
+// for postal code doesn't work"). Der findes ingen pålidelig måde at bede
+// ORS om at indsnævre en søgning til et postnummer på - hverken via fri
+// tekst eller strukturerede parametre.
 //
-// Danske husnumre er i praksis ALDRIG præcis 4 cifre inden for selve
-// postnummer-intervallet (1000-9990) - heuristikken er derfor sikker: et
-// afsluttende 4-cifret tal i det interval opdeles fra resten med et komma
-// ("Fuglebakken, 5750") i stedet for mellemrum, hvilket adresseparseren
-// markant oftere tolker korrekt som et postnummer. Selve postnummeret
-// bruges desuden til at PRIORITERE/FILTRERE de returnerede forslag
-// bagefter (se searchAddressSuggestions) - en ekstra sikkerhed, hvis ORS
-// alligevel returnerer en blanding af byer.
-function splitPostalCodeHint(text) {
+// Komma-omskrivningen er BEHOLDT (harmløs, og kan stadig hjælpe i mindre
+// skæve tilfælde end "Fuglebakken"/Odense), men den egentlige rettelse for
+// DENNE fejl er i stedet at GØRE OPMÆRKSOM på begrænsningen, se
+// extractPostalCodeHint og AddressInput.jsx: kan søgningen ikke bekræftes
+// at ramme det skrevne postnummer, vises et konkret tip om at skrive
+// BYNAVNET i stedet - det er det, ORS rent faktisk kan finde ud af.
+export function extractPostalCodeHint(text) {
   const match = (text || "").trim().match(/^(.*\S)\s+(\d{4})$/);
-  if (!match) return { query: text, postnr: null };
+  if (!match) return null;
   const postnr = Number(match[2]);
-  if (postnr < 1000 || postnr > 9990) return { query: text, postnr: null };
-  return { query: `${match[1]}, ${match[2]}`, postnr: match[2] };
+  if (postnr < 1000 || postnr > 9990) return null;
+  return match[2];
+}
+
+function splitPostalCodeHint(text) {
+  const postnr = extractPostalCodeHint(text);
+  if (!postnr) return { query: text, postnr: null };
+  const withoutCode = text.trim().slice(0, text.trim().length - postnr.length).trim().replace(/,$/, "");
+  return { query: `${withoutCode}, ${postnr}`, postnr };
 }
 
 // Luftlinjeafstand (meter, Haversine) - bruges KUN til at SORTERE forslag
@@ -136,12 +143,15 @@ export async function validateAddress(address, focus) {
 // zip+city) instead of ORS' raw label, which lacks a postal code and uses
 // English region names.
 //
-// RETTET (september 2026) - tre forbedringer af selve rangeringen, ovenpå
-// ORS/Pelias' rå relevans-liste (som IKKE er numerisk eller geografisk
-// ordnet ud af sig selv):
-//  1. Postnummer-hint (se splitPostalCodeHint) - findes der mindst ét
-//     forslag med det postnummer, brugeren faktisk skrev, filtreres til
-//     KUN dem. Retter "Fuglebakken 5750" der ellers kun viste Odense.
+// Tre forbedringer af selve rangeringen, ovenpå ORS/Pelias' rå
+// relevans-liste (som IKKE er numerisk eller geografisk ordnet ud af sig
+// selv):
+//  1. Postnummer-hint - findes der mindst ét forslag med det postnummer,
+//     brugeren faktisk skrev, filtreres til KUN dem. Dette virker dog KUN
+//     når ORS overhovedet returnerer et forslag i den by til at starte med
+//     - se noten ved extractPostalCodeHint: det er ikke altid tilfældet
+//     (kendt begrænsning i selve ORS), og AddressInput.jsx viser i så fald
+//     et tip om at skrive bynavnet i stedet.
 //  2. Afstand til et fokuspunkt (typisk butikken) - forslag tættest på
 //     kommer først. Adskiller effektivt forskellige byer med samme
 //     gadenavn, UDEN at forstyrre rækkefølgen for numre på samme gade
