@@ -142,7 +142,10 @@ function OrderRoute({ profile, storeId, orders, technicians, ordersStore, duplic
     // Fælles for sælgerens (OrderView) og montørens (TechnicianOrderDetail)
     // visning - se AddressNotes.jsx. address gives med af hver visning
     // selv (de kender deres egen order.kunde.adresse); her sendes kun
-    // selve listen og tilføj/fjern-funktionerne.
+    // selve listen og tilføj/fjern-funktionerne. Modsat bookingflowet
+    // (NewOrderForm) må man her BÅDE se og tilføje/fjerne et flag - det er
+    // netop på den bookede/igangværende sag, en montør typisk opdager og
+    // noterer forholdet.
     addressNotes,
     onAddAddressNote,
     onDeleteAddressNote,
@@ -305,10 +308,12 @@ export default function App() {
   const onOpen = (id) => navigate(`/sag/${id}`);
 
   // Vidensdeling om en adresse (september 2026) - se hooks/useAddressNotes.js
-  // og components/AddressNotes.jsx. Én fælles funktion her, brugt fra
-  // BÅDE bookingflowet (NewOrderForm via SalesPage) og en eksisterende
-  // sags visning (OrderRoute) - "createdBy" sættes altid ud fra den
-  // faktisk indloggede profil, aldrig noget kaldende kode selv angiver.
+  // og components/AddressNotes.jsx. Én fælles funktion her, brugt fra en
+  // eksisterende sags visning (OrderRoute - sælger ELLER montør). Kan
+  // BEVIDST IKKE kaldes fra selve bookingflowet (SalesPage/NewOrderForm) -
+  // der vises kun en advarsel om et allerede oprettet flag, se noten i
+  // SalesPage.jsx. "createdBy" sættes altid ud fra den faktisk indloggede
+  // profil, aldrig noget kaldende kode selv angiver.
   const addAddressNote = (address, note) => addressNotesStore.addAddressNote(address, note, profile ? { id: profile.id, navn: profile.navn } : null);
 
   // MANGLENDE VARER: lageret melder, at en vare ikke kan findes ved pluk.
@@ -438,7 +443,7 @@ export default function App() {
 
           <Route path="/salg" element={
             <Gate allowed={allowedPages} page="salg">
-              <SalesPage storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} defaultTimeEstimates={catalog.defaultTimeEstimates} addressNotes={addressNotesStore.addressNotes} onAddAddressNote={addAddressNote} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={effectiveStore?.lat && effectiveStore?.lon ? { lat: effectiveStore.lat, lon: effectiveStore.lon } : null} />
+              <SalesPage storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} defaultTimeEstimates={catalog.defaultTimeEstimates} addressNotes={addressNotesStore.addressNotes} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={effectiveStore?.lat && effectiveStore?.lon ? { lat: effectiveStore.lat, lon: effectiveStore.lon } : null} />
             </Gate>
           } />
 
