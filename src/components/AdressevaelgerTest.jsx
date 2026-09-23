@@ -6,13 +6,10 @@ import { searchAdressevaelger, lookupAdressevaelgerCoordinates } from "../lib/ge
 // FORSØG (september 2026): Klimadatastyrelsens Adressevælger - den
 // officielle erstatning for DAWA (som lukker 1. oktober 2026).
 //
-// Denne komponent er BEVIDST ISOLERET: den er ikke koblet til nogen del af
-// bookingflowet eller andre adressefelter i appen (se AddressInput.jsx,
-// som stadig uændret bruger OpenRouteService via lib/geocoding.js). Formålet
-// er udelukkende at kunne AFPRØVE og SAMMENLIGNE Adressevælgerens
-// søgekvalitet - fx netop de tilfælde der var buggy i den nuværende løsning
-// ("Fuglebakken 5750") - før nogen beslutning tages om at skifte selve
-// appens adressefelter over.
+// AddressInput.jsx bruger nu Adressevælgeren LIVE i selve bookingflowet -
+// denne komponent her er stadig nyttig som et isoleret sted at prøve
+// specifikke søgetekster/postnumre af og se koordinater, uden at skulle
+// gå igennem en hel booking.
 function AdressevaelgerTest() {
   const [tekst, setTekst] = useState("");
   const [postnummer, setPostnummer] = useState("");
@@ -24,7 +21,12 @@ function AdressevaelgerTest() {
   const soeg = async () => {
     if (!tekst.trim()) return;
     setLoading(true); setFejl(""); setFund([]); setKoordinater({});
-    const result = await searchAdressevaelger(tekst.trim(), { postnummer: postnummer.trim() || undefined });
+    // searchAdressevaelger tager ét argument og splitter selv et
+    // afsluttende postnummer ud (se lib/geocodingAdressevaelger.js:
+    // parseQuery) - de to felter her slås derfor sammen til én tekst,
+    // præcis som man ville taste dem i et rigtigt adressefelt.
+    const samlet = postnummer.trim() ? `${tekst.trim()} ${postnummer.trim()}` : tekst.trim();
+    const result = await searchAdressevaelger(samlet);
     setLoading(false);
     if (!result.ok) { setFejl(result.fejl); return; }
     setFund(result.fund);
@@ -42,7 +44,7 @@ function AdressevaelgerTest() {
         <FlaskConical size={15} className="text-brand" aria-hidden="true" /> Forsøg: Adressevælgeren (erstatning for DAWA)
       </h3>
       <p className="text-xs text-muted mb-3">
-        Rent testværktøj - ikke koblet til bookingflowet eller noget andet adressefelt i appen. Bruges til at sammenligne søgekvaliteten med den nuværende løsning (OpenRouteService), inden en eventuel beslutning om at skifte.
+        Bookingflowet bruger nu Adressevælgeren direkte (se AddressInput.jsx). Dette panel er til at afprøve specifikke søgninger og se rå koordinater isoleret, uden at oprette en sag.
       </p>
 
       <div className="flex gap-2 flex-wrap mb-3">
