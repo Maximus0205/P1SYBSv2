@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Check, AlertTriangle, Loader2, MapPin } from "lucide-react";
-import { searchAddressSuggestions, validateAddress, hasOrsKey } from "../lib/geocoding";
+import { Check, AlertTriangle, Loader2, MapPin, Info } from "lucide-react";
+import { searchAddressSuggestions, validateAddress, hasOrsKey, extractPostalCodeHint } from "../lib/geocoding";
 
 const DEBOUNCE_MS = 350;
 
@@ -74,6 +74,21 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus 
     );
   }
 
+  // ---------------------------------------------------------------------
+  // POSTNUMMER-TIP (september 2026)
+  //
+  // ORS' korttjeneste har en bekræftet, ekstern fejl (se noten ved
+  // extractPostalCodeHint i lib/geocoding.js): et postnummer i søgeteksten
+  // bliver reelt ignoreret, og søgningen kan derfor ende i den forkerte by
+  // - fx "Fuglebakken 5750" der kun viste Odense, ikke Ringe. Det kan vi
+  // ikke rette i selve tjenesten, men vi kan gøre brugeren opmærksom på
+  // det, mens de stadig sidder med adressen: er der skrevet et postnummer,
+  // som INGEN af de viste forslag rent faktisk har, er det tydeligvis
+  // ikke blevet brugt til at indsnævre søgningen - og bynavnet er det,
+  // ORS reelt kan finde ud af.
+  const postalHint = extractPostalCodeHint(value);
+  const postalHintUnused = postalHint && suggestions.length > 0 && !suggestions.some((s) => s.postnummer === postalHint);
+
   return (
     <div className="relative">
       <div className="relative">
@@ -107,6 +122,12 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus 
       {status === "usikker" && (
         <p className="text-[11px] text-danger mt-1 flex items-center gap-1">
           <AlertTriangle size={11} /> Adressen kunne ikke bekræftes — tjek for tastefejl, eller vælg et forslag herunder.
+        </p>
+      )}
+
+      {postalHintUnused && (
+        <p className="text-[11px] text-brand mt-1 flex items-center gap-1">
+          <Info size={11} className="shrink-0" /> Postnummeret {postalHint} ser ikke ud til at være brugt i forslagene herunder — prøv at skrive byens navn i stedet.
         </p>
       )}
 
