@@ -552,12 +552,12 @@ function FinishPanel({ order, onConfirm, onCancel, onGoToTab }) {
 // delte OrderView.jsx, som bruges af admin/sælger. Vises til alle, der selv
 // kører (se koererSelv i App.jsx), ikke kun til rollen montor.
 //
-// VIDENSDELING (september 2026): AddressNotesPanel er den PRIMÆRE plads
-// for denne funktion - montøren er den, der reelt STÅR på adressen og
-// opdager forhold værd at vide (se AddressNotes.jsx). Både SE og TILFØJE
-// styres af canFieldwork, samme rettighed montøren i øvrigt bruger til alt
-// andet aktivt på sagen.
-function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, addReport, onStartOrder, onFinishOrder, onReopenOrder, onUpdateBooking, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem, onRetryPosSync, permissions, addressNotes, onAddAddressNote, onDeleteAddressNote }) {
+// VIDENSDELING (september 2026, rettet): AddressNotesPanel viser her kun
+// en RÅDGIVENDE ADVARSEL, hvis adressen allerede er flaget - opret/fjern
+// af et flag hører til adressen, ikke den konkrete sag, og sker i stedet
+// på den selvstændige fane "Adresser" (se pages/AddressesPage.jsx), hvor
+// en montør kan oprette adresser fra felten uafhængigt af en aktiv sag.
+function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, addReport, onStartOrder, onFinishOrder, onReopenOrder, onUpdateBooking, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem, onRetryPosSync, permissions, addressNotes }) {
   const [tab, setTab] = React.useState("noter");
   const [panel, setPanel] = React.useState(null); // "booking" | "dupliker" | "problem" | "faerdig"
   const canFieldwork = canDo(permissions, "sag_feltarbejde");
@@ -696,14 +696,7 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
           </div>
 
           <div className="mt-3 pt-3 border-t border-divider">
-            <AddressNotesPanel
-              addressNotes={addressNotes}
-              address={order.kunde?.adresse}
-              onAdd={(note) => onAddAddressNote?.(order.kunde?.adresse, note)}
-              canAdd={canFieldwork && !!onAddAddressNote}
-              canDelete={canFieldwork}
-              onDelete={onDeleteAddressNote}
-            />
+            <AddressNotesPanel addressNotes={addressNotes} address={order.kunde?.adresse} canAdd={false} />
           </div>
         </div>
       )}
