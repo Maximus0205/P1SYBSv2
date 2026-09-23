@@ -30,6 +30,61 @@ const suggestionCache = new Map();
 
 const normalize = (address) => (address || "").trim().toLowerCase();
 
+// ---------------------------------------------------------------------------
+// POSTNUMMER-GENKENDELSE (september 2026)
+//
+// ORS' underliggende adresseparser (libpostal, via Pelias) modtager
+// SØGETEKSTEN som én sammenhængende streng og skal selv gætte, hvilken del
+// der er gadenavn, husnummer og postnummer. Skriver man fx "Fuglebakken
+// 5750" (gadenavn + postnummer, INGEN by), gætter parseren ofte, at "5750"
+// er et HUSNUMMER i stedet for et postnummer - og falder derefter tilbage
+// til den mest "vigtige" gade med det navn på landsplan (typisk en større
+// by som Odense), uanset hvilken by brugeren faktisk mente. Det var netop
+// den observerede fejl: "Fuglebakken 5750" viste kun Odense, ikke Ringe.
+//
+// Danske husnumre er i praksis ALDRIG præcis 4 cifre inden for selve
+// postnummer-intervallet (1000-9990) - heuristikken er derfor sikker: et
+// afsluttende 4-cifret tal i det interval opdeles fra resten med et komma
+// ("Fuglebakken, 5750") i stedet for mellemrum, hvilket adresseparseren
+// markant oftere tolker korrekt som et postnummer. Selve postnummeret
+// bruges desuden til at PRIORITERE/FILTRERE de returnerede forslag
+// bagefter (se searchAddressSuggestions) - en ekstra sikkerhed, hvis ORS
+// alligevel returnerer en blanding af byer.
+function splitPostalCodeHint(text) {
+  const match = (text || "").trim().match(/^(.*\S)\s+(\d{4})$/);
+  if (!match) return { query: text, postnr: null };
+  const postnr = Number(match[2]);
+  if (postnr < 1000 || postnr > 9990) return { query: text, postnr: null };
+  return { query: `${match[1]}, ${match[2]}`, postnr: match[2] };
+}
+
+// Luftlinjeafstand (meter, Haversine) - bruges KUN til at SORTERE forslag
+// efter nærhed til et fokuspunkt (typisk butikken). Til reelle køreafstande
+// bruges ORS' matrix-kald i stedet, se drivingDistances/routeDrivingTime
+// nedenfor - denne er bevidst en simpel tilnærmelse, hurtig nok til at
+// sortere en dropdown-liste uden endnu et netværkskald pr. tastetryk.
+function haversineMeters(a, b) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLon = toRad(b.lon - a.lon);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+// Splitter et husnummer som "11A" i { num: 11, letter: "A" }, så en liste
+// kan sorteres i den rækkefølge, man rent faktisk går ned ad en gade i.
+// ORS/Pelias returnerer dem i sin egen relevans-rækkefølge, som hverken er
+// numerisk eller på nogen anden forudsigelig måde ordnet (den observerede
+// fejl: "11A, 9, 11, 13, 7, 15, 5, 17").
+function parseHouseNumber(raw) {
+  const match = (raw || "").trim().match(/^(\d+)\s*([a-zA-Z]?)/);
+  if (!match) return { num: Infinity, letter: "" };
+  return { num: Number(match[1]), letter: (match[2] || "").toUpperCase() };
+}
+
 // Looks up the address and returns the best hit incl. label and ORS' own
 // confidence score (0-1). Shares cache with geocodeAddress/validateAddress.
 // focus: optional { lat, lon } - typically the store's own address, so
@@ -39,7 +94,8 @@ async function bestMatch(address, focus) {
   if (!key || key.length < 5) return null;
   if (geocodeCache.has(key)) return geocodeCache.get(key);
 
-  const data = await callProxy({ handling: "soeg", tekst: address, fokus: focus });
+  const { query } = splitPostalCodeHint(address);
+  const data = await callProxy({ handling: "soeg", tekst: query, fokus: focus });
   if (data === null) return null; // the call failed (e.g. rate limit) - NOT cached, retry later.
 
   // Prefer a feature with a house number if several candidates come back
@@ -75,45 +131,73 @@ export async function validateAddress(address, focus) {
   };
 }
 
-// Up to 8 address suggestions while the user is typing (dropdown under the
+// Up to 10 address suggestions while the user is typing (dropdown under the
 // address field). Builds its own clean two-line display (street+number /
 // zip+city) instead of ORS' raw label, which lacks a postal code and uses
 // English region names.
 //
-// Suggestions WITH a house number are always shown before those WITHOUT
-// (plain street names with no number) - this was the main reason the house
-// number was often missing: without this sort, an imprecise "whole street"
-// suggestion could rank above a precise address suggestion with a house
-// number, even when both existed in the response.
+// RETTET (september 2026) - tre forbedringer af selve rangeringen, ovenpå
+// ORS/Pelias' rå relevans-liste (som IKKE er numerisk eller geografisk
+// ordnet ud af sig selv):
+//  1. Postnummer-hint (se splitPostalCodeHint) - findes der mindst ét
+//     forslag med det postnummer, brugeren faktisk skrev, filtreres til
+//     KUN dem. Retter "Fuglebakken 5750" der ellers kun viste Odense.
+//  2. Afstand til et fokuspunkt (typisk butikken) - forslag tættest på
+//     kommer først. Adskiller effektivt forskellige byer med samme
+//     gadenavn, UDEN at forstyrre rækkefølgen for numre på samme gade
+//     (som ligger for tæt på hinanden til at afstanden gør nogen reel
+//     forskel - se de 50 meters margin nedenfor).
+//  3. Husnumre med tal sorteres NUMERISK ("5, 7, 9, 11, 11A, 13...") i
+//     stedet for ORS' egen, ude-af-trit rækkefølge.
 export async function searchAddressSuggestions(partialAddress, focus) {
   const key = normalize(partialAddress) + (focus ? `|${focus.lat},${focus.lon}` : "");
   if (!key || key.length < 3) return [];
   if (suggestionCache.has(key)) return suggestionCache.get(key);
 
-  const data = await callProxy({ handling: "autocomplete", tekst: partialAddress, fokus: focus });
+  const { query, postnr } = splitPostalCodeHint(partialAddress);
+  const data = await callProxy({ handling: "autocomplete", tekst: query, fokus: focus });
   if (data === null) return []; // the call failed - not cached, the field just falls back to no suggestion.
 
-  const suggestions = (data?.features || [])
-    .map((f) => {
-      const p = f.properties || {};
-      const hasHouseNumber = !!p.housenumber;
-      const mainText = [p.street, p.housenumber].filter(Boolean).join(" ") || p.name || p.label || "";
-      const subText = [p.postalcode, p.locality || p.county].filter(Boolean).join(" ");
-      return {
-        // Used when the suggestion is selected - the actual address put into the field.
-        label: subText ? `${mainText}, ${subText}` : (p.label || mainText),
-        hovedtekst: mainText,
-        undertekst: subText,
-        harHusnummer: hasHouseNumber,
-        lon: f.geometry.coordinates[0],
-        lat: f.geometry.coordinates[1],
-      };
-    })
-    // House-number suggestions first, otherwise keep ORS' own relevance order.
-    .sort((a, b) => (b.harHusnummer ? 1 : 0) - (a.harHusnummer ? 1 : 0))
-    .slice(0, 8);
-  suggestionCache.set(key, suggestions);
-  return suggestions;
+  let suggestions = (data?.features || []).map((f) => {
+    const p = f.properties || {};
+    const hasHouseNumber = !!p.housenumber;
+    const mainText = [p.street, p.housenumber].filter(Boolean).join(" ") || p.name || p.label || "";
+    const subText = [p.postalcode, p.locality || p.county].filter(Boolean).join(" ");
+    return {
+      // Used when the suggestion is selected - the actual address put into the field.
+      label: subText ? `${mainText}, ${subText}` : (p.label || mainText),
+      hovedtekst: mainText,
+      undertekst: subText,
+      harHusnummer: hasHouseNumber,
+      husnummer: parseHouseNumber(p.housenumber),
+      postnummer: p.postalcode || null,
+      lon: f.geometry.coordinates[0],
+      lat: f.geometry.coordinates[1],
+    };
+  });
+
+  if (postnr) {
+    const matching = suggestions.filter((s) => s.postnummer === postnr);
+    if (matching.length > 0) suggestions = matching;
+  }
+
+  suggestions.sort((a, b) => {
+    if (focus) {
+      const da = haversineMeters(focus, a);
+      const db = haversineMeters(focus, b);
+      // Under 50 meters reel forskel er støj (typisk to numre på samme
+      // gade) - lad husnummer-sorteringen nedenfor afgøre den rækkefølge
+      // i stedet for tilfældige meter-udsving.
+      if (Math.abs(da - db) > 50) return da - db;
+    }
+    if (a.harHusnummer !== b.harHusnummer) return a.harHusnummer ? -1 : 1;
+    if (a.husnummer.num !== b.husnummer.num) return a.husnummer.num - b.husnummer.num;
+    return a.husnummer.letter.localeCompare(b.husnummer.letter);
+  });
+
+  const result = suggestions.slice(0, 10);
+  suggestionCache.set(key, result);
+  return result;
 }
 
 // Geocodes a list of addresses (deduplicated) - used by AfstandsForslag to
