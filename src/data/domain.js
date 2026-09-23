@@ -86,12 +86,14 @@ const OTHER_PRODUCT_TYPE = "Andet (skriv selv)";
 //
 // STANDARDTIDER (september 2026): Admin kan sætte et UDGANGSPUNKT for
 // tiden på en ny varelinje - se getDefaultEstimateMinutes/createLineItem
-// nedenfor og lib/dataStore.js: default_time_estimates. Det erstatter
-// IKKE det MÅLTE estimat fra afsluttede sager (data/estimates.js), som
-// stadig vises som et separat, opdateret forslag, når der er nok historik
-// - det admin-satte tal er blot et fornuftigt sted at starte, især for en
-// helt ny butik eller en helt ny varetype uden historik endnu. Tallet
-// tastes stadig frit for den enkelte booking bagefter, ligesom hidtil.
+// nedenfor og lib/dataStore.js: default_time_estimates. Matrixen dækker
+// BÅDE primære ydelser og tillægsydelser (samme opslagsfunktion, samme
+// tabel - "ydelseId" kan være id'et på begge slags). Det erstatter IKKE
+// det MÅLTE estimat fra afsluttede sager (data/estimates.js), som stadig
+// vises som et separat, opdateret forslag, når der er nok historik - det
+// admin-satte tal er blot et fornuftigt sted at starte, især for en helt
+// ny butik eller en helt ny varetype uden historik endnu. Tallet tastes
+// stadig frit for den enkelte booking bagefter, ligesom hidtil.
 
 const DEFAULT_PRODUCT_CATEGORIES = [
   { id: "vk1", navn: "Hvidevare" },
@@ -142,12 +144,15 @@ const availableAddOns = (productTypeId, primaryServiceId, addOnServices) => {
   });
 };
 
-// Slår en admin-sat standardtid op for en (varetype, primær ydelse)-
-// kombination - eller null, hvis der ikke er sat nogen (så feltet i
-// stedet starter på 0, som hidtil). defaultTimeEstimates er den flade
-// liste fra lib/dataStore.js: getDefaultTimeEstimates.
-const getDefaultEstimateMinutes = (defaultTimeEstimates, varetypeId, primaerYdelseId) => {
-  const entry = (defaultTimeEstimates || []).find((e) => e.varetypeId === varetypeId && e.primaerYdelseId === primaerYdelseId);
+// Slår en admin-sat standardtid op for en (varetype, ydelse)-kombination -
+// eller null, hvis der ikke er sat nogen. "ydelse" er bevidst generisk:
+// funktionen bruges BÅDE til en primær ydelse (se createLineItem) og til
+// en tillægsydelse (se toggleAddOn i OrderFormFields.jsx) - id'et er blot
+// en opslagsnøgle, og begge slags ydelser har hver deres egen, unikke id.
+// defaultTimeEstimates er den flade liste fra lib/dataStore.js:
+// getDefaultTimeEstimates.
+const getDefaultEstimateMinutes = (defaultTimeEstimates, varetypeId, ydelseId) => {
+  const entry = (defaultTimeEstimates || []).find((e) => e.varetypeId === varetypeId && e.primaerYdelseId === ydelseId);
   return entry ? entry.minutter : null;
 };
 
@@ -246,6 +251,19 @@ const areaKey = (addr) => {
   if (!n) return "";
   const match = n.match(/\b(\d{4})\s+([a-zæøå]+(?:\s[a-zæøå]+)?)\b/);
   return match ? `${match[1]} ${match[2]}`.trim() : "";
+};
+
+// ---------------- Adresse-noter / vidensdeling (september 2026) ----------------
+// Finder de gemte adresse-noter, der gælder for EN GIVEN adresse - samme
+// buildingKey-matchning som resten af appen bruger til "samme opgang" (se
+// SuggestedDates i OrderFormFields.jsx og CustomerHistoryLookup). Det
+// betyder bevidst, at en note om "Skovvej 12" også dukker op for "Skovvej
+// 12, 2. th" og omvendt - viden om en BYGNING er som regel relevant for
+// hele bygningen, ikke kun præcis den skrivemåde, den blev noteret med.
+const matchingAddressNotes = (addressNotes, address) => {
+  const key = buildingKey(address);
+  if (!key) return [];
+  return (addressNotes || []).filter((n) => n.addressKey === key);
 };
 
 const weekDays = (iso) => {
@@ -453,6 +471,7 @@ export {
   DEFAULT_SERVICE_MINUTES, createAddOn, OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID,
   DEFAULT_PRODUCT_CATEGORIES, DEFAULT_PRODUCT_TYPES, DEFAULT_PRIMARY_SERVICES, DEFAULT_ADD_ON_SERVICES, availableAddOns,
   createLineItem, getDefaultEstimateMinutes, lineItemLabel, lineItemMinutes, orderExpectedMinutes, normalizeAddress, buildingKey, areaKey,
+  matchingAddressNotes,
   lineItemFingerprint, isMissingActive, missingLineItems, orderHasMissingItems,
   weekDays, buildTitle, keyAccessText, TIME_SLOTS, timeSlotById, timeSlotText, KEY_ACCESS_TYPES, TECHNICIAN_COLORS, technicianColor,
   DEFAULT_VEHICLES, vehicleLabel, vehicleBlockedByTimeOff, isTechnicianAbsent, activeSickLeave, vehicleAbsences, vehicleHasCoverage,
