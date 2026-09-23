@@ -177,11 +177,18 @@ export const saveAddOnService = (storeId, service) => saveRow("add_on_services",
 export const deleteAddOnService = (storeId, id) => deleteRow("add_on_services", storeId, id);
 export const seedDefaultAddOnServices = (storeId, services) => seedDefaults("add_on_services", storeId, services);
 
-// ---------- Standardtider (varetype × primær ydelse) - september 2026 ----------
+// ---------- Standardtider (varetype × ydelse - primær ELLER tillæg) - september 2026 ----------
 // Admin-sat UDGANGSPUNKT for en ny varelinje - se domain.js:
 // getDefaultEstimateMinutes og createLineItem. Erstatter IKKE det målte
 // estimat fra afsluttede sager (data/estimates.js), som stadig vises som
 // et separat forslag, når der er nok historik.
+//
+// RETTET (september 2026): matrixen dækker nu OGSÅ tillægsydelser, ikke
+// kun primære ydelser - kolonnen "primaer_ydelse_id" er et bevidst
+// generisk, umarkeret tekstfelt uden fremmednøgle (se migrationen), så den
+// lige så gyldigt kan indeholde et tillægs id som en primær ydelses id.
+// Navnet i databasen er ikke ændret (ville kræve en migration for en ren
+// omdøbning) - opfat det som "ydelse_id" i praksis.
 export async function getDefaultTimeEstimates(storeId) {
   if (!storeId) return [];
   const { data, error } = await supabase
@@ -199,10 +206,10 @@ export async function getDefaultTimeEstimates(storeId) {
 // konvention - 0 er en gyldig, bevidst sat standardtid (fx en ren
 // levering uden montering). "Ikke sat" udtrykkes ved slet ikke at have en
 // række - se deleteDefaultTimeEstimate.
-export async function saveDefaultTimeEstimate(storeId, varetypeId, primaerYdelseId, minutter) {
-  if (!storeId || !varetypeId || !primaerYdelseId) return false;
+export async function saveDefaultTimeEstimate(storeId, varetypeId, ydelseId, minutter) {
+  if (!storeId || !varetypeId || !ydelseId) return false;
   const { error } = await supabase.from("default_time_estimates").upsert({
-    store_id: storeId, varetype_id: varetypeId, primaer_ydelse_id: primaerYdelseId,
+    store_id: storeId, varetype_id: varetypeId, primaer_ydelse_id: ydelseId,
     minutter: Math.max(0, Number(minutter) || 0), updated_at: new Date().toISOString(),
   }, { onConflict: "store_id,varetype_id,primaer_ydelse_id" });
   if (error) {
@@ -212,12 +219,69 @@ export async function saveDefaultTimeEstimate(storeId, varetypeId, primaerYdelse
   return true;
 }
 
-export async function deleteDefaultTimeEstimate(storeId, varetypeId, primaerYdelseId) {
-  if (!storeId || !varetypeId || !primaerYdelseId) return false;
+export async function deleteDefaultTimeEstimate(storeId, varetypeId, ydelseId) {
+  if (!storeId || !varetypeId || !ydelseId) return false;
   const { error } = await supabase.from("default_time_estimates")
-    .delete().eq("store_id", storeId).eq("varetype_id", varetypeId).eq("primaer_ydelse_id", primaerYdelseId);
+    .delete().eq("store_id", storeId).eq("varetype_id", varetypeId).eq("primaer_ydelse_id", ydelseId);
   if (error) {
     logWriteError("dataStore:deleteDefaultTimeEstimate", "Could not delete default time estimate", error, "Standardtiden blev ikke fjernet:");
+    return false;
+  }
+  return true;
+}
+
+// ---------- Adresse-noter / vidensdeling (september 2026) ----------
+// Persistent viden knyttet til en ADRESSE (ikke en enkelt sag) - fx
+// "hund der gør højt", "kode til opgang: 1234", "svært at parkere". I
+// modsætning til en almindelig sagsnote skal denne viden følge ADRESSEN
+// videre til NÆSTE booking der, uanset hvem der booker. Både montør og
+// sælger kan bidrage og ser det samme (se RLS på address_notes).
+//
+// Henter ALLE butikkens adressenoter i ét hug (ligesom fx tidOff/varer) -
+// matchning mod en konkret adresse (buildingKey) sker klient-side, se
+// domain.js: matchingAddressNotes. Antallet forventes at være begrænset
+// (noter om FAKTISKE, tilbagevendende forhold - ikke én pr. sag), så det
+// er ikke nødvendigt at filtrere server-side.
+export async function getAddressNotes(storeId) {
+  if (!storeId) return [];
+  const { data, error } = await supabase
+    .from("address_notes")
+    .select("id, address_key, address_display, note, created_by_id, created_by_name, created_at")
+    .eq("store_id", storeId)
+    .order("created_at", { ascending: false });
+  if (error) {
+    logDbError("dataStore:getAddressNotes", "Could not load address notes", error);
+    return [];
+  }
+  return (data || []).map((r) => ({
+    id: r.id, addressKey: r.address_key, addressDisplay: r.address_display, note: r.note,
+    createdBy: { id: r.created_by_id, navn: r.created_by_name }, createdAt: r.created_at,
+  }));
+}
+
+export async function addAddressNote(storeId, { addressKey, addressDisplay, note, createdBy }) {
+  if (!storeId || !addressKey || !note?.trim()) return { ok: false, fejl: "Mangler adresse eller note" };
+  const { data, error } = await supabase.from("address_notes").insert({
+    store_id: storeId, address_key: addressKey, address_display: addressDisplay || addressKey,
+    note: note.trim(), created_by_id: createdBy?.id || null, created_by_name: createdBy?.navn || null,
+  }).select("id, address_key, address_display, note, created_by_id, created_by_name, created_at").maybeSingle();
+  if (error) {
+    logWriteError("dataStore:addAddressNote", "Could not save address note", error, "Adressenoten blev ikke gemt:");
+    return { ok: false, fejl: error.message };
+  }
+  return {
+    ok: true,
+    note: data && {
+      id: data.id, addressKey: data.address_key, addressDisplay: data.address_display, note: data.note,
+      createdBy: { id: data.created_by_id, navn: data.created_by_name }, createdAt: data.created_at,
+    },
+  };
+}
+
+export async function deleteAddressNote(id) {
+  const { error } = await supabase.from("address_notes").delete().eq("id", id);
+  if (error) {
+    logWriteError("dataStore:deleteAddressNote", "Could not delete address note", error, "Adressenoten blev ikke slettet:");
     return false;
   }
   return true;
