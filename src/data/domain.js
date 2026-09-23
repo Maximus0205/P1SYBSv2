@@ -1,4 +1,4 @@
-import { RotateCw, Trash2, Cable, Wifi, Wrench, Tag, ShoppingCart, Route, Truck, Package, Settings2, Building2, Archive, Home, Bell, AlertCircle, CalendarClock } from "lucide-react";
+import { RotateCw, Trash2, Cable, Wifi, Wrench, Tag, ShoppingCart, Route, Truck, Package, Settings2, Building2, Archive, Home, Bell, AlertCircle, CalendarClock, MapPin } from "lucide-react";
 
 // Core domain helpers and default data for the app. Function/constant names
 // are English (part of the codebase's English rename); the actual STRING
@@ -516,6 +516,13 @@ function computeNotifications(orders, profileId) {
 // widgetens knapper navigerer til. Fjernes rettigheden også, mister
 // sælgere adgangen til at oprette overhovedet.
 //
+// "adresser" (september 2026): selvstændig fane til adresse-viden
+// (nøgleboks, adgangsforhold, "smal opgang, kræver 2 mand") - se
+// pages/AddressesPage.jsx. IKKE styret af en admin_*-rettighed som de
+// øvrige i PAGE_PERMISSION_KEYS, men af sag_feltarbejde ELLER sag_opret
+// (samme grænse RLS'en på address_notes håndhæver) - se allowedPages i
+// App.jsx, samme særtilfælde-mønster som "montor".
+//
 // "dashboard" er forsiden - ikke rettighedsstyret som de øvrige (alle med
 // en butik har en forside), derfor tilføjet direkte i allowedPages i
 // App.jsx.
@@ -525,6 +532,7 @@ const PAGES = [
   { key: "montor", label: "Montør", icon: Truck },
   { key: "lager", label: "Lager", icon: Package },
   { key: "arkiv", label: "Arkiv", icon: Archive },
+  { key: "adresser", label: "Adresser", icon: MapPin },
   { key: "admin", label: "Admin", icon: Settings2 },
   { key: "systemadmin", label: "System", icon: Building2 },
 ];
