@@ -239,6 +239,12 @@ export default function App() {
   const [sickLeaveWindowOverride, setSickLeaveWindowOverride] = useState(null);
   const effectiveStore = activeStore ? { ...activeStore, sygemeldingVindueTimer: sickLeaveWindowOverride ?? activeStore.sygemeldingVindueTimer } : activeStore;
 
+  // Butikkens koordinater, sendt til ethvert adressefelt der skal
+  // prioritere forslag efter nærhed (se lib/geocoding.js:
+  // searchAddressSuggestions) - ét sted, brugt af både /salg og /adresser,
+  // så de to ikke kan komme til at afvige fra hinanden.
+  const storeFocus = effectiveStore?.lat && effectiveStore?.lon ? { lat: effectiveStore.lat, lon: effectiveStore.lon } : null;
+
   const switchStore = (storeId) => { setSickLeaveWindowOverride(null); setActiveStoreId(storeId); };
   const exitStoreView = () => { setSickLeaveWindowOverride(null); setActiveStoreId(null); };
 
@@ -447,7 +453,7 @@ export default function App() {
 
           <Route path="/salg" element={
             <Gate allowed={allowedPages} page="salg">
-              <SalesPage storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} defaultTimeEstimates={catalog.defaultTimeEstimates} addressNotes={addressNotesStore.addressNotes} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={effectiveStore?.lat && effectiveStore?.lon ? { lat: effectiveStore.lat, lon: effectiveStore.lon } : null} />
+              <SalesPage storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} defaultTimeEstimates={catalog.defaultTimeEstimates} addressNotes={addressNotesStore.addressNotes} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={storeFocus} />
             </Gate>
           } />
 
@@ -496,7 +502,9 @@ export default function App() {
           {/* ADRESSER (september 2026): selvstændig fane, uafhængig af den
               enkelte sag - se AddressesPage.jsx og noten ved kanSeAdresser
               ovenfor. canManage = samme grænse som RLS'en på
-              address_notes håndhæver (sag_feltarbejde eller sag_opret). */}
+              address_notes håndhæver (sag_feltarbejde eller sag_opret).
+              storeFocus (samme som /salg bruger) sikrer at adresseforslag
+              her også prioriteres efter nærhed til butikken. */}
           <Route path="/adresser" element={
             <Gate allowed={allowedPages} page="adresser">
               <AddressesPage
@@ -504,6 +512,7 @@ export default function App() {
                 onAdd={addAddressNote}
                 onDelete={addressNotesStore.deleteAddressNote}
                 canManage={kanSeAdresser}
+                storeFocus={storeFocus}
               />
             </Gate>
           } />
