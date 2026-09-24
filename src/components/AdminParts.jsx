@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Trash2, X, Plus, Pencil, UserPlus, PalmtreeIcon, CalendarOff, KeyRound, Stethoscope, HeartPulse, ShieldCheck, Truck, Clock } from "lucide-react";
+import { Trash2, X, Plus, Pencil, UserPlus, PalmtreeIcon, CalendarOff, KeyRound, Stethoscope, HeartPulse, ShieldCheck, Truck, Clock, Gauge } from "lucide-react";
 import { vehicleLabel, technicianColor, todayISO, activeSickLeave } from "../data/domain";
 import { suggestUsername, isValidUsername } from "../lib/username";
 import { updateSickLeaveWindow } from "../lib/dataStore";
@@ -54,15 +54,57 @@ function CheckboxList({ items, columns = 1, disabled }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// TEMPO PR. MONTØR (september 2026)
+//
+// Procent af normalt tempo (100 = normalt) - bruges UDELUKKENDE til at
+// justere kapacitets-/overbelastningsberegningen i Planlægnings-fanens
+// "Overblik" (se domain.js: vehiclePaceFactor). Rører IKKE selve sagens
+// tidsestimat - det tal en sælger ser og eventuelt retter ved oprettelse,
+// og som gælder for HVEM SOM HELST der får sagen.
+//
+// BEVIDST KUN HER, under Admin -> Montører (kræver admin_montorer) -
+// beskyttet i selve databasen (samme trigger som bil-tilknytning), så en
+// sælger ikke kan bruge det som en bagvej til at presse flere opgaver ind
+// på en bil ved at "opgradere" dens forventede tempo.
+//
+// Gemmes på BLUR (som TimeEstimateCell nedenfor), ikke pr. tastetryk - et
+// tal midt i indtastning (fx "1" på vej til "130") skal ikke udløse en
+// skrivning og en genberegning af hele ugens kapacitetsvisning.
+function TempoInput({ value, onCommit }) {
+  const [local, setLocal] = useState(String(value ?? 100));
+  useEffect(() => { setLocal(String(value ?? 100)); }, [value]);
+  const commit = () => {
+    const n = Math.min(300, Math.max(50, Math.round(Number(local)) || 100));
+    setLocal(String(n));
+    if (n !== value) onCommit(n);
+  };
+  return (
+    <input
+      type="number"
+      min="50"
+      max="300"
+      inputMode="numeric"
+      value={local}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+      aria-label="Tempo i procent af normalt"
+      className="w-16 rounded-lg border border-line bg-panel px-1.5 py-2 text-center text-xs text-ink focus:outline-none focus:border-brand"
+    />
+  );
+}
+
 // En "montør" er ikke længere en ROLLE, men alle der KØRER: rollen montor,
 // eller enhver anden bruger, der har fået slået "kan køre rute" til (se
 // UserRow nedenfor og koererSelv i App.jsx). Her på Montør-fanen styres
-// hvilken bil personen kører i lige nu, og deres fraværsperioder.
+// hvilken bil personen kører i lige nu, deres tempo, og deres
+// fraværsperioder.
 //
 // Selve TIL-/FRAVALGET af, om nogen kan køre, ligger bevidst på fanen
 // Brugere - ikke her. Denne fane viser kun folk, der ALLEREDE er montører,
 // så lå kontakten her, kunne man aldrig tilføje den første.
-function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTimeOff, onDeleteTimeOff, onSygemeld, onRaskmeld }) {
+function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onUpdateTempo, onAddTimeOff, onDeleteTimeOff, onSygemeld, onRaskmeld }) {
   const [showTimeOff, setShowTimeOff] = useState(false);
   const [start, setStart] = useState(todayISO());
   const [end, setEnd] = useState(todayISO());
@@ -106,6 +148,13 @@ function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTi
             </option>
           ))}
         </select>
+        {onUpdateTempo && (
+          <label className="flex items-center gap-1 text-xs text-muted shrink-0" title="Tempo: justerer KUN kapacitetsberegningen i Planlægning (100% = normalt) - ændrer ikke selve sagens tidsestimat.">
+            <Gauge size={13} className="shrink-0" aria-hidden="true" />
+            <TempoInput value={technician.tempo} onCommit={(n) => onUpdateTempo(technician.id, n)} />
+            <span className="text-[10px]">%</span>
+          </label>
+        )}
         <button onClick={() => setShowTimeOff((v) => !v)} aria-expanded={showTimeOff} className="p-2 text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded-lg flex items-center gap-1 text-xs font-semibold uppercase tracking-wide" title="Ferie">
           <PalmtreeIcon size={15} aria-hidden="true" /> Ferie{myTimeOff.filter((f) => f.type !== "sygdom").length > 0 ? ` (${myTimeOff.filter((f) => f.type !== "sygdom").length})` : ""}
         </button>
