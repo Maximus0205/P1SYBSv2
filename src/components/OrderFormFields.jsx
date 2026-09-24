@@ -523,26 +523,22 @@ function KeyAccessFields({ keyAccess, onChange }) {
   );
 }
 
-// Kundeopslag: mens sælgeren taster telefon/navn, tjekkes det op mod ALLE
-// tidligere ordrer (samme liste, som formularen allerede har fået sendt).
-// Matcher på telefonnummer (mest pålidelige - normaliseret uden mellemrum)
-// eller på eksakt (case-insensitive) navn, hvis der ikke er noget
-// telefonnummer at matche på endnu. Kræver et onOpen-prop for at kunne
-// klikke sig ind på en tidligere sag - ellers vises listen blot som
-// information uden klik-mulighed.
-function CustomerHistory({ phone, name, orders, onOpen }) {
+// ---------------------------------------------------------------------------
+// KUNDEOPSLAG (rettet september 2026): matcher nu KUN på telefonnummer.
+//
+// Matchede tidligere OGSÅ på et eksakt (case-insensitive) kundenavn - det
+// gav falske positiver: to helt forskellige kunder, der begge hedder noget
+// almindeligt (eller begge er tastet ind som "Test" under udvikling),
+// blev vist som "kendt kunde", selvom de aldrig har haft noget med
+// hinanden at gøre. Telefonnummeret er den eneste af de to, der reelt
+// identificerer ÉN bestemt person - navnesammenfald er tilfældigt, et
+// telefonnummer er det stort set aldrig.
+function CustomerHistory({ phone, orders, onOpen }) {
   const normPhone = (phone || "").replace(/\D/g, "");
-  const normName = (name || "").trim().toLowerCase();
-  if (normPhone.length < 6 && normName.length < 3) return null;
+  if (normPhone.length < 6) return null;
 
   const matches = (orders || [])
-    .filter((o) => {
-      const oPhone = (o.kunde?.telefon || "").replace(/\D/g, "");
-      const oName = (o.kunde?.navn || "").trim().toLowerCase();
-      const phoneMatch = normPhone.length >= 6 && oPhone && oPhone === normPhone;
-      const nameMatch = normName.length >= 3 && oName && oName === normName;
-      return phoneMatch || nameMatch;
-    })
+    .filter((o) => (o.kunde?.telefon || "").replace(/\D/g, "") === normPhone)
     .sort((a, b) => (b.dato + b.start).localeCompare(a.dato + a.start));
 
   if (matches.length === 0) return null;
@@ -595,7 +591,11 @@ function CustomerHistory({ phone, name, orders, onOpen }) {
 //
 // Begge felter er REDIGERBARE i popuppen, ikke kun forudfyldte labels -
 // står man med en anden telefon eller vil søge en anden adresse, skal man
-// ikke lukke popuppen og åbne en ny.
+// ikke lukke popuppen og åbne en ny. BEMÆRK: denne popup er en BEVIDST,
+// MANUELT UDLØST handling (et klik på "Slå kunde op i arkivet") og
+// adskiller sig derfor fra CustomerHistory ovenfor - her har brugeren
+// selv bedt om et bredere opslag, og adresse-match er en tilsigtet del af
+// netop DEN handling, ikke noget der dukker op automatisk.
 function CustomerHistoryLookup({ orders, currentOrderId, phone, address, name, onOpen }) {
   const [open, setOpen] = useState(false);
   const [searchPhone, setSearchPhone] = useState(phone || "");
