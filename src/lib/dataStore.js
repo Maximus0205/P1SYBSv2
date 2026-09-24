@@ -498,13 +498,13 @@ export async function getOwnProfile(userId) {
 }
 
 // Alle brugere i samme butik (til Admin-sidens faner). Inkluderer
-// individuelle rettigheds-til-/fravalg OG can_drive, så både
-// rettigheds-editoren og montør-listen kan bygges af samme data.
+// individuelle rettigheds-til-/fravalg, can_drive OG tempo (pace_percent),
+// så både rettigheds-editoren og montør-listen kan bygges af samme data.
 export async function getStoreUsers(storeId) {
   if (!storeId) return [];
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, name, role, vehicle_id, username, extra_permissions, revoked_permissions, can_drive")
+    .select("id, name, role, vehicle_id, username, extra_permissions, revoked_permissions, can_drive, pace_percent")
     .eq("store_id", storeId);
   if (error) {
     logDbError("dataStore:getStoreUsers", "Could not load the store's users", error);
@@ -514,6 +514,7 @@ export async function getStoreUsers(storeId) {
     id: p.id, navn: p.name, rolle: p.role, bilId: p.vehicle_id, brugernavn: p.username,
     extraPermissions: p.extra_permissions || [], revokedPermissions: p.revoked_permissions || [],
     kanKoere: p.can_drive === true,
+    tempo: p.pace_percent ?? 100,
   }));
 }
 
@@ -579,18 +580,20 @@ export async function endSickLeave(timeOffId) {
   return true;
 }
 
-// Admin (eller systemadmin) retter navn/rolle/bil/butik på en bruger.
+// Admin (eller systemadmin) retter navn/rolle/bil/butik/tempo på en
+// bruger.
 //
 // BUTIKSSKIFT: butik_id er den vej, en medarbejder flyttes til en anden
 // butik - en systemadmin-opgave, da de er de eneste med overblik over alle
 // butikker. Butikkens egen admin kan oprette og slette i sin egen butik,
 // men ikke flytte folk rundt i kæden.
 //
-// kanKoere: se noten ved getOwnProfile. Både dette felt og bilen er
+// kanKoere/tempo: se noten ved getOwnProfile. Begge felter (og bilId) er
 // beskyttet af rettigheden admin_montorer i databasen (se
 // profiles_guard_privileged_fields) - det er den samme beslutning: hvem
-// kører? Uden den beskyttelse kunne enhver skrive sig selv ind i
-// montørlisten og blive tildelt kundesager.
+// kører, og hvor lang tid tager deres opgaver reelt? En sælger skal ikke
+// kunne skrive sig selv (eller en kollega) til hverken en bil eller en
+// bekvem tempo-værdi.
 export async function updateProfile(userId, fields) {
   const dbFields = {};
   if ("navn" in fields) dbFields.name = fields.navn;
@@ -600,6 +603,7 @@ export async function updateProfile(userId, fields) {
   if ("butik_id" in fields) dbFields.store_id = fields.butik_id;
   if ("butikId" in fields) dbFields.store_id = fields.butikId;
   if ("kanKoere" in fields) dbFields.can_drive = !!fields.kanKoere;
+  if ("tempo" in fields) dbFields.pace_percent = Math.round(Number(fields.tempo) || 100);
   const { error } = await supabase.from("profiles").update(dbFields).eq("id", userId);
   if (error) {
     logWriteError("dataStore:updateProfile", "Could not update profile", error, "Brugeren blev ikke opdateret:");
