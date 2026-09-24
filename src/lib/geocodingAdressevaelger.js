@@ -71,39 +71,61 @@ export function utm32ToWgs84(easting, northing) {
 }
 
 // ---------------------------------------------------------------------------
-// RETTET: den forrige udgave sendte "tekst" OG "postnummer" i SAMME kald.
-// Det virkede ikke, fordi Adressevælgerens egen dokumentation siger det
-// eksplicit: "Der ses bort fra disse parametre [vejnavn/husnummer/
-// postnummer] hvis tekst er angivet som parameter" - postnummeret blev
-// altså stille og roligt IGNORERET, præcis som hos ORS, blot af en helt
-// anden årsag (parameter-forrang, ikke en tolkningsfejl).
+// RETTET (september 2026, igen): Adressevælgerens dokumentation siger det
+// direkte om "/adresser/soeg": "En søgning, der er tilstrækkelig specifik
+// [vil resultere] i type = Adresse" - og det er PRÆCIS type "adresse", der
+// bærer etage/dør-oplysninger ("1. sal til højre" osv.), ikke type
+// "husnummer" (som kun er selve opgangens adgang). "Tilstrækkeligt
+// specifik" betyder: vejnavn, husnummer OG postnummer sendt som TRE
+// ADSKILTE, strukturerede felter - ikke som én sammenhængende tekststreng.
 //
-// Det korrekte mønster (som Adressevælgeren selv viser i deres
-// dokumentation: "vejnavn=sankt keld&postnummer=2100") er at sende
-// gadenavn og postnummer som ADSKILTE, strukturerede felter i stedet for
-// at blande dem i "tekst". Denne funktion splitter derfor selv søgeteksten
-// op, når der er et postnummer at finde: et afsluttende 4-cifret tal i
-// postnummer-intervallet bliver til `postnummer`, og et evt. resterende
-// afsluttende tal (husnummer, med eller uden bogstav) bliver til
-// `husnummer` - resten sendes som `vejnavn`, ALDRIG sammen med `tekst`.
+// Forrige udgave af denne funktion delte kun teksten op, HVIS der var et
+// postnummer at finde for enden - og fejlede desuden, hvis brugeren (eller
+// et tidligere valgt forslag) havde sat et komma ind i teksten (fx
+// "Fuglsang 41, 5270"), fordi kommaet blev en del af det udtrukne
+// gadenavn i stedet for at blive fjernet. Begge dele betød, at et
+// fuldstændigt tastet husnummer ikke konsekvent blev sendt som sit eget,
+// strukturerede felt - og søgningen forblev dermed under "tilstrækkeligt
+// specifik", så etage/dør-adresserne aldrig kom med i svaret.
+//
+// Nu: kommaer fjernes/normaliseres FØRST, og der udtrækkes ALTID et
+// husnummer (hvis der overhovedet står et tal for enden af gadenavnet) -
+// ikke kun når der også er et postnummer. "vejnavn" sendes derfor næsten
+// altid som sit eget, rensede felt, og husnummer/postnummer lægges oveni,
+// når de findes - aldrig sammen med "tekst" (se noten fra forrige
+// rettelse: de to må ikke kombineres, ORS-agtig fejl, men i selve
+// Adressevælgeren).
 function parseQuery(raw) {
-  const trimmed = (raw || "").trim();
-  const postalMatch = trimmed.match(/^(.*\S)\s+(\d{4})$/);
-  if (!postalMatch) return { tekst: trimmed };
-  const postnr = Number(postalMatch[2]);
-  if (postnr < 1000 || postnr > 9990) return { tekst: trimmed };
+  let s = (raw || "").trim().replace(/,/g, " ").replace(/\s+/g, " ").trim();
+  if (!s) return { tekst: "" };
 
-  const rest = postalMatch[1];
-  const houseMatch = rest.match(/^(.*\S)\s+(\d+[a-zA-Z]?)$/);
-  if (houseMatch) {
-    return { vejnavn: houseMatch[1], husnummer: houseMatch[2], postnummer: postalMatch[2] };
+  let postnummer;
+  const postalMatch = s.match(/^(.*\S)\s+(\d{4})$/);
+  if (postalMatch) {
+    const num = Number(postalMatch[2]);
+    if (num >= 1000 && num <= 9990) {
+      postnummer = postalMatch[2];
+      s = postalMatch[1];
+    }
   }
-  return { vejnavn: rest, postnummer: postalMatch[2] };
+
+  let husnummer;
+  const houseMatch = s.match(/^(.*\S)\s+(\d+[a-zA-Z]?)$/);
+  if (houseMatch) {
+    husnummer = houseMatch[2];
+    s = houseMatch[1];
+  }
+
+  if (!s) return { tekst: raw.trim() }; // usandsynligt (kun tal tastet) - fald sikkert tilbage
+  return { vejnavn: s, husnummer, postnummer };
 }
 
 // ---------------------------------------------------------------------------
-// Fonetisk søgning (autocomplete). Se parseQuery ovenfor for hvorfor et
-// postnummer sendes som sin egen parameter, ikke blandet ind i "tekst".
+// Fonetisk søgning (autocomplete). Se parseQuery ovenfor for hvorfor
+// gadenavn/husnummer/postnummer altid sendes som adskilte, strukturerede
+// felter frem for én sammenhængende tekst - det er forudsætningen for at
+// få etage/dør-niveauet ("adresse"-typen) med i svaret, ikke kun
+// opgangens egen adgang ("husnummer"-typen).
 //
 // GIVER BEVIDST INGEN KOORDINATER her - fonetisk søgning returnerer kun
 // tekst-felter (type, titel, vejnavn, postnr...). Koordinater kræver et
