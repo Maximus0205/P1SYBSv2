@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertCircle, ArrowLeftRight, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, RefreshCw, KeyRound, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid, MapPin, Phone, Route, Stethoscope, CalendarX2, AlertTriangle } from "lucide-react";
-import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, dailyOrderCompare, needsPlanning, vehicleAbsences, vehicleHasCoverage, buildingKey, timeSlotById } from "../data/domain";
+import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, dailyOrderCompare, needsPlanning, vehicleAbsences, vehicleHasCoverage, vehiclePaceFactor, buildingKey, timeSlotById } from "../data/domain";
 import { geocodeAddress, geocodeAddresses, drivingDistances, routeDrivingTime, optimalVisitOrder } from "../lib/geocoding";
 import { suggestPlan, planningWindow, WORKDAY_MINUTES } from "../lib/scheduling";
 import { DateSelector } from "../components/common";
@@ -592,7 +592,13 @@ function WeekOverview({ orders, technicians, personnel, timeOff, store, onAssign
         if (addresses.length === 0) return [key, null];
         const coordMap = await geocodeAddresses(addresses);
         const stopPoints = addresses.map((a) => coordMap.get(a.trim().toLowerCase())).filter(Boolean);
-        const points = storeCoord ? [storeCoord, ...stopPoints] : stopPoints;
+        // RETTET (september 2026): firmaets adresse sættes nu i BEGGE
+        // ender af punktlisten, ikke kun først. routeDrivingTime lægger
+        // blot benene mellem på hinanden følgende punkter sammen - uden
+        // butikken gentaget til sidst manglede turen HJEM (sidste kunde
+        // -> butik), og en bils dag blev dermed systematisk undervurderet
+        // med præcis dét sidste stræk.
+        const points = storeCoord ? [storeCoord, ...stopPoints, storeCoord] : stopPoints;
         const minutes = points.length >= 2 ? await routeDrivingTime(points) : null;
         return [key, minutes];
       }));
@@ -603,9 +609,16 @@ function WeekOverview({ orders, technicians, personnel, timeOff, store, onAssign
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature]);
 
+  // TEMPO PR. MONTØR (september 2026): vehiclePaceFactor (domain.js) slår
+  // op i "personnel", ikke i selve varelinjens tidsestimat - se noten ved
+  // funktionen. En ny montør under oplæring, sat til fx 130%, gør bilens
+  // dag se 30% mere fyldt ud her, UDEN at nogen har rørt sagens egne
+  // tal. Rundes til hele minutter, så tallet ikke ser kunstigt præcist ud.
   const timeFor = (vehicleId, day, dayOrdersForCell) => {
     const key = `${vehicleId}|${day}`;
-    const loadMinutes = dayOrdersForCell.reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
+    const rawLoadMinutes = dayOrdersForCell.reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
+    const pace = vehicleId ? vehiclePaceFactor(vehicleId, personnel) : 1;
+    const loadMinutes = Math.round(rawLoadMinutes * pace);
     const drive = vehicleId ? driveMinutes[key] : undefined;
     const total = loadMinutes + (drive || 0);
     const overloaded = total > WORKDAY_MINUTES;
@@ -633,6 +646,16 @@ function WeekOverview({ orders, technicians, personnel, timeOff, store, onAssign
   // passer bedst ind] + [eftermiddag i optimeret rækkefølge] - som
   // GARANTERER at ingen formiddags-sag lander efter en eftermiddags-sag,
   // og omvendt.
+  //
+  // BEMÆRK: points her sætter (bevidst, uændret) KUN butikken som
+  // FASTSAT STARTPUNKT (points[0]), ikke også til sidst - optimalVisitOrder
+  // bruger en "nærmeste ubesøgte nabo"-algoritme, der forudsætter ÉT fast
+  // startpunkt, den aldrig vender tilbage til som et "stop" undervejs. At
+  // gentage butikken her ville forvirre algoritmen (den ville forsøge at
+  // indsætte "butikken" et sted midt i ruten som et stop, der skal
+  // besøges). Det er en anden beregning end driveMinutes ovenfor, som blot
+  // lægger strækninger sammen og derfor trygt kan have butikken i begge
+  // ender.
   const optimizeDay = async (vehicleId, day, dayOrders) => {
     if (!onSetVisitOrder || dayOrders.length < 2) return;
     const key = `${vehicleId}|${day}`;
@@ -725,10 +748,10 @@ function WeekOverview({ orders, technicians, personnel, timeOff, store, onAssign
             {storeCoord ? <Building2 size={11} className="shrink-0" aria-hidden="true" /> : <Car size={11} className="shrink-0" aria-hidden="true" />}
             <span className="hidden sm:inline">
               {storeCoord
-                ? "Tidstal inkluderer kørsel fra firmaets adresse og mellem dagens stop, samt arbejdstid. Rute-ikonet foreslår bedste besøgsrækkefølge inden for hver sags tidsramme."
-                : "Tidstal inkluderer kørsel mellem dagens stop og arbejdstid (sæt butikkens adresse op under Admin for turen ud fra firmaet)."}
+                ? "Tidstal inkluderer kørsel tur/retur fra firmaets adresse og mellem dagens stop, montørens eget tempo (Admin -> Montører), samt arbejdstid. Rute-ikonet foreslår bedste besøgsrækkefølge inden for hver sags tidsramme."
+                : "Tidstal inkluderer kørsel mellem dagens stop, montørens eget tempo og arbejdstid (sæt butikkens adresse op under Admin for turen ud fra og hjem til firmaet)."}
             </span>
-            <span className="sm:hidden">Tal = arbejde + estimeret kørsel.</span>
+            <span className="sm:hidden">Tal = arbejde (justeret for tempo) + estimeret kørsel tur/retur.</span>
           </p>
 
           {/* ------- MOBIL: dag-faner (man-fre) + stak af bil-sektioner ------- */}
