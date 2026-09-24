@@ -86,7 +86,7 @@ function AdminPage({
       {tab === "montorer" && (
         <div>
           <p className="text-xs text-muted mb-4">
-            En montør er ikke noget man opretter her — det er en bruger med rollen "Montør" (se fanen "Brugere"). Her styrer du hvilken bil hver montør kører i lige nu, registrerer ferieperioder, og kan sygemelde/raskmelde en montør akut. Den bil en montør er tilknyttet, vises automatisk som blokeret i kørselsoverblikket i de perioder montøren er fraværende (ferie eller sygdom).
+            En montør er ikke noget man opretter her — det er en bruger med rollen "Montør" (se fanen "Brugere"). Her styrer du hvilken bil hver montør kører i lige nu, deres tempo (bruges kun til kapacitetsberegningen i Planlægning), registrerer ferieperioder, og kan sygemelde/raskmelde en montør akut. Den bil en montør er tilknyttet, vises automatisk som blokeret i kørselsoverblikket i de perioder montøren er fraværende (ferie eller sygdom).
           </p>
           {hasPerm(permissions, "admin_butik") && <SickLeaveWindowSetting store={store} onUpdated={onSickLeaveWindowUpdated} />}
           <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Alle montører ({technicians.length})</h3>
@@ -101,6 +101,7 @@ function AdminPage({
                   vehicles={vehicles}
                   timeOff={timeOff}
                   onUpdateVehicle={onUpdateTechnicianVehicle}
+                  onUpdateTempo={(id, tempo) => onUpdateUser(id, { tempo })}
                   onAddTimeOff={onAddTimeOff}
                   onDeleteTimeOff={onDeleteTimeOff}
                   onSygemeld={onSygemeld}
