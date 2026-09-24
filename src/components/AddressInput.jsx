@@ -26,6 +26,17 @@ const DEBOUNCE_MS = 350;
 // egne typer.
 const SPECIFICITY = { husnummer: 0, adresse: 0, navngivenvejpostnummer: 1, vejnavn: 2 };
 
+// Udtrækker et 4-cifret postnummer af en Adressevælger-titel, fx
+// "Fuglsang 41, Næsby, 5270 Odense N" -> "5270". Bruges KUN til at kunne
+// søge videre efter et valgt "husnummer"-forslag (se selectSuggestion) -
+// et husnummer-forslag har ikke selv et separat postnr-felt (kun type
+// "navngivenvejpostnummer" har det, jf. Adressevælgerens dokumentation),
+// så det må læses ud af den tekst, der allerede vises.
+function extractPostalCode(titel) {
+  const match = (titel || "").match(/\b(\d{4})\b/);
+  return match ? match[1] : null;
+}
+
 function AddressInput({ value, onChange, placeholder, onValidationChange, focus }) {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -68,13 +79,66 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
-  const selectSuggestion = (f) => {
+  // ---------------------------------------------------------------------
+  // RETTET (september 2026): et "husnummer"-forslag er kun selve OPGANGENS
+  // egen adgang - ikke nødvendigvis en konkret, leveringsklar adresse, hvis
+  // bygningen har flere lejligheder (etage/dør). Det blev tidligere
+  // accepteret som FÆRDIGT, så snart man klikkede det, selvom Adressevælgeren
+  // rent faktisk kan finde de enkelte lejligheder, hvis man søger videre med
+  // gade+husnummer+postnummer som strukturerede felter (se
+  // lib/geocodingAdressevaelger.js).
+  //
+  // Vælges et "husnummer"-forslag, søges der derfor STRAKS videre efter de
+  // konkrete adresser under det - uden at brugeren selv skal skrive
+  // postnummeret for at udløse det:
+  //   - Findes der FLERE lejligheder, vises de som en ny, mere specifik
+  //     forslagsliste (feltets tekst viser i mellemtiden selve opgangens
+  //     adresse, så det er tydeligt hvor langt man er nået).
+  //   - Findes der PRÆCIS ÉN, vælges den automatisk - der er intet reelt
+  //     valg at træffe.
+  //   - Findes der INGEN (fx et enfamiliehus uden separate etage/dør-
+  //     adresser), er husnummeret selv den endelige adresse, som hidtil.
+  const selectSuggestion = async (f) => {
+    if (f.type !== "husnummer" || !f.vejnavn || !f.husnummer) {
+      selectedRef.current = true;
+      onChange(f.titel);
+      setSuggestions([]);
+      setShowSuggestions(false);
+      setStatus("gyldig");
+      onValidationChange?.("gyldig");
+      return;
+    }
+
     selectedRef.current = true;
     onChange(f.titel);
-    setSuggestions([]);
-    setShowSuggestions(false);
-    setStatus("gyldig");
-    onValidationChange?.("gyldig");
+    setStatus("tjekker");
+
+    const postnummer = extractPostalCode(f.titel);
+    const result = postnummer ? await searchAdressevaelger(`${f.vejnavn} ${f.husnummer} ${postnummer}`) : { ok: false, fund: [] };
+    const specific = (result.fund || []).filter((x) => x.type === "adresse");
+
+    if (specific.length === 0) {
+      // Intet at indsnævre til - opgangens egen adresse er den endelige.
+      setSuggestions([]);
+      setShowSuggestions(false);
+      setStatus("gyldig");
+      onValidationChange?.("gyldig");
+      return;
+    }
+    if (specific.length === 1) {
+      selectedRef.current = true;
+      onChange(specific[0].titel);
+      setSuggestions([]);
+      setShowSuggestions(false);
+      setStatus("gyldig");
+      onValidationChange?.("gyldig");
+      return;
+    }
+    // Flere lejligheder - lad brugeren vælge den rigtige.
+    setSuggestions(specific);
+    setShowSuggestions(true);
+    setStatus("usikker");
+    onValidationChange?.("usikker");
   };
 
   return (
@@ -102,7 +166,7 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus 
 
       {status === "usikker" && (
         <p className="text-[11px] text-danger mt-1 flex items-center gap-1">
-          <AlertTriangle size={11} /> Adressen er endnu ikke specifik nok, eller kunne ikke bekræftes — tilføj fx husnummer eller postnummer, eller vælg et forslag herunder.
+          <AlertTriangle size={11} /> {suggestions.length > 0 && suggestions.every((s) => s.type === "adresse") ? "Vælg den konkrete lejlighed herunder." : "Adressen er endnu ikke specifik nok, eller kunne ikke bekræftes — tilføj fx husnummer eller postnummer, eller vælg et forslag herunder."}
         </p>
       )}
 
