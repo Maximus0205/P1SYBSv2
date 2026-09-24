@@ -389,6 +389,27 @@ const vehicleHasCoverage = (vehicleId, date, personnel, timeOff) => {
   return abs.some((a) => !a.fravaer);
 };
 
+// ---------------- Tempo pr. montør (september 2026) ----------------
+// En procentsats (100 = normalt tempo) der justerer de FORVENTEDE tider i
+// kapacitets-/overbelastningsberegningen i Planlægning - fx en ny montør
+// under oplæring (måske 130%, dvs. tager 30% længere tid), uden at røre
+// selve varelinjens tidsestimat (det tal gælder ALLE montører, der
+// eventuelt får sagen, og er samtidig det, en sælger kan justere ved
+// oprettelse - se noten ved profiles.pace_percent i databasemigrationen).
+//
+// Sat PR. PERSON (profiles.pace_percent, kun redigerbar under Admin ->
+// Montører, beskyttet af samme admin_montorer-rettighed som selve bil-
+// tilknytningen) - det er mennesket, ikke bilen, der er hurtigere eller
+// langsommere. Deler flere personer samme bil, kender systemet ikke,
+// hvem af dem der kører hvilken dag - her bruges derfor deres
+// GENNEMSNITLIGE tempo som et fornuftigt estimat.
+const vehiclePaceFactor = (vehicleId, personnel) => {
+  const drivers = (personnel || []).filter((p) => p.bilId === vehicleId);
+  if (drivers.length === 0) return 1;
+  const sum = drivers.reduce((s, p) => s + (Number(p.tempo) || 100), 0);
+  return sum / drivers.length / 100;
+};
+
 const emptyCustomer = () => ({ navn: "", telefon: "", email: "", adresse: "", leveringsnote: "" });
 const emptyKeyAccess = () => ({ kraeves: false, type: "", detaljer: "", placering: "" });
 
@@ -429,7 +450,7 @@ const dailyOrderCompare = (a, b) => {
 
 // En sag "MANGLER PLANLÆGNING", hvis den ikke har dato ELLER bil (og ikke
 // er afsluttet). Bevidst IKKE inklusiv "dato passeret" - er datoen
-// passeret uden problem-markering, antages sagen gennemført.
+// passeret uden et markeret problem, antages sagen gennemført.
 //
 // bilId (september 2026) erstatter montorId - se noten ved
 // vehicleHasCoverage ovenfor.
@@ -474,7 +495,7 @@ export {
   matchingAddressNotes,
   lineItemFingerprint, isMissingActive, missingLineItems, orderHasMissingItems,
   weekDays, buildTitle, keyAccessText, TIME_SLOTS, timeSlotById, timeSlotText, KEY_ACCESS_TYPES, TECHNICIAN_COLORS, technicianColor,
-  DEFAULT_VEHICLES, vehicleLabel, vehicleBlockedByTimeOff, isTechnicianAbsent, activeSickLeave, vehicleAbsences, vehicleHasCoverage,
+  DEFAULT_VEHICLES, vehicleLabel, vehicleBlockedByTimeOff, isTechnicianAbsent, activeSickLeave, vehicleAbsences, vehicleHasCoverage, vehiclePaceFactor,
   emptyCustomer, emptyKeyAccess, STATUS_META,
   dailyOrderCompare, needsPlanning, computeNotifications, PAGES, PAGES_FOR_ROLE, canDo, DASHBOARD_WIDGET_CATALOG, DEFAULT_DASHBOARD_WIDGETS,
 };
