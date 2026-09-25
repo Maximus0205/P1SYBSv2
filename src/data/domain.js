@@ -389,25 +389,27 @@ const vehicleHasCoverage = (vehicleId, date, personnel, timeOff) => {
   return abs.some((a) => !a.fravaer);
 };
 
-// ---------------- Tempo pr. montør (september 2026) ----------------
+// ---------------- Tempo pr. BIL (september 2026, rettet) ----------------
 // En procentsats (100 = normalt tempo) der justerer de FORVENTEDE tider i
-// kapacitets-/overbelastningsberegningen i Planlægning - fx en ny montør
-// under oplæring (måske 130%, dvs. tager 30% længere tid), uden at røre
-// selve varelinjens tidsestimat (det tal gælder ALLE montører, der
-// eventuelt får sagen, og er samtidig det, en sælger kan justere ved
-// oprettelse - se noten ved profiles.pace_percent i databasemigrationen).
+// kapacitets-/overbelastningsberegningen i Planlægning - fx en bil der for
+// tiden primært køres af nogen under oplæring (måske 130%, dvs. tager 30%
+// længere tid), uden at røre selve varelinjens tidsestimat (det tal
+// gælder ALLE biler der eventuelt får sagen, og er samtidig det, en
+// sælger kan justere ved oprettelse).
 //
-// Sat PR. PERSON (profiles.pace_percent, kun redigerbar under Admin ->
-// Montører, beskyttet af samme admin_montorer-rettighed som selve bil-
-// tilknytningen) - det er mennesket, ikke bilen, der er hurtigere eller
-// langsommere. Deler flere personer samme bil, kender systemet ikke,
-// hvem af dem der kører hvilken dag - her bruges derfor deres
-// GENNEMSNITLIGE tempo som et fornuftigt estimat.
-const vehiclePaceFactor = (vehicleId, personnel) => {
-  const drivers = (personnel || []).filter((p) => p.bilId === vehicleId);
-  if (drivers.length === 0) return 1;
-  const sum = drivers.reduce((s, p) => s + (Number(p.tempo) || 100), 0);
-  return sum / drivers.length / 100;
+// SAT PÅ SELVE BILEN (vehicle.tempo, en almindelig del af bilens gemte
+// data - se lib/dataStore.js: saveVehicle), IKKE på personen. Første
+// udgave forsøgte pr.-person med et gennemsnit, hvis flere delte samme
+// bil - men appens egen arkitektur er allerede entydigt bil-centreret
+// (sager tildeles en BIL, ikke en person, se vehicleHasCoverage ovenfor),
+// og at koble tempoet til bilen i stedet undgår helt spørgsmålet "hvem af
+// de to kører den præcis i dag" - der er kun ét tal at forholde sig til,
+// uanset hvem der sidder bag rattet. Skriverettighed til vehicles kræver i
+// forvejen admin_biler, håndhævet i databasens RLS - en sælger kan derfor
+// ikke justere det, uanset hvad UI'et tillader.
+const vehiclePaceFactor = (vehicleId, vehicleRows) => {
+  const row = (vehicleRows || []).find((v) => v.id === vehicleId);
+  return (Number(row?.tempo) || 100) / 100;
 };
 
 const emptyCustomer = () => ({ navn: "", telefon: "", email: "", adresse: "", leveringsnote: "" });
