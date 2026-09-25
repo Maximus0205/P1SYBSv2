@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Trash2, X, Plus, Pencil, UserPlus, PalmtreeIcon, CalendarOff, KeyRound, Stethoscope, HeartPulse, ShieldCheck, Truck, Clock, Gauge } from "lucide-react";
 import { vehicleLabel, technicianColor, todayISO, activeSickLeave } from "../data/domain";
 import { suggestUsername, isValidUsername } from "../lib/username";
-import { updateSickLeaveWindow } from "../lib/dataStore";
+import { updateSickLeaveWindow, updatePasswordPolicy } from "../lib/dataStore";
 import { MinutesInput } from "../components/common";
 
 // ---------------------------------------------------------------------------
@@ -53,6 +53,12 @@ function CheckboxList({ items, columns = 1, disabled }) {
     </div>
   );
 }
+
+// Bruges af BÅDE NewUserForm og UserRow's nulstillings-felt, så de to
+// vurderer "indeholder bogstaver og tal" på nøjagtig samme måde som
+// edge-funktionerne, der reelt håndhæver kravet (admin-opret-bruger og
+// admin-nulstil-adgangskode) - se noten ved PasswordPolicySetting nedenfor.
+const opfylderBlandingskrav = (adgangskode) => /[a-zA-ZæøåÆØÅ]/.test(adgangskode || "") && /[0-9]/.test(adgangskode || "");
 
 // En "montør" er ikke længere en ROLLE, men alle der KØRER: rollen montor,
 // eller enhver anden bruger, der har fået slået "kan køre rute" til (se
@@ -203,6 +209,71 @@ function SickLeaveWindowSetting({ store, onUpdated }) {
         {saved && <span className="text-xs text-success font-semibold">Gemt.</span>}
       </div>
       {error && <p className="text-xs text-danger mt-2">{error}</p>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ADGANGSKODEKRAV PR. BUTIK (september 2026)
+//
+// Erstatter det hidtil FASTE kravet ("mindst 6 tegn") - hver butik kan nu
+// selv sætte sin egen minimumslængde og om der kræves en blanding af
+// bogstaver og tal (fx en intern sikkerhedsprocedure hos butikken selv).
+// Gælder KUN nye/nulstillede adgangskoder fremover - rører ikke eksisterende.
+//
+// HÅNDHÆVES SERVER-SIDE, IKKE KUN HER: selve kravet tjekkes i
+// admin-opret-bruger og admin-nulstil-adgangskode (Edge Functions), som
+// slår butikkens egen politik op, FØR en adgangskode sættes. Denne
+// komponent gemmer kun ØNSKET (via update_password_policy i databasen,
+// samme mønster som SickLeaveWindowSetting) - den beskytter intet i sig
+// selv, ligesom klientvalidering aldrig gør.
+//
+// KAN IKKE SÆTTES UNDER 6 TEGN: Supabase Auth (login-systemet bag hele
+// appen) håndhæver SELV et projekt-bredt minimum på 6 tegn, uafhængigt af
+// denne indstilling - en butik, der ønsker fx 4-cifrede koder, kræver
+// derfor ALSO en manuel ændring af selve Supabase-projektets Auth-
+// indstilling (uden for det, denne app kan gøre selv) - se samtalen med
+// Magnus, september 2026.
+function PasswordPolicySetting({ store, onUpdated }) {
+  const [minLength, setMinLength] = useState(store?.adgangskodeMinLaengde ?? 6);
+  const [requireMixed, setRequireMixed] = useState(store?.adgangskodeKraeverBlanding ?? false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+
+  const save = async () => {
+    const n = Math.min(64, Math.max(6, Math.round(Number(minLength)) || 6));
+    setMinLength(n);
+    setSaving(true); setError(""); setSaved(false);
+    const result = await updatePasswordPolicy({ minLaengde: n, kraeverBlanding: requireMixed, storeId: store?.id });
+    setSaving(false);
+    if (!result.ok) { setError(result.fejl || "Kunne ikke gemme."); return; }
+    setSaved(true);
+    onUpdated?.({ minLength: n, requireMixed });
+    setTimeout(() => setSaved(false), 1500);
+  };
+
+  return (
+    <div className="rounded-xl border border-line bg-white p-4 mb-4 shadow-sm">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-1.5"><KeyRound size={15} className="text-brand" aria-hidden="true" /> Adgangskodekrav</h3>
+      <p className="text-xs text-muted mb-3">Gælder nye og nulstillede adgangskoder i denne butik fremover - rører ikke adgangskoder, der allerede er sat.</p>
+      <label className="flex items-center gap-2 text-sm text-ink mb-3">
+        Mindst
+        <input type="number" min="6" max="64" value={minLength} onChange={(e) => setMinLength(e.target.value)} aria-label="Minimum antal tegn" className="w-16 rounded-lg border border-line bg-panel px-2 py-1.5 text-sm text-ink text-center focus:outline-none focus:border-brand" />
+        tegn
+      </label>
+      <label className="flex items-center gap-2 cursor-pointer mb-3">
+        <input type="checkbox" checked={requireMixed} onChange={(e) => setRequireMixed(e.target.checked)} className="w-4 h-4 accent-brand" />
+        <span className="text-sm text-ink">Kræver både bogstaver og tal</span>
+      </label>
+      <div className="flex items-center gap-2">
+        <button onClick={save} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60">
+          {saving ? "Gemmer..." : "Gem"}
+        </button>
+        {saved && <span className="text-xs text-success font-semibold">Gemt.</span>}
+      </div>
+      {error && <p className="text-xs text-danger mt-2">{error}</p>}
+      <p className="text-[10px] text-muted mt-3">Kan ikke sættes under 6 tegn - login-systemet bag appen (Supabase Auth) tillader ikke kortere adgangskoder, uanset denne indstilling. Ønskes færre tegn (fx en 4-cifret kode), kræver det en separat, manuel ændring af selve login-systemets opsætning - spørg din systemadministrator.</p>
     </div>
   );
 }
@@ -367,7 +438,7 @@ function PermissionsEditor({ user, permissionsCatalog, roleDefaults, onUpdatePer
   );
 }
 
-function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPassword, permissionsCatalog, roleDefaults, onUpdatePermissions }) {
+function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPassword, permissionsCatalog, roleDefaults, onUpdatePermissions, passwordPolicy }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user.navn);
   const [showReset, setShowReset] = useState(false);
@@ -376,8 +447,12 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
   const [busy, setBusy] = useState(false);
   const [showPermissions, setShowPermissions] = useState(false);
 
+  const minLength = passwordPolicy?.minLength ?? 6;
+  const requireMixed = passwordPolicy?.requireMixed ?? false;
+
   const reset = async () => {
-    if (newPassword.length < 6) { setResetMessage("Mindst 6 tegn."); return; }
+    if (newPassword.length < minLength) { setResetMessage(`Mindst ${minLength} tegn.`); return; }
+    if (requireMixed && !opfylderBlandingskrav(newPassword)) { setResetMessage("Skal indeholde både bogstaver og tal."); return; }
     setBusy(true);
     const result = await onResetPassword(user.id, newPassword);
     setBusy(false);
@@ -460,7 +535,7 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
-            placeholder="Ny adgangskode (mindst 6 tegn)"
+            placeholder={`Ny adgangskode (mindst ${minLength} tegn${requireMixed ? ", bogstaver + tal" : ""})`}
             aria-label="Ny adgangskode"
             className="flex-1 min-w-[160px] rounded-lg border border-line bg-panel px-2 py-2 text-xs text-ink focus:outline-none focus:border-brand"
           />
@@ -480,7 +555,7 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
   );
 }
 
-function NewUserForm({ onAdd }) {
+function NewUserForm({ onAdd, passwordPolicy }) {
   const [loginType, setLoginType] = useState("brugernavn");
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
@@ -490,6 +565,9 @@ function NewUserForm({ onAdd }) {
   const [role, setRole] = useState("saelger");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const minLength = passwordPolicy?.minLength ?? 6;
+  const requireMixed = passwordPolicy?.requireMixed ?? false;
 
   const changeName = (val) => {
     setName(val);
@@ -501,6 +579,8 @@ function NewUserForm({ onAdd }) {
     if (!name.trim() || !password.trim()) { setError("Udfyld navn og adgangskode."); return; }
     if (loginType === "brugernavn" && !isValidUsername(username)) { setError("Brugernavn skal være 2-40 tegn (a-z, tal, punktum eller bindestreg)."); return; }
     if (loginType === "email" && !email.trim()) { setError("Udfyld e-mail."); return; }
+    if (password.length < minLength) { setError(`Adgangskoden skal være mindst ${minLength} tegn (denne butiks eget krav).`); return; }
+    if (requireMixed && !opfylderBlandingskrav(password)) { setError("Adgangskoden skal indeholde både bogstaver og tal (denne butiks eget krav)."); return; }
     setBusy(true);
     const result = await onAdd({ navn: name.trim(), loginType, email: email.trim(), brugernavn: username.trim().toLowerCase(), adgangskode: password, rolle: role });
     setBusy(false);
@@ -522,7 +602,7 @@ function NewUserForm({ onAdd }) {
         ) : (
           <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="E-mail" aria-label="E-mail" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
         )}
-        <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Adgangskode (mindst 6 tegn)" aria-label="Adgangskode" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+        <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder={`Adgangskode (mindst ${minLength} tegn${requireMixed ? ", bogstaver + tal" : ""})`} aria-label="Adgangskode" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
         <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Rolle" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
           <option value="saelger">Sælger (opret sager, Planlægning, Lager, Arkiv)</option>
           <option value="montor">Montør (kun sin egen rute)</option>
@@ -894,4 +974,4 @@ function DefaultTimeEstimateAdmin({ productTypes, primaryServices, addOnServices
   );
 }
 
-export { TechnicianRow, SickLeaveWindowSetting, VehicleRow, UserRow, NewUserForm, ROLE_LABEL, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin, DefaultTimeEstimateAdmin };
+export { TechnicianRow, SickLeaveWindowSetting, PasswordPolicySetting, VehicleRow, UserRow, NewUserForm, ROLE_LABEL, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin, DefaultTimeEstimateAdmin };
