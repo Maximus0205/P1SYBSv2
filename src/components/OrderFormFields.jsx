@@ -58,21 +58,36 @@ function guessProductType(title, productTypes) {
 //    at skrive, eller har fat i den forkerte variant. Her vises forslagene
 //    i stedet for at påstå noget definitivt.
 //
-// Et klik på et forslag udfylder BÅDE mærke- og modelnummer-feltet (og,
+// Et klik på et forslag udfylder BÅDE mærke- og modelnummerfeltet (og,
 // hvis titlen indeholder en genkendelig varetype, VARETYPEN med - se
 // guessProductType), og markerer det med det samme som bekræftet.
+//
+// RETTET (september 2026 - crash ved indtastning): den forrige udgave
+// kaldte onSelectProduct fra en SEPARAT useEffect, der reagerede på det
+// AFLEDTE "exactMatch"-resultat. Kaldte onSelectProduct forældrens
+// onChange, som (via applyProductLookup) kunne ændre "model"-prop'en en
+// smule (fx normaliseret store bogstaver) - hvilket fik komponentens EGEN
+// søge-effect til at køre IGEN, som igen kunne trigge exactMatch-effecten
+// igen, i en løkke der i værste fald aldrig fandt ro og fik React til at
+// stoppe med "Too many re-renders" (skærmbilledets uventede fejl).
+//
+// Nu sker hele "find og anvend et bekræftet match"-trinnet ÉT sted: inde i
+// selve søge-kaldet, lige efter et nyt svar er hentet - ikke som en
+// reaktion på afledt state. confirmedRef opdateres FØR onSelectProduct
+// kaldes, så selv hvis "model"-prop'en ændrer sig som konsekvens, er
+// søgningen allerede markeret som bekræftet og udløser ikke et nyt kald.
 function ModelNumberLookup({ model, onSelectProduct }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null); // { matchCount, products } | null
   const [error, setError] = useState(null);
   const [checkedTerm, setCheckedTerm] = useState("");
   const timerRef = useRef(null);
-  const confirmedRef = useRef(""); // sidst bekræftede modelnummer via et valgt forslag - undgår unødvendigt genopslag
+  const confirmedRef = useRef(""); // sidst bekræftede modelnummer (klik ELLER automatisk match) - undgår unødvendigt/gentaget genopslag
 
   useEffect(() => {
     const term = (model || "").trim();
     if (term.length < 3) { setResult(null); setError(null); return; }
-    if (term === confirmedRef.current) return; // allerede bekræftet, "result" er sat af selectProduct - lad den stå
+    if (term === confirmedRef.current) return; // allerede bekræftet, "result" er sat - lad den stå
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(async () => {
       setLoading(true); setError(null);
@@ -81,6 +96,21 @@ function ModelNumberLookup({ model, onSelectProduct }) {
       setCheckedTerm(term);
       if (!res.ok) { setError(res.fejl || "Kunne ikke slå op lige nu."); setResult(null); return; }
       setResult(res);
+
+      // Er ét af de fundne produkter et PRÆCIST match på det, der nu er
+      // tastet/indsat? Så er det bekræftet - anvend det (mærke, model,
+      // evt. varetype) med det samme, uden at brugeren selv skal klikke
+      // et forslag. confirmedRef sættes FØRST, så et eventuelt følge-kald
+      // til onChange (som kan ændre "model" en smule) ikke selv udløser
+      // endnu en søgning.
+      const match = (res.products || []).find((p) => {
+        const guess = guessBrandAndModel(p.title);
+        return guess.model && guess.model.toUpperCase() === term.toUpperCase();
+      });
+      if (match) {
+        confirmedRef.current = term;
+        onSelectProduct({ ...guessBrandAndModel(match.title), title: match.title });
+      }
     }, 500);
     return () => clearTimeout(timerRef.current);
   }, [model]);
@@ -97,19 +127,11 @@ function ModelNumberLookup({ model, onSelectProduct }) {
 
   // Er der ét produkt blandt træfferne, hvis udledte modelnummer PRÆCIS
   // matcher det, brugeren har tastet/indsat lige nu? Så er det bekræftet.
+  // (Rent visningsbrug her - selve ANVENDELSEN sker i søge-kaldet ovenfor.)
   const exactMatch = result?.products?.find((p) => {
     const guess = guessBrandAndModel(p.title);
     return guess.model && checkedTerm && guess.model.toUpperCase() === checkedTerm.toUpperCase();
   });
-
-  // Sagen der udløste denne rettelse: et BEKRÆFTET, entydigt match (grønt
-  // flueben, ovenfor) blev IKKE brugt til at udfylde varetypen automatisk,
-  // selvom titlen tydeligt sagde det. Her har vi allerede det bekræftede
-  // produkt - så samme oplysning bruges også her.
-  useEffect(() => {
-    if (exactMatch) onSelectProduct({ ...guessBrandAndModel(exactMatch.title), title: exactMatch.title });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exactMatch?.title]);
 
   return (
     <div className="mt-1">
