@@ -268,10 +268,14 @@ export default function App() {
   //                 at køre den i dag) og til Admins bil-tilknytnings-UI.
   //
   //   technicians - BILERNE selv, som det man rent faktisk TILDELER en
-  //                 sag til ({id, navn, bil, lukket}). "navn" viser også
-  //                 hvem der aktuelt kører bilen, så det er synligt i alle
-  //                 lister UDEN at skulle slå det op - fx "Bil 1 (Magnus,
-  //                 Test)" i stedet for bare "Bil 1".
+  //                 sag til ({id, navn, bil, lukket, tempo}). "navn" viser
+  //                 også hvem der aktuelt kører bilen, så det er synligt i
+  //                 alle lister UDEN at skulle slå det op - fx "Bil 1
+  //                 (Magnus, Test)" i stedet for bare "Bil 1". "tempo"
+  //                 (september 2026, rettet) er bilens egen kapacitets-
+  //                 justering - se domain.js: vehiclePaceFactor - sat
+  //                 direkte på bilen (Admin -> Biler), ikke afledt af
+  //                 hvem der aktuelt kører den.
   //
   // De to må ALDRIG blandes sammen: en sag kan ikke tildeles en person
   // (det var netop fejlen), og et fravær kan ikke registreres på en bil.
@@ -282,7 +286,7 @@ export default function App() {
   const technicians = vehicles.map((v) => {
     const drivere = personnel.filter((p) => p.bilId === v.id);
     const navn = drivere.length > 0 ? `${v.navn} (${drivere.map((d) => d.navn).join(", ")})` : `${v.navn} (ingen montør)`;
-    return { id: v.id, navn, bil: v.nummerplade, lukket: v.lukket };
+    return { id: v.id, navn, bil: v.nummerplade, lukket: v.lukket, tempo: v.tempo ?? 100 };
   });
 
   const notifications = useMemo(() => computeNotifications(orders, profile?.id), [orders, profile?.id]);
