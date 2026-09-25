@@ -307,13 +307,18 @@ async function readEdgeFunctionError(data, error, fallbackMessage) {
 
 export async function getStore(storeId) {
   if (!storeId) return null;
-  const { data, error } = await supabase.from("stores").select("id, name, address, lat, lon, store_number, sick_leave_window_hours").eq("id", storeId).maybeSingle();
+  const { data, error } = await supabase.from("stores").select("id, name, address, lat, lon, store_number, sick_leave_window_hours, password_min_length, password_require_mixed").eq("id", storeId).maybeSingle();
   if (error) {
     logDbError("dataStore:getStore", "Could not load store", error);
     return null;
   }
   if (!data) return null;
-  return { id: data.id, navn: data.name, adresse: data.address, lat: data.lat, lon: data.lon, butiksnummer: data.store_number, sygemeldingVindueTimer: data.sick_leave_window_hours ?? 48 };
+  return {
+    id: data.id, navn: data.name, adresse: data.address, lat: data.lat, lon: data.lon, butiksnummer: data.store_number,
+    sygemeldingVindueTimer: data.sick_leave_window_hours ?? 48,
+    adgangskodeMinLaengde: data.password_min_length ?? 6,
+    adgangskodeKraeverBlanding: data.password_require_mixed === true,
+  };
 }
 
 export async function getAllStores() {
@@ -369,6 +374,28 @@ export async function updateSickLeaveWindow(hours, storeId) {
   const { error } = await supabase.rpc("update_sick_leave_window", { p_hours: hours, p_store_id: storeId ?? null });
   if (error) {
     logDbError("dataStore:updateSickLeaveWindow", "Could not update sick leave window", error);
+    return { ok: false, fejl: error.message };
+  }
+  return { ok: true };
+}
+
+// ---------- Adgangskodekrav pr. butik (september 2026) ----------
+// Samme mønster som updateSickLeaveWindow ovenfor: butikkens egen admin
+// (eller en systemadmin) må ændre denne butiks-indstilling via en snævert
+// afgrænset SECURITY DEFINER-funktion, uden generel skriveadgang til
+// stores. Selve håndhævelsen sker server-side i admin-opret-bruger og
+// admin-nulstil-adgangskode (se de to Edge Functions) - denne funktion
+// gemmer kun ØNSKET, den beskytter ikke i sig selv noget.
+//
+// minLaengde kan IKKE sættes under 6 - Supabase Auth håndhæver selv et
+// projekt-bredt minimum (typisk 6 tegn), uafhængigt af butikkens eget
+// ønske. Se noten i databasemigrationen for detaljer.
+export async function updatePasswordPolicy({ minLaengde, kraeverBlanding, storeId } = {}) {
+  const { error } = await supabase.rpc("update_password_policy", {
+    p_min_length: minLaengde, p_require_mixed: !!kraeverBlanding, p_store_id: storeId ?? null,
+  });
+  if (error) {
+    logDbError("dataStore:updatePasswordPolicy", "Could not update password policy", error);
     return { ok: false, fejl: error.message };
   }
   return { ok: true };
@@ -611,7 +638,7 @@ export async function updateProfile(userId, fields) {
 // ---------- Ankomst-SMS til kunden ----------
 // Sendes via en Edge Function fra firmaets FÆLLES afsender - IKKE fra
 // montørens egen telefon. Mange montører bruger deres private telefon og
-// skal hverken dele deres nummer med kunden eller selv sende noget.
+// skal hverken dele deres nummer med kunden eller selv afsende noget.
 export async function sendArrivalSms({ telefon, minutter, kundeNavn }) {
   const { data, error } = await supabase.functions.invoke("send-ankomst-sms", {
     body: { telefon, minutter, kundeNavn },
