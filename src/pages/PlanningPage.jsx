@@ -609,15 +609,16 @@ function WeekOverview({ orders, technicians, personnel, timeOff, store, onAssign
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature]);
 
-  // TEMPO PR. MONTØR (september 2026): vehiclePaceFactor (domain.js) slår
-  // op i "personnel", ikke i selve varelinjens tidsestimat - se noten ved
-  // funktionen. En ny montør under oplæring, sat til fx 130%, gør bilens
-  // dag se 30% mere fyldt ud her, UDEN at nogen har rørt sagens egne
-  // tal. Rundes til hele minutter, så tallet ikke ser kunstigt præcist ud.
+  // TEMPO PR. BIL (september 2026, rettet): vehiclePaceFactor (domain.js)
+  // slår op i "technicians" (BIL-rækkerne, hver med sit eget tempo-felt),
+  // IKKE i personnel - se noten ved funktionen for hvorfor. En bil sat til
+  // fx 130% gør dens dag se 30% mere fyldt ud her, UDEN at nogen har rørt
+  // sagens egne tal. Rundes til hele minutter, så tallet ikke ser
+  // kunstigt præcist ud.
   const timeFor = (vehicleId, day, dayOrdersForCell) => {
     const key = `${vehicleId}|${day}`;
     const rawLoadMinutes = dayOrdersForCell.reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
-    const pace = vehicleId ? vehiclePaceFactor(vehicleId, personnel) : 1;
+    const pace = vehicleId ? vehiclePaceFactor(vehicleId, technicians) : 1;
     const loadMinutes = Math.round(rawLoadMinutes * pace);
     const drive = vehicleId ? driveMinutes[key] : undefined;
     const total = loadMinutes + (drive || 0);
@@ -748,10 +749,10 @@ function WeekOverview({ orders, technicians, personnel, timeOff, store, onAssign
             {storeCoord ? <Building2 size={11} className="shrink-0" aria-hidden="true" /> : <Car size={11} className="shrink-0" aria-hidden="true" />}
             <span className="hidden sm:inline">
               {storeCoord
-                ? "Tidstal inkluderer kørsel tur/retur fra firmaets adresse og mellem dagens stop, montørens eget tempo (Admin -> Montører), samt arbejdstid. Rute-ikonet foreslår bedste besøgsrækkefølge inden for hver sags tidsramme."
-                : "Tidstal inkluderer kørsel mellem dagens stop, montørens eget tempo og arbejdstid (sæt butikkens adresse op under Admin for turen ud fra og hjem til firmaet)."}
+                ? "Tidstal inkluderer kørsel tur/retur fra firmaets adresse og mellem dagens stop, bilens eget tempo (Admin -> Biler), samt arbejdstid. Rute-ikonet foreslår bedste besøgsrækkefølge inden for hver sags tidsramme."
+                : "Tidstal inkluderer kørsel mellem dagens stop, bilens eget tempo og arbejdstid (sæt butikkens adresse op under Admin for turen ud fra og hjem til firmaet)."}
             </span>
-            <span className="sm:hidden">Tal = arbejde (justeret for tempo) + estimeret kørsel tur/retur.</span>
+            <span className="sm:hidden">Tal = arbejde (justeret for bilens tempo) + estimeret kørsel tur/retur.</span>
           </p>
 
           {/* ------- MOBIL: dag-faner (man-fre) + stak af bil-sektioner ------- */}
