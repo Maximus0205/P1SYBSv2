@@ -54,57 +54,21 @@ function CheckboxList({ items, columns = 1, disabled }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// TEMPO PR. MONTØR (september 2026)
-//
-// Procent af normalt tempo (100 = normalt) - bruges UDELUKKENDE til at
-// justere kapacitets-/overbelastningsberegningen i Planlægnings-fanens
-// "Overblik" (se domain.js: vehiclePaceFactor). Rører IKKE selve sagens
-// tidsestimat - det tal en sælger ser og eventuelt retter ved oprettelse,
-// og som gælder for HVEM SOM HELST der får sagen.
-//
-// BEVIDST KUN HER, under Admin -> Montører (kræver admin_montorer) -
-// beskyttet i selve databasen (samme trigger som bil-tilknytning), så en
-// sælger ikke kan bruge det som en bagvej til at presse flere opgaver ind
-// på en bil ved at "opgradere" dens forventede tempo.
-//
-// Gemmes på BLUR (som TimeEstimateCell nedenfor), ikke pr. tastetryk - et
-// tal midt i indtastning (fx "1" på vej til "130") skal ikke udløse en
-// skrivning og en genberegning af hele ugens kapacitetsvisning.
-function TempoInput({ value, onCommit }) {
-  const [local, setLocal] = useState(String(value ?? 100));
-  useEffect(() => { setLocal(String(value ?? 100)); }, [value]);
-  const commit = () => {
-    const n = Math.min(300, Math.max(50, Math.round(Number(local)) || 100));
-    setLocal(String(n));
-    if (n !== value) onCommit(n);
-  };
-  return (
-    <input
-      type="number"
-      min="50"
-      max="300"
-      inputMode="numeric"
-      value={local}
-      onChange={(e) => setLocal(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
-      aria-label="Tempo i procent af normalt"
-      className="w-16 rounded-lg border border-line bg-panel px-1.5 py-2 text-center text-xs text-ink focus:outline-none focus:border-brand"
-    />
-  );
-}
-
 // En "montør" er ikke længere en ROLLE, men alle der KØRER: rollen montor,
 // eller enhver anden bruger, der har fået slået "kan køre rute" til (se
 // UserRow nedenfor og koererSelv i App.jsx). Her på Montør-fanen styres
-// hvilken bil personen kører i lige nu, deres tempo, og deres
-// fraværsperioder.
+// hvilken bil personen kører i lige nu, og deres fraværsperioder.
 //
 // Selve TIL-/FRAVALGET af, om nogen kan køre, ligger bevidst på fanen
 // Brugere - ikke her. Denne fane viser kun folk, der ALLEREDE er montører,
 // så lå kontakten her, kunne man aldrig tilføje den første.
-function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onUpdateTempo, onAddTimeOff, onDeleteTimeOff, onSygemeld, onRaskmeld }) {
+//
+// TEMPO ER IKKE HER (september 2026, rettet efter tilbagemelding): det
+// blev først forsøgt sat pr. person her, men appens arkitektur er allerede
+// bil-centreret (sager tildeles en BIL, ikke en person), og deler flere
+// personer en bil, var det uklart hvis tempo der reelt gjaldt. Tempo sidder
+// nu i stedet på selve bilen, se VehicleRow nedenfor.
+function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTimeOff, onDeleteTimeOff, onSygemeld, onRaskmeld }) {
   const [showTimeOff, setShowTimeOff] = useState(false);
   const [start, setStart] = useState(todayISO());
   const [end, setEnd] = useState(todayISO());
@@ -148,13 +112,6 @@ function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onUpdat
             </option>
           ))}
         </select>
-        {onUpdateTempo && (
-          <label className="flex items-center gap-1 text-xs text-muted shrink-0" title="Tempo: justerer KUN kapacitetsberegningen i Planlægning (100% = normalt) - ændrer ikke selve sagens tidsestimat.">
-            <Gauge size={13} className="shrink-0" aria-hidden="true" />
-            <TempoInput value={technician.tempo} onCommit={(n) => onUpdateTempo(technician.id, n)} />
-            <span className="text-[10px]">%</span>
-          </label>
-        )}
         <button onClick={() => setShowTimeOff((v) => !v)} aria-expanded={showTimeOff} className="p-2 text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded-lg flex items-center gap-1 text-xs font-semibold uppercase tracking-wide" title="Ferie">
           <PalmtreeIcon size={15} aria-hidden="true" /> Ferie{myTimeOff.filter((f) => f.type !== "sygdom").length > 0 ? ` (${myTimeOff.filter((f) => f.type !== "sygdom").length})` : ""}
         </button>
@@ -250,6 +207,49 @@ function SickLeaveWindowSetting({ store, onUpdated }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// TEMPO PR. BIL (september 2026, rettet - flyttet hertil fra Montører)
+//
+// Procent af normalt tempo (100 = normalt) - bruges UDELUKKENDE til at
+// justere kapacitets-/overbelastningsberegningen i Planlægnings-fanens
+// "Overblik" (se domain.js: vehiclePaceFactor). Rører IKKE selve sagens
+// tidsestimat - det tal en sælger ser og eventuelt retter ved oprettelse,
+// og som gælder for HVEM SOM HELST der får sagen.
+//
+// EN SLIDER, IKKE ET FRIT TALFELT: et almindeligt tal-input kunne (indtil
+// blur-tjekket nåede at rette det) vise et absurd tal som 900% undervejs.
+// En slider kan slet ikke antage en værdi uden for sit min/max - der er
+// intet at rette i efterhånden, feltet er født begrænset.
+//
+// SAT PÅ SELVE BILEN, IKKE MONTØREN (se noten ved TechnicianRow ovenfor og
+// vehiclePaceFactor i domain.js for hvorfor) - beskyttet af admin_biler i
+// databasens RLS, en sælger kan ikke ændre det.
+function TempoSlider({ value, onCommit }) {
+  const clamp = (n) => Math.min(200, Math.max(50, Math.round(n) || 100));
+  const [local, setLocal] = useState(clamp(value ?? 100));
+  useEffect(() => { setLocal(clamp(value ?? 100)); }, [value]);
+  const commit = () => { if (local !== value) onCommit(local); };
+  return (
+    <div className="flex items-center gap-2 min-w-[150px]" title="Tempo: justerer KUN kapacitetsberegningen i Planlægning (100% = normalt) - ændrer ikke selve sagens tidsestimat.">
+      <Gauge size={13} className="text-muted shrink-0" aria-hidden="true" />
+      <input
+        type="range"
+        min={50}
+        max={200}
+        step={5}
+        value={local}
+        onChange={(e) => setLocal(Number(e.target.value))}
+        onMouseUp={commit}
+        onTouchEnd={commit}
+        onKeyUp={commit}
+        aria-label="Tempo i procent af normalt"
+        className="flex-1 accent-brand"
+      />
+      <span className="text-xs font-mono text-ink w-9 text-right shrink-0">{local}%</span>
+    </div>
+  );
+}
+
 function VehicleRow({ vehicle, usedBy, onUpdate, onDelete, onToggleClosed }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(vehicle.navn);
@@ -272,6 +272,7 @@ function VehicleRow({ vehicle, usedBy, onUpdate, onDelete, onToggleClosed }) {
       <p className="text-sm text-ink flex-1 truncate min-w-[80px]">{vehicleLabel(vehicle)}</p>
       {vehicle.lukket && <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md border border-brand text-brand shrink-0">Lukket{vehicle.lukketAarsag ? ` · ${vehicle.lukketAarsag}` : ""}</span>}
       {usedBy && <span className="text-[10px] text-muted shrink-0">kører af {usedBy}</span>}
+      <TempoSlider value={vehicle.tempo} onCommit={(n) => onUpdate({ tempo: n })} />
       {showCloseReason ? (
         <div className="flex items-center gap-1 shrink-0">
           <input autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Årsag (fx værksted)" aria-label="Årsag til blokering" className="w-32 rounded-lg border border-line bg-panel px-1.5 py-2 text-[10px] text-ink" />
