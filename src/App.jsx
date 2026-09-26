@@ -9,6 +9,7 @@ import { useTimeOff } from "./hooks/useTimeOff";
 import { useUsers } from "./hooks/useUsers";
 import { useOrders } from "./hooks/useOrders";
 import { useAddressNotes } from "./hooks/useAddressNotes";
+import { useKeyCabinets } from "./hooks/useKeyCabinets";
 import { getAllStores, getStore, updateDashboardWidgets } from "./lib/dataStore";
 
 import { TopNav } from "./components/TopNav";
@@ -28,9 +29,9 @@ import { SystemAdminPage } from "./pages/SystemAdminPage";
 // ---------------------------------------------------------------------------
 // App.jsx's ansvar er: kalde hooks, definere rute-opsætningen, og komponere
 // sider. Al domænelogik ligger i hooks/-mappen (useSession, useCatalog,
-// useVehicles, useTimeOff, useUsers, useOrders, useAddressNotes). Navigation
-// er en rigtig URL via react-router-dom (HashRouter - se main.jsx for
-// hvorfor hash).
+// useVehicles, useTimeOff, useUsers, useOrders, useAddressNotes,
+// useKeyCabinets). Navigation er en rigtig URL via react-router-dom
+// (HashRouter - se main.jsx for hvorfor hash).
 // ---------------------------------------------------------------------------
 
 // KØRER DENNE PERSON SELV? (september 2026)
@@ -227,6 +228,7 @@ export default function App() {
   const usersStore = useUsers(activeStoreId || null);
   const ordersStore = useOrders(activeStoreId || null);
   const addressNotesStore = useAddressNotes(activeStoreId || null);
+  const keyCabinetsStore = useKeyCabinets(activeStoreId || null);
   const { vehicles } = vehiclesStore;
   const { timeOff } = timeOffStore;
   const { users } = usersStore;
@@ -294,7 +296,7 @@ export default function App() {
   const refresh = async () => {
     if (!activeStoreId) return;
     setRefreshing(true);
-    await Promise.all([ordersStore.reload(), catalog.reload(), vehiclesStore.reload(), timeOffStore.reload(), usersStore.reload(), addressNotesStore.reload()]);
+    await Promise.all([ordersStore.reload(), catalog.reload(), vehiclesStore.reload(), timeOffStore.reload(), usersStore.reload(), addressNotesStore.reload(), keyCabinetsStore.reload()]);
     setRefreshing(false);
   };
 
@@ -321,6 +323,11 @@ export default function App() {
   // det bevidst er fjernet fra sagskortet og bookingflowet). "createdBy"
   // sættes altid ud fra den faktisk indloggede profil.
   const addAddressNote = (address, note) => addressNotesStore.addAddressNote(address, note, profile ? { id: profile.id, navn: profile.navn } : null);
+
+  // Nøgleskabe (september 2026) - se hooks/useKeyCabinets.js. Samme
+  // "createdBy sættes altid ud fra den indloggede profil"-mønster som
+  // adresse-noterne ovenfor.
+  const addKeyCabinet = (fields) => keyCabinetsStore.addKeyCabinet(fields, profile ? { id: profile.id, navn: profile.navn } : null);
 
   // MANGLENDE VARER: lageret melder, at en vare ikke kan findes ved pluk.
   // Hvem der meldte den gemmes med - en melding uden afsender er svær at
@@ -506,9 +513,11 @@ export default function App() {
           {/* ADRESSER (september 2026): selvstændig fane, uafhængig af den
               enkelte sag - se AddressesPage.jsx og noten ved kanSeAdresser
               ovenfor. canManage = samme grænse som RLS'en på
-              address_notes håndhæver (sag_feltarbejde eller sag_opret).
-              storeFocus (samme som /salg bruger) sikrer at adresseforslag
-              her også prioriteres efter nærhed til butikken. */}
+              address_notes/key_cabinets håndhæver (sag_feltarbejde eller
+              sag_opret). storeFocus (samme som /salg bruger) sikrer at
+              adresseforslag her også prioriteres efter nærhed til
+              butikken. keyCabinets (september 2026): nøgleskabe hos
+              boligforeninger - se hooks/useKeyCabinets.js. */}
           <Route path="/adresser" element={
             <Gate allowed={allowedPages} page="adresser">
               <AddressesPage
@@ -517,6 +526,10 @@ export default function App() {
                 onDelete={addressNotesStore.deleteAddressNote}
                 canManage={kanSeAdresser}
                 storeFocus={storeFocus}
+                keyCabinets={keyCabinetsStore.keyCabinets}
+                onAddKeyCabinet={addKeyCabinet}
+                onUpdateKeyCabinet={keyCabinetsStore.updateKeyCabinet}
+                onDeleteKeyCabinet={keyCabinetsStore.deleteKeyCabinet}
               />
             </Gate>
           } />
