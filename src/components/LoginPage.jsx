@@ -35,7 +35,14 @@ function LoginPage() {
     setBusy(true);
     const { error: err } = await supabase.auth.signInWithPassword({ email: identifierToEmail(identifier), password });
     setBusy(false);
-    if (err) setError("Forkert e-mail/brugernavn eller adgangskode.");
+    if (err) { setError("Forkert e-mail/brugernavn eller adgangskode."); return; }
+    // HURTIG OPLÅSNING (september 2026): markerer, at DETTE var et helt
+    // almindeligt, gennemført login med fulde login-oplysninger - ikke en
+    // session der bare blev genoptaget fra sidste besøg. App.jsx bruger
+    // flaget til at vise tilbuddet om PIN/biometri ÉN gang, lige efter
+    // (se DeviceUnlockPrompt.jsx). sessionStorage (ikke localStorage): skal
+    // kun gælde denne ene fane/session, ikke overleve at appen lukkes helt.
+    try { sessionStorage.setItem("p1_fresh_login", "1"); } catch (_) { /* uden betydning hvis blokeret - tilbuddet vises da bare ikke */ }
     // Ved succes opdaterer App.jsx sig selv via onAuthStateChange - intet mere at gøre her.
   };
 
