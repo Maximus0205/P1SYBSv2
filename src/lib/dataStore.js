@@ -287,6 +287,78 @@ export async function deleteAddressNote(id) {
   return true;
 }
 
+// ---------- Nøgleskabe (september 2026) ----------
+// Digitalisering af de laminerede ark, der i dag ligger i hver bil: for
+// boligforeninger med et fysisk nøgleskab (fx ved ejendomsmesterkontoret),
+// hvilket OMRÅDE dækker det skab, og hvor skabet selv sidder. Se
+// migrationen (key_cabinets) for hvorfor "omraade" bevidst er fri tekst
+// frem for en struktureret adresse-nøgle - et skab dækker typisk
+// husnummerintervaller på tværs af flere veje, som ikke lader sig
+// opdele/matche pålideligt uden at foregive en præcision, dataen ikke har.
+//
+// Samme henteform som address_notes: hele butikkens liste i ét hug,
+// filtrering/søgning sker klient-side i AddressesPage.jsx.
+export async function getKeyCabinets(storeId) {
+  if (!storeId) return [];
+  const { data, error } = await supabase
+    .from("key_cabinets")
+    .select("id, navn, skab_placering, omraade, note, created_by_id, created_by_name, created_at")
+    .eq("store_id", storeId)
+    .order("navn", { ascending: true });
+  if (error) {
+    logDbError("dataStore:getKeyCabinets", "Could not load key cabinets", error);
+    return [];
+  }
+  return (data || []).map((r) => ({
+    id: r.id, navn: r.navn, skabPlacering: r.skab_placering, omraade: r.omraade, note: r.note || "",
+    createdBy: { id: r.created_by_id, navn: r.created_by_name }, createdAt: r.created_at,
+  }));
+}
+
+export async function addKeyCabinet(storeId, { navn, skabPlacering, omraade, note, createdBy }) {
+  if (!storeId || !navn?.trim() || !skabPlacering?.trim() || !omraade?.trim()) {
+    return { ok: false, fejl: "Udfyld navn, skabets placering og hvilket område det dækker" };
+  }
+  const { data, error } = await supabase.from("key_cabinets").insert({
+    store_id: storeId, navn: navn.trim(), skab_placering: skabPlacering.trim(), omraade: omraade.trim(),
+    note: note?.trim() || null, created_by_id: createdBy?.id || null, created_by_name: createdBy?.navn || null,
+  }).select("id, navn, skab_placering, omraade, note, created_by_id, created_by_name, created_at").maybeSingle();
+  if (error) {
+    logWriteError("dataStore:addKeyCabinet", "Could not save key cabinet", error, "Nøgleskabet blev ikke gemt:");
+    return { ok: false, fejl: error.message };
+  }
+  return {
+    ok: true,
+    cabinet: data && {
+      id: data.id, navn: data.navn, skabPlacering: data.skab_placering, omraade: data.omraade, note: data.note || "",
+      createdBy: { id: data.created_by_id, navn: data.created_by_name }, createdAt: data.created_at,
+    },
+  };
+}
+
+export async function updateKeyCabinet(id, fields) {
+  const dbFields = {};
+  if ("navn" in fields) dbFields.navn = fields.navn;
+  if ("skabPlacering" in fields) dbFields.skab_placering = fields.skabPlacering;
+  if ("omraade" in fields) dbFields.omraade = fields.omraade;
+  if ("note" in fields) dbFields.note = fields.note || null;
+  const { error } = await supabase.from("key_cabinets").update(dbFields).eq("id", id);
+  if (error) {
+    logWriteError("dataStore:updateKeyCabinet", "Could not update key cabinet", error, "Nøgleskabet blev ikke opdateret:");
+    return false;
+  }
+  return true;
+}
+
+export async function deleteKeyCabinet(id) {
+  const { error } = await supabase.from("key_cabinets").delete().eq("id", id);
+  if (error) {
+    logWriteError("dataStore:deleteKeyCabinet", "Could not delete key cabinet", error, "Nøgleskabet blev ikke slettet:");
+    return false;
+  }
+  return true;
+}
+
 // Læser den RIGTIGE fejlbesked ud af et Edge Function-svar. Uden dette
 // viser supabase-js kun "non-2xx status code" - den rigtige besked (som
 // vores funktioner sender som { fejl: "..." }) ligger i error.context.
