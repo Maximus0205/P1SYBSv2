@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Trash2, Plus } from "lucide-react";
-import { TechnicianRow, SickLeaveWindowSetting, VehicleRow, UserRow, NewUserForm, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin, DefaultTimeEstimateAdmin } from "../components/AdminParts";
+import { TechnicianRow, SickLeaveWindowSetting, PasswordPolicySetting, VehicleRow, UserRow, NewUserForm, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin, DefaultTimeEstimateAdmin } from "../components/AdminParts";
 import { PosIntegrationAdmin } from "../components/PosIntegrationAdmin";
 import { AdressevaelgerTest } from "../components/AdressevaelgerTest";
 import { getPermissionsCatalog, getRoleDefaultPermissions } from "../lib/dataStore";
@@ -23,7 +23,7 @@ function AdminPage({
   onAddPrimaryService, onUpdatePrimaryService, onDeletePrimaryService,
   onAddAddOnService, onUpdateAddOnService, onDeleteAddOnService,
   onSetDefaultTimeEstimate,
-  onAddTimeOff, onDeleteTimeOff, onSygemeld, onRaskmeld, onSickLeaveWindowUpdated,
+  onAddTimeOff, onDeleteTimeOff, onSygemeld, onRaskmeld, onSickLeaveWindowUpdated, onPasswordPolicyUpdated,
 }) {
   const allTabs = [
     { k: "montorer", l: "Montører", perm: "admin_montorer" },
@@ -71,6 +71,12 @@ function AdminPage({
       </div>
     );
   }
+
+  // Butikkens adgangskodekrav - sendt videre til NewUserForm og hver
+  // UserRow's nulstillingsfelt, så de validerer mod det SAMME krav som
+  // edge-funktionerne håndhæver server-side (se AdminParts.jsx:
+  // opfylderBlandingskrav og admin-opret-bruger/admin-nulstil-adgangskode).
+  const passwordPolicy = { minLength: store?.adgangskodeMinLaengde ?? 6, requireMixed: store?.adgangskodeKraeverBlanding ?? false };
 
   return (
     <div>
@@ -141,7 +147,8 @@ function AdminPage({
 
       {tab === "brugere" && (
         <div>
-          <NewUserForm onAdd={onAddUser} />
+          {hasPerm(permissions, "admin_butik") && <PasswordPolicySetting store={store} onUpdated={onPasswordPolicyUpdated} />}
+          <NewUserForm onAdd={onAddUser} passwordPolicy={passwordPolicy} />
           <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Alle brugere ({users.length})</h3>
           <div className="space-y-2">
             {users.map((b) => {
@@ -151,6 +158,7 @@ function AdminPage({
                   key={b.id} user={b} vehicle={vehicle} currentUserId={currentUserId}
                   onUpdate={onUpdateUser} onDelete={onDeleteUser} onResetPassword={onResetPassword}
                   permissionsCatalog={permissionsCatalog} roleDefaults={roleDefaults} onUpdatePermissions={onUpdatePermissions}
+                  passwordPolicy={passwordPolicy}
                 />
               );
             })}
