@@ -236,10 +236,20 @@ export default function App() {
 
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [refreshing, setRefreshing] = useState(false);
-  // Sygemeldingsvinduet kan rettes af butikkens admin og hentes ikke
-  // automatisk igen bagefter, så vi holder en lokal override her.
+  // Sygemeldingsvinduet OG adgangskodekravet kan begge rettes af butikkens
+  // admin og hentes ikke automatisk igen bagefter (getStore kaldes kun ved
+  // butiksskift, se effect ovenfor) - vi holder derfor en lokal override af
+  // hver, så ændringen slår igennem med det samme i resten af appen (fx
+  // NewUserForm/UserRow's adgangskode-validering), uden at vente på en
+  // fuld genindlæsning.
   const [sickLeaveWindowOverride, setSickLeaveWindowOverride] = useState(null);
-  const effectiveStore = activeStore ? { ...activeStore, sygemeldingVindueTimer: sickLeaveWindowOverride ?? activeStore.sygemeldingVindueTimer } : activeStore;
+  const [passwordPolicyOverride, setPasswordPolicyOverride] = useState(null);
+  const effectiveStore = activeStore ? {
+    ...activeStore,
+    sygemeldingVindueTimer: sickLeaveWindowOverride ?? activeStore.sygemeldingVindueTimer,
+    adgangskodeMinLaengde: passwordPolicyOverride?.minLength ?? activeStore.adgangskodeMinLaengde,
+    adgangskodeKraeverBlanding: passwordPolicyOverride?.requireMixed ?? activeStore.adgangskodeKraeverBlanding,
+  } : activeStore;
 
   // Butikkens koordinater, sendt til ethvert adressefelt der skal
   // prioritere forslag efter nærhed (se lib/geocoding.js:
@@ -247,8 +257,8 @@ export default function App() {
   // så de to ikke kan komme til at afvige fra hinanden.
   const storeFocus = effectiveStore?.lat && effectiveStore?.lon ? { lat: effectiveStore.lat, lon: effectiveStore.lon } : null;
 
-  const switchStore = (storeId) => { setSickLeaveWindowOverride(null); setActiveStoreId(storeId); };
-  const exitStoreView = () => { setSickLeaveWindowOverride(null); setActiveStoreId(null); };
+  const switchStore = (storeId) => { setSickLeaveWindowOverride(null); setPasswordPolicyOverride(null); setActiveStoreId(storeId); };
+  const exitStoreView = () => { setSickLeaveWindowOverride(null); setPasswordPolicyOverride(null); setActiveStoreId(null); };
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -549,6 +559,7 @@ export default function App() {
                 onSetDefaultTimeEstimate={catalog.setDefaultTimeEstimate}
                 onAddTimeOff={timeOffStore.addTimeOff} onDeleteTimeOff={timeOffStore.deleteTimeOff}
                 onSygemeld={timeOffStore.sygemeld} onRaskmeld={timeOffStore.raskmeld} onSickLeaveWindowUpdated={setSickLeaveWindowOverride}
+                onPasswordPolicyUpdated={setPasswordPolicyOverride}
               />
             </Gate>
           } />
