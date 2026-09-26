@@ -11,10 +11,13 @@ import { useOrders } from "./hooks/useOrders";
 import { useAddressNotes } from "./hooks/useAddressNotes";
 import { useKeyCabinets } from "./hooks/useKeyCabinets";
 import { getAllStores, getStore, updateDashboardWidgets } from "./lib/dataStore";
+import { isUnlockConfigured, wasDeclined, clearUnlockConfig } from "./lib/deviceUnlock";
 
 import { TopNav } from "./components/TopNav";
 import { LoginPage } from "./components/LoginPage";
 import { OrderView } from "./components/OrderView";
+import { DeviceLockScreen } from "./components/DeviceLockScreen";
+import { DeviceUnlockPrompt } from "./components/DeviceUnlockPrompt";
 
 import { DashboardPage } from "./pages/DashboardPage";
 import { SalesPage } from "./pages/SalesPage";
@@ -198,6 +201,36 @@ const PAGE_PERMISSION_KEYS = ["salg", "planlaegning", "lager", "arkiv"];
 export default function App() {
   const { loading, session, profile, permissions, logOut, reloadPermissions } = useSession();
 
+  // ---------------------------------------------------------------------
+  // HURTIG OPLÅSNING PÅ DENNE TELEFON (september 2026) - se
+  // lib/deviceUnlock.js for hele designet og hvorfor det bevidst IKKE
+  // rører selve login-systemet.
+  //
+  // deviceUnlocked initialiseres BEVIDST doven (kun ved selve
+  // komponent-opstarten, dvs. ved et helt friskt sideload/app-genstart):
+  // er PIN/biometri slået til på denne telefon, starter appen LÅST og skal
+  // låses op, før noget vises - er det ikke, er der intet at låse op, og
+  // værdien starter sand med det samme.
+  const [deviceUnlocked, setDeviceUnlocked] = useState(() => !isUnlockConfigured());
+  // Tilbuddet om at slå PIN/biometri TIL vises kun ÉN GANG, lige efter et
+  // helt almindeligt, gennemført login (se LoginPage.jsx: sessionStorage-
+  // flaget "p1_fresh_login") - ikke ved en almindelig genindlæsning af en
+  // allerede aktiv session.
+  const [showUnlockPrompt, setShowUnlockPrompt] = useState(false);
+  useEffect(() => {
+    if (!session || !profile) return;
+    let fresh = false;
+    try { fresh = sessionStorage.getItem("p1_fresh_login") === "1"; } catch (_) { /* uden betydning hvis blokeret */ }
+    if (!fresh) return;
+    try { sessionStorage.removeItem("p1_fresh_login"); } catch (_) { /* se ovenfor */ }
+    if (!isUnlockConfigured() && !wasDeclined()) setShowUnlockPrompt(true);
+  }, [session, profile]);
+
+  // Rydder ALTID den lokale oplåsnings-opsætning ved et EKSPLICIT log ud -
+  // en efterfølgende bruger af samme fysiske telefon skal ikke kunne
+  // tilbydes at låse op ind i en session, der lige er lukket bevidst.
+  const handleLogOut = async () => { clearUnlockConfig(); await logOut(); };
+
   // BUTIKS-SKIFT: activeStoreId er den butik, hvis data der vises lige nu.
   // For de fleste er det altid deres egen (profile.butikId) - men en
   // SYSTEMADMIN kan skifte til en anden butik for at hjælpe den, uden at
@@ -359,6 +392,16 @@ export default function App() {
     return <LoginPage />;
   }
 
+  // LÅSESKÆRM (september 2026): vises FØR alt andet, hvis denne telefon
+  // har PIN/biometri slået til og appen lige er åbnet/genindlæst - den
+  // rigtige Supabase-session ligger stadig intakt i baggrunden, kun selve
+  // VISNINGEN er låst. Venter bevidst IKKE på, at profilen er hentet
+  // (userName er valgfri i DeviceLockScreen) - oplåsning skal ikke vente
+  // på et netværkskald, der ikke er nødvendigt for den.
+  if (!deviceUnlocked) {
+    return <DeviceLockScreen userName={profile?.navn} onUnlock={() => setDeviceUnlocked(true)} onFallbackToLogin={logOut} />;
+  }
+
   if (!profile || activeStoreId === undefined) {
     return <div className="min-h-screen w-full flex items-center justify-center bg-paper"><p className="text-sm text-muted">Indlæser profil...</p></div>;
   }
@@ -370,7 +413,7 @@ export default function App() {
           <div className="max-w-2xl mx-auto px-4 py-8">
             <div className="flex justify-between items-center mb-4">
               <p className="font-mono text-[11px] tracking-widest uppercase text-brand">Systemadministration</p>
-              <button onClick={logOut} className="text-xs text-muted hover:text-brand underline">Log ud</button>
+              <button onClick={handleLogOut} className="text-xs text-muted hover:text-brand underline">Log ud</button>
             </div>
             {allStores.length > 0 && (
               <div className="mb-6 rounded-xl border border-line bg-white p-4 shadow-sm">
@@ -396,7 +439,7 @@ export default function App() {
           <p className="text-sm text-ink">
             Din bruger er oprettet, men er endnu ikke koblet til en butik. Bed en administrator om at give dig adgang.
           </p>
-          <button onClick={logOut} className="mt-4 text-xs text-muted hover:text-brand underline">Log ud</button>
+          <button onClick={handleLogOut} className="mt-4 text-xs text-muted hover:text-brand underline">Log ud</button>
         </div>
       </div>
     );
@@ -449,9 +492,16 @@ export default function App() {
         .font-mono { font-family: 'JetBrains Mono', monospace; }
       `}</style>
 
+      {/* HURTIG OPLÅSNING - tilbud (september 2026): flydende dialog oven
+          på appen, vist ÉN gang lige efter et rigtigt login - se effect
+          ovenfor. */}
+      {showUnlockPrompt && profile && (
+        <DeviceUnlockPrompt profileName={profile.navn} onDone={() => setShowUnlockPrompt(false)} />
+      )}
+
       {!hideTopNav && (
         <TopNav
-          page={currentPage} onChange={(key) => navigate(`/${key}`)} user={profile} onLogOut={logOut}
+          page={currentPage} onChange={(key) => navigate(`/${key}`)} user={profile} onLogOut={handleLogOut}
           notifications={notifications} onOpenOrder={onOpen} allowedPages={allowedPages}
           store={effectiveStore} allStores={allStores} onSwitchStore={switchStore}
           onExitStoreView={profile.erSystemadmin ? exitStoreView : undefined}
