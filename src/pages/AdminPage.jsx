@@ -23,7 +23,7 @@ function AdminPage({
   onAddPrimaryService, onUpdatePrimaryService, onDeletePrimaryService,
   onAddAddOnService, onUpdateAddOnService, onDeleteAddOnService,
   onSetDefaultTimeEstimate,
-  onAddTimeOff, onDeleteTimeOff, onSygemeld, onRaskmeld, onSickLeaveWindowUpdated, onPasswordPolicyUpdated, onPinSessionPolicyUpdated,
+  onAddTimeOff, onDeleteTimeOff, onSygemeld, onRaskmeld, onSickLeaveWindowUpdated, onPasswordPolicyUpdated, onLoginPolicyUpdated,
 }) {
   const allTabs = [
     { k: "montorer", l: "Montører", perm: "admin_montorer" },
@@ -148,7 +148,7 @@ function AdminPage({
       {tab === "brugere" && (
         <div>
           {hasPerm(permissions, "admin_butik") && (
-            <LoginPolicySetting store={store} onPasswordUpdated={onPasswordPolicyUpdated} onPinSessionUpdated={onPinSessionPolicyUpdated} />
+            <LoginPolicySetting store={store} onPasswordUpdated={onPasswordPolicyUpdated} onLoginPolicyUpdated={onLoginPolicyUpdated} />
           )}
           <NewUserForm onAdd={onAddUser} passwordPolicy={passwordPolicy} />
           <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Alle brugere ({users.length})</h3>
