@@ -370,6 +370,16 @@ function ProductTypeInput({ lineItem, productTypes, onSelectType, onFreeText }) 
 //     faktisk har lavet arbejdet - ikke ved oprettelse af en helt ny sag -
 //     og er derfor fjernet herfra; det sidder stadig, hvor det giver
 //     mening, i sagens egen visning (se OrderParts.jsx: LineItemDetails).
+//
+//  4. RETTET (september 2026): changePrimaryService satte tidligere
+//     minutter = Number(py.minutter) || 0 - men "py" er en r\u00e5 primær
+//     ydelse fra kataloget ({id, navn}), som ALDRIG har haft et
+//     "minutter"-felt (kun tillægsydelser har det). Resultatet var, at
+//     enhver ændring af primær ydelse nulstillede tiden til 0, UANSET
+//     hvad admin havde sat i standardtider-matrixen for netop den
+//     kombination af varetype og ydelse - præcis den fejl, der blev
+//     rapporteret (varetype+ydelse valgt korrekt, tid endte alligevel på
+//     0). Slår nu korrekt op i standardtider-matrixen i stedet.
 function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices, defaultTimeEstimates, estimateIndex, onChange, onRemove, canRemove }) {
   const available = availableAddOns(lineItem.varetypeId, lineItem.primaerYdelse?.id, addOnServices);
 
@@ -397,13 +407,20 @@ function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices
     });
   };
 
+  // RETTET (september 2026): sl\u00e5r nu standardtider-matrixen op for den
+  // NYE kombination af (nuv\u00e6rende varetype, ny ydelse) - i stedet for det
+  // ikke-eksisterende "py.minutter" (se noten ved LineItemEditor ovenfor).
+  // Findes der ikke noget admin-sat tal for netop den kombination, bliver
+  // det 0, ligesom en helt ny sag uden noget sat i matrixen - sælgeren
+  // taster selv, som hidtil.
   const changePrimaryService = (newId) => {
     const py = primaryServices.find((p) => p.id === newId);
     if (!py) return;
     const newAvailable = availableAddOns(lineItem.varetypeId, newId, addOnServices);
+    const standard = getDefaultEstimateMinutes(defaultTimeEstimates, lineItem.varetypeId, newId);
     onChange({
       ...lineItem,
-      primaerYdelse: { id: py.id, navn: py.navn, minutter: Number(py.minutter) || 0 },
+      primaerYdelse: { id: py.id, navn: py.navn, minutter: standard ?? 0 },
       tillaeg: lineItem.tillaeg.filter((t) => newAvailable.some((n) => n.navn === t.navn)),
     });
   };
@@ -430,20 +447,30 @@ function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices
   };
   const changeAddOnMinutes = (id, min) => onChange({ ...lineItem, tillaeg: lineItem.tillaeg.map((y) => (y.id === id ? { ...y, minutter: Number(min) || 0 } : y)) });
 
-  // Ét modelopslag kan opdatere op til tre felter på samme tid: mærke,
-  // model (allerede skrevet, blot renset op) og - hvis punkt1.dk's titel
-  // indeholder en genkendelig varetype - selve varetypen. Sidstnævnte
-  // OVERSKRIVER bevidst, uden at spørge: det er samme princip som mærke,
-  // som allerede blev overskrevet automatisk her - et bekræftet match fra
-  // punkt1.dk's eget katalog er en stærkere kilde end en tom/forkert
-  // varetype, sælgeren endnu ikke har rettet.
+  // Ét modelopslag kan opdatere op til fire ting på samme tid: mærke,
+  // model (allerede skrevet, blot renset op), selve varetypen (hvis
+  // punkt1.dk's titel indeholder en genkendelig varetype - se
+  // guessProductType) - OG, RETTET september 2026, standardtiden for den
+  // allerede valgte primære ydelse, genberegnet for netop DEN nye varetype.
+  // Uden det kunne et sent bekræftet modelopslag (fx skrevet ind EFTER at
+  // sælgeren allerede har valgt "Montering") ændre varetypen uden at
+  // trække den tilhørende standardtid med - præcis den anden halvdel af
+  // den rapporterede fejl. Findes der ikke noget admin-sat tal for den nye
+  // kombination, beholdes det tal, der allerede stod (typisk 0 fra
+  // oprettelsen) - ligesom andre steder, overskrives et evt. allerede
+  // tastet tal ikke med en gætte-nulstilling.
   const applyProductLookup = ({ brand, model: matchedModel, title }) => {
     const matchedType = guessProductType(title, productTypes);
+    const nextVaretypeId = matchedType ? matchedType.id : lineItem.varetypeId;
+    const nextPrimaerYdelse = matchedType && lineItem.primaerYdelse
+      ? { ...lineItem.primaerYdelse, minutter: getDefaultEstimateMinutes(defaultTimeEstimates, nextVaretypeId, lineItem.primaerYdelse.id) ?? lineItem.primaerYdelse.minutter }
+      : lineItem.primaerYdelse;
     onChange({
       ...lineItem,
       maerke: brand || lineItem.maerke,
       model: matchedModel || lineItem.model,
       ...(matchedType ? { varetypeId: matchedType.id, varetypeNavn: matchedType.navn, varetypeTekst: "" } : {}),
+      primaerYdelse: nextPrimaerYdelse,
     });
   };
 
