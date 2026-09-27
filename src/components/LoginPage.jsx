@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { Lock, User, AlertCircle, Loader2 } from "lucide-react";
+import { Lock, User, AlertCircle, Loader2, KeyRound } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { isEmailFormat, identifierToEmail, isValidUsername, emailFromUsername } from "../lib/username";
+import { loginWithPin } from "../lib/dataStore";
 import PUNKT1_LOGO_POSITIV from "../assets/punkt1_positiv.png";
 
 // Login foregår via Supabase Auth. Brugeren kan taste ENTEN en rigtig
@@ -9,12 +10,24 @@ import PUNKT1_LOGO_POSITIV from "../assets/punkt1_positiv.png";
 // for hvordan det oversættes til det, Supabase Auth reelt kræver internt.
 // App.jsx lytter selv på login-status (supabase.auth.onAuthStateChange) og
 // henter profilen (butik, rolle).
+//
+// PIN-LOGIN (september 2026): et ægte, konto-bundet ALTERNATIV til
+// adgangskode - IKKE en lokal "lås telefonen op"-genvej (den tidligere
+// udgave, se lib/deviceUnlock.js, er udfaset til fordel for dette). PIN'en
+// verificeres server-side (login-with-pin Edge Function, se
+// lib/dataStore.js: loginWithPin) mod en EGEN tabel - aldrig mod Supabase
+// Auth's eget adgangskodefelt, derfor ingen 6-tegns-bund: en butik kan
+// sætte sin egen PIN-politik helt ned til 4 cifre (Admin -> Brugere).
+// Lykkes PIN'en, udsteder loginWithPin en RIGTIG Supabase-session bagved -
+// samme sikre grundlag som et almindeligt login.
 function LoginPage() {
   const [signingUp, setSigningUp] = useState(false);
+  const [loginMethod, setLoginMethod] = useState("adgangskode"); // 'adgangskode' | 'pin' - kun relevant ved login, ikke ved opret bruger
   const [useUsername, setUseUsername] = useState(true);
   const [identifier, setIdentifier] = useState(""); // e-mail ELLER brugernavn (login-fanen)
   const [name, setName] = useState(""); // kun brugt ved opret-bruger
   const [password, setPassword] = useState("");
+  const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -36,13 +49,20 @@ function LoginPage() {
     const { error: err } = await supabase.auth.signInWithPassword({ email: identifierToEmail(identifier), password });
     setBusy(false);
     if (err) { setError("Forkert e-mail/brugernavn eller adgangskode."); return; }
-    // HURTIG OPLÅSNING (september 2026): markerer, at DETTE var et helt
-    // almindeligt, gennemført login med fulde login-oplysninger - ikke en
-    // session der bare blev genoptaget fra sidste besøg. App.jsx bruger
-    // flaget til at vise tilbuddet om PIN/biometri ÉN gang, lige efter
-    // (se DeviceUnlockPrompt.jsx). sessionStorage (ikke localStorage): skal
-    // kun gælde denne ene fane/session, ikke overleve at appen lukkes helt.
-    try { sessionStorage.setItem("p1_fresh_login", "1"); } catch (_) { /* uden betydning hvis blokeret - tilbuddet vises da bare ikke */ }
+    // HURTIG OPLÅSNING PÅ DENNE TELEFON ER UDFASET (september 2026) - se
+    // lib/deviceUnlock.js. PIN/biometri er nu et ægte, konto-bundet login,
+    // ikke en lokal genvej, der skulle tilbydes lige efter et login.
+    // Ved succes opdaterer App.jsx sig selv via onAuthStateChange - intet mere at gøre her.
+  };
+
+  const logInWithPin = async () => {
+    setError("");
+    setMessage("");
+    if (!identifier.trim() || pin.length < 4) { setError("Udfyld bruger og PIN-kode."); return; }
+    setBusy(true);
+    const result = await loginWithPin(identifier.trim(), pin);
+    setBusy(false);
+    if (!result.ok) { setError(result.fejl || "Forkert bruger eller PIN-kode."); setPin(""); return; }
     // Ved succes opdaterer App.jsx sig selv via onAuthStateChange - intet mere at gøre her.
   };
 
@@ -78,7 +98,10 @@ function LoginPage() {
     setMessage("Bruger oprettet. En admin skal nu koble dig til jeres butik, før du kan logge ind og se noget.");
   };
 
-  const submit = () => (signingUp ? signUp() : logIn());
+  const submit = () => {
+    if (signingUp) return signUp();
+    return loginMethod === "pin" ? logInWithPin() : logIn();
+  };
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-paper">
@@ -108,6 +131,16 @@ function LoginPage() {
           </div>
         )}
 
+        {/* LOGIN-METODE (september 2026): kun relevant ved log ind, ikke
+            ved opret bruger - en ny bruger sætter en PIN-kode BAGEFTER,
+            når de er logget ind (se AccountSettings.jsx). */}
+        {!signingUp && (
+          <div className="flex rounded-full border border-line mb-3 text-xs font-semibold uppercase tracking-wide overflow-hidden">
+            <button onClick={() => { setLoginMethod("adgangskode"); setError(""); }} className={`flex-1 py-2 transition-colors ${loginMethod === "adgangskode" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>Adgangskode</button>
+            <button onClick={() => { setLoginMethod("pin"); setError(""); }} className={`flex-1 py-2 transition-colors flex items-center justify-center gap-1 ${loginMethod === "pin" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}><KeyRound size={12} aria-hidden="true" /> PIN-kode</button>
+          </div>
+        )}
+
         <div className="grid gap-3">
           {signingUp && (
             <label className="text-xs text-muted">
@@ -132,24 +165,43 @@ function LoginPage() {
               />
             </div>
           </label>
-          <label className="text-xs text-muted">
-            Adgangskode
-            <div className="relative mt-1">
-              <Lock size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && submit()}
-                className="w-full rounded-lg border border-line bg-paper pl-8 pr-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
-              />
-            </div>
-          </label>
+
+          {!signingUp && loginMethod === "pin" ? (
+            <label className="text-xs text-muted">
+              PIN-kode
+              <div className="relative mt-1">
+                <KeyRound size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 12))}
+                  onKeyDown={(e) => e.key === "Enter" && submit()}
+                  className="w-full rounded-lg border border-line bg-paper pl-8 pr-3 py-2 text-sm text-ink tracking-[0.3em] focus:outline-none focus:border-brand"
+                />
+              </div>
+            </label>
+          ) : (
+            <label className="text-xs text-muted">
+              Adgangskode
+              <div className="relative mt-1">
+                <Lock size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && submit()}
+                  className="w-full rounded-lg border border-line bg-paper pl-8 pr-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
+                />
+              </div>
+            </label>
+          )}
         </div>
 
         {error && <p className="text-sm text-danger mt-3 flex items-center gap-1.5"><AlertCircle size={14} /> {error}</p>}
         {message && <p className="text-sm text-success mt-3">{message}</p>}
-        {!signingUp && <p className="text-[11px] text-muted mt-3">Glemt adgangskode? Kontakt din butiks admin eller systemadmin — de kan nulstille den for dig.</p>}
+        {!signingUp && loginMethod === "adgangskode" && <p className="text-[11px] text-muted mt-3">Glemt adgangskode? Kontakt din butiks admin eller systemadmin — de kan nulstille den for dig.</p>}
+        {!signingUp && loginMethod === "pin" && <p className="text-[11px] text-muted mt-3">Ikke sat en PIN-kode op endnu? Log ind med adgangskode, og sæt den op under din konto.</p>}
 
         <button
           onClick={submit}
