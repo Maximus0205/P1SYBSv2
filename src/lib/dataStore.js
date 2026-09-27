@@ -375,11 +375,47 @@ async function readEdgeFunctionError(data, error, fallbackMessage) {
   return error?.message || fallbackMessage;
 }
 
+// ---------- PIN-login (september 2026) ----------
+// Erstatter den tidligere, kun-lokale "lås denne telefon op"-genvej (se
+// lib/deviceUnlock.js) med en RIGTIG, konto-bunden login-metode. PIN'en
+// gemmes ALDRIG i Supabase Auth's eget adgangskodefelt - kun hashet, i
+// egen tabel (login_pins) - derfor er der INGEN 6-tegns-bund at kæmpe
+// med, kun den grænse butikken selv sætter (se updatePinAndSessionPolicy).
+//
+// setLoginPin: en ALLEREDE indlogget bruger sætter/ændrer sin egen PIN.
+// loginWithPin: selve login-vejen - kræver intet forudgående login. Den
+// bagvedliggende SESSION udstedes stadig 100% af Supabase Auth (via et
+// engangs-OTP-token, se login-with-pin Edge Function) - kun SELVE
+// BEVISET (PIN'en) er vores eget.
+export async function setLoginPin(pin) {
+  const { data, error } = await supabase.functions.invoke("set-login-pin", { body: { pin } });
+  if (error || data?.fejl) {
+    const fejl = await readEdgeFunctionError(data, error, "Kunne ikke gemme PIN-koden");
+    return { ok: false, fejl };
+  }
+  return { ok: true };
+}
+
+export async function loginWithPin(identifier, pin) {
+  const { data, error } = await supabase.functions.invoke("login-with-pin", { body: { identifier, pin } });
+  if (error || data?.fejl) {
+    const fejl = await readEdgeFunctionError(data, error, "Forkert bruger eller PIN-kode.");
+    return { ok: false, fejl };
+  }
+  // Selve session-oprettelsen: engangskoden fra Edge Function'en indløses
+  // her, direkte i browseren, hos Supabase Auth selv - vi sender den
+  // ALDRIG videre til vores egen server. onAuthStateChange (useSession.js)
+  // opdager den nye session automatisk, ligesom ved et normalt login.
+  const { error: otpFejl } = await supabase.auth.verifyOtp({ email: data.email, token: data.otp, type: "magiclink" });
+  if (otpFejl) return { ok: false, fejl: "Koden var rigtig, men login-sessionen kunne ikke oprettes. Prøv igen." };
+  return { ok: true };
+}
+
 // ---------- Stores ----------
 
 export async function getStore(storeId) {
   if (!storeId) return null;
-  const { data, error } = await supabase.from("stores").select("id, name, address, lat, lon, store_number, sick_leave_window_hours, password_min_length, password_require_mixed").eq("id", storeId).maybeSingle();
+  const { data, error } = await supabase.from("stores").select("id, name, address, lat, lon, store_number, sick_leave_window_hours, password_min_length, password_require_mixed, pin_min_length, session_idle_minutes").eq("id", storeId).maybeSingle();
   if (error) {
     logDbError("dataStore:getStore", "Could not load store", error);
     return null;
@@ -390,6 +426,8 @@ export async function getStore(storeId) {
     sygemeldingVindueTimer: data.sick_leave_window_hours ?? 48,
     adgangskodeMinLaengde: data.password_min_length ?? 6,
     adgangskodeKraeverBlanding: data.password_require_mixed === true,
+    pinMinLaengde: data.pin_min_length ?? 4,
+    sessionIdleMinutter: data.session_idle_minutes ?? 480,
   };
 }
 
@@ -468,6 +506,21 @@ export async function updatePasswordPolicy({ minLaengde, kraeverBlanding, storeI
   });
   if (error) {
     logDbError("dataStore:updatePasswordPolicy", "Could not update password policy", error);
+    return { ok: false, fejl: error.message };
+  }
+  return { ok: true };
+}
+
+// ---------- PIN-krav + idle-timeout pr. butik (september 2026) ----------
+// Samme mønster igen: én RPC, butikkens egen admin (eller en systemadmin)
+// må ændre den. pinMinLaengde har INGEN Supabase-bund (se noten ovenfor
+// ved PIN-login) - kun den nedre grænse butikken selv vælger at sætte.
+export async function updatePinAndSessionPolicy({ pinMinLaengde, sessionIdleMinutter, storeId } = {}) {
+  const { error } = await supabase.rpc("update_pin_and_session_policy", {
+    p_pin_min_length: pinMinLaengde, p_session_idle_minutes: sessionIdleMinutter, p_store_id: storeId ?? null,
+  });
+  if (error) {
+    logDbError("dataStore:updatePinAndSessionPolicy", "Could not update PIN/session policy", error);
     return { ok: false, fejl: error.message };
   }
   return { ok: true };
