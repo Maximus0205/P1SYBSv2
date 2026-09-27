@@ -376,18 +376,20 @@ async function readEdgeFunctionError(data, error, fallbackMessage) {
   return error?.message || fallbackMessage;
 }
 
-// ---------- PIN-login (september 2026) ----------
+// ---------- PIN-login (september 2026, PIN-l\u00e6ngde rettet) ----------
 // Erstatter den tidligere, kun-lokale "lås denne telefon op"-genvej (se
 // lib/deviceUnlock.js) med en RIGTIG, konto-bunden login-metode. PIN'en
 // gemmes ALDRIG i Supabase Auth's eget adgangskodefelt - kun hashet, i
-// egen tabel (login_pins) - derfor er der INGEN 6-tegns-bund at kæmpe
-// med, kun den grænse butikken selv sætter (se updatePinAndSessionPolicy).
+// egen tabel (login_pins). PIN-koden er PR. DEFINITION 4 cifre - ikke
+// noget butikken selv sætter en "minimumslængde" for (se
+// set-login-pin Edge Function).
 //
 // setLoginPin: en ALLEREDE indlogget bruger sætter/ændrer sin egen PIN.
 // loginWithPin: selve login-vejen - kræver intet forudgående login. Den
 // bagvedliggende SESSION udstedes stadig 100% af Supabase Auth (via et
 // engangs-OTP-token, se login-with-pin Edge Function) - kun SELVE
-// BEVISET (PIN'en) er vores eget.
+// BEVISET (PIN'en) er vores eget. Begge afvises, hvis butikkens
+// simple_login_enabled er slået fra (se getStore/updateLoginPolicy).
 export async function setLoginPin(pin) {
   const { data, error } = await supabase.functions.invoke("set-login-pin", { body: { pin } });
   if (error || data?.fejl) {
@@ -419,6 +421,7 @@ export async function loginWithPin(identifier, pin) {
 // funktion orkestrerer bare de to trin (hent parametre -> bed telefonen om
 // Face ID/fingeraftryk -> send svaret til verificering) i ét kald, så
 // resten af appen kan bruge den som en almindelig { ok, fejl }-funktion.
+// Afvises ligeledes, hvis butikkens simple_login_enabled er slået fra.
 export async function registerBiometric(deviceLabel) {
   const { data, error } = await supabase.functions.invoke("webauthn-register-options", { body: {} });
   if (error || data?.fejl) {
@@ -461,7 +464,7 @@ export async function loginWithBiometric(identifier) {
 
 export async function getStore(storeId) {
   if (!storeId) return null;
-  const { data, error } = await supabase.from("stores").select("id, name, address, lat, lon, store_number, sick_leave_window_hours, password_min_length, password_require_mixed, pin_min_length, session_idle_minutes").eq("id", storeId).maybeSingle();
+  const { data, error } = await supabase.from("stores").select("id, name, address, lat, lon, store_number, sick_leave_window_hours, password_min_length, password_require_mixed, simple_login_enabled, session_idle_minutes").eq("id", storeId).maybeSingle();
   if (error) {
     logDbError("dataStore:getStore", "Could not load store", error);
     return null;
@@ -472,7 +475,7 @@ export async function getStore(storeId) {
     sygemeldingVindueTimer: data.sick_leave_window_hours ?? 48,
     adgangskodeMinLaengde: data.password_min_length ?? 6,
     adgangskodeKraeverBlanding: data.password_require_mixed === true,
-    pinMinLaengde: data.pin_min_length ?? 4,
+    simpelLoginAktiveret: data.simple_login_enabled !== false,
     sessionIdleMinutter: data.session_idle_minutes ?? 480,
   };
 }
@@ -557,16 +560,18 @@ export async function updatePasswordPolicy({ minLaengde, kraeverBlanding, storeI
   return { ok: true };
 }
 
-// ---------- PIN-krav + idle-timeout pr. butik (september 2026) ----------
-// Samme mønster igen: én RPC, butikkens egen admin (eller en systemadmin)
-// må ændre den. pinMinLaengde har INGEN Supabase-bund (se noten ovenfor
-// ved PIN-login) - kun den nedre grænse butikken selv vælger at sætte.
-export async function updatePinAndSessionPolicy({ pinMinLaengde, sessionIdleMinutter, storeId } = {}) {
-  const { error } = await supabase.rpc("update_pin_and_session_policy", {
-    p_pin_min_length: pinMinLaengde, p_session_idle_minutes: sessionIdleMinutter, p_store_id: storeId ?? null,
+// ---------- Simpelt login (PIN + biometri) til/fra + idle-timeout (september 2026) ----------
+// Samme mønster: én RPC, butikkens egen admin (eller en systemadmin) må
+// ændre den. simpelLoginAktiveret er en samlet kontakt for BÅDE PIN- og
+// biometrisk login - slås den fra, afviser login-with-pin og
+// webauthn-login-*/register-* Edge Functions det med det samme (se dem for
+// selve håndhævelsen - denne funktion gemmer kun ønsket).
+export async function updateLoginPolicy({ simpelLoginAktiveret, sessionIdleMinutter, storeId } = {}) {
+  const { error } = await supabase.rpc("update_login_policy", {
+    p_simple_login_enabled: !!simpelLoginAktiveret, p_session_idle_minutes: sessionIdleMinutter, p_store_id: storeId ?? null,
   });
   if (error) {
-    logDbError("dataStore:updatePinAndSessionPolicy", "Could not update PIN/session policy", error);
+    logDbError("dataStore:updateLoginPolicy", "Could not update login policy", error);
     return { ok: false, fejl: error.message };
   }
   return { ok: true };
