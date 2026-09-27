@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { LogOut, Bell, Package, AlertTriangle, Copy, Building2, ArrowLeftRight, Truck } from "lucide-react";
+import { LogOut, Bell, Package, AlertTriangle, Copy, Building2, ArrowLeftRight, Truck, KeyRound } from "lucide-react";
 import { PAGES, missingLineItems, lineItemLabel } from "../data/domain";
 import { PUNKT1_LOGO_NEGATIV } from "../assets/logo";
 
@@ -196,7 +196,7 @@ function StoreSwitcher({ store, isSystemAdmin, allStores, onSwitchStore, onExitS
 // én række, hvor der er plads. Løst med flex-wrap + order, så knapperne
 // kun findes ÉT sted i DOM'en - ikke to udgaver med hidden/visible, som
 // ville gentage hele navigationen for en skærmlæser.
-function TopNav({ page, onChange, user, onLogOut, notifications, onOpenOrder, allowedPages, store, allStores, onSwitchStore, onExitStoreView }) {
+function TopNav({ page, onChange, user, onLogOut, notifications, onOpenOrder, allowedPages, store, allStores, onSwitchStore, onExitStoreView, onOpenAccountSettings }) {
   const allowed = PAGES.filter((s) => allowedPages.includes(s.key) || (s.key === "systemadmin" && user.erSystemadmin));
   return (
     <div className="sticky top-0 z-20 bg-ink mb-6">
@@ -211,6 +211,16 @@ function TopNav({ page, onChange, user, onLogOut, notifications, onOpenOrder, al
           <StoreSwitcher store={store} isSystemAdmin={user.erSystemadmin} allStores={allStores} onSwitchStore={onSwitchStore} onExitStoreView={onExitStoreView} />
           <span className="text-xs text-[#C9C9C9] hidden sm:inline pr-1">{user.navn}</span>
           {notifications && onOpenOrder && <NotificationBell notifications={notifications} onOpenOrder={onOpenOrder} />}
+          {onOpenAccountSettings && (
+            <button
+              onClick={onOpenAccountSettings}
+              aria-label="Din konto (PIN-login m.v.)"
+              className="w-10 h-10 rounded-lg bg-black border border-[#333] flex items-center justify-center text-[#C9C9C9] hover:text-white hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors"
+              title="Din konto"
+            >
+              <KeyRound size={16} aria-hidden="true" />
+            </button>
+          )}
           <button
             onClick={onLogOut}
             aria-label="Log ud"
