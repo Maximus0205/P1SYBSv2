@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Trash2, Plus } from "lucide-react";
-import { TechnicianRow, SickLeaveWindowSetting, PasswordPolicySetting, VehicleRow, UserRow, NewUserForm, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin, DefaultTimeEstimateAdmin } from "../components/AdminParts";
+import { TechnicianRow, SickLeaveWindowSetting, PasswordPolicySetting, PinAndSessionSetting, VehicleRow, UserRow, NewUserForm, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin, DefaultTimeEstimateAdmin } from "../components/AdminParts";
 import { PosIntegrationAdmin } from "../components/PosIntegrationAdmin";
 import { AdressevaelgerTest } from "../components/AdressevaelgerTest";
 import { getPermissionsCatalog, getRoleDefaultPermissions } from "../lib/dataStore";
@@ -23,7 +23,7 @@ function AdminPage({
   onAddPrimaryService, onUpdatePrimaryService, onDeletePrimaryService,
   onAddAddOnService, onUpdateAddOnService, onDeleteAddOnService,
   onSetDefaultTimeEstimate,
-  onAddTimeOff, onDeleteTimeOff, onSygemeld, onRaskmeld, onSickLeaveWindowUpdated, onPasswordPolicyUpdated,
+  onAddTimeOff, onDeleteTimeOff, onSygemeld, onRaskmeld, onSickLeaveWindowUpdated, onPasswordPolicyUpdated, onPinSessionPolicyUpdated,
 }) {
   const allTabs = [
     { k: "montorer", l: "Montører", perm: "admin_montorer" },
@@ -148,6 +148,7 @@ function AdminPage({
       {tab === "brugere" && (
         <div>
           {hasPerm(permissions, "admin_butik") && <PasswordPolicySetting store={store} onUpdated={onPasswordPolicyUpdated} />}
+          {hasPerm(permissions, "admin_butik") && <PinAndSessionSetting store={store} onUpdated={onPinSessionPolicyUpdated} />}
           <NewUserForm onAdd={onAddUser} passwordPolicy={passwordPolicy} />
           <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Alle brugere ({users.length})</h3>
           <div className="space-y-2">
