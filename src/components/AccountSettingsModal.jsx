@@ -1,12 +1,19 @@
-import React, { useState } from "react";
-import { X, KeyRound, Check, AlertCircle, Loader2 } from "lucide-react";
-import { setLoginPin } from "../lib/dataStore";
+import React, { useEffect, useState } from "react";
+import { X, KeyRound, Check, AlertCircle, Loader2, Fingerprint } from "lucide-react";
+import { setLoginPin, registerBiometric } from "../lib/dataStore";
+import { erBiometriTilgaengelig } from "../lib/webauthn";
 
 // ---------------------------------------------------------------------------
-// KONTOINDSTILLINGER (september 2026) - foreløbig kun PIN-opsætning.
+// KONTOINDSTILLINGER (september 2026) - PIN-opsætning + biometrisk login.
 // Åbnes fra TopNav (ikonet ved siden af log ud). Selvbetjening: en bruger
-// sætter sin egen PIN her, mens de allerede er logget ind normalt - se
-// LoginPage.jsx for selve PIN-login-vejen, og lib/dataStore.js: setLoginPin.
+// sætter selv sin PIN/Face ID/fingeraftryk op her, mens de allerede er
+// logget ind normalt - se LoginPage.jsx for selve login-vejene, og
+// lib/dataStore.js: setLoginPin/registerBiometric.
+//
+// BEGGE ER RIGTIGE, KONTO-BUNDNE LOGIN-METODER (ikke en lokal "lås denne
+// telefon op"-genvej) - en PIN eller et Face ID sat op her virker derfor
+// også som login på en ANDEN enhed, hvis den understøtter samme biometri
+// (eller for PIN'en: overalt, den er jo bare en kode).
 //
 // minLength/kraeverBlanding er IKKE relevante her (kun til
 // adgangskoder, se PasswordPolicySetting) - PIN'en har sin egen,
@@ -18,6 +25,16 @@ function AccountSettingsModal({ store, onClose }) {
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const minLength = store?.pinMinLaengde ?? 4;
+
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [checkingBiometric, setCheckingBiometric] = useState(true);
+  const [biometricBusy, setBiometricBusy] = useState(false);
+  const [biometricError, setBiometricError] = useState("");
+  const [biometricSaved, setBiometricSaved] = useState(false);
+
+  useEffect(() => {
+    erBiometriTilgaengelig().then((ok) => { setBiometricAvailable(ok); setCheckingBiometric(false); });
+  }, []);
 
   const save = async () => {
     setError(""); setSaved(false);
@@ -32,6 +49,15 @@ function AccountSettingsModal({ store, onClose }) {
     setTimeout(() => setSaved(false), 2000);
   };
 
+  const enableBiometric = async () => {
+    setBiometricError(""); setBiometricSaved(false); setBiometricBusy(true);
+    const result = await registerBiometric(navigator.userAgentData?.platform || navigator.platform || "");
+    setBiometricBusy(false);
+    if (!result.ok) { setBiometricError(result.fejl || "Kunne ikke slå det til."); return; }
+    setBiometricSaved(true);
+    setTimeout(() => setBiometricSaved(false), 2500);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-ink/50 p-3" role="dialog" aria-modal="true" aria-label="Kontoindstillinger">
       <div className="w-full sm:max-w-sm rounded-xl bg-white border border-line shadow-lg p-6">
@@ -42,13 +68,30 @@ function AccountSettingsModal({ store, onClose }) {
           </button>
         </div>
 
+        {!checkingBiometric && biometricAvailable && (
+          <div className="mb-5 pb-5 border-b border-divider">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1.5 flex items-center gap-1.5"><Fingerprint size={15} className="text-brand" aria-hidden="true" /> Face ID/fingeraftryk</h3>
+            <p className="text-xs text-muted mb-3">Log ind med telefonens egen Face ID eller fingeraftryk i stedet for adgangskode eller PIN.</p>
+            <button
+              onClick={enableBiometric}
+              disabled={biometricBusy}
+              className="w-full px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-ink transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {biometricBusy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
+              {biometricBusy ? "Venter på telefonen..." : "Slå til på denne enhed"}
+            </button>
+            {biometricError && <p className="text-xs text-danger mt-2 flex items-center gap-1.5"><AlertCircle size={13} className="shrink-0" aria-hidden="true" /> {biometricError}</p>}
+            {biometricSaved && <p className="text-xs text-success mt-2 flex items-center gap-1.5"><Check size={13} className="shrink-0" aria-hidden="true" /> Slået til på denne enhed.</p>}
+          </div>
+        )}
+
         <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1.5 flex items-center gap-1.5"><KeyRound size={15} className="text-brand" aria-hidden="true" /> PIN-login</h3>
         <p className="text-xs text-muted mb-3">
           Sæt en PIN-kode (mindst {minLength} cifre), så du kan logge ind hurtigere fremover - på denne eller enhver anden enhed. Din almindelige adgangskode virker stadig som hidtil.
         </p>
         <div className="grid gap-2 mb-3">
           <input
-            type="password" inputMode="numeric" autoFocus
+            type="password" inputMode="numeric" autoFocus={!biometricAvailable}
             value={pin}
             onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 12))}
             placeholder="Ny PIN-kode"
