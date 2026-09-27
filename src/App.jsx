@@ -11,13 +11,11 @@ import { useOrders } from "./hooks/useOrders";
 import { useAddressNotes } from "./hooks/useAddressNotes";
 import { useKeyCabinets } from "./hooks/useKeyCabinets";
 import { getAllStores, getStore, updateDashboardWidgets } from "./lib/dataStore";
-import { isUnlockConfigured, wasDeclined, clearUnlockConfig } from "./lib/deviceUnlock";
 
 import { TopNav } from "./components/TopNav";
 import { LoginPage } from "./components/LoginPage";
 import { OrderView } from "./components/OrderView";
-import { DeviceLockScreen } from "./components/DeviceLockScreen";
-import { DeviceUnlockPrompt } from "./components/DeviceUnlockPrompt";
+import { AccountSettingsModal } from "./components/AccountSettingsModal";
 
 import { DashboardPage } from "./pages/DashboardPage";
 import { SalesPage } from "./pages/SalesPage";
@@ -201,35 +199,8 @@ const PAGE_PERMISSION_KEYS = ["salg", "planlaegning", "lager", "arkiv"];
 export default function App() {
   const { loading, session, profile, permissions, logOut, reloadPermissions } = useSession();
 
-  // ---------------------------------------------------------------------
-  // HURTIG OPLÅSNING PÅ DENNE TELEFON (september 2026) - se
-  // lib/deviceUnlock.js for hele designet og hvorfor det bevidst IKKE
-  // rører selve login-systemet.
-  //
-  // deviceUnlocked initialiseres BEVIDST doven (kun ved selve
-  // komponent-opstarten, dvs. ved et helt friskt sideload/app-genstart):
-  // er PIN/biometri slået til på denne telefon, starter appen LÅST og skal
-  // låses op, før noget vises - er det ikke, er der intet at låse op, og
-  // værdien starter sand med det samme.
-  const [deviceUnlocked, setDeviceUnlocked] = useState(() => !isUnlockConfigured());
-  // Tilbuddet om at slå PIN/biometri TIL vises kun ÉN GANG, lige efter et
-  // helt almindeligt, gennemført login (se LoginPage.jsx: sessionStorage-
-  // flaget "p1_fresh_login") - ikke ved en almindelig genindlæsning af en
-  // allerede aktiv session.
-  const [showUnlockPrompt, setShowUnlockPrompt] = useState(false);
-  useEffect(() => {
-    if (!session || !profile) return;
-    let fresh = false;
-    try { fresh = sessionStorage.getItem("p1_fresh_login") === "1"; } catch (_) { /* uden betydning hvis blokeret */ }
-    if (!fresh) return;
-    try { sessionStorage.removeItem("p1_fresh_login"); } catch (_) { /* se ovenfor */ }
-    if (!isUnlockConfigured() && !wasDeclined()) setShowUnlockPrompt(true);
-  }, [session, profile]);
-
-  // Rydder ALTID den lokale oplåsnings-opsætning ved et EKSPLICIT log ud -
-  // en efterfølgende bruger af samme fysiske telefon skal ikke kunne
-  // tilbydes at låse op ind i en session, der lige er lukket bevidst.
-  const handleLogOut = async () => { clearUnlockConfig(); await logOut(); };
+  // Kontoindstillinger (PIN-opsætning m.v.) - se components/AccountSettingsModal.jsx.
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
 
   // BUTIKS-SKIFT: activeStoreId er den butik, hvis data der vises lige nu.
   // For de fleste er det altid deres egen (profile.butikId) - men en
@@ -269,19 +240,21 @@ export default function App() {
 
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [refreshing, setRefreshing] = useState(false);
-  // Sygemeldingsvinduet OG adgangskodekravet kan begge rettes af butikkens
-  // admin og hentes ikke automatisk igen bagefter (getStore kaldes kun ved
-  // butiksskift, se effect ovenfor) - vi holder derfor en lokal override af
-  // hver, så ændringen slår igennem med det samme i resten af appen (fx
-  // NewUserForm/UserRow's adgangskode-validering), uden at vente på en
-  // fuld genindlæsning.
+  // Sygemeldingsvindue, adgangskodekrav OG pin/idle-politik kan alle
+  // rettes af butikkens admin og hentes ikke automatisk igen bagefter
+  // (getStore kaldes kun ved butiksskift, se effect ovenfor) - vi holder
+  // derfor en lokal override af hver, så ændringen slår igennem med det
+  // samme i resten af appen, uden at vente på en fuld genindlæsning.
   const [sickLeaveWindowOverride, setSickLeaveWindowOverride] = useState(null);
   const [passwordPolicyOverride, setPasswordPolicyOverride] = useState(null);
+  const [pinSessionPolicyOverride, setPinSessionPolicyOverride] = useState(null);
   const effectiveStore = activeStore ? {
     ...activeStore,
     sygemeldingVindueTimer: sickLeaveWindowOverride ?? activeStore.sygemeldingVindueTimer,
     adgangskodeMinLaengde: passwordPolicyOverride?.minLength ?? activeStore.adgangskodeMinLaengde,
     adgangskodeKraeverBlanding: passwordPolicyOverride?.requireMixed ?? activeStore.adgangskodeKraeverBlanding,
+    pinMinLaengde: pinSessionPolicyOverride?.pinMinLength ?? activeStore.pinMinLaengde,
+    sessionIdleMinutter: pinSessionPolicyOverride?.sessionIdleMinutes ?? activeStore.sessionIdleMinutter,
   } : activeStore;
 
   // Butikkens koordinater, sendt til ethvert adressefelt der skal
@@ -290,11 +263,38 @@ export default function App() {
   // så de to ikke kan komme til at afvige fra hinanden.
   const storeFocus = effectiveStore?.lat && effectiveStore?.lon ? { lat: effectiveStore.lat, lon: effectiveStore.lon } : null;
 
-  const switchStore = (storeId) => { setSickLeaveWindowOverride(null); setPasswordPolicyOverride(null); setActiveStoreId(storeId); };
-  const exitStoreView = () => { setSickLeaveWindowOverride(null); setPasswordPolicyOverride(null); setActiveStoreId(null); };
+  const switchStore = (storeId) => { setSickLeaveWindowOverride(null); setPasswordPolicyOverride(null); setPinSessionPolicyOverride(null); setActiveStoreId(storeId); };
+  const exitStoreView = () => { setSickLeaveWindowOverride(null); setPasswordPolicyOverride(null); setPinSessionPolicyOverride(null); setActiveStoreId(null); };
 
   const navigate = useNavigate();
   const location = useLocation();
+
+  // ---------------------------------------------------------------------
+  // IDLE-TIMEOUT (september 2026): logger automatisk ud efter X minutters
+  // inaktivitet, sat pr. butik (Admin -> Brugere, standard 8 timer - se
+  // stores.session_idle_minutes). "Aktivitet" er bevidst bredt defineret
+  // (klik, tastetryk, berøring, scroll) - en montør, der læser en lang
+  // sagsnote uden at røre skærmen, skal ikke blive logget ud midt i det.
+  //
+  // Kører KUN når der rent faktisk er en session at logge ud af - ingen
+  // grund til at sætte tælleren op på login-siden.
+  useEffect(() => {
+    if (!session || !effectiveStore?.sessionIdleMinutter) return;
+    const idleMs = effectiveStore.sessionIdleMinutter * 60000;
+    let timer;
+    const nulstil = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => { logOut(); }, idleMs);
+    };
+    const haendelser = ["mousedown", "keydown", "touchstart", "scroll"];
+    haendelser.forEach((h) => window.addEventListener(h, nulstil, { passive: true }));
+    nulstil();
+    return () => {
+      clearTimeout(timer);
+      haendelser.forEach((h) => window.removeEventListener(h, nulstil));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, effectiveStore?.sessionIdleMinutter]);
 
   // ---------------------------------------------------------------------
   // BIL, IKKE PERSON (september 2026)
@@ -392,16 +392,6 @@ export default function App() {
     return <LoginPage />;
   }
 
-  // LÅSESKÆRM (september 2026): vises FØR alt andet, hvis denne telefon
-  // har PIN/biometri slået til og appen lige er åbnet/genindlæst - den
-  // rigtige Supabase-session ligger stadig intakt i baggrunden, kun selve
-  // VISNINGEN er låst. Venter bevidst IKKE på, at profilen er hentet
-  // (userName er valgfri i DeviceLockScreen) - oplåsning skal ikke vente
-  // på et netværkskald, der ikke er nødvendigt for den.
-  if (!deviceUnlocked) {
-    return <DeviceLockScreen userName={profile?.navn} onUnlock={() => setDeviceUnlocked(true)} onFallbackToLogin={logOut} />;
-  }
-
   if (!profile || activeStoreId === undefined) {
     return <div className="min-h-screen w-full flex items-center justify-center bg-paper"><p className="text-sm text-muted">Indlæser profil...</p></div>;
   }
@@ -413,7 +403,7 @@ export default function App() {
           <div className="max-w-2xl mx-auto px-4 py-8">
             <div className="flex justify-between items-center mb-4">
               <p className="font-mono text-[11px] tracking-widest uppercase text-brand">Systemadministration</p>
-              <button onClick={handleLogOut} className="text-xs text-muted hover:text-brand underline">Log ud</button>
+              <button onClick={logOut} className="text-xs text-muted hover:text-brand underline">Log ud</button>
             </div>
             {allStores.length > 0 && (
               <div className="mb-6 rounded-xl border border-line bg-white p-4 shadow-sm">
@@ -439,7 +429,7 @@ export default function App() {
           <p className="text-sm text-ink">
             Din bruger er oprettet, men er endnu ikke koblet til en butik. Bed en administrator om at give dig adgang.
           </p>
-          <button onClick={handleLogOut} className="mt-4 text-xs text-muted hover:text-brand underline">Log ud</button>
+          <button onClick={logOut} className="mt-4 text-xs text-muted hover:text-brand underline">Log ud</button>
         </div>
       </div>
     );
@@ -492,19 +482,17 @@ export default function App() {
         .font-mono { font-family: 'JetBrains Mono', monospace; }
       `}</style>
 
-      {/* HURTIG OPLÅSNING - tilbud (september 2026): flydende dialog oven
-          på appen, vist ÉN gang lige efter et rigtigt login - se effect
-          ovenfor. */}
-      {showUnlockPrompt && profile && (
-        <DeviceUnlockPrompt profileName={profile.navn} onDone={() => setShowUnlockPrompt(false)} />
+      {showAccountSettings && (
+        <AccountSettingsModal store={effectiveStore} onClose={() => setShowAccountSettings(false)} />
       )}
 
       {!hideTopNav && (
         <TopNav
-          page={currentPage} onChange={(key) => navigate(`/${key}`)} user={profile} onLogOut={handleLogOut}
+          page={currentPage} onChange={(key) => navigate(`/${key}`)} user={profile} onLogOut={logOut}
           notifications={notifications} onOpenOrder={onOpen} allowedPages={allowedPages}
           store={effectiveStore} allStores={allStores} onSwitchStore={switchStore}
           onExitStoreView={profile.erSystemadmin ? exitStoreView : undefined}
+          onOpenAccountSettings={() => setShowAccountSettings(true)}
         />
       )}
 
@@ -610,6 +598,7 @@ export default function App() {
                 onAddTimeOff={timeOffStore.addTimeOff} onDeleteTimeOff={timeOffStore.deleteTimeOff}
                 onSygemeld={timeOffStore.sygemeld} onRaskmeld={timeOffStore.raskmeld} onSickLeaveWindowUpdated={setSickLeaveWindowOverride}
                 onPasswordPolicyUpdated={setPasswordPolicyOverride}
+                onPinSessionPolicyUpdated={setPinSessionPolicyOverride}
               />
             </Gate>
           } />
