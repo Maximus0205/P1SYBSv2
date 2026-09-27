@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Trash2, X, Plus, Pencil, UserPlus, PalmtreeIcon, CalendarOff, KeyRound, Stethoscope, HeartPulse, ShieldCheck, Truck, Clock, Gauge, TimerReset } from "lucide-react";
 import { vehicleLabel, technicianColor, todayISO, activeSickLeave } from "../data/domain";
 import { suggestUsername, isValidUsername } from "../lib/username";
-import { updateSickLeaveWindow, updatePasswordPolicy, updatePinAndSessionPolicy } from "../lib/dataStore";
+import { updateSickLeaveWindow, updatePasswordPolicy, updateLoginPolicy } from "../lib/dataStore";
 import { MinutesInput } from "../components/common";
 
 // ---------------------------------------------------------------------------
@@ -51,6 +51,29 @@ function CheckboxList({ items, columns = 1, disabled }) {
         </label>
       ))}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TIL/FRA-KONTAKT (september 2026)
+//
+// En rigtig switch, ikke en afkrydsningskasse - bruges hvor til/fra er en
+// STØRRE, mere vidtrækkende beslutning end et almindeligt afkrydsningsfelt
+// (fx "sluk hele login-metoden for butikken"), og hvor et glidende visuelt
+// udtryk (tydeligt grøn=til, grå=fra) gør konsekvensen lettere at se på et
+// øjeblik end en lille kasse med flueben gør.
+function Toggle({ checked, onChange, label, ariaLabel }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel || label}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-1 ${checked ? "bg-success" : "bg-line"}`}
+    >
+      <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${checked ? "translate-x-6" : "translate-x-1"}`} />
+    </button>
   );
 }
 
@@ -214,29 +237,22 @@ function SickLeaveWindowSetting({ store, onUpdated }) {
 }
 
 // ---------------------------------------------------------------------------
-// LOGIN-KRAV (september 2026, sammenlagt efter tilbagemelding)
+// LOGIN-KRAV (september 2026, rettet efter tilbagemelding)
 //
-// Lå tidligere som TO adskilte kort ("Adgangskodekrav" og "PIN-login &
-// automatisk log ud"), hver med sin egen "mindst X"-indstilling og sin
-// egen Gem-knap - det så ud som om man skulle sætte "samme længde" to
-// gange. Det er ét samlet kort nu, med ÉN Gem-knap, der gemmer alle tre
-// indstillinger på én gang - men stadig TO forskellige tal, fordi de
-// rent faktisk ER to forskellige ting:
+// PIN-koden har IKKE længere en konfigurerbar "minimumslængde" - den er
+// pr. definition 4 cifre, håndhævet fast i set-login-pin (Edge Function).
+// Der var reelt intet at indstille, og feltet gav kun indtryk af, at
+// "adgangskodens længde" kunne sættes to gange.
 //
-//   - ADGANGSKODE verificeres af Supabase Auth (login-systemet bag hele
-//     appen) og kan derfor IKKE sættes under 6 tegn - en hård grænse på
-//     selve platformen, bekræftet ved opslag, som end ikke Supabase selv
-//     kan ændre i deres eget dashboard.
-//   - PIN-KODEN verificeres af vores EGEN kode (login_pins-tabellen,
-//     aldrig Supabase Auth's felt) og har derfor INGEN tilsvarende bund -
-//     kan sættes helt ned til 4 cifre.
-//
-// Begge håndhæves SERVER-SIDE i deres respektive Edge Functions - dette
-// kort gemmer kun ØNSKET, det beskytter intet i sig selv.
-function LoginPolicySetting({ store, onPasswordUpdated, onPinSessionUpdated }) {
+// I stedet: EN TIL/FRA-KONTAKT for HELE "simpelt login" (PIN + biometrisk
+// login samlet) - tænkt til den dag kæden sælger licenser til en kunde,
+// der af egen politik ikke vil tillade den slags login-genveje overhovedet.
+// Slås den fra, afviser login-with-pin og webauthn-*-Edge Functions det
+// med det samme, uanset om en bruger allerede har sat en PIN/Face ID op.
+function LoginPolicySetting({ store, onPasswordUpdated, onLoginPolicyUpdated }) {
   const [passwordMinLength, setPasswordMinLength] = useState(store?.adgangskodeMinLaengde ?? 6);
   const [requireMixed, setRequireMixed] = useState(store?.adgangskodeKraeverBlanding ?? false);
-  const [pinMinLength, setPinMinLength] = useState(store?.pinMinLaengde ?? 4);
+  const [simpleLoginEnabled, setSimpleLoginEnabled] = useState(store?.simpelLoginAktiveret !== false);
   const [idleMinutes, setIdleMinutes] = useState(store?.sessionIdleMinutter ?? 480);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -244,19 +260,18 @@ function LoginPolicySetting({ store, onPasswordUpdated, onPinSessionUpdated }) {
 
   const save = async () => {
     const pwN = Math.min(64, Math.max(6, Math.round(Number(passwordMinLength)) || 6));
-    const pinN = Math.min(12, Math.max(4, Math.round(Number(pinMinLength)) || 4));
     const idleN = Math.min(10080, Math.max(5, Math.round(Number(idleMinutes)) || 480));
-    setPasswordMinLength(pwN); setPinMinLength(pinN); setIdleMinutes(idleN);
+    setPasswordMinLength(pwN); setIdleMinutes(idleN);
     setSaving(true); setError(""); setSaved(false);
-    const [pwResult, pinResult] = await Promise.all([
+    const [pwResult, loginResult] = await Promise.all([
       updatePasswordPolicy({ minLaengde: pwN, kraeverBlanding: requireMixed, storeId: store?.id }),
-      updatePinAndSessionPolicy({ pinMinLaengde: pinN, sessionIdleMinutter: idleN, storeId: store?.id }),
+      updateLoginPolicy({ simpelLoginAktiveret: simpleLoginEnabled, sessionIdleMinutter: idleN, storeId: store?.id }),
     ]);
     setSaving(false);
-    if (!pwResult.ok || !pinResult.ok) { setError(pwResult.fejl || pinResult.fejl || "Kunne ikke gemme."); return; }
+    if (!pwResult.ok || !loginResult.ok) { setError(pwResult.fejl || loginResult.fejl || "Kunne ikke gemme."); return; }
     setSaved(true);
     onPasswordUpdated?.({ minLength: pwN, requireMixed });
-    onPinSessionUpdated?.({ pinMinLength: pinN, sessionIdleMinutes: idleN });
+    onLoginPolicyUpdated?.({ simpleLoginEnabled, sessionIdleMinutes: idleN });
     setTimeout(() => setSaved(false), 1500);
   };
 
@@ -265,7 +280,7 @@ function LoginPolicySetting({ store, onPasswordUpdated, onPinSessionUpdated }) {
   return (
     <div className="rounded-xl border border-line bg-white p-4 mb-4 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-1.5"><KeyRound size={15} className="text-brand" aria-hidden="true" /> Login-krav</h3>
-      <p className="text-xs text-muted mb-4">To forskellige login-veje, hver med sin egen længde - se hvorfor nedenfor. Gælder nye/nulstillede koder fremover, rører ikke det der allerede er sat.</p>
+      <p className="text-xs text-muted mb-4">Gælder nye/nulstillede adgangskoder fremover, rører ikke det der allerede er sat.</p>
 
       <div className="rounded-lg bg-panel p-3 mb-3">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-muted mb-2">Adgangskode</p>
@@ -282,13 +297,13 @@ function LoginPolicySetting({ store, onPasswordUpdated, onPinSessionUpdated }) {
       </div>
 
       <div className="rounded-lg bg-panel p-3 mb-3">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted mb-2">PIN-kode (alternativ til adgangskode)</p>
-        <label className="flex items-center gap-2 text-sm text-ink">
-          Mindst
-          <input type="number" min="4" max="12" value={pinMinLength} onChange={(e) => setPinMinLength(e.target.value)} aria-label="Minimum antal cifre i PIN-koden" className="w-16 rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink text-center focus:outline-none focus:border-brand" />
-          cifre
-        </label>
-        <p className="text-[10px] text-muted mt-2">Ingen Supabase-bund - hver bruger sætter selv sin PIN op under "Din konto". Kan derfor sættes helt ned til 4 cifre.</p>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-ink">PIN-kode og Face ID/fingeraftryk</p>
+            <p className="text-[11px] text-muted mt-0.5">En 4-cifret kode eller biometri som alternativ til adgangskode - hver bruger sætter selv sin op under "Din konto". Sluk kontakten for kun at tillade fuld adgangskode (fx en kundes egen politik).</p>
+          </div>
+          <Toggle checked={simpleLoginEnabled} onChange={setSimpleLoginEnabled} ariaLabel="Tillad PIN-login og biometrisk login" />
+        </div>
       </div>
 
       <div className="rounded-lg bg-panel p-3 mb-3">
