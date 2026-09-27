@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { Trash2, X, Plus, Pencil, UserPlus, PalmtreeIcon, CalendarOff, KeyRound, Stethoscope, HeartPulse, ShieldCheck, Truck, Clock, Gauge } from "lucide-react";
+import { Trash2, X, Plus, Pencil, UserPlus, PalmtreeIcon, CalendarOff, KeyRound, Stethoscope, HeartPulse, ShieldCheck, Truck, Clock, Gauge, TimerReset } from "lucide-react";
 import { vehicleLabel, technicianColor, todayISO, activeSickLeave } from "../data/domain";
 import { suggestUsername, isValidUsername } from "../lib/username";
-import { updateSickLeaveWindow, updatePasswordPolicy } from "../lib/dataStore";
+import { updateSickLeaveWindow, updatePasswordPolicy, updatePinAndSessionPolicy } from "../lib/dataStore";
 import { MinutesInput } from "../components/common";
 
 // ---------------------------------------------------------------------------
@@ -229,11 +229,11 @@ function SickLeaveWindowSetting({ store, onUpdated }) {
 // selv, ligesom klientvalidering aldrig gør.
 //
 // KAN IKKE SÆTTES UNDER 6 TEGN: Supabase Auth (login-systemet bag hele
-// appen) håndhæver SELV et projekt-bredt minimum på 6 tegn, uafhængigt af
-// denne indstilling - en butik, der ønsker fx 4-cifrede koder, kræver
-// derfor ALSO en manuel ændring af selve Supabase-projektets Auth-
-// indstilling (uden for det, denne app kan gøre selv) - se samtalen med
-// Magnus, september 2026.
+// appen) håndhæver SELV et projekt-bredt minimum på 6 tegn - bekræftet:
+// dette er en HÅRD grænse på Supabases administrerede platform, som IKKE
+// kan sættes lavere, selv ikke af Supabase selv i deres dashboard. Ønskes
+// koder under 6 tegn, er PIN-login (se PinAndSessionSetting nedenfor) den
+// rigtige vej - den rører aldrig dette felt.
 function PasswordPolicySetting({ store, onUpdated }) {
   const [minLength, setMinLength] = useState(store?.adgangskodeMinLaengde ?? 6);
   const [requireMixed, setRequireMixed] = useState(store?.adgangskodeKraeverBlanding ?? false);
@@ -273,7 +273,72 @@ function PasswordPolicySetting({ store, onUpdated }) {
         {saved && <span className="text-xs text-success font-semibold">Gemt.</span>}
       </div>
       {error && <p className="text-xs text-danger mt-2">{error}</p>}
-      <p className="text-[10px] text-muted mt-3">Kan ikke sættes under 6 tegn - login-systemet bag appen (Supabase Auth) tillader ikke kortere adgangskoder, uanset denne indstilling. Ønskes færre tegn (fx en 4-cifret kode), kræver det en separat, manuel ændring af selve login-systemets opsætning - spørg din systemadministrator.</p>
+      <p className="text-[10px] text-muted mt-3">Kan ikke sættes under 6 tegn - Supabase Auth håndhæver denne bund på selve platformen. Ønskes kortere koder, brug PIN-login i stedet (nedenfor) - det rører ikke dette felt og har ingen Supabase-bund.</p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PIN-KRAV + IDLE-TIMEOUT PR. BUTIK (september 2026)
+//
+// PIN-login (se LoginPage.jsx og lib/dataStore.js: setLoginPin/
+// loginWithPin) er et ÆGTE, konto-bundet alternativ til adgangskode -
+// verificeret server-side mod EGEN tabel (login_pins), ALDRIG mod
+// Supabase Auth's eget felt. Derfor ingen 6-tegns-bund her: butikken kan
+// selv sætte minimum ned til 4 cifre.
+//
+// IDLE-TIMEOUT: hvor mange minutters inaktivitet før appen logger ud af
+// sig selv (se App.jsx). Standard 8 timer (480 min) - lang nok til en
+// hel arbejdsdag med huller mellem sager, kort nok til at en glemt/
+// efterladt telefon ikke forbliver logget ind for evigt.
+function PinAndSessionSetting({ store, onUpdated }) {
+  const [pinMinLength, setPinMinLength] = useState(store?.pinMinLaengde ?? 4);
+  const [idleMinutes, setIdleMinutes] = useState(store?.sessionIdleMinutter ?? 480);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+
+  const save = async () => {
+    const pinN = Math.min(12, Math.max(4, Math.round(Number(pinMinLength)) || 4));
+    const idleN = Math.min(10080, Math.max(5, Math.round(Number(idleMinutes)) || 480));
+    setPinMinLength(pinN); setIdleMinutes(idleN);
+    setSaving(true); setError(""); setSaved(false);
+    const result = await updatePinAndSessionPolicy({ pinMinLaengde: pinN, sessionIdleMinutter: idleN, storeId: store?.id });
+    setSaving(false);
+    if (!result.ok) { setError(result.fejl || "Kunne ikke gemme."); return; }
+    setSaved(true);
+    onUpdated?.({ pinMinLength: pinN, sessionIdleMinutes: idleN });
+    setTimeout(() => setSaved(false), 1500);
+  };
+
+  const timeoutTekst = idleMinutes >= 60 ? `${(idleMinutes / 60).toFixed(idleMinutes % 60 === 0 ? 0 : 1)} timer` : `${idleMinutes} minutter`;
+
+  return (
+    <div className="rounded-xl border border-line bg-white p-4 mb-4 shadow-sm">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-1.5"><KeyRound size={15} className="text-brand" aria-hidden="true" /> PIN-login & automatisk log ud</h3>
+      <p className="text-xs text-muted mb-3">PIN-koden er et alternativ til adgangskode - hver bruger sætter sin egen op under "Din konto". Ingen Supabase-bund: kan sættes helt ned til 4 cifre.</p>
+      <label className="flex items-center gap-2 text-sm text-ink mb-3">
+        Mindst
+        <input type="number" min="4" max="12" value={pinMinLength} onChange={(e) => setPinMinLength(e.target.value)} aria-label="Minimum antal cifre i PIN-koden" className="w-16 rounded-lg border border-line bg-panel px-2 py-1.5 text-sm text-ink text-center focus:outline-none focus:border-brand" />
+        cifre
+      </label>
+
+      <div className="border-t border-divider pt-3 mt-1">
+        <label className="flex items-center gap-2 text-sm text-ink mb-1">
+          <TimerReset size={14} className="text-muted shrink-0" aria-hidden="true" /> Log automatisk ud efter
+          <input type="number" min="5" max="10080" value={idleMinutes} onChange={(e) => setIdleMinutes(e.target.value)} aria-label="Minutters inaktivitet før automatisk log ud" className="w-20 rounded-lg border border-line bg-panel px-2 py-1.5 text-sm text-ink text-center focus:outline-none focus:border-brand" />
+          minutters inaktivitet
+        </label>
+        <p className="text-[11px] text-muted mb-2">Nu sat til {timeoutTekst}. Klik/tastetryk/berøring nulstiller tælleren - kun reel inaktivitet tæller.</p>
+      </div>
+
+      <div className="flex items-center gap-2 mt-2">
+        <button onClick={save} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60">
+          {saving ? "Gemmer..." : "Gem"}
+        </button>
+        {saved && <span className="text-xs text-success font-semibold">Gemt.</span>}
+      </div>
+      {error && <p className="text-xs text-danger mt-2">{error}</p>}
     </div>
   );
 }
@@ -974,4 +1039,4 @@ function DefaultTimeEstimateAdmin({ productTypes, primaryServices, addOnServices
   );
 }
 
-export { TechnicianRow, SickLeaveWindowSetting, PasswordPolicySetting, VehicleRow, UserRow, NewUserForm, ROLE_LABEL, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin, DefaultTimeEstimateAdmin };
+export { TechnicianRow, SickLeaveWindowSetting, PasswordPolicySetting, PinAndSessionSetting, VehicleRow, UserRow, NewUserForm, ROLE_LABEL, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin, DefaultTimeEstimateAdmin };
