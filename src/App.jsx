@@ -240,21 +240,22 @@ export default function App() {
 
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [refreshing, setRefreshing] = useState(false);
-  // Sygemeldingsvindue, adgangskodekrav OG pin/idle-politik kan alle
-  // rettes af butikkens admin og hentes ikke automatisk igen bagefter
-  // (getStore kaldes kun ved butiksskift, se effect ovenfor) - vi holder
-  // derfor en lokal override af hver, så ændringen slår igennem med det
-  // samme i resten af appen, uden at vente på en fuld genindlæsning.
+  // Sygemeldingsvindue, adgangskodekrav OG login-politik (simpelt
+  // login/idle-timeout) kan alle rettes af butikkens admin og hentes ikke
+  // automatisk igen bagefter (getStore kaldes kun ved butiksskift, se
+  // effect ovenfor) - vi holder derfor en lokal override af hver, så
+  // ændringen slår igennem med det samme i resten af appen, uden at
+  // vente på en fuld genindlæsning.
   const [sickLeaveWindowOverride, setSickLeaveWindowOverride] = useState(null);
   const [passwordPolicyOverride, setPasswordPolicyOverride] = useState(null);
-  const [pinSessionPolicyOverride, setPinSessionPolicyOverride] = useState(null);
+  const [loginPolicyOverride, setLoginPolicyOverride] = useState(null);
   const effectiveStore = activeStore ? {
     ...activeStore,
     sygemeldingVindueTimer: sickLeaveWindowOverride ?? activeStore.sygemeldingVindueTimer,
     adgangskodeMinLaengde: passwordPolicyOverride?.minLength ?? activeStore.adgangskodeMinLaengde,
     adgangskodeKraeverBlanding: passwordPolicyOverride?.requireMixed ?? activeStore.adgangskodeKraeverBlanding,
-    pinMinLaengde: pinSessionPolicyOverride?.pinMinLength ?? activeStore.pinMinLaengde,
-    sessionIdleMinutter: pinSessionPolicyOverride?.sessionIdleMinutes ?? activeStore.sessionIdleMinutter,
+    simpelLoginAktiveret: loginPolicyOverride?.simpleLoginEnabled ?? activeStore.simpelLoginAktiveret,
+    sessionIdleMinutter: loginPolicyOverride?.sessionIdleMinutes ?? activeStore.sessionIdleMinutter,
   } : activeStore;
 
   // Butikkens koordinater, sendt til ethvert adressefelt der skal
@@ -263,8 +264,8 @@ export default function App() {
   // så de to ikke kan komme til at afvige fra hinanden.
   const storeFocus = effectiveStore?.lat && effectiveStore?.lon ? { lat: effectiveStore.lat, lon: effectiveStore.lon } : null;
 
-  const switchStore = (storeId) => { setSickLeaveWindowOverride(null); setPasswordPolicyOverride(null); setPinSessionPolicyOverride(null); setActiveStoreId(storeId); };
-  const exitStoreView = () => { setSickLeaveWindowOverride(null); setPasswordPolicyOverride(null); setPinSessionPolicyOverride(null); setActiveStoreId(null); };
+  const switchStore = (storeId) => { setSickLeaveWindowOverride(null); setPasswordPolicyOverride(null); setLoginPolicyOverride(null); setActiveStoreId(storeId); };
+  const exitStoreView = () => { setSickLeaveWindowOverride(null); setPasswordPolicyOverride(null); setLoginPolicyOverride(null); setActiveStoreId(null); };
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -598,7 +599,7 @@ export default function App() {
                 onAddTimeOff={timeOffStore.addTimeOff} onDeleteTimeOff={timeOffStore.deleteTimeOff}
                 onSygemeld={timeOffStore.sygemeld} onRaskmeld={timeOffStore.raskmeld} onSickLeaveWindowUpdated={setSickLeaveWindowOverride}
                 onPasswordPolicyUpdated={setPasswordPolicyOverride}
-                onPinSessionPolicyUpdated={setPinSessionPolicyOverride}
+                onLoginPolicyUpdated={setLoginPolicyOverride}
               />
             </Gate>
           } />
