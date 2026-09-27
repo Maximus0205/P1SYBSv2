@@ -57,7 +57,7 @@ function CheckboxList({ items, columns = 1, disabled }) {
 // Bruges af BÅDE NewUserForm og UserRow's nulstillings-felt, så de to
 // vurderer "indeholder bogstaver og tal" på nøjagtig samme måde som
 // edge-funktionerne, der reelt håndhæver kravet (admin-opret-bruger og
-// admin-nulstil-adgangskode) - se noten ved PasswordPolicySetting nedenfor.
+// admin-nulstil-adgangskode) - se noten ved LoginPolicySetting nedenfor.
 const opfylderBlandingskrav = (adgangskode) => /[a-zA-ZæøåÆØÅ]/.test(adgangskode || "") && /[0-9]/.test(adgangskode || "");
 
 // En "montør" er ikke længere en ROLLE, men alle der KØRER: rollen montor,
@@ -214,84 +214,28 @@ function SickLeaveWindowSetting({ store, onUpdated }) {
 }
 
 // ---------------------------------------------------------------------------
-// ADGANGSKODEKRAV PR. BUTIK (september 2026)
+// LOGIN-KRAV (september 2026, sammenlagt efter tilbagemelding)
 //
-// Erstatter det hidtil FASTE kravet ("mindst 6 tegn") - hver butik kan nu
-// selv sætte sin egen minimumslængde og om der kræves en blanding af
-// bogstaver og tal (fx en intern sikkerhedsprocedure hos butikken selv).
-// Gælder KUN nye/nulstillede adgangskoder fremover - rører ikke eksisterende.
+// Lå tidligere som TO adskilte kort ("Adgangskodekrav" og "PIN-login &
+// automatisk log ud"), hver med sin egen "mindst X"-indstilling og sin
+// egen Gem-knap - det så ud som om man skulle sætte "samme længde" to
+// gange. Det er ét samlet kort nu, med ÉN Gem-knap, der gemmer alle tre
+// indstillinger på én gang - men stadig TO forskellige tal, fordi de
+// rent faktisk ER to forskellige ting:
 //
-// HÅNDHÆVES SERVER-SIDE, IKKE KUN HER: selve kravet tjekkes i
-// admin-opret-bruger og admin-nulstil-adgangskode (Edge Functions), som
-// slår butikkens egen politik op, FØR en adgangskode sættes. Denne
-// komponent gemmer kun ØNSKET (via update_password_policy i databasen,
-// samme mønster som SickLeaveWindowSetting) - den beskytter intet i sig
-// selv, ligesom klientvalidering aldrig gør.
+//   - ADGANGSKODE verificeres af Supabase Auth (login-systemet bag hele
+//     appen) og kan derfor IKKE sættes under 6 tegn - en hård grænse på
+//     selve platformen, bekræftet ved opslag, som end ikke Supabase selv
+//     kan ændre i deres eget dashboard.
+//   - PIN-KODEN verificeres af vores EGEN kode (login_pins-tabellen,
+//     aldrig Supabase Auth's felt) og har derfor INGEN tilsvarende bund -
+//     kan sættes helt ned til 4 cifre.
 //
-// KAN IKKE SÆTTES UNDER 6 TEGN: Supabase Auth (login-systemet bag hele
-// appen) håndhæver SELV et projekt-bredt minimum på 6 tegn - bekræftet:
-// dette er en HÅRD grænse på Supabases administrerede platform, som IKKE
-// kan sættes lavere, selv ikke af Supabase selv i deres dashboard. Ønskes
-// koder under 6 tegn, er PIN-login (se PinAndSessionSetting nedenfor) den
-// rigtige vej - den rører aldrig dette felt.
-function PasswordPolicySetting({ store, onUpdated }) {
-  const [minLength, setMinLength] = useState(store?.adgangskodeMinLaengde ?? 6);
+// Begge håndhæves SERVER-SIDE i deres respektive Edge Functions - dette
+// kort gemmer kun ØNSKET, det beskytter intet i sig selv.
+function LoginPolicySetting({ store, onPasswordUpdated, onPinSessionUpdated }) {
+  const [passwordMinLength, setPasswordMinLength] = useState(store?.adgangskodeMinLaengde ?? 6);
   const [requireMixed, setRequireMixed] = useState(store?.adgangskodeKraeverBlanding ?? false);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState("");
-
-  const save = async () => {
-    const n = Math.min(64, Math.max(6, Math.round(Number(minLength)) || 6));
-    setMinLength(n);
-    setSaving(true); setError(""); setSaved(false);
-    const result = await updatePasswordPolicy({ minLaengde: n, kraeverBlanding: requireMixed, storeId: store?.id });
-    setSaving(false);
-    if (!result.ok) { setError(result.fejl || "Kunne ikke gemme."); return; }
-    setSaved(true);
-    onUpdated?.({ minLength: n, requireMixed });
-    setTimeout(() => setSaved(false), 1500);
-  };
-
-  return (
-    <div className="rounded-xl border border-line bg-white p-4 mb-4 shadow-sm">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-1.5"><KeyRound size={15} className="text-brand" aria-hidden="true" /> Adgangskodekrav</h3>
-      <p className="text-xs text-muted mb-3">Gælder nye og nulstillede adgangskoder i denne butik fremover - rører ikke adgangskoder, der allerede er sat.</p>
-      <label className="flex items-center gap-2 text-sm text-ink mb-3">
-        Mindst
-        <input type="number" min="6" max="64" value={minLength} onChange={(e) => setMinLength(e.target.value)} aria-label="Minimum antal tegn" className="w-16 rounded-lg border border-line bg-panel px-2 py-1.5 text-sm text-ink text-center focus:outline-none focus:border-brand" />
-        tegn
-      </label>
-      <label className="flex items-center gap-2 cursor-pointer mb-3">
-        <input type="checkbox" checked={requireMixed} onChange={(e) => setRequireMixed(e.target.checked)} className="w-4 h-4 accent-brand" />
-        <span className="text-sm text-ink">Kræver både bogstaver og tal</span>
-      </label>
-      <div className="flex items-center gap-2">
-        <button onClick={save} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60">
-          {saving ? "Gemmer..." : "Gem"}
-        </button>
-        {saved && <span className="text-xs text-success font-semibold">Gemt.</span>}
-      </div>
-      {error && <p className="text-xs text-danger mt-2">{error}</p>}
-      <p className="text-[10px] text-muted mt-3">Kan ikke sættes under 6 tegn - Supabase Auth håndhæver denne bund på selve platformen. Ønskes kortere koder, brug PIN-login i stedet (nedenfor) - det rører ikke dette felt og har ingen Supabase-bund.</p>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// PIN-KRAV + IDLE-TIMEOUT PR. BUTIK (september 2026)
-//
-// PIN-login (se LoginPage.jsx og lib/dataStore.js: setLoginPin/
-// loginWithPin) er et ÆGTE, konto-bundet alternativ til adgangskode -
-// verificeret server-side mod EGEN tabel (login_pins), ALDRIG mod
-// Supabase Auth's eget felt. Derfor ingen 6-tegns-bund her: butikken kan
-// selv sætte minimum ned til 4 cifre.
-//
-// IDLE-TIMEOUT: hvor mange minutters inaktivitet før appen logger ud af
-// sig selv (se App.jsx). Standard 8 timer (480 min) - lang nok til en
-// hel arbejdsdag med huller mellem sager, kort nok til at en glemt/
-// efterladt telefon ikke forbliver logget ind for evigt.
-function PinAndSessionSetting({ store, onUpdated }) {
   const [pinMinLength, setPinMinLength] = useState(store?.pinMinLaengde ?? 4);
   const [idleMinutes, setIdleMinutes] = useState(store?.sessionIdleMinutter ?? 480);
   const [saving, setSaving] = useState(false);
@@ -299,15 +243,20 @@ function PinAndSessionSetting({ store, onUpdated }) {
   const [error, setError] = useState("");
 
   const save = async () => {
+    const pwN = Math.min(64, Math.max(6, Math.round(Number(passwordMinLength)) || 6));
     const pinN = Math.min(12, Math.max(4, Math.round(Number(pinMinLength)) || 4));
     const idleN = Math.min(10080, Math.max(5, Math.round(Number(idleMinutes)) || 480));
-    setPinMinLength(pinN); setIdleMinutes(idleN);
+    setPasswordMinLength(pwN); setPinMinLength(pinN); setIdleMinutes(idleN);
     setSaving(true); setError(""); setSaved(false);
-    const result = await updatePinAndSessionPolicy({ pinMinLaengde: pinN, sessionIdleMinutter: idleN, storeId: store?.id });
+    const [pwResult, pinResult] = await Promise.all([
+      updatePasswordPolicy({ minLaengde: pwN, kraeverBlanding: requireMixed, storeId: store?.id }),
+      updatePinAndSessionPolicy({ pinMinLaengde: pinN, sessionIdleMinutter: idleN, storeId: store?.id }),
+    ]);
     setSaving(false);
-    if (!result.ok) { setError(result.fejl || "Kunne ikke gemme."); return; }
+    if (!pwResult.ok || !pinResult.ok) { setError(pwResult.fejl || pinResult.fejl || "Kunne ikke gemme."); return; }
     setSaved(true);
-    onUpdated?.({ pinMinLength: pinN, sessionIdleMinutes: idleN });
+    onPasswordUpdated?.({ minLength: pwN, requireMixed });
+    onPinSessionUpdated?.({ pinMinLength: pinN, sessionIdleMinutes: idleN });
     setTimeout(() => setSaved(false), 1500);
   };
 
@@ -315,24 +264,44 @@ function PinAndSessionSetting({ store, onUpdated }) {
 
   return (
     <div className="rounded-xl border border-line bg-white p-4 mb-4 shadow-sm">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-1.5"><KeyRound size={15} className="text-brand" aria-hidden="true" /> PIN-login & automatisk log ud</h3>
-      <p className="text-xs text-muted mb-3">PIN-koden er et alternativ til adgangskode - hver bruger sætter sin egen op under "Din konto". Ingen Supabase-bund: kan sættes helt ned til 4 cifre.</p>
-      <label className="flex items-center gap-2 text-sm text-ink mb-3">
-        Mindst
-        <input type="number" min="4" max="12" value={pinMinLength} onChange={(e) => setPinMinLength(e.target.value)} aria-label="Minimum antal cifre i PIN-koden" className="w-16 rounded-lg border border-line bg-panel px-2 py-1.5 text-sm text-ink text-center focus:outline-none focus:border-brand" />
-        cifre
-      </label>
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-1.5"><KeyRound size={15} className="text-brand" aria-hidden="true" /> Login-krav</h3>
+      <p className="text-xs text-muted mb-4">To forskellige login-veje, hver med sin egen længde - se hvorfor nedenfor. Gælder nye/nulstillede koder fremover, rører ikke det der allerede er sat.</p>
 
-      <div className="border-t border-divider pt-3 mt-1">
-        <label className="flex items-center gap-2 text-sm text-ink mb-1">
-          <TimerReset size={14} className="text-muted shrink-0" aria-hidden="true" /> Log automatisk ud efter
-          <input type="number" min="5" max="10080" value={idleMinutes} onChange={(e) => setIdleMinutes(e.target.value)} aria-label="Minutters inaktivitet før automatisk log ud" className="w-20 rounded-lg border border-line bg-panel px-2 py-1.5 text-sm text-ink text-center focus:outline-none focus:border-brand" />
-          minutters inaktivitet
+      <div className="rounded-lg bg-panel p-3 mb-3">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted mb-2">Adgangskode</p>
+        <label className="flex items-center gap-2 text-sm text-ink mb-2">
+          Mindst
+          <input type="number" min="6" max="64" value={passwordMinLength} onChange={(e) => setPasswordMinLength(e.target.value)} aria-label="Minimum antal tegn i adgangskode" className="w-16 rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink text-center focus:outline-none focus:border-brand" />
+          tegn
         </label>
-        <p className="text-[11px] text-muted mb-2">Nu sat til {timeoutTekst}. Klik/tastetryk/berøring nulstiller tælleren - kun reel inaktivitet tæller.</p>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={requireMixed} onChange={(e) => setRequireMixed(e.target.checked)} className="w-4 h-4 accent-brand" />
+          <span className="text-sm text-ink">Kræver både bogstaver og tal</span>
+        </label>
+        <p className="text-[10px] text-muted mt-2">Kan ikke sættes under 6 tegn - Supabase Auth (login-systemet bag appen) håndhæver denne bund på selve platformen.</p>
       </div>
 
-      <div className="flex items-center gap-2 mt-2">
+      <div className="rounded-lg bg-panel p-3 mb-3">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted mb-2">PIN-kode (alternativ til adgangskode)</p>
+        <label className="flex items-center gap-2 text-sm text-ink">
+          Mindst
+          <input type="number" min="4" max="12" value={pinMinLength} onChange={(e) => setPinMinLength(e.target.value)} aria-label="Minimum antal cifre i PIN-koden" className="w-16 rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink text-center focus:outline-none focus:border-brand" />
+          cifre
+        </label>
+        <p className="text-[10px] text-muted mt-2">Ingen Supabase-bund - hver bruger sætter selv sin PIN op under "Din konto". Kan derfor sættes helt ned til 4 cifre.</p>
+      </div>
+
+      <div className="rounded-lg bg-panel p-3 mb-3">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted mb-2">Automatisk log ud</p>
+        <label className="flex items-center gap-2 text-sm text-ink flex-wrap">
+          <TimerReset size={14} className="text-muted shrink-0" aria-hidden="true" /> Log ud efter
+          <input type="number" min="5" max="10080" value={idleMinutes} onChange={(e) => setIdleMinutes(e.target.value)} aria-label="Minutters inaktivitet før automatisk log ud" className="w-20 rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink text-center focus:outline-none focus:border-brand" />
+          minutters inaktivitet
+        </label>
+        <p className="text-[10px] text-muted mt-2">Nu sat til {timeoutTekst}. Klik/tastetryk/berøring nulstiller tælleren - kun reel inaktivitet tæller.</p>
+      </div>
+
+      <div className="flex items-center gap-2">
         <button onClick={save} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60">
           {saving ? "Gemmer..." : "Gem"}
         </button>
@@ -1039,4 +1008,4 @@ function DefaultTimeEstimateAdmin({ productTypes, primaryServices, addOnServices
   );
 }
 
-export { TechnicianRow, SickLeaveWindowSetting, PasswordPolicySetting, PinAndSessionSetting, VehicleRow, UserRow, NewUserForm, ROLE_LABEL, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin, DefaultTimeEstimateAdmin };
+export { TechnicianRow, SickLeaveWindowSetting, LoginPolicySetting, VehicleRow, UserRow, NewUserForm, ROLE_LABEL, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin, DefaultTimeEstimateAdmin };
