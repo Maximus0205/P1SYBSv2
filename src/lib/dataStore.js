@@ -15,6 +15,7 @@
 import { supabase } from "./supabaseClient";
 import { logError } from "./errorLog";
 import { reportSaveFailure } from "./saveStatus";
+import { opretBiometriskSvar, bekraeftBiometriskSvar } from "./webauthn";
 
 // Fejl-logning (august 2026) VED SIDEN AF console.error (ikke i stedet
 // for - konsollen er stadig nyttig ved lokal udvikling). Uden dette
@@ -407,6 +408,51 @@ export async function loginWithPin(identifier, pin) {
   // ALDRIG videre til vores egen server. onAuthStateChange (useSession.js)
   // opdager den nye session automatisk, ligesom ved et normalt login.
   const { error: otpFejl } = await supabase.auth.verifyOtp({ email: data.email, token: data.otp, type: "magiclink" });
+  if (otpFejl) return { ok: false, fejl: "Koden var rigtig, men login-sessionen kunne ikke oprettes. Prøv igen." };
+  return { ok: true };
+}
+
+// ---------- Biometrisk login (WebAuthn) - september 2026 ----------
+// Se lib/webauthn.js for selve browser-formatkonverteringen, og
+// webauthn-register-options/-verify og webauthn-login-options/-verify
+// (Edge Functions) for den RIGTIGE, kryptografiske verificering - denne
+// funktion orkestrerer bare de to trin (hent parametre -> bed telefonen om
+// Face ID/fingeraftryk -> send svaret til verificering) i ét kald, så
+// resten af appen kan bruge den som en almindelig { ok, fejl }-funktion.
+export async function registerBiometric(deviceLabel) {
+  const { data, error } = await supabase.functions.invoke("webauthn-register-options", { body: {} });
+  if (error || data?.fejl) {
+    return { ok: false, fejl: await readEdgeFunctionError(data, error, "Kunne ikke starte opsætningen") };
+  }
+  let response;
+  try {
+    response = await opretBiometriskSvar(data.options);
+  } catch (e) {
+    return { ok: false, fejl: e?.message?.includes("NotAllowedError") || e?.name === "NotAllowedError" ? "Annulleret." : (e?.message || "Kunne ikke oprette biometrisk login.") };
+  }
+  const { data: verifyData, error: verifyError } = await supabase.functions.invoke("webauthn-register-verify", { body: { response, deviceLabel } });
+  if (verifyError || verifyData?.fejl) {
+    return { ok: false, fejl: await readEdgeFunctionError(verifyData, verifyError, "Kunne ikke gemme den biometriske login") };
+  }
+  return { ok: true };
+}
+
+export async function loginWithBiometric(identifier) {
+  const { data, error } = await supabase.functions.invoke("webauthn-login-options", { body: { identifier } });
+  if (error || data?.fejl) {
+    return { ok: false, fejl: await readEdgeFunctionError(data, error, "Biometrisk login er ikke sat op for denne bruger.") };
+  }
+  let response;
+  try {
+    response = await bekraeftBiometriskSvar(data.options);
+  } catch (e) {
+    return { ok: false, fejl: e?.name === "NotAllowedError" ? "Annulleret." : (e?.message || "Biometrisk login blev annulleret.") };
+  }
+  const { data: verifyData, error: verifyError } = await supabase.functions.invoke("webauthn-login-verify", { body: { identifier, response } });
+  if (verifyError || verifyData?.fejl) {
+    return { ok: false, fejl: await readEdgeFunctionError(verifyData, verifyError, "Biometrisk login lykkedes ikke.") };
+  }
+  const { error: otpFejl } = await supabase.auth.verifyOtp({ email: verifyData.email, token: verifyData.otp, type: "magiclink" });
   if (otpFejl) return { ok: false, fejl: "Koden var rigtig, men login-sessionen kunne ikke oprettes. Prøv igen." };
   return { ok: true };
 }
