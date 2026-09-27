@@ -6,6 +6,8 @@ import { loginWithPin, loginWithBiometric } from "../lib/dataStore";
 import { erBiometriTilgaengelig } from "../lib/webauthn";
 import PUNKT1_LOGO_POSITIV from "../assets/punkt1_positiv.png";
 
+const PIN_LAENGDE = 4;
+
 // Login foregår via Supabase Auth. Brugeren kan taste ENTEN en rigtig
 // e-mail ELLER et selvvalgt brugernavn i samme felt - se src/lib/username.js
 // for hvordan det oversættes til det, Supabase Auth reelt kræver internt.
@@ -16,10 +18,12 @@ import PUNKT1_LOGO_POSITIV from "../assets/punkt1_positiv.png";
 // ALTERNATIVER til adgangskode - IKKE den udfasede "lås telefonen op"-
 // genvej (se lib/deviceUnlock.js, historisk). Begge verificeres server-
 // side (se lib/dataStore.js: loginWithPin/loginWithBiometric) mod EGNE
-// tabeller - aldrig mod Supabase Auth's eget adgangskodefelt, derfor
-// ingen 6-tegns-bund på PIN'en. Lykkes verificeringen, udstedes en
-// RIGTIG Supabase-session bagved - samme sikre grundlag som et
-// almindeligt login.
+// tabeller - aldrig mod Supabase Auth's eget adgangskodefelt. PIN-koden er
+// fast 4 cifre (se AccountSettingsModal.jsx) - ikke noget butikken sætter
+// en minimumslængde for. Lykkes verificeringen, udstedes en RIGTIG
+// Supabase-session bagved - samme sikre grundlag som et almindeligt login.
+// Begge afvises server-side, hvis butikken har slået "simpelt login" fra
+// (Admin -> Brugere) - fejlen vises da i stedet for "forkert kode".
 function LoginPage() {
   const [signingUp, setSigningUp] = useState(false);
   const [loginMethod, setLoginMethod] = useState("adgangskode"); // 'adgangskode' | 'pin' | 'biometri' - kun relevant ved login, ikke ved opret bruger
@@ -58,7 +62,7 @@ function LoginPage() {
   const logInWithPin = async () => {
     setError("");
     setMessage("");
-    if (!identifier.trim() || pin.length < 4) { setError("Udfyld bruger og PIN-kode."); return; }
+    if (!identifier.trim() || pin.length !== PIN_LAENGDE) { setError(`Udfyld bruger og ${PIN_LAENGDE}-cifret PIN-kode.`); return; }
     setBusy(true);
     const result = await loginWithPin(identifier.trim(), pin);
     setBusy(false);
@@ -147,7 +151,10 @@ function LoginPage() {
         {/* LOGIN-METODE (september 2026): kun relevant ved log ind, ikke
             ved opret bruger - en ny bruger sætter PIN/Face ID BAGEFTER,
             når de er logget ind (se AccountSettingsModal.jsx). Face ID-
-            fanen vises kun, hvis DENNE telefon overhovedet har det. */}
+            fanen vises kun, hvis DENNE telefon overhovedet har det. Findes
+            der intet PIN/Face ID sat op for kontoen (eller butikken har
+            slået det fra), fortæller edge-funktionen det tydeligt ved
+            forsøg - ikke skjult her, da vi endnu ikke kender butikken. */}
         {!signingUp && (
           <div className="flex rounded-full border border-line mb-3 text-xs font-semibold uppercase tracking-wide overflow-hidden">
             <button onClick={() => { setLoginMethod("adgangskode"); setError(""); }} className={`flex-1 py-2 transition-colors ${loginMethod === "adgangskode" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>Kode</button>
@@ -192,7 +199,7 @@ function LoginPage() {
                   type="password"
                   inputMode="numeric"
                   value={pin}
-                  onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 12))}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, PIN_LAENGDE))}
                   onKeyDown={(e) => e.key === "Enter" && submit()}
                   className="w-full rounded-lg border border-line bg-paper pl-8 pr-3 py-2 text-sm text-ink tracking-[0.3em] focus:outline-none focus:border-brand"
                 />
