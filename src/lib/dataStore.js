@@ -297,13 +297,17 @@ export async function deleteAddressNote(id) {
 // husnummerintervaller på tværs af flere veje, som ikke lader sig
 // opdele/matche pålideligt uden at foregive en præcision, dataen ikke har.
 //
+// POSTNUMMER (september 2026, tilføjet): valgfrit - bruges KUN til at
+// adskille to skabe med samme vejnavn i forskellige byer, se
+// data/keyCabinets.js: matchCabinet. Ændrer intet, hvis det er tomt.
+//
 // Samme henteform som address_notes: hele butikkens liste i ét hug,
 // filtrering/søgning sker klient-side i AddressesPage.jsx.
 export async function getKeyCabinets(storeId) {
   if (!storeId) return [];
   const { data, error } = await supabase
     .from("key_cabinets")
-    .select("id, navn, skab_placering, omraade, note, created_by_id, created_by_name, created_at")
+    .select("id, navn, skab_placering, omraade, postnummer, note, created_by_id, created_by_name, created_at")
     .eq("store_id", storeId)
     .order("navn", { ascending: true });
   if (error) {
@@ -311,19 +315,19 @@ export async function getKeyCabinets(storeId) {
     return [];
   }
   return (data || []).map((r) => ({
-    id: r.id, navn: r.navn, skabPlacering: r.skab_placering, omraade: r.omraade, note: r.note || "",
+    id: r.id, navn: r.navn, skabPlacering: r.skab_placering, omraade: r.omraade, postnummer: r.postnummer || "", note: r.note || "",
     createdBy: { id: r.created_by_id, navn: r.created_by_name }, createdAt: r.created_at,
   }));
 }
 
-export async function addKeyCabinet(storeId, { navn, skabPlacering, omraade, note, createdBy }) {
+export async function addKeyCabinet(storeId, { navn, skabPlacering, omraade, postnummer, note, createdBy }) {
   if (!storeId || !navn?.trim() || !skabPlacering?.trim() || !omraade?.trim()) {
     return { ok: false, fejl: "Udfyld navn, skabets placering og hvilket område det dækker" };
   }
   const { data, error } = await supabase.from("key_cabinets").insert({
     store_id: storeId, navn: navn.trim(), skab_placering: skabPlacering.trim(), omraade: omraade.trim(),
-    note: note?.trim() || null, created_by_id: createdBy?.id || null, created_by_name: createdBy?.navn || null,
-  }).select("id, navn, skab_placering, omraade, note, created_by_id, created_by_name, created_at").maybeSingle();
+    postnummer: postnummer?.trim() || null, note: note?.trim() || null, created_by_id: createdBy?.id || null, created_by_name: createdBy?.navn || null,
+  }).select("id, navn, skab_placering, omraade, postnummer, note, created_by_id, created_by_name, created_at").maybeSingle();
   if (error) {
     logWriteError("dataStore:addKeyCabinet", "Could not save key cabinet", error, "Nøgleskabet blev ikke gemt:");
     return { ok: false, fejl: error.message };
@@ -331,7 +335,7 @@ export async function addKeyCabinet(storeId, { navn, skabPlacering, omraade, not
   return {
     ok: true,
     cabinet: data && {
-      id: data.id, navn: data.navn, skabPlacering: data.skab_placering, omraade: data.omraade, note: data.note || "",
+      id: data.id, navn: data.navn, skabPlacering: data.skab_placering, omraade: data.omraade, postnummer: data.postnummer || "", note: data.note || "",
       createdBy: { id: data.created_by_id, navn: data.created_by_name }, createdAt: data.created_at,
     },
   };
@@ -342,6 +346,7 @@ export async function updateKeyCabinet(id, fields) {
   if ("navn" in fields) dbFields.navn = fields.navn;
   if ("skabPlacering" in fields) dbFields.skab_placering = fields.skabPlacering;
   if ("omraade" in fields) dbFields.omraade = fields.omraade;
+  if ("postnummer" in fields) dbFields.postnummer = fields.postnummer || null;
   if ("note" in fields) dbFields.note = fields.note || null;
   const { error } = await supabase.from("key_cabinets").update(dbFields).eq("id", id);
   if (error) {
