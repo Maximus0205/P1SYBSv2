@@ -1,13 +1,15 @@
 import React, { useMemo, useState } from "react";
 import { Plus, Building2, Clock, Hash, ChevronLeft, ChevronRight, Check, KeyRound, AlertTriangle, Search, Loader2, Sparkles } from "lucide-react";
-import { TIME_SLOTS, buildTitle, formatDuration, createLineItem, lineItemMinutes, timeSlotById, timeSlotText, todayISO, emptyKeyAccess, keyAccessText } from "../data/domain";
+import { TIME_SLOTS, KEY_ACCESS_TYPES, buildTitle, formatDuration, createLineItem, lineItemMinutes, timeSlotById, timeSlotText, todayISO, emptyKeyAccess, keyAccessText } from "../data/domain";
 import { CASE_TYPES, SAGSTYPE_KUNDE, SAGSTYPE_TOMGANG, tomgangWarnings, TOMGANG_COLOR } from "../data/caseTypes";
 import { buildEstimateIndex, buildClusterIndex } from "../data/estimates";
+import { findKeyCabinets } from "../data/keyCabinets";
 import { lookupPosOrder } from "../lib/dataStore";
 import { ReceiptUpload } from "../components/ReceiptUpload";
 import { LineItemEditor, KeyAccessFields, CustomerHistory, SuggestedDates, InteractiveWeekPicker, ClusterEstimateNote } from "../components/OrderFormFields";
 import { AddressInput } from "../components/AddressInput";
 import { AddressNotesPanel } from "../components/AddressNotes";
+import { KeyCabinetBookingHint } from "../components/KeyCabinetAlert";
 
 // Bookingflowet er delt op i 4 mindre "kort" (trin) i stedet for én lang
 // formular:
@@ -134,7 +136,7 @@ function PosLookupPanel({ storeId, onApply }) {
   );
 }
 
-function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, addressNotes, orders, selectedDate, onAdd, onClose, onOpen, storeFocus }) {
+function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, addressNotes, keyCabinets, orders, selectedDate, onAdd, onClose, onOpen, storeFocus }) {
   const [step, setStep] = useState(0);
   const [caseTypeId, setCaseTypeId] = useState(SAGSTYPE_KUNDE);
   const [customerName, setCustomerName] = useState("");
@@ -161,6 +163,13 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
   const titlePreview = buildTitle(lineItems);
   const expectedMinutes = lineItems.reduce((sum, l) => sum + lineItemMinutes(l), 0);
 
+  // NØGLESKAB (september 2026): ved en tomgang slås adressen løbende op
+  // mod butikkens nøgleskabe (se data/keyCabinets.js). Fundet vises som et
+  // hint på levering-trinnet - og montøren får det ALLIGEVEL vist
+  // automatisk på sagen (se KeyCabinetAlert.jsx), uanset om sælgeren
+  // trykker på "Brug som nøgleoplysning" eller ej.
+  const skabMatches = useMemo(() => (erTomgang ? findKeyCabinets(address, keyCabinets) : []), [erTomgang, address, keyCabinets]);
+
   // Grundestimat ud fra MÅLT tid på tidligere afsluttede sager (se
   // data/estimates.js). Bygges én gang pr. åbning af formularen (orders
   // ændrer sig ikke undervejs i en booking) - ikke ved hvert tastetryk i
@@ -183,6 +192,21 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
     if (id === SAGSTYPE_TOMGANG && !keyAccess.kraeves) {
       setKeyAccess((prev) => ({ ...prev, kraeves: true }));
     }
+  };
+
+  // "Brug som nøgleoplysning": lægger skabet ind i sagens egne
+  // nøglefelter, så det også står i den almindelige nøgletekst (fx i
+  // udskrifter og på sagslisten). Overskriver bevidst placering og - hvis
+  // skabet har en note - detaljer; man har selv trykket på knappen.
+  const brugSkabSomNoegle = (cabinet) => {
+    const skabType = KEY_ACCESS_TYPES.find((t) => /skab|boks/i.test(t));
+    setKeyAccess((prev) => ({
+      ...prev,
+      kraeves: true,
+      type: skabType || prev.type,
+      placering: `Nøgleskab: ${cabinet.navn} — ${cabinet.skabPlacering}`,
+      detaljer: cabinet.note || prev.detaljer,
+    }));
   };
 
   const updateLineItem = (idx, next) => setLineItems((prev) => prev.map((l, i) => (i === idx ? next : l)));
@@ -260,7 +284,11 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
   };
 
   // Bløde advarsler, ikke spærringer - se tomgangWarnings i caseTypes.js.
-  const advarsler = tomgangWarnings({ sagstype: caseTypeId, noegle: keyAccess });
+  // Er adressen SIKKERT dækket af et nøgleskab, ved montøren allerede
+  // hvor nøglen er (den vises automatisk på sagen) - så er "ingen nøgle
+  // registreret" en falsk alarm, og udelades.
+  const skabDaekkerAdressen = skabMatches.some((m) => m.niveau === "sikker");
+  const advarsler = skabDaekkerAdressen ? [] : tomgangWarnings({ sagstype: caseTypeId, noegle: keyAccess });
 
   const submit = async () => {
     if (!customerName.trim() || !date) return;
@@ -366,6 +394,17 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
             address={address}
             canAdd={false}
           />
+
+          {/* NØGLESKAB (september 2026): kun ved tomgang - se
+              KeyCabinetAlert.jsx og data/keyCabinets.js. */}
+          {erTomgang && (
+            <KeyCabinetBookingHint
+              matches={skabMatches}
+              hasCabinets={(keyCabinets || []).length > 0}
+              addressTyped={address.trim().length >= 5}
+              onUse={brugSkabSomNoegle}
+            />
+          )}
 
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2 flex items-center gap-1.5">
             <KeyRound size={13} className="shrink-0" style={{ color: erTomgang ? TOMGANG_COLOR : undefined }} aria-hidden="true" />
