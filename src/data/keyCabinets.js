@@ -22,9 +22,6 @@
 //              og adressen ligger udenfor dem (fx Parkvej 40 mod 1-26), er
 //              det et rigtigt "nej", ikke et "måske" - ellers ville
 //              montøren blive vist skabe, der ikke har med adressen at gøre.
-//
-// Ingen regex-lookbehind her (bevidst): ældre iOS Safari (før 16.4) kan
-// ikke parse det, og en enkelt syntaksfejl ville tage HELE appen ned.
 
 const clean = (s) => (s || "").toLowerCase().replace(/é/g, "e").replace(/[–—]/g, "-");
 
@@ -49,6 +46,14 @@ export function parseAddress(addr) {
     }
   }
   return null;
+}
+
+// Udtrækker et dansk postnummer (4 cifre) fra en adressetekst - typisk
+// sidst i adressen ("... , 5000 Odense C"). Bruges KUN til at adskille
+// skabe med samme vejnavn i forskellige byer, se matchCabinet nedenfor.
+export function parsePostalCode(addr) {
+  const m = (addr || "").match(/\b(\d{4})\b(?!\d)/);
+  return m ? m[1] : null;
 }
 
 const NOISE = /\b(ulige|lige|numre|nummer|nr|husnr|husnummer|hus|fra|afd|afdeling)\b\.?/g;
@@ -139,7 +144,12 @@ function matchEntry(e, a) {
   }
 }
 
-function matchCabinet(parsed, rawAddress, cabinet) {
+function matchCabinet(parsed, rawAddress, cabinet, addressPostalCode) {
+  // Postnummer er en HÅRD udelukkelse, ikke en tredje sandsynlighed:
+  // er begge kendte og forskellige, er det en anden by, uanset at
+  // vejnavn/husnummer tilfældigvis stemmer - matcher aldrig, heller
+  // ikke som "mulig".
+  if (cabinet.postnummer && addressPostalCode && cabinet.postnummer.trim() !== addressPostalCode) return null;
   const compactArea = streetKey(cabinet.omraade);
   if (parsed) {
     const key = streetKey(parsed.street);
@@ -165,10 +175,11 @@ function matchCabinet(parsed, rawAddress, cabinet) {
 export function findKeyCabinets(address, cabinets) {
   if (!address || !address.trim() || !cabinets || cabinets.length === 0) return [];
   const parsed = parseAddress(address);
+  const postalCode = parsePostalCode(address);
   const out = [];
   for (const cabinet of cabinets) {
     if (!cabinet?.omraade) continue;
-    const niveau = matchCabinet(parsed, address, cabinet);
+    const niveau = matchCabinet(parsed, address, cabinet, postalCode);
     if (niveau) out.push({ cabinet, niveau });
   }
   return out.sort((x, y) => (x.niveau === "sikker" ? 0 : 1) - (y.niveau === "sikker" ? 0 : 1));
