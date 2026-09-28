@@ -1,7 +1,7 @@
 // Regressionstest til nøgleskab-matchningen (src/data/keyCabinets.js).
 // Kør med:  node tests/keyCabinets.test.mjs
 // Ingen afhængigheder - ren Node. Afslutter med fejlkode, hvis noget fejler.
-import { findKeyCabinets, parseAddress, parseCoverage, cabinetMapsQuery } from "../src/data/keyCabinets.js";
+import { findKeyCabinets, parseAddress, parseCoverage, cabinetMapsQuery, parsePostalCode } from "../src/data/keyCabinets.js";
 
 let fail = 0, pass = 0;
 const eq = (name, got, want) => {
@@ -84,6 +84,18 @@ for (const junk of [null, undefined, "", "   ", "1-", "-7", "&&&", ";;;", "9A-",
   catch (e) { fail++; console.log("THROW on", JSON.stringify(junk), e.message); }
 }
 eq("omvendt interval 7-1", level("Parkvej 4", "Parkvej 7-1"), "sikker");
+
+// --- Postnummer-adskillelse (september 2026)
+eq("postnr: udtrukket", parsePostalCode("Parkvej 5, 2. th, 5000 Odense C"), "5000");
+eq("postnr: intet", parsePostalCode("Parkvej 5"), null);
+eq("postnr: husnr forveksles ikke", parsePostalCode("Parkvej 5000"), "5000");
+
+const cabWithPostal = (postnummer) => [{ id: "x", navn: "T", omraade: "Parkvej 1-9", postnummer, skabPlacering: "Jacob Hansens vej 18H" }];
+eq("postnr match -> sikker", findKeyCabinets("Parkvej 5, 5000 Odense C", cabWithPostal("5000")).map((r) => r.niveau), ["sikker"]);
+eq("postnr mismatch -> intet, selvom vej+nr matcher", findKeyCabinets("Parkvej 5, 8000 Aarhus C", cabWithPostal("5000")), []);
+eq("skab uden postnr -> matcher stadig", findKeyCabinets("Parkvej 5, 8000 Aarhus C", cabWithPostal(null)).map((r) => r.niveau), ["sikker"]);
+eq("adresse uden postnr -> matcher stadig", findKeyCabinets("Parkvej 5", cabWithPostal("5000")).map((r) => r.niveau), ["sikker"]);
+eq("postnr mismatch afviser også 'mulig'", findKeyCabinets("Parkvej, 8000 Aarhus C", cabWithPostal("5000")), []);
 
 console.log(`\n${pass} bestået, ${fail} fejlet`);
 process.exit(fail ? 1 : 0);
