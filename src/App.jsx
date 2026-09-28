@@ -97,7 +97,9 @@ function OrderRoute({ profile, storeId, orders, technicians, ordersStore, duplic
     onAddAddOn: (lineItemId, navn) => ordersStore.addAddOn(order.id, lineItemId, navn),
     onRemoveAddOn: (lineItemId, addOnId) => ordersStore.removeAddOn(order.id, lineItemId, addOnId),
     onUpdateBooking: (fields) => ordersStore.updateBooking(order.id, fields),
-    onDuplicate: (selectedLineItems) => duplicateOrder(order, selectedLineItems),
+    // followUpType (september 2026): valgt i DuplicatePanel (special/
+    // reklamation/service) - se data/caseTypes.js.
+    onDuplicate: (selectedLineItems, followUpType) => duplicateOrder(order, selectedLineItems, followUpType),
     onAddMaterial: (fields) => ordersStore.addMaterial(order.id, fields),
     onRemoveMaterial: (materialId) => ordersStore.removeMaterial(order.id, materialId),
     onMarkProblem: (note) => ordersStore.markProblem(order.id, note),
@@ -374,9 +376,12 @@ export default function App() {
 
   const addOrder = (fields) => ordersStore.addOrder({ ...fields, createdBy: profile ? { id: profile.id, navn: profile.navn } : null });
 
-  const duplicateOrder = async (sourceOrder, selectedLineItems) => {
+  // followUpType (september 2026): special/reklamation/service, valgt af
+  // brugeren i DuplicatePanel - se data/caseTypes.js og
+  // hooks/useOrders.js: duplicateOrder.
+  const duplicateOrder = async (sourceOrder, selectedLineItems, followUpType) => {
     const createdBy = profile ? { id: profile.id, navn: profile.navn } : null;
-    const newId = await ordersStore.duplicateOrder(sourceOrder, selectedLineItems, createdBy);
+    const newId = await ordersStore.duplicateOrder(sourceOrder, selectedLineItems, createdBy, followUpType);
     if (newId) navigate(`/sag/${newId}`);
   };
 
