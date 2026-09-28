@@ -83,3 +83,27 @@ export function tomgangWarnings(order) {
   }
   return mangler;
 }
+
+// ---------------------------------------------------------------------------
+// OPFØLGNINGSTYPE (september 2026)
+//
+// Uafhængig af SAGSTYPE ovenfor - en opfølgning kan sagtens være en
+// tomgangskørsel OG en reklamation på samme tid. Denne type svarer i
+// stedet på "HVORFOR skal montøren tilbage?", ikke "hvem tager imod".
+//
+// Bevidst KUN valgfri ved oprettelse af en OPFØLGNING (se DuplicatePanel i
+// OrderView.jsx) - en helt almindelig, førstegangsbooking har ingen
+// "hvorfor tilbage", så feltet giver ikke mening der og forbliver tomt
+// (null) på almindelige sager, ligesom ældre sager oprettet før feltet
+// fandtes.
+export const FOLLOWUP_TYPE_SPECIAL = "special";
+export const FOLLOWUP_TYPE_REKLAMATION = "reklamation";
+export const FOLLOWUP_TYPE_SERVICE = "service";
+
+export const FOLLOWUP_TYPES = [
+  { id: FOLLOWUP_TYPE_SPECIAL, label: "Specialtur", beskrivelse: "En særskilt, aftalt tur uden for det normale forløb." },
+  { id: FOLLOWUP_TYPE_REKLAMATION, label: "Reklamation", beskrivelse: "Noget er galt med det oprindelige arbejde eller produktet." },
+  { id: FOLLOWUP_TYPE_SERVICE, label: "Servicetur", beskrivelse: "Planlagt eftersyn eller service, intet er nødvendigvis galt." },
+];
+
+export const followUpTypeLabel = (order) => FOLLOWUP_TYPES.find((t) => t.id === order?.opfoelgningsType)?.label || null;
