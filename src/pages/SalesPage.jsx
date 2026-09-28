@@ -43,7 +43,11 @@ function matchesSearch(order, search) {
 // IKKE oprette et nyt flag under selve bookingen (kun se en advarsel om et
 // eksisterende), så der er ingen tilsvarende "onAdd"-funktion at sende med
 // her - selve flagningen sker på den bookede sag bagefter.
-function SalesPage({ storeId, orders, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, addressNotes, selectedDate, onDateChange, onOpen, onAdd, onImport, storeFocus }) {
+//
+// keyCabinets (september 2026): videresendes til NewOrderForm, som ved en
+// TOMGANG viser, hvilket nøgleskab adressen hører til - se
+// components/KeyCabinetAlert.jsx.
+function SalesPage({ storeId, orders, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, addressNotes, keyCabinets, selectedDate, onDateChange, onOpen, onAdd, onImport, storeFocus }) {
   const [panel, setPanel] = useState("ny");
   const [search, setSearch] = useState("");
   const sortFn = (a, b) => (a.start || "").localeCompare(b.start || "");
@@ -71,7 +75,7 @@ function SalesPage({ storeId, orders, technicians, personnel, timeOff, productTy
         </div>
       </div>
 
-      {panel === "ny" && <div className="mb-6"><NewOrderForm storeId={storeId} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} defaultTimeEstimates={defaultTimeEstimates} addressNotes={addressNotes} orders={orders} selectedDate={selectedDate} onAdd={onAdd} onClose={() => setPanel(null)} onOpen={onOpen} storeFocus={storeFocus} /></div>}
+      {panel === "ny" && <div className="mb-6"><NewOrderForm storeId={storeId} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} defaultTimeEstimates={defaultTimeEstimates} addressNotes={addressNotes} keyCabinets={keyCabinets} orders={orders} selectedDate={selectedDate} onAdd={onAdd} onClose={() => setPanel(null)} onOpen={onOpen} storeFocus={storeFocus} /></div>}
       {panel === "import" && <div className="mb-6"><CsvImport technicians={technicians} productTypes={productTypes} primaryServices={primaryServices} onImport={onImport} onClose={() => setPanel(null)} /></div>}
 
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
