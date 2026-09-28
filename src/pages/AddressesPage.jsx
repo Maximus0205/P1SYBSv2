@@ -97,17 +97,21 @@ function groupByAddress(addressNotes) {
 //
 // "omraade" ER BEVIDST FRI TEKST, ikke en struktureret liste af adresser.
 // Et skab dækker typisk husnummerintervaller på tværs af flere veje ("1-7
-// & 8-26", "9A-F") - at forsøge at parse og matche den slags automatisk
-// mod en konkret sags adresse ville kræve en pålidelig adresseinterval-
-// parser, som let ville fejle stille på en afvigende stavemåde og vise et
-// forkert (eller intet) skab. Digitaliseret 1:1 som det laminerede ark er
-// derfor den sikre løsning: samme information, søgbar på skrift/afdeling/
-// vejnavn, uden at foregive en præcision der ikke er der. Findes en sag
-// senere, kan en mere præcis kobling bygges oven på denne liste.
+// & 8-26", "9A-F") - denne tekst tolkes automatisk mod en sags adresse af
+// data/keyCabinets.js (se KeyCabinetAlert.jsx), men er stadig fri tekst
+// her: sælgeren/montøren skriver det, som det står på det laminerede ark,
+// uden at skulle presse det ind i strukturerede felter.
+//
+// POSTNUMMER (september 2026, tilføjet) - VALGFRIT. Bruges KUN til at
+// adskille to skabe med samme vejnavn i forskellige byer (fx to
+// "Parkvej", ét i Odense og ét i Aarhus) - uden det kunne et skab i den
+// forkerte by fejlagtigt blive vist som match. Har butikken kun ét
+// forretningsområde, er det sjældent nødvendigt at udfylde.
 function NewKeyCabinetForm({ onAdd }) {
   const [navn, setNavn] = useState("");
   const [skabPlacering, setSkabPlacering] = useState("");
   const [omraade, setOmraade] = useState("");
+  const [postnummer, setPostnummer] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -115,10 +119,10 @@ function NewKeyCabinetForm({ onAdd }) {
   const submit = async () => {
     if (!navn.trim() || !skabPlacering.trim() || !omraade.trim()) return;
     setSaving(true); setError("");
-    const result = await onAdd({ navn, skabPlacering, omraade, note });
+    const result = await onAdd({ navn, skabPlacering, omraade, postnummer, note });
     setSaving(false);
     if (!result.ok) { setError(result.fejl || "Kunne ikke gemme."); return; }
-    setNavn(""); setSkabPlacering(""); setOmraade(""); setNote("");
+    setNavn(""); setSkabPlacering(""); setOmraade(""); setPostnummer(""); setNote("");
   };
 
   return (
@@ -139,14 +143,24 @@ function NewKeyCabinetForm({ onAdd }) {
           aria-label="Skabets placering"
           className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
         />
-        <textarea
-          value={omraade}
-          onChange={(e) => setOmraade(e.target.value)}
-          rows={2}
-          placeholder="Hvilket område skabet dækker, fx 'Parkvej 1-7 & 8-26 samt Odensevej 9A-F'"
-          aria-label="Område skabet dækker"
-          className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
-        />
+        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+          <textarea
+            value={omraade}
+            onChange={(e) => setOmraade(e.target.value)}
+            rows={2}
+            placeholder="Hvilket område skabet dækker, fx 'Parkvej 1-7 & 8-26 samt Odensevej 9A-F'"
+            aria-label="Område skabet dækker"
+            className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
+          />
+          <input
+            value={postnummer}
+            onChange={(e) => setPostnummer(e.target.value.replace(/\D/g, "").slice(0, 4))}
+            inputMode="numeric"
+            placeholder="Postnr."
+            aria-label="Postnummer (valgfrit - kun til at adskille samme vejnavn i forskellige byer)"
+            className="w-full sm:w-24 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
+          />
+        </div>
         <input
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -155,6 +169,7 @@ function NewKeyCabinetForm({ onAdd }) {
           className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
         />
       </div>
+      <p className="text-[11px] text-muted mb-3">Postnummer er valgfrit - kun nødvendigt hvis to skabe deler vejnavn i forskellige byer.</p>
       {error && <p className="text-xs text-danger mb-2">{error}</p>}
       <button
         onClick={submit}
@@ -176,19 +191,20 @@ function KeyCabinetCard({ cabinet, canManage, onUpdate, onDelete }) {
   const [navn, setNavn] = useState(cabinet.navn);
   const [skabPlacering, setSkabPlacering] = useState(cabinet.skabPlacering);
   const [omraade, setOmraade] = useState(cabinet.omraade);
+  const [postnummer, setPostnummer] = useState(cabinet.postnummer || "");
   const [note, setNote] = useState(cabinet.note || "");
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
     if (!navn.trim() || !skabPlacering.trim() || !omraade.trim()) return;
     setSaving(true);
-    const ok = await onUpdate(cabinet.id, { navn: navn.trim(), skabPlacering: skabPlacering.trim(), omraade: omraade.trim(), note: note.trim() });
+    const ok = await onUpdate(cabinet.id, { navn: navn.trim(), skabPlacering: skabPlacering.trim(), omraade: omraade.trim(), postnummer: postnummer.trim(), note: note.trim() });
     setSaving(false);
     if (ok) setEditing(false);
   };
 
   const cancel = () => {
-    setNavn(cabinet.navn); setSkabPlacering(cabinet.skabPlacering); setOmraade(cabinet.omraade); setNote(cabinet.note || "");
+    setNavn(cabinet.navn); setSkabPlacering(cabinet.skabPlacering); setOmraade(cabinet.omraade); setPostnummer(cabinet.postnummer || ""); setNote(cabinet.note || "");
     setEditing(false);
   };
 
@@ -198,7 +214,17 @@ function KeyCabinetCard({ cabinet, canManage, onUpdate, onDelete }) {
         <div className="grid gap-2 mb-3">
           <input autoFocus value={navn} onChange={(e) => setNavn(e.target.value)} aria-label="Navn" className="w-full rounded-lg border border-line bg-panel px-2 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
           <input value={skabPlacering} onChange={(e) => setSkabPlacering(e.target.value)} aria-label="Skabets placering" className="w-full rounded-lg border border-line bg-panel px-2 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-          <textarea value={omraade} onChange={(e) => setOmraade(e.target.value)} rows={2} aria-label="Område" className="w-full rounded-lg border border-line bg-panel px-2 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+            <textarea value={omraade} onChange={(e) => setOmraade(e.target.value)} rows={2} aria-label="Område" className="w-full rounded-lg border border-line bg-panel px-2 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+            <input
+              value={postnummer}
+              onChange={(e) => setPostnummer(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              inputMode="numeric"
+              placeholder="Postnr."
+              aria-label="Postnummer (valgfrit)"
+              className="w-full sm:w-24 rounded-lg border border-line bg-panel px-2 py-2 text-sm text-ink focus:outline-none focus:border-brand"
+            />
+          </div>
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ekstra info (valgfri)" aria-label="Ekstra info" className="w-full rounded-lg border border-line bg-panel px-2 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
         </div>
         <div className="flex gap-2">
@@ -220,7 +246,7 @@ function KeyCabinetCard({ cabinet, canManage, onUpdate, onDelete }) {
           </div>
         )}
       </div>
-      <p className="text-sm text-ink mb-1.5">{cabinet.omraade}</p>
+      <p className="text-sm text-ink mb-1.5">{cabinet.omraade}{cabinet.postnummer ? ` (${cabinet.postnummer})` : ""}</p>
       <p className="text-xs text-muted flex items-start gap-1.5 mb-1"><KeyRound size={12} className="shrink-0 mt-0.5" aria-hidden="true" /> Skab: {cabinet.skabPlacering}</p>
       {cabinet.note && <p className="text-xs text-brand mt-1.5">{cabinet.note}</p>}
       <p className="text-[10px] text-muted mt-2">
