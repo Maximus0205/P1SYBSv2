@@ -49,7 +49,7 @@ function Gate({ allowed, page, children }) {
   return children;
 }
 
-function OrderRoute({ profile, storeId, orders, technicians, ordersStore, duplicateOrder, permissions, catalog, addressNotes }) {
+function OrderRoute({ profile, storeId, orders, technicians, ordersStore, duplicateOrder, permissions, catalog, addressNotes, keyCabinets }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const order = orders.find((o) => o.id === id);
@@ -148,6 +148,12 @@ function OrderRoute({ profile, storeId, orders, technicians, ordersStore, duplic
     // udelukkende på den selvstændige fane "Adresser" - se
     // pages/AddressesPage.jsx og ruten /adresser nedenfor.
     addressNotes,
+
+    // ---- Nøgleskabe (september 2026) ----
+    // Ved en tomgangskørsel slår montørvisningen selv op, hvilket skab
+    // sagens adresse hører til - se components/KeyCabinetAlert.jsx. OrderView
+    // (sælger/admin) ignorerer feltet foreløbig.
+    keyCabinets,
   };
 
   // Montørvisningen af en sag er den, der har Start/Færdigmeld. Den vises
@@ -167,7 +173,7 @@ function OrderRoute({ profile, storeId, orders, technicians, ordersStore, duplic
 // er tildelt bilen. Vejen dertil går via den RÅ vehicles-liste, ikke via
 // "technicians" (som nu er assignment-rækker til dropdowns, se App() -
 // mere direkte og uafhængigt af, hvordan de rækker er sat sammen).
-function MontorRoute({ profile, vehicles, orders, ordersStore, refresh, refreshing, selectedDate, onDateChange, onOpen }) {
+function MontorRoute({ profile, vehicles, orders, ordersStore, keyCabinets, refresh, refreshing, selectedDate, onDateChange, onOpen }) {
   const ownVehicle = vehicles.find((v) => v.id === profile.bilId);
   if (!ownVehicle) {
     return (
@@ -179,7 +185,7 @@ function MontorRoute({ profile, vehicles, orders, ordersStore, refresh, refreshi
   const technician = { id: ownVehicle.id, navn: ownVehicle.navn, bil: ownVehicle.nummerplade };
   return (
     <TechnicianRouteView
-      orders={orders} technician={technician} selectedDate={selectedDate} onDateChange={onDateChange}
+      orders={orders} technician={technician} keyCabinets={keyCabinets} selectedDate={selectedDate} onDateChange={onDateChange}
       onOpen={onOpen} onReorder={ordersStore.reorderOrder}
       onRefresh={refresh} refreshing={refreshing}
     />
@@ -509,11 +515,11 @@ export default function App() {
             />
           } />
 
-          <Route path="/sag/:id" element={<OrderRoute profile={profile} storeId={activeStoreId} orders={orders} technicians={technicians} ordersStore={ordersStore} duplicateOrder={duplicateOrder} permissions={effectivePermissions} catalog={catalog} addressNotes={addressNotesStore.addressNotes} />} />
+          <Route path="/sag/:id" element={<OrderRoute profile={profile} storeId={activeStoreId} orders={orders} technicians={technicians} ordersStore={ordersStore} duplicateOrder={duplicateOrder} permissions={effectivePermissions} catalog={catalog} addressNotes={addressNotesStore.addressNotes} keyCabinets={keyCabinetsStore.keyCabinets} />} />
 
           <Route path="/salg" element={
             <Gate allowed={allowedPages} page="salg">
-              <SalesPage storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} defaultTimeEstimates={catalog.defaultTimeEstimates} addressNotes={addressNotesStore.addressNotes} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={storeFocus} />
+              <SalesPage storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} defaultTimeEstimates={catalog.defaultTimeEstimates} addressNotes={addressNotesStore.addressNotes} keyCabinets={keyCabinetsStore.keyCabinets} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={storeFocus} />
             </Gate>
           } />
 
@@ -536,7 +542,7 @@ export default function App() {
               noten ved MontorRoute. */}
           <Route path="/montor" element={
             <Gate allowed={allowedPages} page="montor">
-              <MontorRoute profile={profile} vehicles={vehicles} orders={orders} ordersStore={ordersStore} refresh={refresh} refreshing={refreshing} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} />
+              <MontorRoute profile={profile} vehicles={vehicles} orders={orders} ordersStore={ordersStore} keyCabinets={keyCabinetsStore.keyCabinets} refresh={refresh} refreshing={refreshing} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} />
             </Gate>
           } />
 
