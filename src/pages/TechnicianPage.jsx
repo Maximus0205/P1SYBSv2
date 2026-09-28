@@ -6,6 +6,7 @@ import { StatusBadge, DateSelector } from "../components/common";
 import { Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
 import { BookingEditor, DuplicatePanel, PosStatusBanner } from "../components/OrderView";
 import { AddressNotesPanel } from "../components/AddressNotes";
+import { KeyCabinetAlert, KeyCabinetLines, useCabinetMatches } from "../components/KeyCabinetAlert";
 import { sendArrivalSms } from "../lib/dataStore";
 
 // Universelt Google Maps-link: åbner Google Maps-appen hvis den er
@@ -247,11 +248,17 @@ function ActionStack({ order }) {
   );
 }
 
-function OrderStopCard({ order: s, onOpen, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
+// keyCabinets (september 2026): butikkens nøgleskabe. Ved en TOMGANG slås
+// sagens adresse op mod dem, og et fund vises FØRST i advarselsboksen - så
+// montøren ser "hent nøgle i skab" allerede i ruteoversigten, ikke først
+// når han står på adressen. Se components/KeyCabinetAlert.jsx.
+function OrderStopCard({ order: s, keyCabinets, onOpen, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
   const erAfsluttet = s.status === "afsluttet";
   const mangler = missingLineItems(s);
   const tomgang = isTomgang(s);
-  const hasAlerts = Boolean(s.noegle?.kraeves || s.kunde.leveringsnote || s.problem || mangler.length > 0);
+  const skabe = useCabinetMatches(s, keyCabinets);
+  const synligeSkabe = erAfsluttet ? [] : skabe;
+  const hasAlerts = Boolean(synligeSkabe.length > 0 || s.noegle?.kraeves || s.kunde.leveringsnote || s.problem || mangler.length > 0);
 
   return (
     <div className="rounded-xl bg-white border border-[#ECECEC] shadow-sm hover:shadow-md transition-shadow p-3.5">
@@ -292,6 +299,7 @@ function OrderStopCard({ order: s, onOpen, onMoveUp, onMoveDown, canMoveUp, canM
 
       {hasAlerts && (
         <div className="mt-2.5 rounded-lg bg-brand/5 border border-brand/20 px-3 py-2 space-y-1">
+          <KeyCabinetLines matches={synligeSkabe} />
           {s.noegle?.kraeves && (
             <p className="text-xs font-semibold text-brand flex items-start gap-1.5"><KeyRound size={13} className="shrink-0 mt-0.5" aria-hidden="true" /> {keyAccessText(s.noegle)}</p>
           )}
@@ -317,7 +325,7 @@ function OrderStopCard({ order: s, onOpen, onMoveUp, onMoveDown, canMoveUp, canM
 // i App.jsx via profile.bilId - IKKE den indloggede persons eget id. To
 // personer på samme bil ser derfor begge samme rute (september 2026, se
 // rebind_orders_to_vehicle_instead_of_person).
-function TechnicianRouteView({ orders, technician, selectedDate, onDateChange, onOpen, onReorder, onChangeTechnician, onRefresh, refreshing }) {
+function TechnicianRouteView({ orders, technician, keyCabinets, selectedDate, onDateChange, onOpen, onReorder, onChangeTechnician, onRefresh, refreshing }) {
   const myOrders = orders.filter((s) => s.bilId === technician.id && s.dato === selectedDate).sort(dailyOrderCompare);
   const done = myOrders.filter((s) => s.status === "afsluttet").length;
 
@@ -359,6 +367,7 @@ function TechnicianRouteView({ orders, technician, selectedDate, onDateChange, o
                 <div className="absolute -left-8 top-5 w-4 h-4 rounded-full border-2 bg-paper" style={{ borderColor: STATUS_META[s.status].color }} />
                 <OrderStopCard
                   order={s}
+                  keyCabinets={keyCabinets}
                   onOpen={onOpen}
                   onMoveUp={onReorder ? () => onReorder(technician.id, selectedDate, s.id, -1) : undefined}
                   onMoveDown={onReorder ? () => onReorder(technician.id, selectedDate, s.id, 1) : undefined}
@@ -557,7 +566,11 @@ function FinishPanel({ order, onConfirm, onCancel, onGoToTab }) {
 // af et flag hører til adressen, ikke den konkrete sag, og sker i stedet
 // på den selvstændige fane "Adresser" (se pages/AddressesPage.jsx), hvor
 // en montør kan oprette adresser fra felten uafhængigt af en aktiv sag.
-function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, addReport, onStartOrder, onFinishOrder, onReopenOrder, onUpdateBooking, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem, onRetryPosSync, permissions, addressNotes }) {
+//
+// NØGLESKAB (september 2026): ved tomgang vises det nøgleskab, sagens
+// adresse hører til, som en stor banner LIGE under sagens overskrift - se
+// components/KeyCabinetAlert.jsx. Skjules, når sagen er færdigmeldt.
+function TechnicianOrderDetail({ order, technicians, keyCabinets, onBack, addNote, addPhoto, addReport, onStartOrder, onFinishOrder, onReopenOrder, onUpdateBooking, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem, onRetryPosSync, permissions, addressNotes }) {
   const [tab, setTab] = React.useState("noter");
   const [panel, setPanel] = React.useState(null); // "booking" | "dupliker" | "problem" | "faerdig"
   const canFieldwork = canDo(permissions, "sag_feltarbejde");
@@ -565,6 +578,7 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
   const canEditCustomer = canDo(permissions, "sag_kunde");
   const canCreate = canDo(permissions, "sag_opret");
   const tomgang = isTomgang(order);
+  const skabe = useCabinetMatches(order, keyCabinets);
   const tabs = [
     { key: "noter", label: "Noter", count: order.noter.length },
     { key: "materialer", label: "Materialer", count: (order.materialer || []).length },
@@ -619,6 +633,12 @@ function TechnicianOrderDetail({ order, technicians, onBack, addNote, addPhoto, 
           {tomgang && (
             <p className="text-xs text-muted mt-0.5">Tomgang — ingen er på adressen. {order.kunde.navn} er rekvirenten, ikke en beboer.</p>
           )}
+
+          {/* Nøgleskabet står FØR alt andet i boksen: det er det, montøren
+              skal gøre først, og en advarsel gemt under leveringsnote og
+              nøgletekst er lige så let at overse som slet ingen. */}
+          {!erAfsluttet && <KeyCabinetAlert matches={skabe} orderAddress={order.kunde?.adresse} />}
+
           {order.kunde.leveringsnote && (
             <p className="text-sm text-brand font-semibold mt-1.5 flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" aria-hidden="true" /> {order.kunde.leveringsnote}</p>
           )}
