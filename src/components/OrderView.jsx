@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { KeyRound, Building2, Hash, Pencil, X, Check, Copy, AlertTriangle, User, Lock, Trash2, Plus, RotateCw, Plug, RefreshCw } from "lucide-react";
-import { TIME_SLOTS, buildTitle, keyAccessText, timeSlotById, timeSlotText, lineItemLabel, canDo, createLineItem, missingLineItems, OTHER_PRODUCT_TYPE_ID } from "../data/domain";
+import { TIME_SLOTS, buildTitle, keyAccessText, timeSlotById, timeSlotText, lineItemLabel, canDo, createLineItem, missingLineItems, OTHER_PRODUCT_TYPE_ID, availableAddOns, getDefaultEstimateMinutes } from "../data/domain";
+import { FOLLOWUP_TYPES, followUpTypeLabel } from "../data/caseTypes";
 import { StatusBadge, MinutesInput } from "../components/common";
 import { LineItemDetails, Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
 import { CustomerHistoryLookup } from "../components/OrderFormFields";
@@ -22,6 +23,16 @@ import { AddressNotesPanel } from "../components/AddressNotes";
 // felter man har lov til sendes med i onSave, så updateBooking (som slår
 // sammen med eksisterende felter) ikke overskriver noget, man ikke havde
 // adgang til.
+//
+// VARELINJER/TILLÆG ER BEVIDST IKKE HERI (september 2026, efter
+// tilbagemelding): de redigeres i sin egen, separate "Redigér
+// varelinjer"-editor (se LineItemEditor nedenfor) i stedet for at blive
+// smeltet sammen med denne. Grunden er rettigheder: booking (dato/bil/
+// adresse) kræver sag_planlaegning/sag_kunde, mens varer/tillæg kræver
+// sag_feltarbejde - to forskellige, ADSKILTE rettigheder i databasen (se
+// orders_guard_field_groups). Ét fælles panel ville enten vise felter,
+// nogen ikke må røre, eller kræve begge rettigheder for at åbne noget som
+// helst - begge dele værre end to knapper ved siden af hinanden.
 function BookingEditor({ order, technicians, onSave, onCancel, permissions }) {
   const canPlan = canDo(permissions, "sag_planlaegning");
   const canEditCustomer = canDo(permissions, "sag_kunde");
@@ -84,7 +95,7 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions }) {
   );
 }
 
-// ---------------- Varelinje-editor (august 2026) ----------------
+// ---------------- Varelinje-editor (august 2026, udvidet september 2026) ----------------
 // Varelinjerne kunne kun sættes ved oprettelsen og var derefter låst. I
 // praksis ændrer de sig løbende: kunden ombestemmer sig, en vare er
 // oversolgt og skal skiftes til en tilsvarende model, eller der skal noget
@@ -95,14 +106,25 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions }) {
 // (skift model OG ret tiden), og hvert tastetryk må ikke udløse en
 // skrivning og en genberegning af hele planlægningen.
 //
+// TILLÆGSYDELSER (september 2026, tilføjet efter tilbagemelding): kunne
+// tidligere KUN slås til/fra direkte på den bookede sag (se
+// LineItemDetails/onToggleAddOn nedenfor) - ikke her, i selve
+// redigeringen. Nu kan begge dele: se den samlede afkrydsningsliste pr.
+// varelinje, som bruger samme "hvilke tillæg er relevante for netop denne
+// vare+ydelse"-logik (availableAddOns) og samme standardtid-opslag
+// (getDefaultEstimateMinutes) som ved selve bookingen (se
+// OrderFormFields.jsx: LineItemEditor - samme mønster, to steder, fordi
+// den ene bruges FØR sagen findes, og den anden PÅ en allerede booket sag).
+//
 // Kræver sag_feltarbejde. Lageret har den bevidst ikke: de må melde en
 // vare manglende, ikke omskrive hvad kunden har købt (håndhævet af
 // orders_guard_field_groups i databasen - UI'et er ikke sikkerhedsgrænsen).
 function LineItemEditor({ order, catalog, onSave, onCancel }) {
   const productTypes = catalog?.productTypes || [];
   const primaryServices = catalog?.primaryServices || [];
+  const addOnServices = catalog?.addOnServices || [];
   const defaultTimeEstimates = catalog?.defaultTimeEstimates || [];
-  const [items, setItems] = useState(() => order.varelinjer.map((v) => ({ ...v })));
+  const [items, setItems] = useState(() => order.varelinjer.map((v) => ({ ...v, tillaeg: (v.tillaeg || []).map((y) => ({ ...y })) })));
   const [confirmRemove, setConfirmRemove] = useState(null);
 
   const patch = (id, fields) => setItems((prev) => prev.map((v) => (v.id === id ? { ...v, ...fields } : v)));
@@ -118,6 +140,25 @@ function LineItemEditor({ order, catalog, onSave, onCancel }) {
     patch(id, { primaerYdelse: s ? { id: s.id, navn: s.navn, minutter: current?.primaerYdelse?.minutter || 0 } : null });
   };
 
+  // Standardtid for et tillæg - matrixen (pr. varetype) har forrang,
+  // ellers tillæggets egen flade standardtid. Samme regel som ved
+  // bookingen, se OrderFormFields.jsx.
+  const defaultAddOnMinutes = (varetypeId, t) => getDefaultEstimateMinutes(defaultTimeEstimates, varetypeId, t.id) ?? (Number(t.minutter) || 0);
+
+  const toggleAddOn = (itemId, t) => {
+    setItems((prev) => prev.map((v) => {
+      if (v.id !== itemId) return v;
+      const has = (v.tillaeg || []).some((x) => x.id === t.id || x.navn === t.navn);
+      const nextTillaeg = has
+        ? (v.tillaeg || []).filter((x) => x.id !== t.id && x.navn !== t.navn)
+        : [...(v.tillaeg || []), { id: t.id, navn: t.navn, minutter: defaultAddOnMinutes(v.varetypeId, t), udfoert: false }];
+      return { ...v, tillaeg: nextTillaeg };
+    }));
+  };
+  const changeAddOnMinutes = (itemId, addOnId, min) => {
+    setItems((prev) => prev.map((v) => (v.id === itemId ? { ...v, tillaeg: (v.tillaeg || []).map((y) => (y.id === addOnId ? { ...y, minutter: Number(min) || 0 } : y)) } : v)));
+  };
+
   const addNew = () => {
     if (productTypes.length === 0 || primaryServices.length === 0) return;
     setItems((prev) => [...prev, createLineItem(productTypes, primaryServices, undefined, "", defaultTimeEstimates)]);
@@ -130,7 +171,9 @@ function LineItemEditor({ order, catalog, onSave, onCancel }) {
 
       <div className="space-y-3 mb-3">
         {items.length === 0 && <p className="text-sm text-danger italic">Sagen har ingen varelinjer. Tilføj mindst én, eller annuller.</p>}
-        {items.map((v) => (
+        {items.map((v) => {
+          const available = availableAddOns(v.varetypeId, v.primaerYdelse?.id, addOnServices);
+          return (
           <div key={v.id} className="rounded-lg border border-line p-3">
             <div className="flex items-start justify-between gap-2 mb-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted">{lineItemLabel(v)}</p>
@@ -153,54 +196,85 @@ function LineItemEditor({ order, catalog, onSave, onCancel }) {
                 </div>
               </div>
             ) : (
-              <div className="grid gap-2 sm:grid-cols-2">
-                <label className="text-xs text-muted">
-                  Varetype
-                  <select value={v.varetypeId} onChange={(e) => changeProductType(v.id, e.target.value)} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
-                    {productTypes.map((p) => <option key={p.id} value={p.id}>{p.navn}</option>)}
-                    <option value={OTHER_PRODUCT_TYPE_ID}>Andet (skriv selv)</option>
-                  </select>
-                </label>
-                {v.varetypeId === OTHER_PRODUCT_TYPE_ID && (
+              <>
+                <div className="grid gap-2 sm:grid-cols-2">
                   <label className="text-xs text-muted">
-                    Beskrivelse
-                    <input value={v.varetypeTekst || ""} onChange={(e) => patch(v.id, { varetypeTekst: e.target.value })} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+                    Varetype
+                    <select value={v.varetypeId} onChange={(e) => changeProductType(v.id, e.target.value)} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
+                      {productTypes.map((p) => <option key={p.id} value={p.id}>{p.navn}</option>)}
+                      <option value={OTHER_PRODUCT_TYPE_ID}>Andet (skriv selv)</option>
+                    </select>
                   </label>
+                  {v.varetypeId === OTHER_PRODUCT_TYPE_ID && (
+                    <label className="text-xs text-muted">
+                      Beskrivelse
+                      <input value={v.varetypeTekst || ""} onChange={(e) => patch(v.id, { varetypeTekst: e.target.value })} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+                    </label>
+                  )}
+                  <label className="text-xs text-muted">
+                    Ydelse
+                    <select value={v.primaerYdelse?.id || ""} onChange={(e) => changeService(v.id, e.target.value)} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
+                      <option value="">Ingen</option>
+                      {primaryServices.map((p) => <option key={p.id} value={p.id}>{p.navn}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-xs text-muted">
+                    Mærke
+                    <input value={v.maerke || ""} onChange={(e) => patch(v.id, { maerke: e.target.value })} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+                  </label>
+                  <label className="text-xs text-muted">
+                    Model
+                    <input value={v.model || ""} onChange={(e) => patch(v.id, { model: e.target.value })} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+                  </label>
+                  <label className="text-xs text-muted">
+                    Forventet tid (minutter)
+                    <MinutesInput
+                      value={v.primaerYdelse?.minutter ?? 0}
+                      disabled={!v.primaerYdelse}
+                      onChange={(min) => patch(v.id, { primaerYdelse: { ...v.primaerYdelse, minutter: min } })}
+                      className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand disabled:opacity-60"
+                    />
+                  </label>
+                  {v.mangler?.note && (
+                    <p className="sm:col-span-2 text-[11px] text-danger flex items-start gap-1.5">
+                      <AlertTriangle size={12} className="shrink-0 mt-0.5" aria-hidden="true" />
+                      Lageret kan ikke finde denne vare ({v.mangler.note}). Skifter du varetype, mærke eller model, regnes meldingen som besvaret.
+                    </p>
+                  )}
+                </div>
+
+                {available.length > 0 && (
+                  <div className="mt-2.5 pt-2.5 border-t border-divider">
+                    <p className="text-[10px] uppercase tracking-wide text-muted mb-1">Tillægsydelser</p>
+                    <div className="space-y-1">
+                      {available.map((t) => {
+                        const selectedAddOn = (v.tillaeg || []).find((x) => x.id === t.id || x.navn === t.navn);
+                        return (
+                          <div key={t.id} className="flex items-center gap-2 px-1.5 py-1 rounded-lg hover:bg-panel">
+                            <input type="checkbox" checked={!!selectedAddOn} onChange={() => toggleAddOn(v.id, t)} className="w-4 h-4 accent-success shrink-0" aria-label={`${t.navn} for ${lineItemLabel(v)}`} />
+                            <span className="text-sm text-ink flex-1 truncate">{t.navn}</span>
+                            {selectedAddOn ? (
+                              <MinutesInput
+                                value={selectedAddOn.minutter}
+                                onChange={(min) => changeAddOnMinutes(v.id, selectedAddOn.id, min)}
+                                className="w-14 rounded-lg border border-line bg-white px-1.5 py-0.5 text-right text-[10px] text-ink focus:outline-none focus:border-brand"
+                                aria-label={`Minutter for ${t.navn}`}
+                              />
+                            ) : (
+                              <span className="text-[10px] text-muted w-14 text-right">{defaultAddOnMinutes(v.varetypeId, t)}m</span>
+                            )}
+                            <span className="text-[10px] text-muted">min</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 )}
-                <label className="text-xs text-muted">
-                  Ydelse
-                  <select value={v.primaerYdelse?.id || ""} onChange={(e) => changeService(v.id, e.target.value)} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
-                    <option value="">Ingen</option>
-                    {primaryServices.map((p) => <option key={p.id} value={p.id}>{p.navn}</option>)}
-                  </select>
-                </label>
-                <label className="text-xs text-muted">
-                  Mærke
-                  <input value={v.maerke || ""} onChange={(e) => patch(v.id, { maerke: e.target.value })} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-                </label>
-                <label className="text-xs text-muted">
-                  Model
-                  <input value={v.model || ""} onChange={(e) => patch(v.id, { model: e.target.value })} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-                </label>
-                <label className="text-xs text-muted">
-                  Forventet tid (minutter)
-                  <MinutesInput
-                    value={v.primaerYdelse?.minutter ?? 0}
-                    disabled={!v.primaerYdelse}
-                    onChange={(min) => patch(v.id, { primaerYdelse: { ...v.primaerYdelse, minutter: min } })}
-                    className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand disabled:opacity-60"
-                  />
-                </label>
-                {v.mangler?.note && (
-                  <p className="sm:col-span-2 text-[11px] text-danger flex items-start gap-1.5">
-                    <AlertTriangle size={12} className="shrink-0 mt-0.5" aria-hidden="true" />
-                    Lageret kan ikke finde denne vare ({v.mangler.note}). Skifter du varetype, mærke eller model, regnes meldingen som besvaret.
-                  </p>
-                )}
-              </div>
+              </>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <button onClick={addNew} disabled={productTypes.length === 0} className="mb-3 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-muted border border-line hover:text-brand hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50">
@@ -264,8 +338,17 @@ function DeleteOrderPanel({ order, onConfirm, onCancel }) {
 }
 
 // Opretter en NY sag ud fra denne (dupliker/opfølgning).
+//
+// OPFØLGNINGSTYPE (september 2026, tilføjet): "hvorfor skal der køres
+// igen?" - special/reklamation/service, se data/caseTypes.js. Et BEVIDST
+// krav (samme mønster som CaseTypePicker ved en ny booking, se
+// NewOrderForm.jsx): uden et konkret formål ville opfølgningen ende uden
+// nogen kategorisering, og det er netop den, der senere gør det muligt at
+// se, hvor mange af butikkens ture reelt er reklamationer.
 function DuplicatePanel({ order, onDuplicate, onCancel }) {
   const [selected, setSelected] = useState(() => new Set(order.varelinjer.map((v) => v.id)));
+  const [followUpType, setFollowUpType] = useState("");
+  const [attempted, setAttempted] = useState(false);
   const toggle = (id) => setSelected((prev) => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -273,14 +356,36 @@ function DuplicatePanel({ order, onDuplicate, onCancel }) {
   });
   const submit = () => {
     const chosen = order.varelinjer.filter((v) => selected.has(v.id));
-    if (chosen.length === 0) return;
-    onDuplicate(chosen);
+    if (chosen.length === 0 || !followUpType) { setAttempted(true); return; }
+    onDuplicate(chosen, followUpType);
   };
 
   return (
     <div className="rounded-xl bg-white border border-brand p-4 mb-5 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-1.5"><Copy size={14} aria-hidden="true" /> Dupliker / opret opfølgning</h3>
-      <p className="text-xs text-muted mb-3">Opretter en ny sag med samme kunde, adresse og nøgleoplysninger — dato og bil er ikke sat endnu og skal vælges bagefter. Vælg hvilke varelinjer der skal med.</p>
+      <p className="text-xs text-muted mb-3">Opretter en ny sag med samme kunde, adresse og nøgleoplysninger — dato og bil er ikke sat endnu og skal vælges bagefter. Vælg hvad opfølgningen skyldes, og hvilke varelinjer der skal med.</p>
+
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-1.5">Hvorfor skal der køres igen?</p>
+      <div className="grid gap-2 sm:grid-cols-3 mb-3">
+        {FOLLOWUP_TYPES.map((t) => {
+          const valgt = followUpType === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setFollowUpType(t.id)}
+              aria-pressed={valgt}
+              className={`rounded-xl border-2 p-2.5 text-left transition-colors bg-white hover:bg-panel focus:outline-none focus:ring-2 focus:ring-brand ${valgt ? "border-brand" : "border-line"}`}
+            >
+              <p className={`text-sm font-semibold ${valgt ? "text-brand" : "text-ink"}`}>{t.label}</p>
+              <p className="text-[11px] text-muted mt-0.5 leading-snug">{t.beskrivelse}</p>
+            </button>
+          );
+        })}
+      </div>
+      {attempted && !followUpType && <p className="text-xs text-danger mb-3">Vælg hvorfor der skal køres igen.</p>}
+
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-1.5">Varelinjer der skal med</p>
       <div className="space-y-1.5 mb-3">
         {order.varelinjer.map((v) => (
           <label key={v.id} className="flex items-center gap-2 rounded-lg border border-line px-3 py-2 cursor-pointer hover:border-brand transition-colors">
@@ -289,8 +394,10 @@ function DuplicatePanel({ order, onDuplicate, onCancel }) {
           </label>
         ))}
       </div>
+      {attempted && selected.size === 0 && <p className="text-xs text-danger mb-3">Vælg mindst én varelinje.</p>}
+
       <div className="flex gap-2">
-        <button onClick={submit} disabled={selected.size === 0} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none">
+        <button onClick={submit} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5">
           <Copy size={14} aria-hidden="true" /> Opret ny sag
         </button>
         <button onClick={onCancel} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted focus:outline-none focus:ring-2 focus:ring-muted transition-colors flex items-center gap-1.5"><X size={14} aria-hidden="true" /> Annuller</button>
@@ -453,7 +560,7 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
         <DuplicatePanel
           order={order}
           onCancel={() => setPanel(null)}
-          onDuplicate={(selectedLineItems) => { onDuplicate?.(selectedLineItems); setPanel(null); }}
+          onDuplicate={(selectedLineItems, followUpType) => { onDuplicate?.(selectedLineItems, followUpType); setPanel(null); }}
         />
       ) : panel === "slet" ? (
         <DeleteOrderPanel
@@ -482,10 +589,14 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
                 </div>
               )}
               {followUpOrder && onOpenOrder && (
-                <button onClick={() => onOpenOrder(followUpOrder.id)} className="text-xs text-brand hover:underline mt-2 flex items-center gap-1"><Copy size={12} className="shrink-0" aria-hidden="true" /> Opfølgning oprettet: sag #{followUpOrder.nr}</button>
+                <button onClick={() => onOpenOrder(followUpOrder.id)} className="text-xs text-brand hover:underline mt-2 flex items-center gap-1">
+                  <Copy size={12} className="shrink-0" aria-hidden="true" /> Opfølgning oprettet: sag #{followUpOrder.nr}{followUpTypeLabel(followUpOrder) ? ` (${followUpTypeLabel(followUpOrder)})` : ""}
+                </button>
               )}
               {originalOrder && onOpenOrder && (
-                <button onClick={() => onOpenOrder(originalOrder.id)} className="text-xs text-muted hover:text-brand mt-2 flex items-center gap-1"><Copy size={12} className="shrink-0" aria-hidden="true" /> Opfølgning på sag #{originalOrder.nr}</button>
+                <button onClick={() => onOpenOrder(originalOrder.id)} className="text-xs text-muted hover:text-brand mt-2 flex items-center gap-1">
+                  <Copy size={12} className="shrink-0" aria-hidden="true" /> Opfølgning{followUpTypeLabel(order) ? ` (${followUpTypeLabel(order)})` : ""} på sag #{originalOrder.nr}
+                </button>
               )}
 
               <p className="text-sm text-muted mt-2 font-semibold">Kunde (modtager)</p>
