@@ -14,7 +14,12 @@ const ROLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montø
 // (september 2026, ny) - overblik på tværs af ALLE butikker over
 // forbindelsen til Flow Retail, med mulighed for at konfigurere den på
 // vegne af en butik, der ikke selv kan/vil gøre det endnu.
-function SystemAdminPage() {
+//
+// currentUserId/onOwnStoreLinked (rettet september 2026): sendes hele
+// vejen ned til SystemAdminUserRow, som skal kunne skelne "jeg kobler MIG
+// SELV til en butik" fra "jeg kobler en ANDEN bruger til en butik" - se
+// noten ved onOwnStoreLinked i App.jsx for selve fejlen, det retter.
+function SystemAdminPage({ currentUserId, onOwnStoreLinked }) {
   const [tab, setTab] = useState("butikker");
   const [stores, setStores] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -36,7 +41,7 @@ function SystemAdminPage() {
         </button>
       </div>
 
-      {tab === "butikker" && <StoresTab stores={stores} loading={loading} reload={reloadStores} />}
+      {tab === "butikker" && <StoresTab stores={stores} loading={loading} reload={reloadStores} currentUserId={currentUserId} onOwnStoreLinked={onOwnStoreLinked} />}
       {tab === "integrationer" && <PosIntegrationsTab stores={stores} />}
       {tab === "fejl" && <ErrorLogTab stores={stores} />}
     </div>
@@ -45,7 +50,7 @@ function SystemAdminPage() {
 
 // Al den oprindelige butiks-/bruger-administration, uændret - kun flyttet
 // ind under sin egen fane (var tidligere hele SystemAdminPage's indhold).
-function StoresTab({ stores, loading, reload }) {
+function StoresTab({ stores, loading, reload, currentUserId, onOwnStoreLinked }) {
   const [editingId, setEditingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState("");
@@ -185,7 +190,7 @@ function StoresTab({ stores, loading, reload }) {
       )}
 
       <CreateUserDirect stores={stores} />
-      <AllUsers stores={stores} />
+      <AllUsers stores={stores} currentUserId={currentUserId} onOwnStoreLinked={onOwnStoreLinked} />
     </div>
   );
 }
@@ -455,7 +460,18 @@ function CreateUserDirect({ stores }) {
 
 // Én bruger-række med redigerbart navn, rolle, butik-kobling og
 // adgangskode-nulstilling. Bruges i "Alle brugere"-visningen.
-function SystemAdminUserRow({ user, stores, onUpdated }) {
+//
+// currentUserId/onOwnStoreLinked (rettet september 2026): RETTER en reel
+// fejl, ikke en rettighedsbegrænsning - databasen (RLS + trigger) har
+// altid tilladt en systemadmin at koble SIG SELV til en butik herfra.
+// Problemet var, at App.jsx kun sætter activeStoreId ud fra profilen ÉN
+// gang, ved login - så en systemadmin uden butik (fx en udvikler), der
+// koblede sig selv til en butik her, blev siddende fast på "ingen butik
+// endnu"-skærmen resten af sessionen, selvom tildelingen rent faktisk
+// lykkedes i databasen. Når man ændrer SIN EGEN butiks-kobling (ikke en
+// andens), kalder vi nu onOwnStoreLinked, som får App.jsx til aktivt at
+// hente den friske profil og skifte til den nye butik med det samme.
+function SystemAdminUserRow({ user, stores, onUpdated, currentUserId, onOwnStoreLinked }) {
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState(user.navn);
   const [showReset, setShowReset] = useState(false);
@@ -464,6 +480,7 @@ function SystemAdminUserRow({ user, stores, onUpdated }) {
   const [busy, setBusy] = useState(false);
 
   const store = stores.find((bu) => bu.id === user.butikId);
+  const isSelf = user.id === currentUserId;
 
   const saveName = async () => {
     setBusy(true);
@@ -478,6 +495,7 @@ function SystemAdminUserRow({ user, stores, onUpdated }) {
     await updateProfile(user.id, fields);
     setBusy(false);
     onUpdated();
+    if (isSelf && "butik_id" in fields && onOwnStoreLinked) onOwnStoreLinked(fields.butik_id);
   };
 
   const reset = async () => {
@@ -502,7 +520,7 @@ function SystemAdminUserRow({ user, stores, onUpdated }) {
               <button onClick={() => { setName(user.navn); setEditingName(false); }} className="text-xs text-muted font-semibold uppercase">Fortryd</button>
             </div>
           ) : (
-            <p className="text-sm text-ink truncate">{user.navn}</p>
+            <p className="text-sm text-ink truncate">{user.navn}{isSelf && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-brand">(dig)</span>}</p>
           )}
           <p className="text-[11px] text-muted truncate">
             {user.brugernavn ? `brugernavn: ${user.brugernavn}` : "login via e-mail"}
@@ -536,7 +554,7 @@ function SystemAdminUserRow({ user, stores, onUpdated }) {
 // et fuldt overblik. Uden "vis alle" vises kun ukoblede brugere, med mindre
 // der søges (samme opførsel som før, bevaret for hurtigt at kunne finde
 // nyoprettede/ventende brugere).
-function AllUsers({ stores }) {
+function AllUsers({ stores, currentUserId, onOwnStoreLinked }) {
   const [search, setSearch] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [users, setUsers] = useState([]);
@@ -581,7 +599,7 @@ function AllUsers({ stores }) {
       ) : (
         <div className="space-y-2">
           {users.map((b) => (
-            <SystemAdminUserRow key={b.id} user={b} stores={stores} onUpdated={() => reload(search, showAll)} />
+            <SystemAdminUserRow key={b.id} user={b} stores={stores} onUpdated={() => reload(search, showAll)} currentUserId={currentUserId} onOwnStoreLinked={onOwnStoreLinked} />
           ))}
         </div>
       )}
