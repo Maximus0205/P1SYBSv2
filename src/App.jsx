@@ -273,6 +273,21 @@ export default function App() {
   const switchStore = (storeId) => { setSickLeaveWindowOverride(null); setPasswordPolicyOverride(null); setLoginPolicyOverride(null); setActiveStoreId(storeId); };
   const exitStoreView = () => { setSickLeaveWindowOverride(null); setPasswordPolicyOverride(null); setLoginPolicyOverride(null); setActiveStoreId(null); };
 
+  // RETTET (september 2026): en systemadmin, der kobler SIG SELV til en
+  // butik nede fra "Alle brugere" i SystemAdminPage (fx en udvikler uden
+  // egen butik endnu), blev ellers hængende for evigt på "ingen butik
+  // endnu"-skærmen - tildelingen slog rigtigt igennem i databasen, men
+  // activeStoreId ovenfor sættes kun automatisk fra profilen ÉN gang, ved
+  // login (se undefined-kommentaren ovenfor), så ændringen blev aldrig
+  // samlet op af denne session. reloadPermissions henter den friske
+  // profil (bl.a. profile.butikId), og activeStoreId sættes eksplicit til
+  // den nye butik, så man føres direkte ind i den - uden at skulle logge
+  // helt ud og ind igen.
+  const linkOwnProfileToStore = async (storeId) => {
+    await reloadPermissions();
+    setActiveStoreId(storeId);
+  };
+
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -425,7 +440,7 @@ export default function App() {
                 </select>
               </div>
             )}
-            <SystemAdminPage />
+            <SystemAdminPage currentUserId={profile.id} onOwnStoreLinked={linkOwnProfileToStore} />
           </div>
         </div>
       );
@@ -617,7 +632,7 @@ export default function App() {
               Systemadmins UDEN egen butik rammer aldrig ruten; de får
               SystemAdminPage vist direkte i "!activeStoreId"-grenen ovenfor. */}
           <Route path="/systemadmin" element={
-            profile.erSystemadmin ? <SystemAdminPage /> : <Navigate to={`/${allowedPages[0]}`} replace />
+            profile.erSystemadmin ? <SystemAdminPage currentUserId={profile.id} onOwnStoreLinked={linkOwnProfileToStore} /> : <Navigate to={`/${allowedPages[0]}`} replace />
           } />
 
           <Route path="*" element={<Navigate to={`/${allowedPages[0]}`} replace />} />
