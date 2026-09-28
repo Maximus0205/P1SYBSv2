@@ -167,7 +167,13 @@ export function useOrders(storeId) {
   // tomgangskørsel - lejemålet er stadig tomt, og nøglen skal stadig
   // bruges. Uden dette ville opfølgningen stille og roligt blive til en
   // kundesag, og montøren ville stå uden adgang.
-  const duplicateOrder = async (sourceOrder, selectedLineItems, createdBy) => {
+  //
+  // OPFØLGNINGSTYPE (september 2026): special/reklamation/service - se
+  // data/caseTypes.js. UAFHÆNGIG af sagstypen ovenfor (en reklamation kan
+  // sagtens også være en tomgangskørsel). Valgt af brugeren i
+  // DuplicatePanel (OrderView.jsx) - ikke sat på den oprindelige sag, kun
+  // på den NYE opfølgningssag, for den beskriver netop DENNE returtur.
+  const duplicateOrder = async (sourceOrder, selectedLineItems, createdBy, followUpType) => {
     if (!storeId || !selectedLineItems || selectedLineItems.length === 0) return null;
     const clonedLineItems = selectedLineItems.map((v) => ({
       ...v,
@@ -181,6 +187,7 @@ export function useOrders(storeId) {
     const newOrder = {
       id: uid(), nr: "...", ordrenummer: "",
       sagstype: sourceOrder.sagstype || SAGSTYPE_KUNDE,
+      opfoelgningsType: followUpType || null,
       kunde: { ...sourceOrder.kunde },
       koeber: sourceOrder.koeber ? { ...sourceOrder.koeber } : null,
       noegle: sourceOrder.noegle ? { ...sourceOrder.noegle } : {},
