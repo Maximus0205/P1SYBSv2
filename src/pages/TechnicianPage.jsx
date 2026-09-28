@@ -1,7 +1,7 @@
 import React from "react";
 import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, Loader2, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash, X, Plus, User, Lock, PlayCircle, CheckCheck, Camera, CalendarCheck2, DoorOpen } from "lucide-react";
 import { buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, keyAccessText, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel, dailyOrderCompare, canDo, missingLineItems } from "../data/domain";
-import { isTomgang, showsArrivalContact, TOMGANG_COLOR } from "../data/caseTypes";
+import { isTomgang, showsArrivalContact, followUpTypeLabel, TOMGANG_COLOR } from "../data/caseTypes";
 import { StatusBadge, DateSelector } from "../components/common";
 import { Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
 import { BookingEditor, DuplicatePanel, PosStatusBanner } from "../components/OrderView";
@@ -602,7 +602,7 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, onBack, addNot
       {panel === "booking" ? (
         <BookingEditor order={order} technicians={technicians} permissions={permissions} onCancel={() => setPanel(null)} onSave={(fields) => { onUpdateBooking(fields); setPanel(null); }} />
       ) : panel === "dupliker" ? (
-        <DuplicatePanel order={order} onCancel={() => setPanel(null)} onDuplicate={(items) => { onDuplicate?.(items); setPanel(null); }} />
+        <DuplicatePanel order={order} onCancel={() => setPanel(null)} onDuplicate={(items, followUpType) => { onDuplicate?.(items, followUpType); setPanel(null); }} />
       ) : panel === "problem" ? (
         <ProblemPanel order={order} onCancel={() => setPanel(null)} onSubmit={(note) => { onMarkProblem?.(note); setPanel(null); }} />
       ) : panel === "faerdig" ? (
@@ -632,6 +632,9 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, onBack, addNot
           </p>
           {tomgang && (
             <p className="text-xs text-muted mt-0.5">Tomgang — ingen er på adressen. {order.kunde.navn} er rekvirenten, ikke en beboer.</p>
+          )}
+          {followUpTypeLabel(order) && (
+            <p className="text-xs text-brand font-semibold mt-0.5 flex items-center gap-1"><Copy size={11} className="shrink-0" aria-hidden="true" /> Opfølgning: {followUpTypeLabel(order)}</p>
           )}
 
           {/* Nøgleskabet står FØR alt andet i boksen: det er det, montøren
