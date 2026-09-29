@@ -13,13 +13,19 @@
 // kun en reference.
 //
 // HVOR FILEN LIGGER er butikkens valg: enten en bøtte, vi hoster, eller
-// en de selv skaffer. Det er bevidst usynligt herfra - klienten kender
-// kun vedhæftningens id og beder Edge Function'en om en URL. Skifter en
-// butik lagerplads, ændres intet i frontenden.
+// en de selv skaffer (typisk et eget NAS, se
+// components/StorageIntegrationAdmin.jsx) - se Edge Function
+// "sagsdokumentation" for selve forgreningen. Det er bevidst usynligt
+// herfra: klienten kender kun vedhæftningens id og beder Edge Function'en
+// om en URL - OG om selve uploaden skal ske med Supabase Storage's egen
+// "uploadToSignedUrl" eller en almindelig signeret PUT (se
+// egetLager-feltet nedenfor). Skifter en butik lagerplads, ændres intet
+// andet i frontenden.
 //
 // TO FASER VED UPLOAD:
 //   1. start-upload    -> serveren opretter en "pending"-række og giver
-//                         en signeret upload-URL
+//                         en signeret upload-URL (og, ved eget lager,
+//                         ingen "token" - se egetLager nedenfor)
 //   2. selve uploaden  -> browseren sender filen direkte til lageret
 //   3. bekraeft-upload -> serveren tjekker at filen FAKTISK kom frem,
 //                         læser dens rigtige størrelse og aktiverer den
@@ -111,6 +117,14 @@ export async function getAttachmentUrls(attachmentIds) {
 // onProgress kaldes med 'starter' | 'sender' | 'bekraefter', så
 // kaldende UI kan vise hvad der sker. En upload over mobildata tager
 // tid nok til, at en tavs knap føles som om appen er gået i stå.
+//
+// EGET LAGER (september 2026, tilføjet): start-upload svarer med
+// egetLager:true, hvis butikken har sat sit eget S3-kompatible lager op
+// (se storage-integration Edge Function). I det tilfælde er "uploadUrl"
+// en almindelig, allerede FÆRDIGSIGNERET PUT-URL (AWS Signature V4) -
+// den bruges med en helt almindelig fetch(), IKKE Supabase Storage's
+// egen uploadToSignedUrl (som er specifik for Supabase's eget
+// token-baserede skema og ikke forstår en fremmed S3-tjeneste).
 export async function uploadAttachment({ orderId, file, kind, onProgress }) {
   if (!orderId || !file) return { ok: false, fejl: "Mangler sag eller fil" };
 
@@ -128,19 +142,42 @@ export async function uploadAttachment({ orderId, file, kind, onProgress }) {
   }
 
   onProgress?.("sender");
-  const { error: uploadFejl } = await supabase.storage
-    .from("sagsdokumentation")
-    .uploadToSignedUrl(start.lagerNoegle, start.token, file, {
-      contentType: file.type || "application/octet-stream",
-    });
-  if (uploadFejl) {
-    // Den pending-række, serveren oprettede, bliver stående og ryddes op
-    // automatisk. Vi forsøger IKKE at slette den her: fejlede uploaden på
-    // grund af manglende netværk, vil et oprydningskald fejle af samme
-    // grund, og så ville vi bare skjule den rigtige fejl bag en ny.
-    logError("attachments:upload", uploadFejl.message);
-    reportSaveFailure(`Dokumentationen blev ikke gemt: ${uploadFejl.message}`);
-    return { ok: false, fejl: uploadFejl.message };
+  if (start.egetLager) {
+    // Almindelig, allerede signeret PUT mod butikkens eget lager - intet
+    // Supabase-specifikt token at bruge her.
+    try {
+      const res = await fetch(start.uploadUrl, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+      });
+      if (!res.ok) {
+        const fejlTekst = `Lageret svarede med status ${res.status}`;
+        logError("attachments:upload", fejlTekst);
+        reportSaveFailure(`Dokumentationen blev ikke gemt: ${fejlTekst}`);
+        return { ok: false, fejl: fejlTekst };
+      }
+    } catch (e) {
+      // Samme filosofi som Supabase-grenen nedenfor: den pending-række,
+      // serveren oprettede, bliver stående og ryddes op automatisk - vi
+      // forsøger IKKE at slette den her, en fejl her skyldes typisk
+      // netværk/CORS, og et oprydningskald ville fejle af samme grund.
+      const besked = e?.message || "Ukendt netværksfejl";
+      logError("attachments:upload", besked);
+      reportSaveFailure(`Dokumentationen blev ikke gemt: ${besked}`);
+      return { ok: false, fejl: besked };
+    }
+  } else {
+    const { error: uploadFejl } = await supabase.storage
+      .from("sagsdokumentation")
+      .uploadToSignedUrl(start.lagerNoegle, start.token, file, {
+        contentType: file.type || "application/octet-stream",
+      });
+    if (uploadFejl) {
+      logError("attachments:upload", uploadFejl.message);
+      reportSaveFailure(`Dokumentationen blev ikke gemt: ${uploadFejl.message}`);
+      return { ok: false, fejl: uploadFejl.message };
+    }
   }
 
   onProgress?.("bekraefter");
@@ -161,6 +198,8 @@ export async function uploadAttachment({ orderId, file, kind, onProgress }) {
     // er allerede gennemført. En montør hos kunden må aldrig blokeres af
     // en kvote; det er en samtale mellem os og butikkens administrator,
     // ikke noget der skal stoppe en underskrift midt i en aflevering.
+    // Findes ikke ved eget lager (butikkens egen disk, ingen kvote vi
+    // kender) - se sagsdokumentation Edge Function.
     pladsAdvarsel: start.pladsAdvarsel ?? null,
   };
 }
