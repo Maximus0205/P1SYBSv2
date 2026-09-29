@@ -1,19 +1,21 @@
 import React, { useEffect, useState } from "react";
-import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus, X, Bug, RefreshCw, Plug, ChevronLeft } from "lucide-react";
-import { getAllStores, createStoreAsSystemAdmin, updateStoreAsSystemAdmin, deleteStoreAsSystemAdmin, getAllUsersAsSystemAdmin, updateProfile, resetPasswordAsAdmin, createUserAsAdmin, getErrorLogs, deleteErrorLog, clearErrorLogs, getAllPosIntegrationsAsSystemAdmin } from "../lib/dataStore";
+import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus, X, Bug, RefreshCw, Plug, HardDrive, ChevronLeft } from "lucide-react";
+import { getAllStores, createStoreAsSystemAdmin, updateStoreAsSystemAdmin, deleteStoreAsSystemAdmin, getAllUsersAsSystemAdmin, updateProfile, resetPasswordAsAdmin, createUserAsAdmin, getErrorLogs, deleteErrorLog, clearErrorLogs, getAllPosIntegrationsAsSystemAdmin, getAllStorageIntegrationsAsSystemAdmin } from "../lib/dataStore";
+import { getStorageUsage, formatBytes } from "../lib/attachments";
 import { geocodeAddresses } from "../lib/geocoding";
 import { suggestUsername, isValidUsername } from "../lib/username";
 import { AddressInput } from "../components/AddressInput";
 import { PosIntegrationAdmin } from "../components/PosIntegrationAdmin";
+import { StorageIntegrationAdmin } from "../components/StorageIntegrationAdmin";
 
 const ROLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montør" };
 
-// Kun synlig for brugere med profiles.is_system_admin = true. Tre faner:
+// Kun synlig for brugere med profiles.is_system_admin = true. Fire faner:
 // "Butikker" (opret/redigér/slet butikker, opret/koble brugere), "Fejl-log"
-// (automatisk opsamlede fejl fra hele systemet), og "POS-integrationer"
-// (september 2026, ny) - overblik på tværs af ALLE butikker over
-// forbindelsen til Flow Retail, med mulighed for at konfigurere den på
-// vegne af en butik, der ikke selv kan/vil gøre det endnu.
+// (automatisk opsamlede fejl fra hele systemet), "POS-integrationer" og
+// "Lager (NAS)" (september 2026, ny) - overblik på tværs af ALLE butikker
+// over hver butiks eget fillager, med mulighed for at konfigurere det PÅ
+// VEGNE AF en butik, der ikke selv kan/vil gøre det endnu.
 //
 // currentUserId/onOwnStoreLinked (rettet september 2026): sendes hele
 // vejen ned til SystemAdminUserRow, som skal kunne skelne "jeg kobler MIG
@@ -36,6 +38,9 @@ function SystemAdminPage({ currentUserId, onOwnStoreLinked }) {
         <button onClick={() => setTab("integrationer")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "integrationer" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
           <Plug size={15} /> POS-integrationer
         </button>
+        <button onClick={() => setTab("lager")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "lager" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
+          <HardDrive size={15} /> Lager (NAS)
+        </button>
         <button onClick={() => setTab("fejl")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "fejl" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
           <Bug size={15} /> Fejl-log
         </button>
@@ -43,6 +48,7 @@ function SystemAdminPage({ currentUserId, onOwnStoreLinked }) {
 
       {tab === "butikker" && <StoresTab stores={stores} loading={loading} reload={reloadStores} currentUserId={currentUserId} onOwnStoreLinked={onOwnStoreLinked} />}
       {tab === "integrationer" && <PosIntegrationsTab stores={stores} />}
+      {tab === "lager" && <StorageIntegrationsTab stores={stores} />}
       {tab === "fejl" && <ErrorLogTab stores={stores} />}
     </div>
   );
@@ -236,6 +242,72 @@ function PosIntegrationsTab({ stores }) {
                   <p className="font-semibold text-sm text-ink">{store.navn}</p>
                   <p className="text-xs text-muted">
                     {!row || !row.aktiveret ? "Ikke sat op" : row.harNoegle ? "Aktiveret · nøgle sat" : "Aktiveret · mangler nøgle"}
+                  </p>
+                </div>
+                {row?.sidstTestet && (
+                  <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full ${row.sidstTestetOk ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}>
+                    {row.sidstTestetOk ? "Forbindelse OK" : "Sidste test fejlede"}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// LAGER (NAS) PÅ TVÆRS AF BUTIKKER (september 2026). Samme princip som
+// POS-fanen ovenfor - overblik over hvilke butikker der har sat deres eget
+// S3-kompatible lager op, samt et samlet billede af lagerforbruget (fra
+// store_storage_usage) for de butikker, der IKKE har eget lager og derfor
+// bruger vores fælles, kvote-styrede bøtte.
+function StorageIntegrationsTab({ stores }) {
+  const [rows, setRows] = useState([]);
+  const [usage, setUsage] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedStoreId, setSelectedStoreId] = useState(null);
+
+  const reload = () => {
+    setLoading(true);
+    Promise.all([getAllStorageIntegrationsAsSystemAdmin(), getStorageUsage()]).then(([r, u]) => {
+      setRows(r); setUsage(u); setLoading(false);
+    });
+  };
+  useEffect(reload, []);
+
+  if (selectedStoreId) {
+    const store = stores.find((s) => s.id === selectedStoreId);
+    return (
+      <div>
+        <button onClick={() => { setSelectedStoreId(null); reload(); }} className="text-sm text-muted hover:text-brand mb-4 flex items-center gap-1"><ChevronLeft size={15} /> Tilbage til oversigten</button>
+        <StorageIntegrationAdmin storeId={selectedStoreId} storeLabel={store?.navn} />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-2"><HardDrive size={16} /> Lager (NAS)</h3>
+      <p className="text-xs text-muted mb-4">Overblik over hvor hver butik gemmer sagsdokumentation — hos os (fælles, kvote-styret bøtte) eller på deres eget NAS. Klik en butik for at konfigurere det på deres vegne.</p>
+      {loading ? (
+        <p className="text-sm text-muted">Indlæser...</p>
+      ) : stores.length === 0 ? (
+        <p className="text-sm text-muted italic">Ingen butikker oprettet endnu.</p>
+      ) : (
+        <div className="space-y-2">
+          {stores.map((store) => {
+            const row = rows.find((r) => r.butikId === store.id);
+            const brug = usage.find((u) => u.store_id === store.id);
+            return (
+              <button key={store.id} onClick={() => setSelectedStoreId(store.id)} className="w-full text-left rounded-xl bg-white border border-line hover:border-brand transition-colors p-3 flex items-center gap-3 flex-wrap shadow-sm">
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-sm text-ink">{store.navn}</p>
+                  <p className="text-xs text-muted">
+                    {row?.aktiveret
+                      ? `Eget lager${row.bucket ? ` (${row.bucket})` : ""}${!row.harHemmeligNoegle ? " · mangler nøgle" : ""}`
+                      : brug ? `Hos os · ${formatBytes(brug.brugt_bytes)}${brug.kvote_bytes != null ? ` af ${formatBytes(brug.kvote_bytes)}` : ""}` : "Hos os"}
                   </p>
                 </div>
                 {row?.sidstTestet && (
