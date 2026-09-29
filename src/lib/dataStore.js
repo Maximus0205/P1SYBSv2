@@ -957,6 +957,90 @@ export async function syncPosOnFinish({ storeId, orderId }) {
   return { ok: true, posStatus: data?.posStatus || null };
 }
 
+// ---------- Eget lager pr. butik (S3-kompatibelt NAS) - september 2026 ----------
+//
+// Samme mønster som POS-integrationen ovenfor: opsætningen (adresse,
+// bøtte, nøgler) gemmes/testes via en Edge Function (storage-integration),
+// fordi kun den kan tale med Supabase Vault. Selve BRUGEN af opsætningen -
+// hvor en fils upload/download rent faktisk sker - foregår i Edge
+// Function "sagsdokumentation" ved hver enkelt fil, se lib/attachments.js.
+//
+// getStorageIntegration læser DIREKTE fra tabellen (ikke gennem
+// funktionen), ligesom getPosIntegration - kun ikke-hemmelige felter, og
+// RLS afgør allerede hvem der må se den.
+export async function getStorageIntegration(storeId) {
+  if (!storeId) return null;
+  const { data, error } = await supabase
+    .from("store_storage_config")
+    .select("provider, endpoint_url, bucket, region, path_style, access_key_id, secret_access_key_secret_id, last_test_at, last_test_ok, last_test_note")
+    .eq("store_id", storeId)
+    .maybeSingle();
+  if (error) {
+    logDbError("dataStore:getStorageIntegration", "Could not load storage integration settings", error);
+    return null;
+  }
+  if (!data) {
+    return {
+      aktiveret: false, endpointUrl: "", bucket: "", region: "us-east-1", pathStyle: true,
+      accessKeyId: "", harHemmeligNoegle: false, sidstTestet: null, sidstTestetOk: null, sidstTestetNote: "",
+    };
+  }
+  return {
+    aktiveret: data.provider === "s3_compatible",
+    endpointUrl: data.endpoint_url || "",
+    bucket: data.bucket || "",
+    region: data.region || "us-east-1",
+    pathStyle: data.path_style !== false,
+    accessKeyId: data.access_key_id || "",
+    harHemmeligNoegle: !!data.secret_access_key_secret_id,
+    sidstTestet: data.last_test_at,
+    sidstTestetOk: data.last_test_ok,
+    sidstTestetNote: data.last_test_note || "",
+  };
+}
+
+// Systemadmin-overblik på tværs af ALLE butikker - samme princip som
+// getAllPosIntegrationsAsSystemAdmin.
+export async function getAllStorageIntegrationsAsSystemAdmin() {
+  const { data, error } = await supabase
+    .from("store_storage_config")
+    .select("store_id, provider, bucket, secret_access_key_secret_id, last_test_at, last_test_ok, last_test_note");
+  if (error) {
+    logDbError("dataStore:getAllStorageIntegrationsAsSystemAdmin", "Could not load storage integrations overview", error);
+    return [];
+  }
+  return (data || []).map((r) => ({
+    butikId: r.store_id, aktiveret: r.provider === "s3_compatible", bucket: r.bucket || "", harHemmeligNoegle: !!r.secret_access_key_secret_id,
+    sidstTestet: r.last_test_at, sidstTestetOk: r.last_test_ok, sidstTestetNote: r.last_test_note || "",
+  }));
+}
+
+// Gemmer/erstatter forbindelsen. secretAccessKey er valgfri, KUN så admin
+// kan ændre de øvrige felter (fx slå til/fra) uden at skulle indtaste den
+// hemmelige nøgle igen.
+export async function setStorageIntegrationKey({ storeId, provider, endpointUrl, bucket, region, pathStyle, accessKeyId, secretAccessKey }) {
+  const { data, error } = await supabase.functions.invoke("storage-integration", {
+    body: { action: "set-key", storeId, provider, endpointUrl, bucket, region, pathStyle, accessKeyId, secretAccessKey },
+  });
+  if (error || data?.fejl) {
+    const fejl = await readEdgeFunctionError(data, error, "Kunne ikke gemme lager-forbindelsen");
+    logError("dataStore:setStorageIntegrationKey", fejl);
+    return { ok: false, fejl };
+  }
+  return { ok: true };
+}
+
+// Forsøger en RIGTIG forbindelsestest (signeret 'list bucket'-kald mod
+// NAS'et). Resultatet gemmes ALTID - se getStorageIntegration.
+export async function testStorageIntegration(storeId) {
+  const { data, error } = await supabase.functions.invoke("storage-integration", { body: { action: "test", storeId } });
+  if (error || data?.fejl) {
+    const fejl = await readEdgeFunctionError(data, error, "Forbindelsestesten fejlede");
+    return { ok: false, fejl };
+  }
+  return { ok: true };
+}
+
 // ---------- Fejl-log ----------
 // Kun læsbar af systemadmin (håndhævet af RLS på error_logs, ikke kun her
 // i klienten). Se lib/errorLog.js for selve INDSAMLINGEN.
