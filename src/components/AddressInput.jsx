@@ -17,6 +17,17 @@ import { searchAdressevaelger } from "../lib/geocodingAdressevaelger";
 // lib/geocodingAdressevaelger.js: parseQuery) sker nu INDE I
 // searchAdressevaelger, ikke her - komponenten sender bare den rå,
 // tastede tekst videre.
+//
+// KOMMUNEKODE (september 2026, tilføjet): erstatter den tidligere
+// "focus" ({lat, lon})-baserede nærhedssortering, som hørte til den
+// gamle ORS-løsning og aldrig blev koblet til her (Adressevælgeren har
+// ingen koordinater i selve forslagslisten at sortere efter - se
+// geocodingAdressevaelger.js). "focus"-propnavnet er bevidst IKKE
+// genbrugt til det nye formål - det ville forveksle de to systemer, hvis
+// man en dag ruller tilbage til ORS-udgaven nedenfor. Kaldende sider
+// sender i stedet butikkens EGET kommunekode (effectiveStore.kommuneKode,
+// se App.jsx), som bruges til at indsnævre søgningen til butikkens eget
+// kommuneområde.
 const DEBOUNCE_MS = 350;
 
 // Forslag med en KONKRET adgang (husnummer/adresse) frem for blot et
@@ -37,7 +48,7 @@ function extractPostalCode(titel) {
   return match ? match[1] : null;
 }
 
-function AddressInput({ value, onChange, placeholder, onValidationChange, focus }) {
+function AddressInput({ value, onChange, placeholder, onValidationChange, focus, kommunekode }) {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [status, setStatus] = useState("tom"); // tom | tjekker | gyldig | usikker
@@ -60,7 +71,7 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus 
     setStatus("tjekker");
 
     const timer = setTimeout(async () => {
-      const result = await searchAdressevaelger(value);
+      const result = await searchAdressevaelger(value, kommunekode);
       if (cancelled) return;
       const fund = [...(result.fund || [])].sort((a, b) => (SPECIFICITY[a.type] ?? 9) - (SPECIFICITY[b.type] ?? 9));
       setSuggestions(fund);
@@ -77,7 +88,7 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus 
       clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
+  }, [value, kommunekode]);
 
   // ---------------------------------------------------------------------
   // RETTET (september 2026): et "husnummer"-forslag er kun selve OPGANGENS
@@ -114,7 +125,7 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus 
     setStatus("tjekker");
 
     const postnummer = extractPostalCode(f.titel);
-    const result = postnummer ? await searchAdressevaelger(`${f.vejnavn} ${f.husnummer} ${postnummer}`) : { ok: false, fund: [] };
+    const result = postnummer ? await searchAdressevaelger(`${f.vejnavn} ${f.husnummer} ${postnummer}`, kommunekode) : { ok: false, fund: [] };
     const specific = (result.fund || []).filter((x) => x.type === "adresse");
 
     if (specific.length === 0) {
