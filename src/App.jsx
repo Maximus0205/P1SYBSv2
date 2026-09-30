@@ -10,7 +10,8 @@ import { useUsers } from "./hooks/useUsers";
 import { useOrders } from "./hooks/useOrders";
 import { useAddressNotes } from "./hooks/useAddressNotes";
 import { useKeyCabinets } from "./hooks/useKeyCabinets";
-import { getAllStores, getStore, updateDashboardWidgets } from "./lib/dataStore";
+import { getAllStores, getStore, updateDashboardWidgets, saveStoreKommuneKode } from "./lib/dataStore";
+import { resolveStoreKommuneKode } from "./lib/geocodingAdressevaelger";
 
 import { TopNav } from "./components/TopNav";
 import { LoginPage } from "./components/LoginPage";
@@ -234,6 +235,27 @@ export default function App() {
     getStore(activeStoreId).then(setActiveStore);
   }, [activeStoreId]);
 
+  // KOMMUNEKODE - AUTOMATISK OPSLAG (september 2026, tilføjet)
+  //
+  // Bruges til at indsnævre adressesøgningen (Adressevælgeren) til
+  // butikkens eget kommuneområde - se lib/geocodingAdressevaelger.js. Er
+  // den ikke sat endnu (ny butik, eller en butik oprettet før denne
+  // rettelse), slås den op i baggrunden ud fra butikkens allerede gemte
+  // adresse og gemmes - kører kun ÉN gang pr. butik (næste indlæsning
+  // finder den allerede sat). Fejler opslaget stille (adressen kunne ikke
+  // genkendes, tjenesten utilgængelig), er der blot ingen indsnævring
+  // denne gang - søgningen virker stadig, bare uden nærhedsbias.
+  useEffect(() => {
+    if (!activeStore || activeStore.kommuneKode || !activeStore.adresse) return;
+    let annulleret = false;
+    resolveStoreKommuneKode(activeStore.adresse).then(async (kode) => {
+      if (annulleret || !kode) return;
+      const ok = await saveStoreKommuneKode(activeStore.id, kode);
+      if (ok && !annulleret) setActiveStore((prev) => (prev && prev.id === activeStore.id ? { ...prev, kommuneKode: kode } : prev));
+    });
+    return () => { annulleret = true; };
+  }, [activeStore]);
+
   const catalog = useCatalog(activeStoreId || null);
   const vehiclesStore = useVehicles(activeStoreId || null);
   const timeOffStore = useTimeOff(activeStoreId || null);
@@ -268,9 +290,12 @@ export default function App() {
 
   // Butikkens koordinater, sendt til ethvert adressefelt der skal
   // prioritere forslag efter nærhed (se lib/geocoding.js:
-  // searchAddressSuggestions) - ét sted, brugt af både /salg og /adresser,
-  // så de to ikke kan komme til at afvige fra hinanden.
+  // searchAddressSuggestions - den tidligere, udkommenterede ORS-baserede
+  // løsning) - ét sted, brugt af både /salg og /adresser.
   const storeFocus = effectiveStore?.lat && effectiveStore?.lon ? { lat: effectiveStore.lat, lon: effectiveStore.lon } : null;
+  // Samme formål, til den LIVE Adressevælger-baserede søgning (se
+  // AddressInput.jsx) - se kommunekode-noten ovenfor.
+  const storeKommuneKode = effectiveStore?.kommuneKode || null;
 
   const switchStore = (storeId) => { setSickLeaveWindowOverride(null); setPasswordPolicyOverride(null); setLoginPolicyOverride(null); setActiveStoreId(storeId); };
   const exitStoreView = () => { setSickLeaveWindowOverride(null); setPasswordPolicyOverride(null); setLoginPolicyOverride(null); setActiveStoreId(null); };
@@ -539,7 +564,7 @@ export default function App() {
 
           <Route path="/salg" element={
             <Gate allowed={allowedPages} page="salg">
-              <SalesPage storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} defaultTimeEstimates={catalog.defaultTimeEstimates} addressNotes={addressNotesStore.addressNotes} keyCabinets={keyCabinetsStore.keyCabinets} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={storeFocus} />
+              <SalesPage storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} defaultTimeEstimates={catalog.defaultTimeEstimates} addressNotes={addressNotesStore.addressNotes} keyCabinets={keyCabinetsStore.keyCabinets} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={storeFocus} storeKommuneKode={storeKommuneKode} />
             </Gate>
           } />
 
@@ -589,10 +614,10 @@ export default function App() {
               enkelte sag - se AddressesPage.jsx og noten ved kanSeAdresser
               ovenfor. canManage = samme grænse som RLS'en på
               address_notes/key_cabinets håndhæver (sag_feltarbejde eller
-              sag_opret). storeFocus (samme som /salg bruger) sikrer at
-              adresseforslag her også prioriteres efter nærhed til
-              butikken. keyCabinets (september 2026): nøgleskabe hos
-              boligforeninger - se hooks/useKeyCabinets.js. */}
+              sag_opret). storeFocus/storeKommuneKode (samme som /salg
+              bruger) sikrer at adresseforslag her også prioriteres efter
+              nærhed til butikken. keyCabinets (september 2026): nøgleskabe
+              hos boligforeninger - se hooks/useKeyCabinets.js. */}
           <Route path="/adresser" element={
             <Gate allowed={allowedPages} page="adresser">
               <AddressesPage
@@ -601,6 +626,7 @@ export default function App() {
                 onDelete={addressNotesStore.deleteAddressNote}
                 canManage={kanSeAdresser}
                 storeFocus={storeFocus}
+                storeKommuneKode={storeKommuneKode}
                 keyCabinets={keyCabinetsStore.keyCabinets}
                 onAddKeyCabinet={addKeyCabinet}
                 onUpdateKeyCabinet={keyCabinetsStore.updateKeyCabinet}
