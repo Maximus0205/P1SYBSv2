@@ -7,6 +7,7 @@ import { SaveErrorBanner } from "./components/SaveErrorBanner";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { UpdateAvailableBanner } from "./components/UpdateAvailableBanner";
 import { startVersionCheck } from "./lib/versionCheck";
+import { initNative, isNative } from "./lib/native";
 import { logError } from "./lib/errorLog";
 import "./index.css";
 import "./styles/globals.css";
@@ -29,7 +30,12 @@ window.addEventListener("unhandledrejection", (e) => {
 // Starter tjek for nye udgivelser (september 2026) - se lib/versionCheck.js.
 // Kaldes HER, uden for React, så det kører uafhængigt af hvilken side
 // brugeren er på, og fortsætter selv hvis noget går galt i selve appen.
-startVersionCheck();
+//
+// IKKE i den native app (Capacitor): der ligger koden i selve app-pakken og
+// opdateres via App Store/Google Play - der er ingen version.json at
+// sammenligne med, og "genindlæs" ville bare genindlæse den gamle pakke.
+if (!isNative()) startVersionCheck();
+initNative();
 
 // HashRouter (ikke BrowserRouter): GitHub Pages serverer kun statiske filer
 // uden server-side rewrites - et refresh på en "rigtig" sti som
@@ -38,6 +44,7 @@ startVersionCheck();
 // ALDRIG til serveren, så et refresh altid indlæser den samme index.html
 // uanset hvilken fane man var på, hvorefter React Router selv læser
 // hashet og gengiver den rigtige side. Se App.jsx for selve rute-opsætningen.
+// (Samme valg er også det, der gør routeren brugbar inde i Capacitor-appen.)
 //
 // De tre bannere er bevidst monteret UDEN FOR både ErrorBoundary og
 // HashRouter:
