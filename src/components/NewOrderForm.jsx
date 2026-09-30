@@ -136,7 +136,7 @@ function PosLookupPanel({ storeId, onApply }) {
   );
 }
 
-function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, addressNotes, keyCabinets, orders, selectedDate, onAdd, onClose, onOpen, storeFocus }) {
+function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, addressNotes, keyCabinets, orders, selectedDate, onAdd, onClose, onOpen, storeFocus, storeKommuneKode }) {
   const [step, setStep] = useState(0);
   const [caseTypeId, setCaseTypeId] = useState(SAGSTYPE_KUNDE);
   const [customerName, setCustomerName] = useState("");
@@ -163,12 +163,18 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
   const titlePreview = buildTitle(lineItems);
   const expectedMinutes = lineItems.reduce((sum, l) => sum + lineItemMinutes(l), 0);
 
-  // NØGLESKAB (september 2026): ved en tomgang slås adressen løbende op
-  // mod butikkens nøgleskabe (se data/keyCabinets.js). Fundet vises som et
-  // hint på levering-trinnet - og montøren får det ALLIGEVEL vist
-  // automatisk på sagen (se KeyCabinetAlert.jsx), uanset om sælgeren
-  // trykker på "Brug som nøgleoplysning" eller ej.
-  const skabMatches = useMemo(() => (erTomgang ? findKeyCabinets(address, keyCabinets) : []), [erTomgang, address, keyCabinets]);
+  // NØGLESKAB (september 2026, rettet): ved en tomgang slås adressen op
+  // mod butikkens nøgleskabe (se data/keyCabinets.js) - men FØRST når
+  // AddressInput selv har bekræftet adressen som en konkret, specifik
+  // adgang ("gyldig" - se AddressInput.jsx). Uden den betingelse slog
+  // opslaget tidligere til på selve TASTEINDTASTNINGEN (fx "Park" matchede
+  // løst på "Parkvej", længe før brugeren overhovedet var færdig med at
+  // skrive) - et nøgleskab-hint, der dukker op på en halvt tastet adresse,
+  // er en falsk lovning, ikke en hjælp.
+  const skabMatches = useMemo(
+    () => (erTomgang && addressStatus === "gyldig" ? findKeyCabinets(address, keyCabinets) : []),
+    [erTomgang, addressStatus, address, keyCabinets]
+  );
 
   // Grundestimat ud fra MÅLT tid på tidligere afsluttede sager (se
   // data/estimates.js). Bygges én gang pr. åbning af formularen (orders
@@ -374,7 +380,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
             {erTomgang ? "Lejemålets adresse" : "Leveringsadresse"}
           </h4>
           <div className="grid gap-3 mb-4">
-            <AddressInput value={address} onChange={setAddress} placeholder={erTomgang ? "Lejemålets adresse" : "Leveringsadresse"} onValidationChange={setAddressStatus} focus={storeFocus} />
+            <AddressInput value={address} onChange={setAddress} placeholder={erTomgang ? "Lejemålets adresse" : "Leveringsadresse"} onValidationChange={setAddressStatus} focus={storeFocus} kommunekode={storeKommuneKode} />
             <input value={deliveryNote} onChange={(e) => setDeliveryNote(e.target.value)} placeholder={erTomgang ? "Note, fx 'Opgang B, 3. sal th'" : "Leveringsnote, fx 'Ring før ankomst'"} aria-label="Note" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
           </div>
           {addressStatus === "usikker" && (
@@ -395,13 +401,14 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
             canAdd={false}
           />
 
-          {/* NØGLESKAB (september 2026): kun ved tomgang - se
-              KeyCabinetAlert.jsx og data/keyCabinets.js. */}
+          {/* NØGLESKAB (september 2026, rettet): kun ved tomgang, og kun når
+              adressen selv er bekræftet som en konkret adgang - se
+              skabMatches ovenfor. */}
           {erTomgang && (
             <KeyCabinetBookingHint
               matches={skabMatches}
               hasCabinets={(keyCabinets || []).length > 0}
-              addressTyped={address.trim().length >= 5}
+              addressTyped={addressStatus === "gyldig"}
               onUse={brugSkabSomNoegle}
             />
           )}
