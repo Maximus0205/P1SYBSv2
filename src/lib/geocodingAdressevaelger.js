@@ -132,9 +132,24 @@ function parseQuery(raw) {
 // ekstra opslag pr. id, se lookupAdressevaelgerCoordinates nedenfor - kaldes
 // derfor kun for DEN adresse, brugeren rent faktisk vælger, ikke for hele
 // listen af forslag (ville ellers kræve ét ekstra kald pr. vist forslag).
-export async function searchAdressevaelger(raw) {
+//
+// KOMMUNEKODE (september 2026, tilføjet - retter manglende nærheds-
+// prioritering efter skiftet fra OpenRouteService): Adressevælgeren har
+// INGEN koordinater i selve forslagslisten (se lige ovenfor), så den
+// gamle "sortér forslag efter luftlinjeafstand til butikken"-metode kan
+// ikke genskabes med denne tjeneste. Adressevælgeren understøtter til
+// gengæld en dokumenteret, officiel parameter til at INDSNÆVRE søgningen
+// til bestemte kommuner (se Klimadatastyrelsens egen dokumentation,
+// eksempel: "?tekst=lærkevej&kommunekode=0410,0420,...,0492" for hele
+// Fyn) - proxy'en (adressevaelger-proxy) har allerede understøttet og
+// videresendt parameteren siden den blev bygget, den blev bare aldrig
+// sendt herfra. Modtager funktionen butikkens eget kommunekode (se
+// resolveStoreKommuneKode nedenfor), sendes den nu med, så "Parkvej" for
+// en Odense-butik prioriterer Odense-kommunens egen Parkvej først, i
+// stedet for enhver Parkvej i landet i vilkårlig rækkefølge.
+export async function searchAdressevaelger(raw, kommunekode) {
   const query = parseQuery(raw);
-  const data = await callProxy({ handling: "soeg-adresser", maksimum: 10, ...query });
+  const data = await callProxy({ handling: "soeg-adresser", maksimum: 10, kommunekode, ...query });
   if (!data || data.status !== "ok") return { ok: false, fejl: data?.beskrivelse || "Kunne ikke søge lige nu.", fund: [] };
   return {
     ok: true,
@@ -147,6 +162,7 @@ export async function searchAdressevaelger(raw) {
       postnr: f.postnr,
       postdistrikt: f.postdistrikt,
       antalHusnumre: f.antal_husnumre,
+      kommunekode: f.kommunekode || null,
     })),
   };
 }
@@ -163,4 +179,19 @@ export async function lookupAdressevaelgerCoordinates(id, type) {
   const coords = adgangspunkt?.geometri?.coordinates;
   if (!coords) return null;
   return utm32ToWgs84(coords[0], coords[1]);
+}
+
+// Slår butikkens EGEN kommunekode op, ud fra dens allerede gemte adresse -
+// kaldes ÉN gang (se App.jsx), resultatet gemmes på stores.kommune_kode og
+// bruges derefter som nærheds-bias i alle adressesøgninger for den butik,
+// se searchAdressevaelger ovenfor. Fejler den stille (tom/ukendt adresse,
+// tjenesten utilgængelig, feltet hedder noget andet end forventet i
+// svaret) - så er der blot ingen bias, præcis som før denne rettelse;
+// søgningen i sig selv virker stadig.
+export async function resolveStoreKommuneKode(address) {
+  if (!address || !address.trim()) return null;
+  const result = await searchAdressevaelger(address);
+  if (!result.ok) return null;
+  const hit = result.fund.find((f) => f.kommunekode) || null;
+  return hit?.kommunekode || null;
 }
