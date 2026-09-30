@@ -467,9 +467,14 @@ export async function loginWithBiometric(identifier) {
 
 // ---------- Stores ----------
 
+// kommuneKode (september 2026, tilføjet): bruges til at indsnævre
+// adressesøgningen til butikkens eget kommuneområde, se
+// lib/geocodingAdressevaelger.js. Sættes ikke ved oprettelse - slås op
+// automatisk første gang den mangler, se App.jsx og
+// saveStoreKommuneKode nedenfor.
 export async function getStore(storeId) {
   if (!storeId) return null;
-  const { data, error } = await supabase.from("stores").select("id, name, address, lat, lon, store_number, sick_leave_window_hours, password_min_length, password_require_mixed, simple_login_enabled, session_idle_minutes").eq("id", storeId).maybeSingle();
+  const { data, error } = await supabase.from("stores").select("id, name, address, lat, lon, store_number, kommune_kode, sick_leave_window_hours, password_min_length, password_require_mixed, simple_login_enabled, session_idle_minutes").eq("id", storeId).maybeSingle();
   if (error) {
     logDbError("dataStore:getStore", "Could not load store", error);
     return null;
@@ -477,12 +482,28 @@ export async function getStore(storeId) {
   if (!data) return null;
   return {
     id: data.id, navn: data.name, adresse: data.address, lat: data.lat, lon: data.lon, butiksnummer: data.store_number,
+    kommuneKode: data.kommune_kode || null,
     sygemeldingVindueTimer: data.sick_leave_window_hours ?? 48,
     adgangskodeMinLaengde: data.password_min_length ?? 6,
     adgangskodeKraeverBlanding: data.password_require_mixed === true,
     simpelLoginAktiveret: data.simple_login_enabled !== false,
     sessionIdleMinutter: data.session_idle_minutes ?? 480,
   };
+}
+
+// Gemmer det automatisk opslåede kommunekode for en butik - se App.jsx,
+// som kalder denne i baggrunden, første gang en butiks kommune_kode
+// mangler. Skriver KUN hvis feltet stadig er tomt (se App.jsx's eget
+// tjek før kaldet) - overskriver aldrig en allerede sat værdi ved et
+// baggrunds-genopslag.
+export async function saveStoreKommuneKode(storeId, kommuneKode) {
+  if (!storeId || !kommuneKode) return false;
+  const { error } = await supabase.from("stores").update({ kommune_kode: kommuneKode }).eq("id", storeId);
+  if (error) {
+    logDbError("dataStore:saveStoreKommuneKode", "Could not save store kommunekode", error);
+    return false;
+  }
+  return true;
 }
 
 export async function getAllStores() {
