@@ -296,6 +296,15 @@ export default function App() {
   // Samme formål, til den LIVE Adressevælger-baserede søgning (se
   // AddressInput.jsx) - se kommunekode-noten ovenfor.
   const storeKommuneKode = effectiveStore?.kommuneKode || null;
+  // POSTNUMMER (september 2026, tilføjet): bruges som en gratis
+  // nærheds-finjustering OVENPÅ kommunekode-filteret, se AddressInput.jsx
+  // - Adressevælgeren sorterer selv kun efter postnummer i ren talorden,
+  // ikke efter reel nærhed, selv inden for én kommune. Udledt direkte af
+  // butikkens gemte adressetekst (altid de sidste fire cifre før et
+  // bynavn, se parseQuery-rettelsen i geocodingAdressevaelger.js for
+  // samme mønster) - ingen separat kolonne nødvendig, det er allerede
+  // der.
+  const storePostnr = effectiveStore?.adresse?.match(/\b(\d{4})\b/)?.[1] || null;
 
   const switchStore = (storeId) => { setSickLeaveWindowOverride(null); setPasswordPolicyOverride(null); setLoginPolicyOverride(null); setActiveStoreId(storeId); };
   const exitStoreView = () => { setSickLeaveWindowOverride(null); setPasswordPolicyOverride(null); setLoginPolicyOverride(null); setActiveStoreId(null); };
@@ -564,7 +573,7 @@ export default function App() {
 
           <Route path="/salg" element={
             <Gate allowed={allowedPages} page="salg">
-              <SalesPage storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} defaultTimeEstimates={catalog.defaultTimeEstimates} addressNotes={addressNotesStore.addressNotes} keyCabinets={keyCabinetsStore.keyCabinets} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={storeFocus} storeKommuneKode={storeKommuneKode} />
+              <SalesPage storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} defaultTimeEstimates={catalog.defaultTimeEstimates} addressNotes={addressNotesStore.addressNotes} keyCabinets={keyCabinetsStore.keyCabinets} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={storeFocus} storeKommuneKode={storeKommuneKode} storePostnr={storePostnr} />
             </Gate>
           } />
 
@@ -614,10 +623,11 @@ export default function App() {
               enkelte sag - se AddressesPage.jsx og noten ved kanSeAdresser
               ovenfor. canManage = samme grænse som RLS'en på
               address_notes/key_cabinets håndhæver (sag_feltarbejde eller
-              sag_opret). storeFocus/storeKommuneKode (samme som /salg
-              bruger) sikrer at adresseforslag her også prioriteres efter
-              nærhed til butikken. keyCabinets (september 2026): nøgleskabe
-              hos boligforeninger - se hooks/useKeyCabinets.js. */}
+              sag_opret). storeFocus/storeKommuneKode/storePostnr (samme
+              som /salg bruger) sikrer at adresseforslag her også
+              prioriteres efter nærhed til butikken. keyCabinets
+              (september 2026): nøgleskabe hos boligforeninger - se
+              hooks/useKeyCabinets.js. */}
           <Route path="/adresser" element={
             <Gate allowed={allowedPages} page="adresser">
               <AddressesPage
@@ -627,6 +637,7 @@ export default function App() {
                 canManage={kanSeAdresser}
                 storeFocus={storeFocus}
                 storeKommuneKode={storeKommuneKode}
+                storePostnr={storePostnr}
                 keyCabinets={keyCabinetsStore.keyCabinets}
                 onAddKeyCabinet={addKeyCabinet}
                 onUpdateKeyCabinet={keyCabinetsStore.updateKeyCabinet}
