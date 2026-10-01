@@ -21,19 +21,35 @@ import { searchAdressevaelger } from "../lib/geocodingAdressevaelger";
 // KOMMUNEKODE (september 2026, RETTET samme dag): erstatter den tidligere
 // "focus" ({lat, lon})-baserede nærhedssortering, som hørte til den gamle
 // ORS-løsning (Adressevælgeren har ingen koordinater i selve
-// forslagslisten at sortere efter - se geocodingAdressevaelger.js).
-// "focus"-propnavnet er bevidst IKKE genbrugt til det nye formål.
+// forslagslisten at sortere efter - bekræftet direkte mod Klimadatastyrelsens
+// eget felt-skema, se geocodingAdressevaelger.js). "focus"-propnavnet er
+// bevidst IKKE genbrugt til det nye formål.
 //
 // Er kommunekode kendt (butikkens egen, se App.jsx), søges der via
 // /husnumre/soeg i stedet for standard-endpointet /adresser/soeg - det er
 // den ENESTE af de to, Klimadatastyrelsens dokumentation bekræfter
-// respekterer et kommunekode-filter (bekræftet ved at kalde den rigtige
-// API direkte, se geocodingAdressevaelger.js). Prisen: resultaterne her
-// viser kun selve opgangens adgang ("husnummer"), ikke etage/dør direkte -
-// men selectSuggestion nedenfor søger AUTOMATISK videre efter de konkrete
+// respekterer et kommunekode-filter. Prisen: resultaterne her viser kun
+// selve opgangens adgang ("husnummer"), ikke etage/dør direkte - men
+// selectSuggestion nedenfor søger AUTOMATISK videre efter de konkrete
 // lejligheder, så snart et husnummer vælges, så etage/dør er stadig kun
 // ét klik væk, ikke tabt. Er kommunekode (endnu) ikke kendt, falder
 // søgningen tilbage til det brede /adresser/soeg, som hidtil.
+//
+// POSTNUMMER-NÆRHED (september 2026, tilføjet): selv MED et
+// kommunekode-filter sorterer Adressevælgeren stadig sine resultater
+// efter postnummer i ren stigende talrækkefølge, ikke efter hvor tæt de
+// reelt ligger på noget - bekræftet direkte i Klimadatastyrelsens egne
+// dokumenterede eksempler (en søgning afgrænset til hele Fyn kom stadig
+// tilbage i ren 5210, 5400, 5450, 5464...-rækkefølge). Ægte afstand kan
+// IKKE beregnes her - søgeresultater har aldrig koordinater overhovedet
+// (det er grunden til, at Planlægning kan regne afstand, men ikke denne
+// liste: en booket sags koordinater er slået op én gang EFTER valget, se
+// lookupAdressevaelgerCoordinates) - men et postnummer er stadig en
+// brugbar, gratis fingerpeg om geografisk nærhed, og det STÅR allerede i
+// hvert forslags tekst. Resultaterne sorteres derfor dernæst efter
+// numerisk afstand mellem forslagets postnummer og butikkens eget
+// (storePostnr, se App.jsx) - ingen ekstra kald, bare en omsortering af
+// det, der allerede kom tilbage.
 const DEBOUNCE_MS = 350;
 
 // Forslag med en KONKRET adgang (husnummer/adresse) frem for blot et
@@ -44,17 +60,29 @@ const DEBOUNCE_MS = 350;
 const SPECIFICITY = { husnummer: 0, adresse: 0, navngivenvejpostnummer: 1, vejnavn: 2 };
 
 // Udtrækker et 4-cifret postnummer af en Adressevælger-titel, fx
-// "Fuglsang 41, Næsby, 5270 Odense N" -> "5270". Bruges KUN til at kunne
-// søge videre efter et valgt "husnummer"-forslag (se selectSuggestion) -
-// et husnummer-forslag har ikke selv et separat postnr-felt (kun type
-// "navngivenvejpostnummer" har det, jf. Adressevælgerens dokumentation),
-// så det må læses ud af den tekst, der allerede vises.
+// "Fuglsang 41, Næsby, 5270 Odense N" -> "5270". Bruges BÅDE til at søge
+// videre efter et valgt "husnummer"-forslag (se selectSuggestion) OG til
+// postnummer-nærheds-sorteringen lige nedenfor - et husnummer-forslag har
+// intet eget postnr-felt (kun type "navngivenvejpostnummer" har det, jf.
+// Adressevælgerens dokumentation), så det må læses ud af teksten.
 function extractPostalCode(titel) {
   const match = (titel || "").match(/\b(\d{4})\b/);
   return match ? match[1] : null;
 }
 
-function AddressInput({ value, onChange, placeholder, onValidationChange, focus, kommunekode }) {
+// Numerisk afstand mellem et forslags postnummer og butikkens eget - se
+// noten øverst i filen. Et forslag uden noget postnummer at læse (meget
+// sjældent - kun rene vejnavne uden by) placeres sidst, ikke øverst.
+function postalDistance(f, storePostnr) {
+  if (!storePostnr) return 0; // ingen butiks-postnr kendt endnu - ingen omsortering
+  const code = f.postnr || extractPostalCode(f.titel);
+  const num = code ? Number(code) : NaN;
+  const storeNum = Number(storePostnr);
+  if (Number.isNaN(num) || Number.isNaN(storeNum)) return Infinity;
+  return Math.abs(num - storeNum);
+}
+
+function AddressInput({ value, onChange, placeholder, onValidationChange, focus, kommunekode, storePostnr }) {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [status, setStatus] = useState("tom"); // tom | tjekker | gyldig | usikker
@@ -80,7 +108,14 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus,
       // Se kommunekode-noten øverst i filen for hvorfor endpointet skifter her.
       const result = await searchAdressevaelger(value, kommunekode, kommunekode ? "soeg-husnumre" : "soeg-adresser");
       if (cancelled) return;
-      const fund = [...(result.fund || [])].sort((a, b) => (SPECIFICITY[a.type] ?? 9) - (SPECIFICITY[b.type] ?? 9));
+      // Sortering i to trin: først specificitet (en konkret adgang før et
+      // blot vejnavn), dernæst - inden for samme specificitet - nærmeste
+      // postnummer til butikken først. Se postalDistance ovenfor.
+      const fund = [...(result.fund || [])].sort((a, b) => {
+        const specDiff = (SPECIFICITY[a.type] ?? 9) - (SPECIFICITY[b.type] ?? 9);
+        if (specDiff !== 0) return specDiff;
+        return postalDistance(a, storePostnr) - postalDistance(b, storePostnr);
+      });
       setSuggestions(fund);
       if (fund.length > 0) setShowSuggestions(true);
       // "gyldig" her betyder: mindst ét forslag er en KONKRET adgang, ikke
@@ -95,7 +130,7 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus,
       clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, kommunekode]);
+  }, [value, kommunekode, storePostnr]);
 
   // ---------------------------------------------------------------------
   // RETTET (september 2026): et "husnummer"-forslag er kun selve OPGANGENS
