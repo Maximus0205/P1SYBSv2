@@ -19,12 +19,13 @@ import { AddressInput } from "../components/AddressInput";
 // allerede er flaget her - men opret/fjern sker udelukkende på denne
 // side. Se hooks/useAddressNotes.js og lib/dataStore.js: address_notes.
 //
-// storeFocus/storeKommuneKode (september 2026): samme prop-navne som
-// NewOrderForm allerede bruger - sendes videre til AddressInput, så
-// adresseforslagene her OGSÅ prioriteres efter nærhed til butikken (se
-// lib/geocodingAdressevaelger.js). Uden dem ville denne ene formular være
-// det eneste sted i appen, hvor forslagene ikke var indsnævret.
-function NewAddressNoteForm({ onAdd, storeFocus, storeKommuneKode }) {
+// storeFocus/storeKommuneKode/storePostnr (september 2026): samme
+// prop-navne som NewOrderForm allerede bruger - sendes videre til
+// AddressInput, så adresseforslagene her OGSÅ prioriteres efter nærhed
+// til butikken (se lib/geocodingAdressevaelger.js og AddressInput.jsx).
+// Uden dem ville denne ene formular være det eneste sted i appen, hvor
+// forslagene ikke var indsnævret/sorteret efter nærhed.
+function NewAddressNoteForm({ onAdd, storeFocus, storeKommuneKode, storePostnr }) {
   const [address, setAddress] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -43,7 +44,7 @@ function NewAddressNoteForm({ onAdd, storeFocus, storeKommuneKode }) {
     <div className="rounded-xl border border-line bg-white p-5 mb-6 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3 flex items-center gap-1.5"><Plus size={15} aria-hidden="true" /> Tilføj adresse-info</h3>
       <div className="grid gap-3 mb-3">
-        <AddressInput value={address} onChange={setAddress} placeholder="Adresse" focus={storeFocus} kommunekode={storeKommuneKode} />
+        <AddressInput value={address} onChange={setAddress} placeholder="Adresse" focus={storeFocus} kommunekode={storeKommuneKode} storePostnr={storePostnr} />
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -307,7 +308,7 @@ function KeyCabinetsSection({ keyCabinets, onAdd, onUpdate, onDelete, canManage 
   );
 }
 
-function AddressesPage({ addressNotes, onAdd, onDelete, canManage, storeFocus, storeKommuneKode, keyCabinets, onAddKeyCabinet, onUpdateKeyCabinet, onDeleteKeyCabinet }) {
+function AddressesPage({ addressNotes, onAdd, onDelete, canManage, storeFocus, storeKommuneKode, storePostnr, keyCabinets, onAddKeyCabinet, onUpdateKeyCabinet, onDeleteKeyCabinet }) {
   const [search, setSearch] = useState("");
 
   const groups = useMemo(() => groupByAddress(addressNotes), [addressNotes]);
@@ -326,7 +327,7 @@ function AddressesPage({ addressNotes, onAdd, onDelete, canManage, storeFocus, s
       </p>
 
       {canManage ? (
-        <NewAddressNoteForm onAdd={onAdd} storeFocus={storeFocus} storeKommuneKode={storeKommuneKode} />
+        <NewAddressNoteForm onAdd={onAdd} storeFocus={storeFocus} storeKommuneKode={storeKommuneKode} storePostnr={storePostnr} />
       ) : (
         <p className="text-xs text-muted italic mb-6">Du kan se, men ikke tilføje eller fjerne, adresse-info.</p>
       )}
