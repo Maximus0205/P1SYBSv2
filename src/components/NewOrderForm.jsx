@@ -136,7 +136,7 @@ function PosLookupPanel({ storeId, onApply }) {
   );
 }
 
-function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, addressNotes, keyCabinets, orders, selectedDate, onAdd, onClose, onOpen, storeFocus, storeKommuneKode }) {
+function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, addressNotes, keyCabinets, orders, selectedDate, onAdd, onClose, onOpen, storeFocus, storeKommuneKode, storePostnr }) {
   const [step, setStep] = useState(0);
   const [caseTypeId, setCaseTypeId] = useState(SAGSTYPE_KUNDE);
   const [customerName, setCustomerName] = useState("");
@@ -380,7 +380,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
             {erTomgang ? "Lejemålets adresse" : "Leveringsadresse"}
           </h4>
           <div className="grid gap-3 mb-4">
-            <AddressInput value={address} onChange={setAddress} placeholder={erTomgang ? "Lejemålets adresse" : "Leveringsadresse"} onValidationChange={setAddressStatus} focus={storeFocus} kommunekode={storeKommuneKode} />
+            <AddressInput value={address} onChange={setAddress} placeholder={erTomgang ? "Lejemålets adresse" : "Leveringsadresse"} onValidationChange={setAddressStatus} focus={storeFocus} kommunekode={storeKommuneKode} storePostnr={storePostnr} />
             <input value={deliveryNote} onChange={(e) => setDeliveryNote(e.target.value)} placeholder={erTomgang ? "Note, fx 'Opgang B, 3. sal th'" : "Leveringsnote, fx 'Ring før ankomst'"} aria-label="Note" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
           </div>
           {addressStatus === "usikker" && (
