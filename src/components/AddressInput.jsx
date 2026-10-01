@@ -18,16 +18,22 @@ import { searchAdressevaelger } from "../lib/geocodingAdressevaelger";
 // searchAdressevaelger, ikke her - komponenten sender bare den rå,
 // tastede tekst videre.
 //
-// KOMMUNEKODE (september 2026, tilføjet): erstatter den tidligere
-// "focus" ({lat, lon})-baserede nærhedssortering, som hørte til den
-// gamle ORS-løsning og aldrig blev koblet til her (Adressevælgeren har
-// ingen koordinater i selve forslagslisten at sortere efter - se
-// geocodingAdressevaelger.js). "focus"-propnavnet er bevidst IKKE
-// genbrugt til det nye formål - det ville forveksle de to systemer, hvis
-// man en dag ruller tilbage til ORS-udgaven nedenfor. Kaldende sider
-// sender i stedet butikkens EGET kommunekode (effectiveStore.kommuneKode,
-// se App.jsx), som bruges til at indsnævre søgningen til butikkens eget
-// kommuneområde.
+// KOMMUNEKODE (september 2026, RETTET samme dag): erstatter den tidligere
+// "focus" ({lat, lon})-baserede nærhedssortering, som hørte til den gamle
+// ORS-løsning (Adressevælgeren har ingen koordinater i selve
+// forslagslisten at sortere efter - se geocodingAdressevaelger.js).
+// "focus"-propnavnet er bevidst IKKE genbrugt til det nye formål.
+//
+// Er kommunekode kendt (butikkens egen, se App.jsx), søges der via
+// /husnumre/soeg i stedet for standard-endpointet /adresser/soeg - det er
+// den ENESTE af de to, Klimadatastyrelsens dokumentation bekræfter
+// respekterer et kommunekode-filter (bekræftet ved at kalde den rigtige
+// API direkte, se geocodingAdressevaelger.js). Prisen: resultaterne her
+// viser kun selve opgangens adgang ("husnummer"), ikke etage/dør direkte -
+// men selectSuggestion nedenfor søger AUTOMATISK videre efter de konkrete
+// lejligheder, så snart et husnummer vælges, så etage/dør er stadig kun
+// ét klik væk, ikke tabt. Er kommunekode (endnu) ikke kendt, falder
+// søgningen tilbage til det brede /adresser/soeg, som hidtil.
 const DEBOUNCE_MS = 350;
 
 // Forslag med en KONKRET adgang (husnummer/adresse) frem for blot et
@@ -71,7 +77,8 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus,
     setStatus("tjekker");
 
     const timer = setTimeout(async () => {
-      const result = await searchAdressevaelger(value, kommunekode);
+      // Se kommunekode-noten øverst i filen for hvorfor endpointet skifter her.
+      const result = await searchAdressevaelger(value, kommunekode, kommunekode ? "soeg-husnumre" : "soeg-adresser");
       if (cancelled) return;
       const fund = [...(result.fund || [])].sort((a, b) => (SPECIFICITY[a.type] ?? 9) - (SPECIFICITY[b.type] ?? 9));
       setSuggestions(fund);
@@ -101,7 +108,9 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus,
   //
   // Vælges et "husnummer"-forslag, søges der derfor STRAKS videre efter de
   // konkrete adresser under det - uden at brugeren selv skal skrive
-  // postnummeret for at udløse det:
+  // postnummeret for at udløse det. Denne opfølgende søgning rammer ALTID
+  // /adresser/soeg (standard-endpointet, uanset hvad den indledende søgning
+  // ovenfor brugte) - det er den eneste, der kan returnere etage/dør-niveau.
   //   - Findes der FLERE lejligheder, vises de som en ny, mere specifik
   //     forslagsliste (feltets tekst viser i mellemtiden selve opgangens
   //     adresse, så det er tydeligt hvor langt man er nået).
@@ -125,7 +134,7 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus,
     setStatus("tjekker");
 
     const postnummer = extractPostalCode(f.titel);
-    const result = postnummer ? await searchAdressevaelger(`${f.vejnavn} ${f.husnummer} ${postnummer}`, kommunekode) : { ok: false, fund: [] };
+    const result = postnummer ? await searchAdressevaelger(`${f.vejnavn} ${f.husnummer} ${postnummer}`) : { ok: false, fund: [] };
     const specific = (result.fund || []).filter((x) => x.type === "adresse");
 
     if (specific.length === 0) {
