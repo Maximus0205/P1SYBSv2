@@ -71,36 +71,28 @@ export function utm32ToWgs84(easting, northing) {
 }
 
 // ---------------------------------------------------------------------------
-// RETTET (september 2026, igen): Adressevælgerens dokumentation siger det
-// direkte om "/adresser/soeg": "En søgning, der er tilstrækkelig specifik
-// [vil resultere] i type = Adresse" - og det er PRÆCIS type "adresse", der
-// bærer etage/dør-oplysninger ("1. sal til højre" osv.), ikke type
-// "husnummer" (som kun er selve opgangens adgang). "Tilstrækkeligt
-// specifik" betyder: vejnavn, husnummer OG postnummer sendt som TRE
-// ADSKILTE, strukturerede felter - ikke som én sammenhængende tekststreng.
+// RETTET (september 2026, tredje gang samme dag): parseQuery genkendte kun
+// et postnummer, hvis det stod som de allersidste fire cifre i teksten
+// ("Parkvej 6 5260") - IKKE hvis et bynavn fulgte efter, som en gemt
+// butiksadresse altid gør ("Odensevej 115, 5260 Odense"). I det tilfælde
+// fandt hverken postnummer- eller husnummer-reglen noget at matche til
+// sidst i strengen (den sluttede jo på "Odense", ikke et tal), og HELE
+// teksten blev sendt som ét samlet "vejnavn" - noget der aldrig ville
+// kunne findes. Det var den PRÆCISE årsag til, at resolveStoreKommuneKode
+// (som sender butikkens EGEN gemte adresse, inklusive bynavn) altid
+// fejlede stille, og kommune_kode derfor aldrig blev gemt.
 //
-// Forrige udgave af denne funktion delte kun teksten op, HVIS der var et
-// postnummer at finde for enden - og fejlede desuden, hvis brugeren (eller
-// et tidligere valgt forslag) havde sat et komma ind i teksten (fx
-// "Fuglsang 41, 5270"), fordi kommaet blev en del af det udtrukne
-// gadenavn i stedet for at blive fjernet. Begge dele betød, at et
-// fuldstændigt tastet husnummer ikke konsekvent blev sendt som sit eget,
-// strukturerede felt - og søgningen forblev dermed under "tilstrækkeligt
-// specifik", så etage/dør-adresserne aldrig kom med i svaret.
-//
-// Nu: kommaer fjernes/normaliseres FØRST, og der udtrækkes ALTID et
-// husnummer (hvis der overhovedet står et tal for enden af gadenavnet) -
-// ikke kun når der også er et postnummer. "vejnavn" sendes derfor næsten
-// altid som sit eget, rensede felt, og husnummer/postnummer lægges oveni,
-// når de findes - aldrig sammen med "tekst" (se noten fra forrige
-// rettelse: de to må ikke kombineres, ORS-agtig fejl, men i selve
-// Adressevælgeren).
+// Nu findes postnummeret ved at lede efter FIRE CIFRE EFTERFULGT AF EN
+// ORDGRÆNSE et sted i teksten (ikke nødvendigvis til sidst) - alt FRA og
+// MED det postnummer (postnummer + et eventuelt bynavn bagved) klippes
+// væk, så kun "vejnavn husnummer" er tilbage til næste trin. Virker
+// stadig uændret for det enklere tilfælde uden bynavn.
 function parseQuery(raw) {
   let s = (raw || "").trim().replace(/,/g, " ").replace(/\s+/g, " ").trim();
   if (!s) return { tekst: "" };
 
   let postnummer;
-  const postalMatch = s.match(/^(.*\S)\s+(\d{4})$/);
+  const postalMatch = s.match(/^(.*\S)\s+(\d{4})\b.*$/);
   if (postalMatch) {
     const num = Number(postalMatch[2]);
     if (num >= 1000 && num <= 9990) {
@@ -173,23 +165,23 @@ export async function lookupAdressevaelgerCoordinates(id, type) {
 }
 
 // ---------------------------------------------------------------------------
-// RETTET (september 2026, igen - samme dag): to selvstændige fejl rettet
-// samtidig, fundet ved at kalde den RIGTIGE API direkte og se det faktiske
-// svar, i stedet for at gætte ud fra dokumentationsfragmenter:
+// To tidligere selvstændige fejl rettet (september 2026), fundet ved at
+// kalde den RIGTIGE API direkte og se det faktiske svar, i stedet for at
+// gætte ud fra dokumentationsfragmenter:
 //
 //   1. "kommunekode" findes IKKE som et felt i et søgeresultat - hverken
 //      fra /adresser/soeg eller /husnumre/soeg. De flade søgeresultater
 //      indeholder kun {type, id, titel, vejnavn, husnummer, postnr,
-//      postdistrikt, antal_husnumre} - INGEN kommune-oplysning. Den
-//      forrige udgave af denne funktion ledte efter et felt
-//      (hit.kommunekode), der aldrig har eksisteret i et søgesvar, og
-//      kunne derfor ALDRIG finde noget - det er grunden til, at
-//      stores.kommune_kode forblev tomt uanset hvor mange gange siden
-//      blev genindlæst.
+//      postdistrikt, antal_husnumre} - INGEN kommune-oplysning. Kommunekoden
+//      findes først ved et DETALJE-opslag på én bestemt adresse
+//      (/husnumre/{id}), og selv dér ligger den indlejret, ikke som et
+//      fladt felt: husnummer.navngivenvejkommunedel.kommune.
 //
-//   2. Kommunekoden findes først ved et DETALJE-opslag på én bestemt
-//      adresse (/husnumre/{id}), og selv dér ligger den indlejret, ikke
-//      som et fladt felt: husnummer.navngivenvejkommunedel.kommune.
+//   2. parseQuery (se ovenfor) kunne ikke tolke en gemt butiksadresse med
+//      bynavn ("Odensevej 115, 5260 Odense") - kun uden ("Odensevej 115
+//      5260"). Den fejl ramte NETOP denne funktion, fordi det er
+//      butikkens egen, FULDE gemte adressetekst (inkl. bynavn), der
+//      sendes ind her.
 //
 // Rettelsen slår derfor op i TO TRIN, ligesom lookupAdressevaelgerCoordinates
 // ovenfor gør for koordinater: (1) find et husnummer-id for adressen via en
