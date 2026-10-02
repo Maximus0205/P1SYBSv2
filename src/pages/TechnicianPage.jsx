@@ -1,7 +1,8 @@
 import React from "react";
 import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, Loader2, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash, X, Plus, User, Lock, PlayCircle, CheckCheck, Camera, CalendarCheck2, DoorOpen } from "lucide-react";
-import { buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, keyAccessText, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel, dailyOrderCompare, canDo, missingLineItems } from "../data/domain";
+import { buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel, dailyOrderCompare, canDo, missingLineItems } from "../data/domain";
 import { isTomgang, showsArrivalContact, followUpTypeLabel, TOMGANG_COLOR } from "../data/caseTypes";
+import { manualKeyAccessText, routeUrlViaCabinets } from "../data/keyCabinets";
 import { StatusBadge, DateSelector } from "../components/common";
 import { Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
 import { BookingEditor, DuplicatePanel, PosStatusBanner } from "../components/OrderView";
@@ -16,6 +17,11 @@ import { sendArrivalSms } from "../lib/dataStore";
 // evig "indlæser..."-tilstand hvis det ikke lykkes (lokation ikke givet,
 // dårligt signal, testet indendørs). Søge-linket viser blot adressen som
 // et punkt med det samme uden den afhængighed.
+//
+// UNDTAGELSE (september 2026): en TOMGANG med et sikkert nøgleskab bruger i
+// stedet et rute-link via skabet - se ActionStack og routeUrlViaCabinets i
+// data/keyCabinets.js. Dér er rute-linket hele pointen (1. stop skabet,
+// 2. stop opgaven), og uden et skab bruges stadig dette søge-link.
 const mapsUrl = (address) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 
 // Normaliseret til rene cifre + evt. indledende "+" så tel:-links virker
@@ -194,20 +200,28 @@ function ReorderButtons({ onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
 // alle andre kort - to forskellige kort-bredder ville gøre listen
 // urolig at skimme.
 //
+// NAVIGER VIA NØGLESKAB (september 2026): dækker et sikkert nøgleskab
+// adressen, åbner Naviger en rute med 1. stop ved skabet og 2. stop ved
+// opgaven - montøren skal jo hente nøglen først. Uden skab er det
+// uændret en almindelig navigation til adressen. "skabe" er de skab-fund,
+// kaldestedet allerede har slået op (useCabinetMatches).
+//
 // Hele stakken skjules for en færdigmeldt sag: kunden er besøgt, og en
 // SMS om forventet ankomst dagen efter ville være pinlig.
-function ActionStack({ order }) {
+function ActionStack({ order, skabe }) {
   const harTelefon = Boolean(order.kunde?.telefon);
   const kontaktRelevant = showsArrivalContact(order);
+  const adresse = order.kunde?.adresse || "";
+  const skabsRute = routeUrlViaCabinets(adresse, skabe);
   return (
     <div className="shrink-0 w-[74px] rounded-xl border border-line overflow-hidden divide-y divide-line bg-white">
       <a
-        href={mapsUrl(order.kunde?.adresse || "")}
+        href={skabsRute || mapsUrl(adresse)}
         target="_blank"
         rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()}
-        aria-label={`Naviger til ${order.kunde?.adresse || "adressen"}`}
-        title="Åbn adressen i Google Maps"
+        aria-label={skabsRute ? `Naviger: først nøgleskabet, derefter ${adresse || "adressen"}` : `Naviger til ${adresse || "adressen"}`}
+        title={skabsRute ? "Åbn rute i Google Maps: 1. nøgleskabet, 2. opgaven" : "Åbn adressen i Google Maps"}
         className="w-full h-[46px] flex flex-col items-center justify-center gap-0.5 text-ink hover:bg-panel focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand transition-colors"
       >
         <Navigation size={15} aria-hidden="true" />
@@ -252,13 +266,17 @@ function ActionStack({ order }) {
 // sagens adresse op mod dem, og et fund vises FØRST i advarselsboksen - så
 // montøren ser "hent nøgle i skab" allerede i ruteoversigten, ikke først
 // når han står på adressen. Se components/KeyCabinetAlert.jsx.
+//
+// NØGLESKAB UDELUKKER NØGLEBOKS (september 2026): en nøgleoplysning, der
+// blot er en kopi af skabet, vises ikke en gang til - se manualKeyAccessText.
 function OrderStopCard({ order: s, keyCabinets, onOpen, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
   const erAfsluttet = s.status === "afsluttet";
   const mangler = missingLineItems(s);
   const tomgang = isTomgang(s);
   const skabe = useCabinetMatches(s, keyCabinets);
   const synligeSkabe = erAfsluttet ? [] : skabe;
-  const hasAlerts = Boolean(synligeSkabe.length > 0 || s.noegle?.kraeves || s.kunde.leveringsnote || s.problem || mangler.length > 0);
+  const noegleTekst = manualKeyAccessText(s.noegle);
+  const hasAlerts = Boolean(synligeSkabe.length > 0 || noegleTekst || s.kunde.leveringsnote || s.problem || mangler.length > 0);
 
   return (
     <div className="rounded-xl bg-white border border-[#ECECEC] shadow-sm hover:shadow-md transition-shadow p-3.5">
@@ -294,14 +312,14 @@ function OrderStopCard({ order: s, keyCabinets, onOpen, onMoveUp, onMoveDown, ca
 
         {/* Handlingsstakken skjules for en færdigmeldt sag: kunden er
             besøgt, og en ankomst-SMS dagen efter ville være pinlig. */}
-        {!erAfsluttet && <ActionStack order={s} />}
+        {!erAfsluttet && <ActionStack order={s} skabe={skabe} />}
       </div>
 
       {hasAlerts && (
         <div className="mt-2.5 rounded-lg bg-brand/5 border border-brand/20 px-3 py-2 space-y-1">
           <KeyCabinetLines matches={synligeSkabe} />
-          {s.noegle?.kraeves && (
-            <p className="text-xs font-semibold text-brand flex items-start gap-1.5"><KeyRound size={13} className="shrink-0 mt-0.5" aria-hidden="true" /> {keyAccessText(s.noegle)}</p>
+          {noegleTekst && (
+            <p className="text-xs font-semibold text-brand flex items-start gap-1.5"><KeyRound size={13} className="shrink-0 mt-0.5" aria-hidden="true" /> {noegleTekst}</p>
           )}
           {s.kunde.leveringsnote && (
             <p className="text-xs font-semibold text-brand flex items-start gap-1.5"><AlertTriangle size={13} className="shrink-0 mt-0.5" aria-hidden="true" /> {s.kunde.leveringsnote}</p>
@@ -570,7 +588,11 @@ function FinishPanel({ order, onConfirm, onCancel, onGoToTab }) {
 // NØGLESKAB (september 2026): ved tomgang vises det nøgleskab, sagens
 // adresse hører til, som en stor banner LIGE under sagens overskrift - se
 // components/KeyCabinetAlert.jsx. Skjules, når sagen er færdigmeldt.
-function TechnicianOrderDetail({ order, technicians, keyCabinets, onBack, addNote, addPhoto, addReport, onStartOrder, onFinishOrder, onReopenOrder, onUpdateBooking, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem, onRetryPosSync, permissions, addressNotes }) {
+//
+// REDIGÉR BOOKING (september 2026): kan nu også ændre, tilføje og fjerne
+// varelinjer og ydelser (catalog sendes med fra App.jsx) - se BookingEditor
+// i OrderView.jsx. Varesektionen kræver sag_feltarbejde, resten som før.
+function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBack, addNote, addPhoto, addReport, onStartOrder, onFinishOrder, onReopenOrder, onUpdateBooking, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem, onRetryPosSync, permissions, addressNotes }) {
   const [tab, setTab] = React.useState("noter");
   const [panel, setPanel] = React.useState(null); // "booking" | "dupliker" | "problem" | "faerdig"
   const canFieldwork = canDo(permissions, "sag_feltarbejde");
@@ -579,6 +601,7 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, onBack, addNot
   const canCreate = canDo(permissions, "sag_opret");
   const tomgang = isTomgang(order);
   const skabe = useCabinetMatches(order, keyCabinets);
+  const noegleTekst = manualKeyAccessText(order.noegle);
   const tabs = [
     { key: "noter", label: "Noter", count: order.noter.length },
     { key: "materialer", label: "Materialer", count: (order.materialer || []).length },
@@ -600,7 +623,7 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, onBack, addNot
       <PosStatusBanner order={order} onRetry={onRetryPosSync} canRetry={canFieldwork} />
 
       {panel === "booking" ? (
-        <BookingEditor order={order} technicians={technicians} permissions={permissions} onCancel={() => setPanel(null)} onSave={(fields) => { onUpdateBooking(fields); setPanel(null); }} />
+        <BookingEditor order={order} technicians={technicians} permissions={permissions} catalog={catalog} onCancel={() => setPanel(null)} onSave={(fields) => { onUpdateBooking(fields); setPanel(null); }} />
       ) : panel === "dupliker" ? (
         <DuplicatePanel order={order} onCancel={() => setPanel(null)} onDuplicate={(items, followUpType) => { onDuplicate?.(items, followUpType); setPanel(null); }} />
       ) : panel === "problem" ? (
@@ -645,8 +668,8 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, onBack, addNot
           {order.kunde.leveringsnote && (
             <p className="text-sm text-brand font-semibold mt-1.5 flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" aria-hidden="true" /> {order.kunde.leveringsnote}</p>
           )}
-          {order.noegle?.kraeves && (
-            <p className="text-sm text-brand font-semibold mt-1.5 flex items-center gap-1.5"><KeyRound size={14} className="shrink-0" aria-hidden="true" /> {keyAccessText(order.noegle)}</p>
+          {noegleTekst && (
+            <p className="text-sm text-brand font-semibold mt-1.5 flex items-center gap-1.5"><KeyRound size={14} className="shrink-0" aria-hidden="true" /> {noegleTekst}</p>
           )}
 
           {order.problem && (
@@ -695,7 +718,8 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, onBack, addNot
 
           {/* Samme handlingsstak som på rutekortet, så de to visninger
               opfører sig ens. Skjuler selv SMS/Ring ved tomgang - se
-              showsArrivalContact i ActionStack. */}
+              showsArrivalContact i ActionStack. Naviger kører via
+              nøgleskabet først, hvis der er et. */}
           <div className="mt-3 pt-3 border-t border-divider flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-sm text-ink">{order.kunde.adresse}</p>
@@ -703,11 +727,11 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, onBack, addNot
                 <a href={telHref(order.kunde.telefon)} className="font-mono text-sm text-muted hover:text-brand transition-colors">{order.kunde.telefon}</a>
               )}
             </div>
-            {!erAfsluttet && <ActionStack order={order} />}
+            {!erAfsluttet && <ActionStack order={order} skabe={skabe} />}
           </div>
 
           <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-divider">
-            {(canPlan || canEditCustomer) && (
+            {(canPlan || canEditCustomer || canFieldwork) && (
               <button onClick={() => setPanel("booking")} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-1 py-1.5 flex items-center gap-1"><Pencil size={13} aria-hidden="true" /> Redigér booking</button>
             )}
             {onDuplicate && canCreate && (
