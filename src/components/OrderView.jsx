@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { KeyRound, Building2, Hash, Pencil, X, Check, Copy, AlertTriangle, User, Lock, Trash2, Plus, RotateCw, Plug, RefreshCw } from "lucide-react";
-import { TIME_SLOTS, buildTitle, keyAccessText, timeSlotById, timeSlotText, lineItemLabel, canDo, createLineItem, missingLineItems, OTHER_PRODUCT_TYPE_ID, availableAddOns, getDefaultEstimateMinutes } from "../data/domain";
+import { TIME_SLOTS, buildTitle, timeSlotById, timeSlotText, lineItemLabel, canDo, createLineItem, missingLineItems, OTHER_PRODUCT_TYPE_ID, availableAddOns, getDefaultEstimateMinutes } from "../data/domain";
+import { manualKeyAccessText } from "../data/keyCabinets";
 import { FOLLOWUP_TYPES, followUpTypeLabel } from "../data/caseTypes";
 import { StatusBadge, MinutesInput } from "../components/common";
 import { LineItemDetails, Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
@@ -8,41 +9,51 @@ import { CustomerHistoryLookup } from "../components/OrderFormFields";
 import { AddressInput } from "../components/AddressInput";
 import { AddressNotesPanel } from "../components/AddressNotes";
 
-// Hurtig-redigering af en booket sag: dato, tidsrum, bil og
-// leveringsadresse - de felter der oftest skal justeres efter oprettelse.
-// Varelinjerne har deres egen editor (se LineItemEditor nedenfor).
+const cloneLineItems = (list) => (list || []).map((v) => ({ ...v, tillaeg: (v.tillaeg || []).map((y) => ({ ...y })) }));
+
+// Redigering af en booket sag: dato, tidsrum, bil, leveringsadresse OG
+// varer/ydelser - samlet i ÉT panel med ÉN "Gem ændringer" (september 2026,
+// efter tilbagemelding: "Redigér booking" skal også kunne ændre varelinjer).
+//
+// Tidligere lå varelinjerne i et separat "Redigér varelinjer"-panel, fordi
+// de kræver en ANDEN rettighed (sag_feltarbejde) end dato/bil (sag_
+// planlaegning) og adresse (sag_kunde) - se orders_guard_field_groups i
+// databasen. Rettighedsopdelingen er bevaret INDE i det samlede panel:
+// hver sektion låses for sig, og kun de felter man har lov til at ændre
+// sendes med i onSave. Databasen er stadig den egentlige grænse.
+//
+// ÉN SKRIVNING, ikke to: dato/bil og varelinjer gemmes i samme onSave-kald.
+// To kald lige efter hinanden (updateBooking + setLineItems) ville begge
+// tage udgangspunkt i den SAMME, forældede kopi af sagen, og den sidste
+// ville stille og roligt overskrive den første (se useOrders.js:
+// saveOneOrder). Varelinjerne medtages kun, hvis brugeren faktisk har rørt
+// dem - ellers ville et blot-dato-skift også skrive varelinjerne.
 //
 // BIL, IKKE MONTØR (september 2026): sager tildeles nu en BIL - se
 // rebind_orders_to_vehicle_instead_of_person. "technicians" herunder er
 // derfor BIL-rækker (se App.jsx), og feltet der gemmes er bilId.
 //
-// dato/tidsrum/bil (sag_planlaegning) og leveringsadresse (sag_kunde) er
-// to FORSKELLIGE rettigheder. Mangler man den ene, låses de tilhørende
-// felter i stedet for at hele redigeringen skjules - man kan sagtens have
-// lov til at flytte datoen uden at måtte røre kundens adresse. Kun de
-// felter man har lov til sendes med i onSave, så updateBooking (som slår
-// sammen med eksisterende felter) ikke overskriver noget, man ikke havde
-// adgang til.
-//
-// VARELINJER/TILLÆG ER BEVIDST IKKE HERI (september 2026, efter
-// tilbagemelding): de redigeres i sin egen, separate "Redigér
-// varelinjer"-editor (se LineItemEditor nedenfor) i stedet for at blive
-// smeltet sammen med denne. Grunden er rettigheder: booking (dato/bil/
-// adresse) kræver sag_planlaegning/sag_kunde, mens varer/tillæg kræver
-// sag_feltarbejde - to forskellige, ADSKILTE rettigheder i databasen (se
-// orders_guard_field_groups). Ét fælles panel ville enten vise felter,
-// nogen ikke må røre, eller kræve begge rettigheder for at åbne noget som
-// helst - begge dele værre end to knapper ved siden af hinanden.
-function BookingEditor({ order, technicians, onSave, onCancel, permissions }) {
+// catalog er valgfri: uden den vises varesektionen ikke (fx hvis et kaldested
+// ikke har kataloget ved hånden).
+function BookingEditor({ order, technicians, onSave, onCancel, permissions, catalog }) {
   const canPlan = canDo(permissions, "sag_planlaegning");
   const canEditCustomer = canDo(permissions, "sag_kunde");
+  const canEditItems = Boolean(catalog) && canDo(permissions, "sag_feltarbejde");
 
   const [date, setDate] = useState(order.dato);
   const [timeSlotId, setTimeSlotId] = useState(order.tidsrumId);
   const [vehicleId, setVehicleId] = useState(order.bilId || "");
   const [address, setAddress] = useState(order.kunde.adresse);
+  const [items, setItems] = useState(() => cloneLineItems(order.varelinjer));
+  const [itemsTouched, setItemsTouched] = useState(false);
+
+  const updateItems = (updater) => { setItems(updater); setItemsTouched(true); };
+
+  // En sag uden varelinjer er ikke en sag - samme krav som den gamle editor.
+  const itemsInvalid = canEditItems && itemsTouched && items.length === 0;
 
   const save = () => {
+    if (itemsInvalid) return;
     const fields = {};
     if (canPlan) {
       const t = timeSlotById(timeSlotId);
@@ -50,6 +61,12 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions }) {
     }
     if (canEditCustomer) {
       fields.kunde = { ...order.kunde, adresse: address.trim() };
+    }
+    if (canEditItems && itemsTouched) {
+      // Det afledte "hele ordren er plukket"-flag følger med, ellers kunne
+      // en fjernet uplukket linje efterlade sagen som "ikke plukket".
+      fields.varelinjer = items;
+      fields.plukket = items.length > 0 && items.every((v) => v.plukket);
     }
     onSave(fields);
   };
@@ -84,11 +101,20 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions }) {
           )}
         </label>
       </div>
-      {(!canPlan || !canEditCustomer) && (
+
+      {canEditItems && (
+        <div className="mt-4 pt-4 border-t border-divider">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Varer &amp; ydelser</h4>
+          <LineItemEditor embedded order={order} catalog={catalog} items={items} onItemsChange={updateItems} />
+          {itemsInvalid && <p className="text-xs text-danger mb-3">Sagen skal have mindst én varelinje, før du kan gemme.</p>}
+        </div>
+      )}
+
+      {(!canPlan || !canEditCustomer || (Boolean(catalog) && !canEditItems)) && (
         <p className="text-[11px] text-muted mb-3 flex items-center gap-1.5"><Lock size={11} className="shrink-0" aria-hidden="true" /> Nogle felter er låst - du mangler rettigheden til at redigere dem.</p>
       )}
       <div className="flex gap-2">
-        <button onClick={save} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5"><Check size={14} aria-hidden="true" /> Gem ændringer</button>
+        <button onClick={save} disabled={itemsInvalid} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"><Check size={14} aria-hidden="true" /> Gem ændringer</button>
         <button onClick={onCancel} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted focus:outline-none focus:ring-2 focus:ring-muted transition-colors flex items-center gap-1.5"><X size={14} aria-hidden="true" /> Annuller</button>
       </div>
     </div>
@@ -106,6 +132,12 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions }) {
 // (skift model OG ret tiden), og hvert tastetryk må ikke udløse en
 // skrivning og en genberegning af hele planlægningen.
 //
+// TO MÅDER (september 2026):
+//   - Selvstændig (standard): egen boks med overskrift og Gem/Annuller.
+//   - embedded: indlejret i BookingEditor, som ejer tilstanden (items/
+//     onItemsChange) og selv har Gem/Annuller - se noten ved BookingEditor
+//     om hvorfor det er ét samlet gem.
+//
 // TILLÆGSYDELSER (september 2026, tilføjet efter tilbagemelding): kunne
 // tidligere KUN slås til/fra direkte på den bookede sag (se
 // LineItemDetails/onToggleAddOn nedenfor) - ikke her, i selve
@@ -119,12 +151,14 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions }) {
 // Kræver sag_feltarbejde. Lageret har den bevidst ikke: de må melde en
 // vare manglende, ikke omskrive hvad kunden har købt (håndhævet af
 // orders_guard_field_groups i databasen - UI'et er ikke sikkerhedsgrænsen).
-function LineItemEditor({ order, catalog, onSave, onCancel }) {
+function LineItemEditor({ order, catalog, onSave, onCancel, embedded = false, items: controlledItems, onItemsChange }) {
   const productTypes = catalog?.productTypes || [];
   const primaryServices = catalog?.primaryServices || [];
   const addOnServices = catalog?.addOnServices || [];
   const defaultTimeEstimates = catalog?.defaultTimeEstimates || [];
-  const [items, setItems] = useState(() => order.varelinjer.map((v) => ({ ...v, tillaeg: (v.tillaeg || []).map((y) => ({ ...y })) })));
+  const [localItems, setLocalItems] = useState(() => cloneLineItems(order.varelinjer));
+  const items = controlledItems ?? localItems;
+  const setItems = onItemsChange ?? setLocalItems;
   const [confirmRemove, setConfirmRemove] = useState(null);
 
   const patch = (id, fields) => setItems((prev) => prev.map((v) => (v.id === id ? { ...v, ...fields } : v)));
@@ -164,11 +198,8 @@ function LineItemEditor({ order, catalog, onSave, onCancel }) {
     setItems((prev) => [...prev, createLineItem(productTypes, primaryServices, undefined, "", defaultTimeEstimates)]);
   };
 
-  return (
-    <div className="rounded-xl bg-white border border-brand p-4 mb-5 shadow-sm">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1">Redigér varelinjer</h3>
-      <p className="text-xs text-muted mb-3">Ændringer gemmes først når du trykker Gem.</p>
-
+  const body = (
+    <>
       <div className="space-y-3 mb-3">
         {items.length === 0 && <p className="text-sm text-danger italic">Sagen har ingen varelinjer. Tilføj mindst én, eller annuller.</p>}
         {items.map((v) => {
@@ -178,6 +209,7 @@ function LineItemEditor({ order, catalog, onSave, onCancel }) {
             <div className="flex items-start justify-between gap-2 mb-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted">{lineItemLabel(v)}</p>
               <button
+                type="button"
                 onClick={() => setConfirmRemove(v.id)}
                 aria-label={`Fjern ${lineItemLabel(v)}`}
                 className="shrink-0 w-11 h-11 -m-2 flex items-center justify-center rounded-lg text-muted hover:text-danger focus:outline-none focus:ring-2 focus:ring-danger"
@@ -191,8 +223,8 @@ function LineItemEditor({ order, catalog, onSave, onCancel }) {
                 <p className="text-xs text-danger font-semibold">Fjern denne varelinje fra sagen?</p>
                 <p className="text-[11px] text-danger mt-0.5">Det ændrer, hvad kunden har købt. Er varen allerede plukket, skal lageret have besked om at lægge den tilbage.</p>
                 <div className="flex gap-2 mt-2">
-                  <button onClick={() => { setItems((prev) => prev.filter((x) => x.id !== v.id)); setConfirmRemove(null); }} className="px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-danger hover:bg-ink focus:outline-none focus:ring-2 focus:ring-ink">Fjern</button>
-                  <button onClick={() => setConfirmRemove(null)} className="px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted focus:outline-none focus:ring-2 focus:ring-muted">Behold</button>
+                  <button type="button" onClick={() => { setItems((prev) => prev.filter((x) => x.id !== v.id)); setConfirmRemove(null); }} className="px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-danger hover:bg-ink focus:outline-none focus:ring-2 focus:ring-ink">Fjern</button>
+                  <button type="button" onClick={() => setConfirmRemove(null)} className="px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted focus:outline-none focus:ring-2 focus:ring-muted">Behold</button>
                 </div>
               </div>
             ) : (
@@ -277,9 +309,20 @@ function LineItemEditor({ order, catalog, onSave, onCancel }) {
         })}
       </div>
 
-      <button onClick={addNew} disabled={productTypes.length === 0} className="mb-3 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-muted border border-line hover:text-brand hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50">
+      <button type="button" onClick={addNew} disabled={productTypes.length === 0} className="mb-3 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-muted border border-line hover:text-brand hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50">
         <Plus size={14} aria-hidden="true" /> Tilføj varelinje
       </button>
+    </>
+  );
+
+  if (embedded) return <div>{body}</div>;
+
+  return (
+    <div className="rounded-xl bg-white border border-brand p-4 mb-5 shadow-sm">
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1">Redigér varelinjer</h3>
+      <p className="text-xs text-muted mb-3">Ændringer gemmes først når du trykker Gem.</p>
+
+      {body}
 
       <div className="flex gap-2">
         <button onClick={() => onSave(items)} disabled={items.length === 0} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none">
@@ -439,7 +482,7 @@ function MissingItemsBanner({ order, onClearMissingItem, canFieldwork }) {
         ))}
       </div>
       <p className="text-[11px] text-muted mt-2.5">
-        Markeringen forsvinder af sig selv, når du booker sagen til en ny dato, eller når varen skiftes ud under "Redigér varelinjer".
+        Markeringen forsvinder af sig selv, når du booker sagen til en ny dato, eller når varen skiftes ud under "Redigér booking".
       </p>
     </div>
   );
@@ -515,17 +558,21 @@ function PosStatusBanner({ order, onRetry, canRetry }) {
 // adresse-flag hører ikke til på sagskortet (det handler om adressen, ikke
 // den konkrete sag) og sker i stedet udelukkende på den selvstændige fane
 // "Adresser", se pages/AddressesPage.jsx.
-function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addReport, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onSetLineItems, onClearMissingItem, onDeleteOrder, onReopenOrder, onRetryPosSync, addressNotes }) {
+//
+// VARELINJER (september 2026): redigeres nu inde i "Redigér booking" - se
+// BookingEditor. Den separate "Redigér varelinjer"-knap er fjernet.
+function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addReport, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onClearMissingItem, onDeleteOrder, onReopenOrder, onRetryPosSync, addressNotes }) {
   const [tab, setTab] = useState("noter");
   // Kun ÉT panel ad gangen - to åbne redigeringer på samme sag ville både
   // fylde skærmen og gøre det uklart, hvad "Gem" gemmer.
-  const [panel, setPanel] = useState(null); // "booking" | "varelinjer" | "dupliker" | "slet"
+  const [panel, setPanel] = useState(null); // "booking" | "dupliker" | "slet"
   const technician = technicians.find((m) => m.id === order.bilId);
   const canFieldwork = canDo(permissions, "sag_feltarbejde");
   const canPlan = canDo(permissions, "sag_planlaegning");
   const canEditCustomer = canDo(permissions, "sag_kunde");
   const canCreate = canDo(permissions, "sag_opret");
   const canDelete = canDo(permissions, "sag_slet");
+  const keyText = manualKeyAccessText(order.noegle);
   const tabs = [
     { key: "noter", label: "Noter", count: order.noter.length },
     { key: "materialer", label: "Materialer", count: (order.materialer || []).length },
@@ -546,15 +593,9 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
           order={order}
           technicians={technicians}
           permissions={permissions}
-          onCancel={() => setPanel(null)}
-          onSave={(fields) => { onUpdateBooking(fields); setPanel(null); }}
-        />
-      ) : panel === "varelinjer" ? (
-        <LineItemEditor
-          order={order}
           catalog={catalog}
           onCancel={() => setPanel(null)}
-          onSave={(items) => { onSetLineItems?.(items); setPanel(null); }}
+          onSave={(fields) => { onUpdateBooking(fields); setPanel(null); }}
         />
       ) : panel === "dupliker" ? (
         <DuplicatePanel
@@ -610,8 +651,8 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
                   {order.koeber.adresse && <p className="text-sm text-muted">{order.koeber.adresse}</p>}
                 </div>
               )}
-              {order.noegle?.kraeves && (
-                <p className="text-sm text-brand font-semibold mt-2 flex items-center gap-1.5"><KeyRound size={14} aria-hidden="true" /> {keyAccessText(order.noegle)}</p>
+              {keyText && (
+                <p className="text-sm text-brand font-semibold mt-2 flex items-center gap-1.5"><KeyRound size={14} aria-hidden="true" /> {keyText}</p>
               )}
             </div>
             <div className="flex flex-col items-end gap-2">
@@ -633,11 +674,8 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
                   onOpen={onOpenOrder}
                 />
               )}
-              {(canPlan || canEditCustomer) && (
+              {(canPlan || canEditCustomer || canFieldwork) && (
                 <button onClick={() => setPanel("booking")} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-1 py-1.5 flex items-center gap-1"><Pencil size={13} aria-hidden="true" /> Redigér booking</button>
-              )}
-              {onSetLineItems && canFieldwork && (
-                <button onClick={() => setPanel("varelinjer")} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-1 py-1.5 flex items-center gap-1"><Pencil size={13} aria-hidden="true" /> Redigér varelinjer</button>
               )}
               {onDuplicate && canCreate && (
                 <button onClick={() => setPanel("dupliker")} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-1 py-1.5 flex items-center gap-1"><Copy size={13} aria-hidden="true" /> Dupliker / opfølgning</button>
