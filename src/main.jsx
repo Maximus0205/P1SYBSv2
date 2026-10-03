@@ -4,6 +4,7 @@ import { HashRouter } from "react-router-dom";
 import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { SaveErrorBanner } from "./components/SaveErrorBanner";
+import { ConflictBanner } from "./components/ConflictBanner";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { UpdateAvailableBanner } from "./components/UpdateAvailableBanner";
 import { startVersionCheck } from "./lib/versionCheck";
@@ -39,7 +40,7 @@ startVersionCheck();
 // uanset hvilken fane man var på, hvorefter React Router selv læser
 // hashet og gengiver den rigtige side. Se App.jsx for selve rute-opsætningen.
 //
-// De tre bannere er bevidst monteret UDEN FOR både ErrorBoundary og
+// De fire bannere er bevidst monteret UDEN FOR både ErrorBoundary og
 // HashRouter:
 //  - uden for routeren, så beskeden ikke forsvinder, hvis brugeren
 //    navigerer videre i samme sekund som en skrivning fejler;
@@ -48,10 +49,12 @@ startVersionCheck();
 //    brug for at vide, om arbejdet er kommet frem.
 //
 // OfflineBanner og UpdateAvailableBanner ligger ØVERST (rene oplysninger,
-// ingen datatab på spil), og SaveErrorBanner NEDERST (rigtig fejl, inden
-// for tommelfingerens rækkevidde på mobil), så de ikke kan dække for
-// hinanden. Se lib/saveStatus.js, lib/offlineQueue.js og
-// lib/versionCheck.js for baggrunden på hver af dem.
+// ingen datatab på spil), SaveErrorBanner NEDERST (rigtig fejl, inden
+// for tommelfingerens rækkevidde på mobil), og ConflictBanner som et
+// vindue over det hele (en ændring der IKKE er gemt, fordi en anden
+// nåede først, og som kræver et bevidst valg), så de ikke kan dække for
+// hinanden. Se lib/saveStatus.js, lib/offlineQueue.js,
+// lib/conflictStore.js og lib/versionCheck.js for baggrunden på hver af dem.
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <OfflineBanner />
@@ -62,5 +65,6 @@ ReactDOM.createRoot(document.getElementById("root")).render(
       </HashRouter>
     </ErrorBoundary>
     <SaveErrorBanner />
+    <ConflictBanner />
   </React.StrictMode>
 );

@@ -1,58 +1,36 @@
-// Offline-kø for montører i marken (august 2026).
+// Offline-kø for montører i marken (august 2026, omarbejdet oktober 2026).
 //
 // PROBLEMET: en montør står i en kælder, i en elevator, i et
 // betonbyggeri. Uden netværk kan sagen ikke lukkes, status ikke skiftes,
-// noten ikke gemmes. Tilbagerulningen i useOrders gør fejlen SYNLIG
-// (bedre end før, hvor den var tavs), men arbejdet er stadig tabt, og
-// montøren skal huske at gøre det igen senere. I praksis betyder det, at
-// folk falder tilbage på papir - og så er systemet ikke længere sandheden
-// om, hvad der er sket.
-//
-// LØSNINGEN: skrivninger, der fejler på grund af manglende netværk,
-// lægges i en kø og sendes automatisk, når forbindelsen er der igen.
+// noten ikke gemmes. Skrivninger, der fejler på grund af manglende
+// netværk, lægges derfor i en kø og sendes automatisk, når forbindelsen
+// er der igen.
 //
 // ---------------------------------------------------------------------
 // VIGTIG AFGRÆNSNING - LÆS DENNE FØR DU UDVIDER MODULET
 // ---------------------------------------------------------------------
 // Denne kø er IKKE en lokal database, og browseren bliver IKKE kilden til
 // sandhed. Køen indeholder kun MIDLERTIDIGE, endnu-ikke-sendte
-// skrivninger, og den tømmes så snart de er kommet frem. Databasen er
-// fortsat den eneste autoritative kilde. Det er en bevidst og vigtig
-// forskel: bygger man videre på det her som et lokalt lager, får man to
-// kilder til sandhed, der skal holdes i sync - og det er en helt anden
-// og langt sværere opgave.
+// skrivninger. Databasen er den eneste autoritative kilde.
 //
-// KØEN GEMMER HELE ORDREN, ikke en beskrivelse af ændringen. Det følger
-// den eksisterende arkitektur (saveOrder gemmer hele blobben), men det
-// har en konsekvens, man SKAL kende:
+// KØEN GEMMER HELE SAGEN, men også HVILKEN udgave ændringen byggede på
+// (base + baseVersion). Det er det, der gør en forsinket skrivning sikker:
+// har en sælger rettet samme sag, mens montøren var offline, opdager
+// databasen det (versionsnummeret er skiftet), og useOrders fletter
+// ændringerne eller beder brugeren vælge - se lib/orderMerge.js. En
+// forsinket skrivning kan ikke længere overskrive andres arbejde stille.
 //
-//   Har montøren en sag i køen i to timer, og en sælger i mellemtiden
-//   retter kundens adresse på samme sag, så OVERSKRIVER montørens
-//   forsinkede skrivning sælgerens rettelse, når den endelig sendes.
+//   * Køen er FIFO og sender én ad gangen.
+//   * Ved samme sags-id erstattes den ventende post (nyeste udgave), men
+//     den OPRINDELIGE base bevares - det er den, en sammenfletning skal
+//     regne ud fra.
+//   * En ændring forsvinder ALDRIG ved manglende netværk. (Tidligere blev
+//     en post smidt væk efter 5 mislykkede forsøg à 30 sekunder - altså
+//     efter ca. 2,5 minutter uden dækning. Det er rettet: kun en reel
+//     AFVISNING fra serveren tæller som forsøg.)
 //
-// Det er samme "sidste skrivning vinder" som appen allerede har - men
-// vinduet går fra sekunder til timer. Derfor:
-//   * Køen accepterer KUN ændringer på en sag, montøren selv er tildelt
-//     (se enqueueOrder-kaldet i useOrders). En sælgers redigering i
-//     butikken køer ikke - der er brugeren alligevel online.
-//   * Køen er FIFO og sender én ad gangen, så rækkefølgen af montørens
-//     egne ændringer bevares.
-//   * Ved samme sags-id erstattes den ventende post frem for at lægge en
-//     ny i køen: det er den samme sag, og den nyeste udgave er den, der
-//     skal frem. Det holder køen kort og undgår, at fem statusskift på
-//     samme sag bliver fem rundture.
-//
-// Den rigtige langsigtede løsning er feltvise opdateringer i stedet for
-// hele blobben. Det er en større ombygning af dataStore og ligger uden
-// for dette modul.
-//
-// HVORFOR localStorage: køen SKAL overleve, at appen lukkes - en montør
-// låser telefonen, kører videre, og browseren smider fanen væk. Uden
-// persistens er køen værdiløs, for det er præcis i den situation,
-// arbejdet ellers går tabt. Den er lille (kun ventende skrivninger),
-// synkron og understøttet overalt. IndexedDB ville være mere korrekt,
-// men er markant mere kode for en kø, der sjældent har mere end en
-// håndfuld poster.
+// HVORFOR localStorage: køen SKAL overleve, at appen lukkes. Den er lille,
+// synkron og understøttet overalt.
 
 const NOEGLE = "p1sybs.offlinekoe.v1";
 const MAKS_POSTER = 200;
@@ -74,7 +52,6 @@ function laes() {
     return Array.isArray(parsed) ? parsed : [];
   } catch (_) {
     // Ødelagt eller utilgængelig (privat browsing kan afvise adgang).
-    // En ubrugelig kø må ikke forhindre appen i at virke.
     return [];
   }
 }
@@ -83,9 +60,7 @@ function skriv(koe) {
   try {
     localStorage.setItem(NOEGLE, JSON.stringify(koe));
   } catch (_) {
-    // Fyldt op eller blokeret. Vi kan ikke gøre mere her - skrivningen
-    // forsøges stadig online, og fejler den, ser brugeren det via
-    // SaveErrorBanner. Bedre end at kaste og afbryde handlingen.
+    // Fyldt op eller blokeret. enqueueOrder tjekker selv resultatet.
   }
   notify(koe);
 }
@@ -98,19 +73,19 @@ export function queueLength() {
   return laes().length;
 }
 
+export function getQueuedPost(orderId, storeId) {
+  return laes().find((p) => p.id === String(orderId) && p.storeId === storeId) || null;
+}
+
 export function subscribeQueue(fn) {
   listeners.add(fn);
   try { fn(laes()); } catch (_) { /* som i notify */ }
   return () => listeners.delete(fn);
 }
 
-// Er dette en fejl, det giver mening at KØE? Kun netværksfejl.
-//
-// Det er en vigtig skelnen: en afvist skrivning (manglende rettighed,
-// RLS, ugyldige data) vil fejle igen og igen, uanset hvor mange gange vi
-// prøver. At køe den ville betyde, at montøren tror, arbejdet er gemt,
-// mens det i virkeligheden aldrig kommer frem - præcis den tavse fejl,
-// vi rettede tidligere. Kun fejl, der skyldes forbindelsen, køes.
+// Er dette en fejl, der skyldes FORBINDELSEN frem for en afvisning?
+// Kun netværksfejl køes - en afvist skrivning (manglende rettighed, RLS,
+// ugyldige data) vil fejle igen og igen, og må ikke se ud som "gemt".
 export function isNetworkError(error) {
   if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
   const besked = (error?.message || String(error || "")).toLowerCase();
@@ -124,29 +99,49 @@ export function isNetworkError(error) {
   );
 }
 
-// Lægger en sag i køen. Findes sagen allerede, ERSTATTES den ventende
-// udgave - se noten om hele-ordren ovenfor.
-export function enqueueOrder(storeId, order) {
+// Lægger en sag i køen.
+//   meta.base         = sagen, som den stod i databasen, da ændringen blev lavet
+//   meta.baseVersion  = dens versionsnummer (null = sagen findes ikke i databasen endnu)
+//   meta.rebase       = true: erstat også base/baseVersion (bruges efter en
+//                       sammenfletning, hvor databasens nyeste udgave er den nye base)
+// Findes sagen allerede i køen, erstattes ordren, men den OPRINDELIGE base bevares.
+// Returnerer false, hvis køen er fuld ELLER browseren ikke kan gemme - kalderen
+// skal så fortælle brugeren, at ændringen ikke er sikret.
+export function enqueueOrder(storeId, order, meta = {}) {
   if (!storeId || !order?.id) return false;
   const koe = laes();
+  const id = String(order.id);
+  const idx = koe.findIndex((p) => p.id === id && p.storeId === storeId);
+  const eksisterende = idx >= 0 ? koe[idx] : null;
+
   const post = {
-    id: String(order.id),
+    id,
     storeId,
     order,
-    lagtIKoe: new Date().toISOString(),
+    lagtIKoe: eksisterende ? eksisterende.lagtIKoe : new Date().toISOString(),
     forsoeg: 0,
+    rev: (eksisterende?.rev || 0) + 1,
   };
-  const idx = koe.findIndex((p) => p.id === post.id && p.storeId === storeId);
-  if (idx >= 0) {
-    // Bevar det oprindelige tidspunkt, så brugeren kan se, hvor længe
-    // sagen reelt har ventet - ikke hvornår den sidst blev rørt.
-    post.lagtIKoe = koe[idx].lagtIKoe;
-    koe[idx] = post;
+  if (eksisterende && !meta.rebase) {
+    if ("base" in eksisterende) post.base = eksisterende.base;
+    if ("baseVersion" in eksisterende) post.baseVersion = eksisterende.baseVersion;
   } else {
+    post.base = meta.base ?? null;
+    if (meta.baseVersion !== undefined) post.baseVersion = meta.baseVersion;
+  }
+
+  if (eksisterende) koe[idx] = post;
+  else {
     if (koe.length >= MAKS_POSTER) return false; // værn mod at løbe løbsk
     koe.push(post);
   }
-  skriv(koe);
+
+  try {
+    localStorage.setItem(NOEGLE, JSON.stringify(koe));
+  } catch (_) {
+    return false; // kunne ikke gemmes - ændringen er IKKE sikret
+  }
+  notify(koe);
   return true;
 }
 
@@ -159,58 +154,57 @@ export function clearQueue() {
   skriv([]);
 }
 
-// Sender køen. saveFn(storeId, order) -> Promise<boolean>, altså præcis
-// signaturen på dataStore.saveOrder.
-//
-// FIFO og én ad gangen: rækkefølgen af montørens egne ændringer skal
-// bevares, og en telefon på kanten af dækning klarer ikke tyve samtidige
-// kald. Fejler en post på netværk, STOPPER vi resten - forbindelsen er
-// åbenlyst væk igen, og der er ingen grund til at brænde de øvrige
-// forsøg af.
-//
-// En post, der fejler af en ANDEN grund end netværk (fx sagen er slettet
-// imens, eller rettigheden er trukket tilbage), tælles op og smides væk
-// efter MAKS_FORSOEG. Ellers ville den blokere køen for evigt. onDropped
-// kaldes med posten, så den kaldende kode kan fortælle brugeren, at
-// netop den ændring ikke kunne gemmes.
-export async function flushQueue(saveFn, { onDropped } = {}) {
+// Tæller et mislykket (AFVIST) forsøg op på den ventende post og returnerer
+// det nye antal. Kaldes aldrig ved netværksfejl.
+export function noteFailedAttempt(orderId, storeId) {
   const koe = laes();
-  if (koe.length === 0) return { sendt: 0, tilbage: 0, opgivet: 0 };
+  const idx = koe.findIndex((p) => p.id === String(orderId) && p.storeId === storeId);
+  if (idx < 0) return 0;
+  koe[idx] = { ...koe[idx], forsoeg: (koe[idx].forsoeg || 0) + 1 };
+  skriv(koe);
+  return koe[idx].forsoeg;
+}
+
+// Sender køen, én post ad gangen. processFn(post) udfører selve skrivningen
+// og fjerner selv posten fra køen, når den er håndteret. Den returnerer:
+//   "ok" | "handled"  skrevet / parkeret som konflikt - posten er håndteret
+//   "skip"            posten findes ikke længere (allerede håndteret)
+//   "network"         forbindelsen er væk - behold resten, stop her
+//   "error"           serveren AFVISTE skrivningen
+//
+// Køen overskrives aldrig som helhed: kun den enkelte post rettes. Det
+// betyder, at en ændring der lægges i køen MIDT i en afsendelse ikke går tabt.
+//
+// En post der gentagne gange AFVISES (fx rettigheden er trukket tilbage)
+// opgives efter MAKS_FORSOEG, så den ikke blokerer for evigt. onDropped
+// kaldes, så brugeren får det at vide.
+export async function flushQueue(processFn, { onDropped } = {}) {
+  const snapshot = laes();
+  if (snapshot.length === 0) return { sendt: 0, tilbage: 0, opgivet: 0 };
 
   let sendt = 0;
   let opgivet = 0;
-  const tilbage = [];
-  let stoppet = false;
 
-  for (const post of koe) {
-    if (stoppet) { tilbage.push(post); continue; }
-
-    let ok = false;
-    let fejl = null;
+  for (const p of snapshot) {
+    let udfald;
     try {
-      ok = await saveFn(post.storeId, post.order);
+      udfald = await processFn(p);
     } catch (e) {
-      fejl = e;
+      udfald = isNetworkError(e) ? "network" : "error";
     }
 
-    if (ok) { sendt++; continue; }
+    if (udfald === "ok" || udfald === "handled") { sendt++; continue; }
+    if (udfald === "skip") continue;
+    if (udfald === "network") break; // forbindelsen er væk - brænd ikke flere forsøg af
 
-    if (fejl && isNetworkError(fejl)) {
-      // Forbindelsen er væk igen - behold resten urørt til næste gang.
-      tilbage.push(post);
-      stoppet = true;
-      continue;
-    }
-
-    const forsoeg = (post.forsoeg || 0) + 1;
+    const forsoeg = noteFailedAttempt(p.id, p.storeId);
     if (forsoeg >= MAKS_FORSOEG) {
+      const levende = getQueuedPost(p.id, p.storeId) || p;
+      removeFromQueue(p.id, p.storeId);
       opgivet++;
-      try { onDropped?.(post); } catch (_) { /* må ikke vælte tømningen */ }
-    } else {
-      tilbage.push({ ...post, forsoeg });
+      try { onDropped?.(levende); } catch (_) { /* må ikke vælte tømningen */ }
     }
   }
 
-  skriv(tilbage);
-  return { sendt, tilbage: tilbage.length, opgivet };
+  return { sendt, tilbage: laes().length, opgivet };
 }
