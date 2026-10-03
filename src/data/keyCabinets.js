@@ -1,3 +1,5 @@
+import { keyAccessText } from "./domain";
+
 // ---------------------------------------------------------------------------
 // NØGLESKAB-MATCHNING (september 2026)
 //
@@ -194,4 +196,54 @@ export function cabinetMapsQuery(cabinet, orderAddress) {
   const base = [...parts].reverse().find((p) => /\d/.test(p)) || cabinet?.skabPlacering || "";
   const city = (orderAddress || "").match(/(\d{4}\s+[^,]+?)\s*$/);
   return city ? `${base}, ${city[1]}` : base;
+}
+
+// ---------------------------------------------------------------------------
+// NØGLESKAB UDELUKKER NØGLEBOKS (september 2026)
+//
+// Tidligere kunne sælgeren trykke "Brug som nøgleoplysning", som kopierede
+// skabet ind i sagens egne nøglefelter (type "Nøgleboks", placering
+// "Nøgleskab: ..."). Resultatet var, at montøren så SAMME skab to gange:
+// én gang som den automatiske advarsel, og én gang som en "Nøgleboks"-linje
+// - og ordet "nøgleboks" er direkte misvisende om et skab.
+//
+// Fremover registreres et skab ALDRIG som nøgleoplysning; det slås op løbende
+// ud fra adressen. Sager, der allerede har en sådan kopi, rettes ikke i
+// databasen (en migrering skulle gætte), men kopien SKJULES i visningen:
+// isCabinetKeyAccess genkender den på placeringens "Nøgleskab:"-præfiks, som
+// kun den gamle knap kunne sætte.
+//
+// En ægte, selvskrevet nøgleboks ("Nøgleboks ved døren, kode 1234") har ikke
+// det præfiks og vises som hidtil.
+export const isCabinetKeyAccess = (n) => Boolean(n?.kraeves) && /^\s*nøgleskab\s*:/i.test(n?.placering || "");
+
+// Nøgletekst til visning, uden skab-kopien. Tom streng = intet at vise.
+export const manualKeyAccessText = (n) => (isCabinetKeyAccess(n) ? "" : keyAccessText(n));
+
+// ---------------------------------------------------------------------------
+// RUTE VIA NØGLESKAB (september 2026)
+//
+// Ved en tomgang skal montøren først hente nøglen i skabet og DEREFTER køre
+// til opgaven. Bygger ét Google Maps-rutelink: 1. stop = skabet (waypoint),
+// 2. stop = sagens adresse. Startpunktet udelades bevidst, så Maps bruger
+// montørens nuværende position.
+//
+// KUN "sikker"-skabe bliver et stop. Et "mulig"-skab er et "tjek selv" - at
+// sende montøren af sted mod et skab, der måske ikke er det rigtige, ville
+// gøre gætværk til en ruteanvisning. Er der ingen sikre skabe, returneres
+// null, og kalderen falder tilbage på almindelig navigation til adressen.
+//
+// Flere sikre skabe bliver til flere stop i den givne rækkefølge.
+export function routeUrlViaCabinets(orderAddress, matches) {
+  const address = (orderAddress || "").trim();
+  if (!address) return null;
+  const stops = [];
+  for (const { cabinet, niveau } of matches || []) {
+    if (niveau !== "sikker") continue;
+    const q = cabinetMapsQuery(cabinet, address);
+    if (q && !stops.includes(q)) stops.push(q);
+  }
+  if (stops.length === 0) return null;
+  const waypoints = stops.map((s) => encodeURIComponent(s)).join("%7C");
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}&waypoints=${waypoints}&travelmode=driving`;
 }

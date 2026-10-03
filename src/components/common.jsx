@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight, Calendar, KeyRound } from "lucide-react";
-import { isToday, addDays, keyAccessText, STATUS_META, todayISO, lineItemLabel, serviceIcon } from "../data/domain";
+import { isToday, addDays, STATUS_META, todayISO, lineItemLabel, serviceIcon } from "../data/domain";
+import { manualKeyAccessText } from "../data/keyCabinets";
 
 // NB: den underliggende JSON-data (order.kunde, order.varelinjer osv.) er
 // IKKE omdøbt i denne omgang - kun kodens egne variabel-/prop-/komponentnavne.
@@ -36,12 +37,15 @@ function AddOnPill({ addOn }) {
   );
 }
 
+// Viser ikke en nøgleoplysning, der blot er en kopi af et nøgleskab - se
+// manualKeyAccessText i data/keyCabinets.js (nøgleskab udelukker nøgleboks).
 function KeyAccessPill({ keyAccess }) {
-  if (!keyAccess || !keyAccess.kraeves) return null;
+  const text = manualKeyAccessText(keyAccess);
+  if (!text) return null;
   return (
     <span className="inline-flex items-center text-[11px] px-2.5 py-1 gap-1 rounded-lg border font-semibold border-brand text-brand bg-brand/10">
       <KeyRound size={11} strokeWidth={2.5} />
-      {keyAccessText(keyAccess)}
+      {text}
     </span>
   );
 }
@@ -55,7 +59,7 @@ function LineItemPills({ order }) {
   const showLineLabel = order.varelinjer.length > 1;
   return (
     <div className="space-y-1">
-      {order.noegle?.kraeves && (
+      {manualKeyAccessText(order.noegle) && (
         <div className="flex flex-wrap items-center gap-1.5"><KeyAccessPill keyAccess={order.noegle} /></div>
       )}
       {order.varelinjer.map((v) => (

@@ -18,6 +18,10 @@ import { findKeyCabinets, cabinetMapsQuery } from "../data/keyCabinets";
 // et slettet skab - er bevidst; en forældet skabsplacering er værre end
 // ingen.
 //
+// NØGLESKAB UDELUKKER NØGLEBOKS (september 2026): et skab kopieres derfor
+// ALDRIG ind i sagens egne nøglefelter - se manualKeyAccessText i
+// data/keyCabinets.js.
+//
 // Se data/keyCabinets.js for de to niveauer:
 //   "sikker" - adressen ligger i skabets område.
 //   "mulig"  - vejnavnet stemmer, men husnummeret kunne ikke bekræftes.
@@ -101,11 +105,12 @@ export function KeyCabinetAlert({ matches, orderAddress }) {
   );
 }
 
-// Til bookingen (sælgeren): viser samme fund, og lader sælgeren lægge det
-// ind som sagens nøgleoplysning med ét tryk. Er intet fundet, men butikken
-// HAR nøgleskabe, står der en kort påmindelse - så et manglende skab bliver
-// opdaget ved bookingen og ikke af montøren på adressen.
-export function KeyCabinetBookingHint({ matches, hasCabinets, addressTyped, onUse }) {
+// Til bookingen (sælgeren): viser samme fund, så et manglende eller forkert
+// skab opdages ved bookingen og ikke af montøren på adressen. Skabet lægges
+// IKKE ind som nøgleoplysning (nøgleskab udelukker nøgleboks) - montøren får
+// det vist automatisk ud fra adressen. Er intet fundet, men butikken HAR
+// nøgleskabe, står der en kort påmindelse.
+export function KeyCabinetBookingHint({ matches, hasCabinets, addressTyped }) {
   if (matches && matches.length > 0) {
     return (
       <div className="mb-4 space-y-2">
@@ -122,16 +127,7 @@ export function KeyCabinetBookingHint({ matches, hasCabinets, addressTyped, onUs
               <p className="text-xs text-ink mt-1">Skab: {cabinet.skabPlacering}</p>
               {cabinet.note && <p className="text-xs text-muted mt-0.5">{cabinet.note}</p>}
               {!sikker && <p className="text-[11px] text-muted mt-1">Husnummeret kunne ikke bekræftes — skabet dækker: {cabinet.omraade}</p>}
-              <div className="flex items-center gap-3 flex-wrap mt-2">
-                <button
-                  type="button"
-                  onClick={() => onUse(cabinet)}
-                  className="px-3 py-2 rounded-lg text-[11px] font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors"
-                >
-                  Brug som nøgleoplysning
-                </button>
-                <span className="text-[11px] text-muted">Montøren får skabet vist automatisk — også uden du trykker.</span>
-              </div>
+              <p className="text-[11px] text-muted mt-2">Montøren får skabet vist automatisk, og rutelinket kører via skabet først.</p>
             </div>
           );
         })}
