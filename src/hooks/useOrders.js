@@ -1,9 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { getOrders, saveOrder, saveOrderResult, deleteOrder as deleteOrderRow, getFreshOrder, syncPosOnFinish } from "../lib/dataStore";
+import { deleteOrder as deleteOrderRow, syncPosOnFinish } from "../lib/dataStore";
+import { fetchAllOrders, fetchOrderVersions, fetchOrdersByIds, saveOrderVersioned, MAKS_RAEKKER } from "../lib/orderStore";
 import { uid, dailyOrderCompare, lineItemFingerprint } from "../data/domain";
 import { SAGSTYPE_KUNDE } from "../data/caseTypes";
-import { enqueueOrder, flushQueue, queueLength, subscribeQueue } from "../lib/offlineQueue";
+import { enqueueOrder, flushQueue, queueLength, subscribeQueue, getQueuedPost, removeFromQueue } from "../lib/offlineQueue";
 import { reportSaveFailure } from "../lib/saveStatus";
+import { mergeOrder, applyMine, deepEqual } from "../lib/orderMerge";
+import { addConflict, getConflicts, removeConflict, updateConflict, subscribeResolve } from "../lib/conflictStore";
 
 // Al state og CRUD for ORDRER - den suverænt største og mest centrale del
 // af appen.
@@ -13,35 +16,419 @@ import { reportSaveFailure } from "../lib/saveStatus";
 // forklaring i dataStore.js om hvorfor det er vigtigt ved flere samtidige
 // brugere.
 //
+// ---------------------------------------------------------------------
+// SAMTIDIGE RETTELSER (oktober 2026)
+// ---------------------------------------------------------------------
+// Hver sag har et VERSIONSNUMMER i databasen. Vi husker, hvilken version
+// (og hvilken udgave - "base") hver sag havde, da vi sidst så den. En
+// skrivning sendes med det nummer, og databasen (funktionen save_order)
+// afviser den, hvis nogen har ændret sagen siden. Så kan en ændring
+// ALDRIG overskrive en andens arbejde stille. I stedet:
+//
+//   1. Rørte I forskellige felter, flettes begge ændringer automatisk
+//      (lib/orderMerge.js) og gemmes oven på den nyeste udgave.
+//   2. Rørte I SAMME felt til forskellige værdier, gættes der ikke:
+//      brugerens ændring PARKERES (lib/conflictStore.js) og en tydelig
+//      besked beder om et valg (components/ConflictBanner.jsx). Intet
+//      forsvinder, og intet overskrives uden et bevidst valg.
+//
+// For at konflikter bliver sjældne, henter appen løbende andres ændringer
+// (refresh): hvert 20. sekund, og når appen kommer i fokus igen. Kun
+// sager hvis versionsnummer er ændret hentes.
+//
+// Skrivninger på SAMME sag udføres i rækkefølge (runSerial), så to hurtige
+// tryk ikke konkurrerer med sig selv om versionsnummeret.
+//
+// ---------------------------------------------------------------------
+// ØVRIGT
+// ---------------------------------------------------------------------
 // TILBAGERULNING VED FEJLET SKRIVNING (august 2026): alle ændringer her
-// er OPTIMISTISKE. Fejler skrivningen, blev ændringen tidligere stående
-// på skærmen, som om alt var gået godt. saveOneOrder ruller derfor
-// ændringen tilbage - MEDMINDRE fejlen skyldes netværket, se nedenfor.
+// er OPTIMISTISKE. Afvises skrivningen, rulles ændringen tilbage på
+// skærmen og brugeren får besked.
 //
-// OFFLINE-KØ (august 2026): en montør i en kælder har intet netværk. At
-// rulle ændringen tilbage dér er teknisk korrekt, men praktisk
-// ubrugeligt: arbejdet ER udført. Ved NETVÆRKSFEJL beholdes ændringen
-// derfor på skærmen og lægges i kø. Kun netværksfejl køes - en AFVIST
-// skrivning (manglende rettighed, RLS) rulles stadig tilbage, da den
-// ville fejle igen uanset hvad.
-//
-// Selve skelnen sker i dataStore (saveOrderResult -> { ok, netvaerk }),
-// IKKE her: supabase-js kaster ikke ved netværksfejl, men returnerer den
-// i { error } præcis som en afvisning, så forskellen kan kun aflæses dér,
-// hvor fejlobjektet findes.
+// OFFLINE-KØ (august 2026): ved NETVÆRKSFEJL beholdes ændringen på
+// skærmen og lægges i kø (lib/offlineQueue.js). Køen husker, hvilken
+// udgave ændringen byggede på, så en forsinket skrivning også fletter
+// eller beder om et valg i stedet for at overskrive.
 export function useOrders(storeId) {
   const [orders, setOrders] = useState([]);
   const [queuedCount, setQueuedCount] = useState(0);
   const flushingRef = useRef(false);
+  const refreshingRef = useRef(false);
 
-  const load = useCallback(async (id) => {
-    if (!id) { setOrders([]); return; }
-    setOrders(await getOrders(id));
+  // sagsId -> version / udgave, som vi sidst så den i databasen.
+  const versionsRef = useRef(new Map());
+  const baseRef = useRef(new Map());
+  // sagsId -> antal igangværende skrivninger (så opdatering ikke overskriver dem).
+  const pendingRef = useRef(new Map());
+  // sagsId -> kæde af skrivninger, der udføres efter hinanden.
+  const chainRef = useRef(new Map());
+  const storeRef = useRef(storeId);
+  storeRef.current = storeId;
+  // Den SENESTE kendte liste. To ændringer i samme øjeblik (fx to hurtige
+  // tryk, før skærmen er tegnet igen) skal bygge oven på hinanden i stedet
+  // for begge at tage udgangspunkt i den samme, forældede skærmkopi - ellers
+  // overskriver den anden den første, også uden nogen anden bruger involveret.
+  const ordersRef = useRef(orders);
+  ordersRef.current = orders;
+
+  // ---------------- Små hjælpere ----------------
+
+  // Har sagen en ændring, der endnu ikke er sikkert i databasen?
+  const isPending = useCallback(
+    (id) => (pendingRef.current.get(id) || 0) > 0 || !!getQueuedPost(id, storeRef.current),
+    []
+  );
+
+  const replaceLocal = useCallback((order) => {
+    setOrders((prev) => (prev.some((s) => s.id === order.id) ? prev.map((s) => (s.id === order.id ? order : s)) : [...prev, order]));
   }, []);
 
-  useEffect(() => { load(storeId); }, [storeId, load]);
+  const removeLocal = useCallback((id) => {
+    versionsRef.current.delete(id);
+    baseRef.current.delete(id);
+    setOrders((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+
+  // Skærmen og vores "base" følger databasens udgave.
+  const adoptServer = useCallback((id, version, data) => {
+    versionsRef.current.set(id, version);
+    baseRef.current.set(id, data);
+    replaceLocal(data);
+  }, [replaceLocal]);
+
+  const runSerial = useCallback((id, fn) => {
+    pendingRef.current.set(id, (pendingRef.current.get(id) || 0) + 1);
+    const prev = chainRef.current.get(id) || Promise.resolve();
+    const next = prev.catch(() => {}).then(fn).finally(() => {
+      const n = (pendingRef.current.get(id) || 1) - 1;
+      if (n <= 0) pendingRef.current.delete(id); else pendingRef.current.set(id, n);
+    });
+    chainRef.current.set(id, next);
+    next.catch(() => {}).finally(() => { if (chainRef.current.get(id) === next) chainRef.current.delete(id); });
+    return next;
+  }, []);
+
+  // ---------------- Hentning ----------------
+
+  const load = useCallback(async (id) => {
+    if (!id) {
+      versionsRef.current.clear();
+      baseRef.current.clear();
+      setOrders([]);
+      return;
+    }
+    const res = await fetchAllOrders(id);
+    // Kunne vi ikke hente, beholder vi det vi har - en tom skærm ved en
+    // netværksfejl ville se ud som om alle sager var væk. Fejlen er logget,
+    // og den løbende opdatering prøver igen.
+    if (!res.ok || storeRef.current !== id) return;
+    res.rows.forEach((r) => {
+      if (pendingRef.current.get(r.id) > 0) return;
+      versionsRef.current.set(r.id, r.version);
+      baseRef.current.set(r.id, r.data);
+    });
+    setOrders((prev) => {
+      const lokale = new Map(prev.map((o) => [o.id, o]));
+      const ventende = (oid) => (pendingRef.current.get(oid) || 0) > 0 || !!getQueuedPost(oid, id);
+      const next = res.rows.map((r) => (ventende(r.id) && lokale.has(r.id) ? lokale.get(r.id) : r.data));
+      prev.forEach((o) => {
+        if (ventende(o.id) && !res.rows.some((r) => r.id === o.id)) next.push(o);
+      });
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    versionsRef.current.clear();
+    baseRef.current.clear();
+    load(storeId);
+  }, [storeId, load]);
+
+  // Henter ANDRES ændringer løbende, uden at hente hele sagsbasen: først en
+  // let liste (id + version), derefter kun de sager hvis version er ændret.
+  // Sager med en ændring på vej (isPending) røres ikke.
+  const refresh = useCallback(async () => {
+    const sid = storeRef.current;
+    if (!sid || refreshingRef.current) return;
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+    refreshingRef.current = true;
+    try {
+      const v = await fetchOrderVersions(sid);
+      if (!v.ok || storeRef.current !== sid) return;
+      const serverIds = new Set(v.rows.map((r) => r.id));
+      const skalHentes = v.rows
+        .filter((r) => !isPending(r.id) && versionsRef.current.get(r.id) !== r.version)
+        .map((r) => r.id);
+      // "Mangler i svaret" tolkes kun som "slettet", når svaret ikke er afkortet.
+      const fjernede = v.rows.length >= MAKS_RAEKKER
+        ? []
+        : [...versionsRef.current.keys()].filter((id) => !serverIds.has(id));
+
+      let nye = [];
+      if (skalHentes.length > 0) {
+        const f = await fetchOrdersByIds(sid, skalHentes);
+        if (!f.ok || storeRef.current !== sid) return;
+        nye = f.rows.filter((r) => !isPending(r.id));
+      }
+      const fjernSet = new Set(fjernede.filter((id) => !isPending(id)));
+      if (nye.length === 0 && fjernSet.size === 0) return;
+
+      nye.forEach((r) => { versionsRef.current.set(r.id, r.version); baseRef.current.set(r.id, r.data); });
+      fjernSet.forEach((id) => { versionsRef.current.delete(id); baseRef.current.delete(id); });
+      const nyMap = new Map(nye.map((r) => [r.id, r.data]));
+      setOrders((prev) => {
+        const next = prev.filter((o) => !fjernSet.has(o.id)).map((o) => (nyMap.has(o.id) ? nyMap.get(o.id) : o));
+        nyMap.forEach((data, id) => { if (!next.some((o) => o.id === id)) next.push(data); });
+        return next;
+      });
+    } finally {
+      refreshingRef.current = false;
+    }
+  }, [isPending]);
+
+  useEffect(() => {
+    if (!storeId) return undefined;
+    const iv = setInterval(refresh, 20000);
+    const vedFokus = () => { if (document.visibilityState === "visible") refresh(); };
+    document.addEventListener("visibilitychange", vedFokus);
+    window.addEventListener("focus", refresh);
+    return () => {
+      clearInterval(iv);
+      document.removeEventListener("visibilitychange", vedFokus);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [storeId, refresh]);
 
   useEffect(() => subscribeQueue((k) => setQueuedCount(k.length)), []);
+
+  // ---------------- Konflikter og sammenfletning ----------------
+
+  // Parkerer brugerens ændring (den bevares) og lader skærmen følge
+  // databasen. Brugeren får en tydelig besked via ConflictBanner.
+  const parkConflict = useCallback((sid, order, base, serverVersion, serverData, keys, mineKeys) => {
+    addConflict({
+      storeId: sid, orderId: order.id, nr: serverData?.nr || order.nr || "",
+      base, mine: order, theirs: serverData, theirsVersion: serverVersion, keys, mineKeys,
+    });
+    adoptServer(order.id, serverVersion, serverData);
+  }, [adoptServer]);
+
+  // Fletter vores ændring ind i databasens nyeste udgave og gemmer den.
+  // Returnerer "saved" | "parked" | "queued" | "gone" | "error".
+  const tryMergeAndSave = useCallback(async (sid, order, base, serverVersion, serverData, attempt = 0) => {
+    const id = order.id;
+    const { merged, conflicts, mineKeys } = mergeOrder(base, order, serverData);
+
+    if (conflicts.length > 0) {
+      parkConflict(sid, order, base, serverVersion, serverData, conflicts, mineKeys);
+      return "parked";
+    }
+    // Intet at gemme, eller databasen har allerede præcis det samme.
+    if (mineKeys.length === 0 || deepEqual(merged, serverData)) {
+      adoptServer(id, serverVersion, serverData);
+      return "saved";
+    }
+
+    const r = await saveOrderVersioned(sid, merged, serverVersion);
+    if (r.status === "ok") {
+      versionsRef.current.set(id, r.version);
+      baseRef.current.set(id, merged);
+      replaceLocal(merged);
+      return "saved";
+    }
+    if (r.status === "conflict") {
+      // Sagen blev ændret igen, mens vi fletter - prøv på ny mod den nyeste.
+      if (attempt < 3) return tryMergeAndSave(sid, order, base, r.version, r.data, attempt + 1);
+      parkConflict(sid, order, base, r.version, r.data, mineKeys, mineKeys);
+      return "parked";
+    }
+    if (r.status === "network") {
+      // Forbindelsen røg midt i det hele: behold den flettede udgave og læg den i kø.
+      versionsRef.current.set(id, serverVersion);
+      baseRef.current.set(id, serverData);
+      const ok = enqueueOrder(sid, merged, { base: serverData, baseVersion: serverVersion, rebase: true });
+      replaceLocal(merged);
+      if (!ok) {
+        reportSaveFailure("Ingen forbindelse, og ændringen kunne ikke gemmes midlertidigt på enheden. Prøv igen, når du har forbindelse.");
+      }
+      return "queued";
+    }
+    if (r.status === "not_found") {
+      removeLocal(id);
+      reportSaveFailure(`${serverData?.nr || order.nr ? `Sag ${serverData?.nr || order.nr}` : "Sagen"} findes ikke længere (den kan være slettet af en anden), så din ændring blev ikke gemt.`);
+      return "gone";
+    }
+    adoptServer(id, serverVersion, serverData);
+    reportSaveFailure(`Kunne ikke gemme ændringen: ${r.fejl || ""}`.trim());
+    return "error";
+  }, [parkConflict, adoptServer, replaceLocal, removeLocal]);
+
+  // Gemmer ÉN sag mod databasen (kaldes altid via runSerial).
+  const persist = useCallback(async (order, previous) => {
+    const sid = storeRef.current;
+    const id = order.id;
+    const known = versionsRef.current.has(id);
+    const expected = known ? versionsRef.current.get(id) : null;
+    const base = baseRef.current.get(id) ?? null;
+    const rulTilbage = () => (previous ? replaceLocal(previous) : removeLocal(id));
+
+    const laegIKoe = () => {
+      const ok = enqueueOrder(sid, order, { base, baseVersion: expected });
+      if (!ok) {
+        rulTilbage();
+        reportSaveFailure("Ingen forbindelse, og ændringen kunne ikke gemmes midlertidigt på enheden. Prøv igen, når du har forbindelse.");
+      }
+    };
+
+    // Ligger der allerede en ventende ændring på sagen, skal rækkefølgen bevares.
+    if (getQueuedPost(id, sid) || (typeof navigator !== "undefined" && navigator.onLine === false)) {
+      laegIKoe();
+      return;
+    }
+
+    const r = await saveOrderVersioned(sid, order, expected);
+    switch (r.status) {
+      case "ok":
+        versionsRef.current.set(id, r.version);
+        baseRef.current.set(id, r.data || order);
+        if (r.data) replaceLocal(r.data);
+        return;
+      case "network":
+        laegIKoe();
+        return;
+      case "conflict":
+        await tryMergeAndSave(sid, order, base, r.version, r.data, 0);
+        return;
+      case "exists": {
+        const f = await fetchOrdersByIds(sid, [id]);
+        const row = f.rows[0];
+        if (row) await tryMergeAndSave(sid, order, null, row.version, row.data, 0);
+        else { rulTilbage(); reportSaveFailure("Kunne ikke oprette sagen. Prøv igen."); }
+        return;
+      }
+      case "not_found":
+        removeLocal(id);
+        reportSaveFailure(`${order.nr ? `Sag ${order.nr}` : "Sagen"} findes ikke længere (den kan være slettet af en anden), så din ændring blev ikke gemt.`);
+        return;
+      default:
+        rulTilbage();
+        reportSaveFailure(`Kunne ikke gemme ændringen: ${r.fejl || ""}`.trim());
+    }
+  }, [tryMergeAndSave, replaceLocal, removeLocal]);
+
+  // Brugerens valg i ConflictBanner.
+  //   "theirs": behold den andens version - vores parkerede ændring kasseres.
+  //   "mine":   læg vores ændrede felter oven på den NYESTE udgave. Felter vi ikke
+  //             rørte, forbliver som andre har sat dem.
+  const resolveParked = useCallback((kid, valg) => {
+    const c = getConflicts().find((x) => x.kid === kid);
+    if (!c || c.storeId !== storeRef.current) return;
+    if (valg === "theirs") { removeConflict(kid); return; }
+
+    runSerial(c.orderId, async () => {
+      const f = await fetchOrdersByIds(c.storeId, [c.orderId]);
+      if (!f.ok) {
+        reportSaveFailure("Ingen forbindelse – din ændring er ikke gemt endnu, men den ligger stadig og venter. Prøv igen, når du har forbindelse.");
+        return;
+      }
+      let row = f.rows[0];
+      if (!row) {
+        reportSaveFailure(`Sag ${c.nr} findes ikke længere, så din ændring kan ikke gemmes. Du kan vælge at kassere den.`);
+        return;
+      }
+      for (let forsoeg = 0; forsoeg < 3; forsoeg++) {
+        const ud = applyMine(c.mine, row.data, c.mineKeys);
+        const r = await saveOrderVersioned(c.storeId, ud, row.version);
+        if (r.status === "ok") {
+          removeConflict(kid);
+          versionsRef.current.set(c.orderId, r.version);
+          baseRef.current.set(c.orderId, ud);
+          replaceLocal(ud);
+          return;
+        }
+        if (r.status === "conflict") { row = { version: r.version, data: r.data }; continue; }
+        reportSaveFailure(
+          r.status === "network"
+            ? "Ingen forbindelse – din ændring er ikke gemt endnu, men den ligger stadig og venter. Prøv igen, når du har forbindelse."
+            : `Kunne ikke gemme ændringen: ${r.fejl || ""}`.trim()
+        );
+        return;
+      }
+      // Sagen blev ændret igen og igen, mens vi forsøgte. Vis de nyeste forskelle.
+      updateConflict(kid, { theirs: row.data, theirsVersion: row.version, keys: mergeOrder(c.base, c.mine, row.data).conflicts });
+      adoptServer(c.orderId, row.version, row.data);
+      reportSaveFailure("Sagen blev ændret igen, mens du valgte. Se forskellene og vælg igen.");
+    });
+  }, [runSerial, replaceLocal, adoptServer]);
+
+  useEffect(() => subscribeResolve(resolveParked), [resolveParked]);
+
+  // ---------------- Offline-kø ----------------
+
+  // Sender ÉN ventende ændring. Udføres i samme rækkefølge som brugerens egne
+  // skrivninger på sagen (runSerial), og slår altid den NYESTE ventende post op.
+  const processQueued = useCallback((snap) => runSerial(snap.id, async () => {
+    const sid = storeRef.current;
+    const post = getQueuedPost(snap.id, snap.storeId);
+    if (!post || post.storeId !== sid) return "skip";
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return "network";
+
+    const id = post.id;
+    const fjern = () => removeFromQueue(id, post.storeId);
+    const base = post.base ?? null;
+
+    // Ældre post fra før versionering: vi ved ikke, hvilken udgave den byggede på.
+    // Så sammenlignes med databasen, og enhver forskel parkeres frem for at overskrive.
+    let expected = post.baseVersion;
+    if (expected === undefined) {
+      const f = await fetchOrdersByIds(sid, [id]);
+      if (!f.ok) return f.netvaerk ? "network" : "error";
+      const row = f.rows[0];
+      if (row) {
+        const udfald = await tryMergeAndSave(sid, post.order, null, row.version, row.data, 0);
+        if (udfald === "queued") return "network";
+        fjern();
+        return "handled";
+      }
+      expected = null;
+    }
+
+    const r = await saveOrderVersioned(sid, post.order, expected);
+    switch (r.status) {
+      case "ok":
+        fjern();
+        versionsRef.current.set(id, r.version);
+        baseRef.current.set(id, r.data || post.order);
+        if (r.data) replaceLocal(r.data);
+        return "ok";
+      case "conflict": {
+        const udfald = await tryMergeAndSave(sid, post.order, base, r.version, r.data, 0);
+        if (udfald === "queued") return "network";
+        fjern();
+        return "handled";
+      }
+      case "exists": {
+        const f = await fetchOrdersByIds(sid, [id]);
+        const row = f.rows[0];
+        if (!f.ok) return f.netvaerk ? "network" : "error";
+        if (!row) return "error";
+        const udfald = await tryMergeAndSave(sid, post.order, null, row.version, row.data, 0);
+        if (udfald === "queued") return "network";
+        fjern();
+        return "handled";
+      }
+      case "not_found":
+        fjern();
+        removeLocal(id);
+        reportSaveFailure(`En ændring på sag ${post.order?.nr || id} kunne ikke gemmes, fordi sagen ikke findes længere.`);
+        return "handled";
+      case "network":
+        return "network";
+      default:
+        return "error";
+    }
+  }), [runSerial, tryMergeAndSave, replaceLocal, removeLocal]);
 
   // Sender køen. Kaldes ved "online", ved opstart, og hvert 30. sekund -
   // "online"-hændelsen er notorisk upålidelig på mobil, hvor telefonen kan
@@ -50,20 +437,18 @@ export function useOrders(storeId) {
     if (flushingRef.current || queueLength() === 0) return;
     flushingRef.current = true;
     try {
-      const resultat = await flushQueue(saveOrder, {
+      const resultat = await flushQueue(processQueued, {
         onDropped: (post) =>
           reportSaveFailure(
-            `En ændring på sag ${post.order?.nr || post.id} kunne ikke gemmes efter flere forsøg og er nu fjernet fra køen. Åbn sagen og indtast ændringen igen.`
+            `En ændring på sag ${post.order?.nr || post.id} blev afvist af serveren flere gange og kunne ikke gemmes. Åbn sagen og indtast ændringen igen.`
           ),
       });
-      // Hent friske data, hvis noget rent faktisk kom afsted - så skærmen
-      // viser det, der nu står i databasen, inkl. hvad andre har ændret
-      // imens.
-      if (resultat.sendt > 0 && storeId) await load(storeId);
+      // Hent andres ændringer, så skærmen viser det, der nu står i databasen.
+      if (resultat.sendt > 0) await refresh();
     } finally {
       flushingRef.current = false;
     }
-  }, [storeId, load]);
+  }, [processQueued, refresh]);
 
   useEffect(() => {
     flush();
@@ -72,40 +457,38 @@ export function useOrders(storeId) {
     return () => { window.removeEventListener("online", flush); clearInterval(iv); };
   }, [flush]);
 
+  // ---------------- Skrivninger ----------------
+
   // Gemmer ÉN ordre.
   //   ok       -> færdig
   //   netvaerk -> behold ændringen på skærmen, læg den i kø
-  //   afvist   -> rul tilbage (dataStore har allerede vist fejlen)
+  //   konflikt -> flet, eller park og spørg brugeren
+  //   afvist   -> rul tilbage og fortæl hvorfor
   const saveOneOrder = (order) => {
-    const previous = orders.find((s) => s.id === order.id) || null;
+    const previous = ordersRef.current.find((s) => s.id === order.id) || null;
+    ordersRef.current = ordersRef.current.some((s) => s.id === order.id)
+      ? ordersRef.current.map((s) => (s.id === order.id ? order : s))
+      : [...ordersRef.current, order];
     setOrders((prev) => (prev.some((s) => s.id === order.id) ? prev.map((s) => (s.id === order.id ? order : s)) : [...prev, order]));
     if (!storeId) return;
 
-    const rulTilbage = () => setOrders((prev) => (previous
-      ? prev.map((s) => (s.id === order.id ? previous : s))
-      : prev.filter((s) => s.id !== order.id)));
-
-    if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      enqueueOrder(storeId, order);
-      return;
-    }
-
-    saveOrderResult(storeId, order)
-      .then((r) => {
-        if (r.ok) return;
-        if (r.netvaerk) { enqueueOrder(storeId, order); return; }
-        rulTilbage();
-      })
-      .catch((e) => {
-        rulTilbage();
-        reportSaveFailure(e?.message || "Ændringen blev ikke gemt.");
-      });
+    runSerial(order.id, () => persist(order, previous)).catch((e) => {
+      if (previous) replaceLocal(previous); else removeLocal(order.id);
+      reportSaveFailure(e?.message || "Ændringen blev ikke gemt.");
+    });
   };
 
-  // Opretter en ny ordre med et midlertidigt sagsnummer, og henter den
-  // friske, database-tildelte version bagefter (se assign_order_number-
-  // triggeren) - så det ENDELIGE, garanteret unikke sagsnummer vises
-  // korrekt, uden gæt fra browseren.
+  const meldOprettelseFejlet = (r) => {
+    reportSaveFailure(
+      r.status === "network"
+        ? "Ingen forbindelse – sagen blev ikke oprettet. Prøv igen, når du har forbindelse."
+        : `Sagen blev ikke oprettet. ${r.fejl || ""}`.trim()
+    );
+  };
+
+  // Opretter en ny ordre med et midlertidigt sagsnummer. Databasen tildeler
+  // det ENDELIGE, garanteret unikke sagsnummer (assign_order_number-
+  // triggeren), og save_order returnerer sagen med nummeret med det samme.
   //
   // BEVIDST IKKE KØET: sagsnummeret tildeles af databasen, og en køet
   // oprettelse ville stå med "..." som nummer i timevis.
@@ -130,17 +513,22 @@ export function useOrders(storeId) {
       oprettetAf: createdBy || null,
     };
     setOrders((prev) => [...prev, newOrder]);
-    const ok = await saveOrder(storeId, newOrder);
-    if (!ok) {
+    const r = await runSerial(newOrder.id, () => saveOrderVersioned(storeId, newOrder, null));
+    if (r.status !== "ok") {
       setOrders((prev) => prev.filter((s) => s.id !== newOrder.id));
+      meldOprettelseFejlet(r);
       return null;
     }
-    const fresh = await getFreshOrder(storeId, newOrder.id);
-    if (fresh) setOrders((prev) => prev.map((s) => (s.id === fresh.id ? fresh : s)));
+    const gemt = r.data || newOrder;
+    versionsRef.current.set(newOrder.id, r.version);
+    baseRef.current.set(newOrder.id, gemt);
+    replaceLocal(gemt);
     return newOrder.id;
   };
 
-  const findOrder = (orders_, id) => orders_.find((x) => x.id === id);
+  // Slår op i den seneste kendte liste (se ordersRef) - første parameter
+  // bevares, så alle eksisterende kald fungerer uændret.
+  const findOrder = (_orders, id) => ordersRef.current.find((x) => x.id === id);
 
   // SLETTER en sag permanent. Kræver sag_slet (admin og sælger har den).
   // BEVIDST IKKE KØET OFFLINE: en sletning er uigenkaldelig, og at udføre
@@ -156,6 +544,8 @@ export function useOrders(storeId) {
       setOrders((prev) => (prev.some((s) => s.id === orderId) ? prev : [...prev, previous]));
       return false;
     }
+    versionsRef.current.delete(orderId);
+    baseRef.current.delete(orderId);
     return true;
   };
 
@@ -198,11 +588,16 @@ export function useOrders(storeId) {
       opfoelgningAf: sourceOrder.id,
     };
     setOrders((prev) => [...prev, newOrder]);
-    const ok = await saveOrder(storeId, newOrder);
-    if (!ok) {
+    const r = await runSerial(newOrder.id, () => saveOrderVersioned(storeId, newOrder, null));
+    if (r.status !== "ok") {
       setOrders((prev) => prev.filter((s) => s.id !== newOrder.id));
+      meldOprettelseFejlet(r);
       return null;
     }
+    const gemt = r.data || newOrder;
+    versionsRef.current.set(newOrder.id, r.version);
+    baseRef.current.set(newOrder.id, gemt);
+    replaceLocal(gemt);
 
     const freshSource = findOrder(orders, sourceOrder.id) || sourceOrder;
     saveOneOrder({
@@ -211,8 +606,6 @@ export function useOrders(storeId) {
       notifikationSet: { ...(freshSource.notifikationSet || {}), opfoelgning: false },
     });
 
-    const fresh = await getFreshOrder(storeId, newOrder.id);
-    if (fresh) { setOrders((prev) => prev.map((s) => (s.id === fresh.id ? fresh : s))); return fresh.id; }
     return newOrder.id;
   };
 
@@ -296,6 +689,10 @@ export function useOrders(storeId) {
   // POS-fejl - montøren har rent faktisk udført opgaven, uanset om
   // fakturaen går igennem. Fejlen skal være synlig og handles separat,
   // ikke forhindre, at sagen kan færdigmeldes.
+  //
+  // Funktionen skriver posStatus direkte i databasen, hvilket tæller
+  // sagens versionsnummer op. Derfor hentes de nyeste versioner bagefter
+  // (refresh), så vores næste gem ikke bygger på en forældet udgave.
   const runPosSync = (orderId) => {
     if (!storeId) return;
     syncPosOnFinish({ storeId, orderId }).then((result) => {
@@ -304,6 +701,7 @@ export function useOrders(storeId) {
       } else if (!result.ok) {
         reportSaveFailure(`POS-synkroniseringen ved færdigmelding kunne ikke gennemføres: ${result.fejl || ""}`.trim());
       }
+      refresh();
     });
   };
 
@@ -483,5 +881,6 @@ export function useOrders(storeId) {
     markProblem, clearProblem, dismissNotifications,
     queuedCount,
     reload: () => load(storeId),
+    refresh,
   };
 }
