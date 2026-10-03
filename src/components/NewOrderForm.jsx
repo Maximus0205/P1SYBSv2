@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Plus, Building2, Clock, Hash, ChevronLeft, ChevronRight, Check, KeyRound, AlertTriangle, Search, Loader2, Sparkles } from "lucide-react";
-import { TIME_SLOTS, KEY_ACCESS_TYPES, buildTitle, formatDuration, createLineItem, lineItemMinutes, timeSlotById, timeSlotText, todayISO, emptyKeyAccess, keyAccessText } from "../data/domain";
+import { TIME_SLOTS, buildTitle, formatDuration, createLineItem, lineItemMinutes, timeSlotById, timeSlotText, todayISO, emptyKeyAccess, keyAccessText } from "../data/domain";
 import { CASE_TYPES, SAGSTYPE_KUNDE, SAGSTYPE_TOMGANG, tomgangWarnings, TOMGANG_COLOR } from "../data/caseTypes";
 import { buildEstimateIndex, buildClusterIndex } from "../data/estimates";
 import { findKeyCabinets } from "../data/keyCabinets";
@@ -21,10 +21,10 @@ import { KeyCabinetBookingHint } from "../components/KeyCabinetAlert";
 //                    nøgle), viser forslag + interaktiv ugevisning.
 //
 // SAGSTYPE (september 2026) vælges ALLERFØRST, før alt andet. Det er ikke
-// et felt blandt de øvrige, men en forudsætning: valget ændrer, hvad
+// et felt blandt de øvrige, men en forudsaetning: valget ændrer, hvad
 // resten af formularen spørger om. Ved TOMGANG er der ingen kunde til
 // stede på adressen, og nøglen går fra at være en detalje til at være
-// forudsætningen for, at montøren overhovedet kan komme ind - se
+// forudsaetningen for, at montøren overhovedet kan komme ind - se
 // data/caseTypes.js.
 //
 // BIL, IKKE MONTØR (september 2026): "technicians" er BIL-rækker (se
@@ -170,11 +170,19 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
   // opslaget tidligere til på selve TASTEINDTASTNINGEN (fx "Park" matchede
   // løst på "Parkvej", længe før brugeren overhovedet var færdig med at
   // skrive) - et nøgleskab-hint, der dukker op på en halvt tastet adresse,
-  // er en falsk lovning, ikke en hjælp.
+  // er en falsk løfte, ikke en hjælp.
   const skabMatches = useMemo(
     () => (erTomgang && addressStatus === "gyldig" ? findKeyCabinets(address, keyCabinets) : []),
     [erTomgang, addressStatus, address, keyCabinets]
   );
+
+  // NØGLESKAB UDELUKKER NØGLEBOKS (september 2026): dækker et skab SIKKERT
+  // adressen, er det skabet - og kun skabet - der er adgangen. Montøren får
+  // det vist automatisk ud fra adressen (se KeyCabinetAlert.jsx), og
+  // rutelinket kører via det. Nøgle-felterne skjules derfor, og der gemmes
+  // ingen nøgleoplysning på sagen - ellers ville den samme nøgle stå to
+  // gange, én gang som skab og én gang som en "nøgleboks".
+  const skabDaekkerAdressen = skabMatches.some((m) => m.niveau === "sikker");
 
   // Grundestimat ud fra MÅLT tid på tidligere afsluttede sager (se
   // data/estimates.js). Bygges én gang pr. åbning af formularen (orders
@@ -198,21 +206,6 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
     if (id === SAGSTYPE_TOMGANG && !keyAccess.kraeves) {
       setKeyAccess((prev) => ({ ...prev, kraeves: true }));
     }
-  };
-
-  // "Brug som nøgleoplysning": lægger skabet ind i sagens egne
-  // nøglefelter, så det også står i den almindelige nøgletekst (fx i
-  // udskrifter og på sagslisten). Overskriver bevidst placering og - hvis
-  // skabet har en note - detaljer; man har selv trykket på knappen.
-  const brugSkabSomNoegle = (cabinet) => {
-    const skabType = KEY_ACCESS_TYPES.find((t) => /skab|boks/i.test(t));
-    setKeyAccess((prev) => ({
-      ...prev,
-      kraeves: true,
-      type: skabType || prev.type,
-      placering: `Nøgleskab: ${cabinet.navn} — ${cabinet.skabPlacering}`,
-      detaljer: cabinet.note || prev.detaljer,
-    }));
   };
 
   const updateLineItem = (idx, next) => setLineItems((prev) => prev.map((l, i) => (i === idx ? next : l)));
@@ -286,14 +279,13 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
     titel: titlePreview,
     adresse: address || "(ikke udfyldt endnu)",
     forventetVarighed: formatDuration(expectedMinutes),
-    noegle: keyAccess.kraeves ? keyAccessText(keyAccess) : undefined,
+    noegle: !skabDaekkerAdressen && keyAccess.kraeves ? keyAccessText(keyAccess) : undefined,
   };
 
   // Bløde advarsler, ikke spærringer - se tomgangWarnings i caseTypes.js.
   // Er adressen SIKKERT dækket af et nøgleskab, ved montøren allerede
   // hvor nøglen er (den vises automatisk på sagen) - så er "ingen nøgle
   // registreret" en falsk alarm, og udelades.
-  const skabDaekkerAdressen = skabMatches.some((m) => m.niveau === "sikker");
   const advarsler = skabDaekkerAdressen ? [] : tomgangWarnings({ sagstype: caseTypeId, noegle: keyAccess });
 
   const submit = async () => {
@@ -304,7 +296,9 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
       sagstype: caseTypeId,
       kunde: { navn: customerName.trim(), telefon: phone.trim(), email: email.trim(), adresse: address.trim(), leveringsnote: deliveryNote.trim() },
       koeber: hasBuyer ? { navn: buyerName.trim(), telefon: buyerPhone.trim(), email: buyerEmail.trim(), adresse: buyerAddress.trim() } : null,
-      noegle: keyAccess,
+      // Dækker et nøgleskab adressen, gemmes ingen nøgleoplysning - se
+      // skabDaekkerAdressen ovenfor.
+      noegle: skabDaekkerAdressen ? emptyKeyAccess() : keyAccess,
       dato: date, tidsrumId: timeSlotId, start: t.start, slut: t.slut,
       bilId: vehicleId || null,
       varelinjer: lineItems,
@@ -409,21 +403,28 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
               matches={skabMatches}
               hasCabinets={(keyCabinets || []).length > 0}
               addressTyped={addressStatus === "gyldig"}
-              onUse={brugSkabSomNoegle}
             />
           )}
 
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2 flex items-center gap-1.5">
             <KeyRound size={13} className="shrink-0" style={{ color: erTomgang ? TOMGANG_COLOR : undefined }} aria-hidden="true" />
             Nøgle & adgang
-            {erTomgang && <span className="normal-case font-normal text-[11px] text-muted">— påkrævet ved tomgang</span>}
+            {erTomgang && !skabDaekkerAdressen && <span className="normal-case font-normal text-[11px] text-muted">— påkrævet ved tomgang</span>}
           </h4>
-          {erTomgang && (
-            <p className="text-[11px] text-muted mb-2">
-              Montøren skal kunne lukke sig ind selv. Skriv præcist hvor nøglen findes, og hvad der skal til for at komme ind (kode, alarm, opgang).
+          {skabDaekkerAdressen ? (
+            <p className="text-xs text-ink rounded-lg border border-line bg-panel px-3 py-2.5">
+              Nøglen hentes i nøgleskabet ovenfor, så der skal ikke registreres en nøgleboks. Skal montøren også bruge en kode eller alarm, så skriv det i noten til adressen.
             </p>
+          ) : (
+            <>
+              {erTomgang && (
+                <p className="text-[11px] text-muted mb-2">
+                  Montøren skal kunne lukke sig ind selv. Skriv præcist hvor nøglen findes, og hvad der skal til for at komme ind (kode, alarm, opgang).
+                </p>
+              )}
+              <KeyAccessFields keyAccess={keyAccess} onChange={setKeyAccess} />
+            </>
           )}
-          <KeyAccessFields keyAccess={keyAccess} onChange={setKeyAccess} />
 
           {advarsler.length > 0 && (
             <div className="mt-3 rounded-lg border border-danger bg-danger/10 p-3">
