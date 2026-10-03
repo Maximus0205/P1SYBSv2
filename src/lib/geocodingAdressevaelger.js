@@ -71,22 +71,28 @@ export function utm32ToWgs84(easting, northing) {
 }
 
 // ---------------------------------------------------------------------------
-// RETTET (september 2026, tredje gang samme dag): parseQuery genkendte kun
-// et postnummer, hvis det stod som de allersidste fire cifre i teksten
-// ("Parkvej 6 5260") - IKKE hvis et bynavn fulgte efter, som en gemt
-// butiksadresse altid gør ("Odensevej 115, 5260 Odense"). I det tilfælde
-// fandt hverken postnummer- eller husnummer-reglen noget at matche til
-// sidst i strengen (den sluttede jo på "Odense", ikke et tal), og HELE
-// teksten blev sendt som ét samlet "vejnavn" - noget der aldrig ville
-// kunne findes. Det var den PRÆCISE årsag til, at resolveStoreKommuneKode
-// (som sender butikkens EGEN gemte adresse, inklusive bynavn) altid
-// fejlede stille, og kommune_kode derfor aldrig blev gemt.
+// RETTET (september 2026, fjerde gang): parseQuery tog tidligere HUSNUMMERET
+// som det sidste tal-token i teksten ("^(.*\S)\s+(\d+[a-zA-Z]?)$"). Det
+// virker kun, hvis adressen slutter på husnummeret. En rigtig adresse
+// gør det sjældent: efter husnummeret kommer etage/dør ("st. 70"), et
+// bydelsnavn ("Hjallese") og først DEREFTER postnummer og by. Efter at
+// postnummer + by var klippet væk, stod der fx "Odensevej 115 Hjallese" -
+// intet tal til sidst, intet husnummer fundet, og HELE resten blev sendt
+// som ét "vejnavn", som aldrig kan findes.
 //
-// Nu findes postnummeret ved at lede efter FIRE CIFRE EFTERFULGT AF EN
+// Det var den reelle grund til, at butikkens kommunekode ALDRIG blev
+// gemt (butikkens adresse er "Odensevej 115, Hjallese, 5260 Odense S"), og
+// dermed til at adresseforslag ikke blev afgrænset til butikkens område.
+//
+// Nu er husnummeret det FØRSTE tal-token EFTER vejnavnet (samme princip
+// som parseAddress i data/keyCabinets.js); alt bagved - etage, dør,
+// bydel - ignoreres, da Adressevælgeren selv finder det ud fra vejnavn +
+// husnummer + postnummer.
+//
+// Postnummeret findes ved at lede efter FIRE CIFRE EFTERFULGT AF EN
 // ORDGRÆNSE et sted i teksten (ikke nødvendigvis til sidst) - alt FRA og
 // MED det postnummer (postnummer + et eventuelt bynavn bagved) klippes
-// væk, så kun "vejnavn husnummer" er tilbage til næste trin. Virker
-// stadig uændret for det enklere tilfælde uden bynavn.
+// væk, så kun "vejnavn husnummer ..." er tilbage til næste trin.
 function parseQuery(raw) {
   let s = (raw || "").trim().replace(/,/g, " ").replace(/\s+/g, " ").trim();
   if (!s) return { tekst: "" };
@@ -102,7 +108,7 @@ function parseQuery(raw) {
   }
 
   let husnummer;
-  const houseMatch = s.match(/^(.*\S)\s+(\d+[a-zA-Z]?)$/);
+  const houseMatch = s.match(/^(.*?\S)\s+(\d+[a-zA-Z]?)(?:\s.*)?$/);
   if (houseMatch) {
     husnummer = houseMatch[2];
     s = houseMatch[1];
@@ -131,8 +137,16 @@ function parseQuery(raw) {
 // strukturere søgning efter netop den adresse) rammer altid
 // "soeg-adresser" uanset dette valg, så etage/dør er stadig ét klik væk,
 // ikke tabt.
-export async function searchAdressevaelger(raw, kommunekode, handling = "soeg-adresser") {
+//
+// standardPostnummer (september 2026, tilføjet): bruges KUN, hvis den tastede
+// tekst ikke selv indeholder et postnummer. AddressInput bruger det til at
+// søge i butikkens eget postnummer FØRST - Adressevælgeren sorterer ellers
+// i ren stigende postnummer og returnerer kun de første 10, så en søgning
+// efter fx "Parkvej 1" uden postnummer fyldte hele listen med Sjælland, og
+// Odense kom aldrig med.
+export async function searchAdressevaelger(raw, kommunekode, handling = "soeg-adresser", standardPostnummer) {
   const query = parseQuery(raw);
+  if (!query.postnummer && standardPostnummer) query.postnummer = standardPostnummer;
   const data = await callProxy({ handling, maksimum: 10, kommunekode, ...query });
   if (!data || data.status !== "ok") return { ok: false, fejl: data?.beskrivelse || "Kunne ikke søge lige nu.", fund: [] };
   return {
@@ -179,9 +193,9 @@ export async function lookupAdressevaelgerCoordinates(id, type) {
 //
 //   2. parseQuery (se ovenfor) kunne ikke tolke en gemt butiksadresse med
 //      bynavn ("Odensevej 115, 5260 Odense") - kun uden ("Odensevej 115
-//      5260"). Den fejl ramte NETOP denne funktion, fordi det er
-//      butikkens egen, FULDE gemte adressetekst (inkl. bynavn), der
-//      sendes ind her.
+//      5260"), og siden heller ikke med bydel imellem ("Odensevej 115,
+//      Hjallese, 5260 Odense S"). Den fejl ramte NETOP denne funktion, fordi
+//      det er butikkens egen, FULDE gemte adressetekst, der sendes ind her.
 //
 // Rettelsen slår derfor op i TO TRIN, ligesom lookupAdressevaelgerCoordinates
 // ovenfor gør for koordinater: (1) find et husnummer-id for adressen via en
