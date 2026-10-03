@@ -119,6 +119,39 @@ function parseQuery(raw) {
 }
 
 // ---------------------------------------------------------------------------
+// FLERE RESULTATER END 10 (september 2026)
+//
+// Adressevælgeren sorterer i ren stigende postnummer ved lige godt match og
+// har INGEN parameter til sortering efter nærhed (kun tekst, vejnavn,
+// husnummer, postnummer og kommuneKode - ifølge deres dokumentation). Vil
+// man have de adresser frem, der ligger tæt på butikken, må man derfor
+// hente FLERE resultater, end listen skal vise, og selv vælge de bedste
+// (se AddressInput.jsx). Med kun 10 resultater kom en søgning på fx
+// "Kløvervej" aldrig forbi Sjælland, og Fyn var slet ikke med.
+//
+// Hvor højt maksimum kan sættes, vides ikke. Derfor prøves 100, så 50, så
+// 10 - det første, der giver et gyldigt svar, bruges, og det erindres for
+// resten af sessionen, så et for højt tal ikke koster et fejlkald hver gang.
+const MAKSIMUM_TRIN = [100, 50, 10];
+let bekraeftetMaksimum = null;
+
+async function soegMedMaksimum(body, oensketMaksimum) {
+  let trin = MAKSIMUM_TRIN.filter((m) => m <= Math.max(oensketMaksimum, 10));
+  if (bekraeftetMaksimum != null) trin = trin.filter((m) => m <= bekraeftetMaksimum);
+  if (trin.length === 0) trin = [10];
+  let data = null;
+  for (const m of trin) {
+    data = await callProxy({ ...body, maksimum: m });
+    if (data && data.status === "ok") {
+      if (m > 10) bekraeftetMaksimum = m;
+      return data;
+    }
+    if (m <= 10) break;
+  }
+  return data;
+}
+
+// ---------------------------------------------------------------------------
 // Fonetisk søgning (autocomplete). Se parseQuery ovenfor for hvorfor
 // gadenavn/husnummer/postnummer altid sendes som adskilte, strukturerede
 // felter frem for én sammenhængende tekst.
@@ -129,25 +162,19 @@ function parseQuery(raw) {
 //
 // ENDPOINT (september 2026, RETTET): kan vælges pr. kald - se handling
 // nedenfor. Standard er stadig "soeg-adresser" (/adresser/soeg), som er
-// den ENESTE af de to, der kan returnere type "adresse" med etage/dør -
-// se noten ovenfor. "soeg-husnumre" (/husnumre/soeg) bruges i stedet, når
-// et kommunekode-filter skal respekteres (se kommunekode-noten nedenfor),
-// og mister derfor etage/dør-niveauet for DEN søgning - det er en bevidst
-// afvejning: AddressInput.jsx's egen opfølgning (klik på et husnummer ->
-// strukturere søgning efter netop den adresse) rammer altid
-// "soeg-adresser" uanset dette valg, så etage/dør er stadig ét klik væk,
-// ikke tabt.
+// den ENESTE af de to, der kan returnere type "adresse" med etage/dør.
+// "soeg-husnumre" (/husnumre/soeg) bruges til selve forslagslisten.
 //
 // standardPostnummer (september 2026, tilføjet): bruges KUN, hvis den tastede
 // tekst ikke selv indeholder et postnummer. AddressInput bruger det til at
-// søge i butikkens eget postnummer FØRST - Adressevælgeren sorterer ellers
-// i ren stigende postnummer og returnerer kun de første 10, så en søgning
-// efter fx "Parkvej 1" uden postnummer fyldte hele listen med Sjælland, og
-// Odense kom aldrig med.
-export async function searchAdressevaelger(raw, kommunekode, handling = "soeg-adresser", standardPostnummer) {
+// søge i butikkens eget postnummer FØRST.
+//
+// maksimum (september 2026, tilføjet): hvor mange resultater man ØNSKER (op
+// til 100) - se soegMedMaksimum ovenfor. Standard er 10, som før.
+export async function searchAdressevaelger(raw, kommunekode, handling = "soeg-adresser", standardPostnummer, maksimum = 10) {
   const query = parseQuery(raw);
   if (!query.postnummer && standardPostnummer) query.postnummer = standardPostnummer;
-  const data = await callProxy({ handling, maksimum: 10, kommunekode, ...query });
+  const data = await soegMedMaksimum({ handling, kommunekode, ...query }, maksimum);
   if (!data || data.status !== "ok") return { ok: false, fejl: data?.beskrivelse || "Kunne ikke søge lige nu.", fund: [] };
   return {
     ok: true,

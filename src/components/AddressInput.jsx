@@ -31,7 +31,8 @@ import { searchAdressevaelger } from "../lib/geocodingAdressevaelger";
 //   B. KOMMUNE - butikkens kommune (kun hvis kommunekoden er kendt).
 //   C. LANDET - helt uden geografisk filter. Er det eneste, der rammer en
 //               adresse i en anden kommune, og respekterer et tastet
-//               postnummer.
+//               postnummer. Henter FLERE end 10 resultater, så der er noget
+//               at rangere efter nærhed.
 // Rækkefølgen i listen er A, B, C, dernæst sorteres der efter specificitet
 // (en konkret adgang før et blot vejnavn) og postnummer-afstand til
 // butikken. En adresse i nærheden står altså øverst, men en adresse langt
@@ -43,6 +44,24 @@ import { searchAdressevaelger } from "../lib/geocodingAdressevaelger";
 const DEBOUNCE_MS = 350;
 const MAX_FORSLAG = 10;
 const ENDPOINT = "soeg-husnumre";
+// Den landsdækkende søgning henter FLERE end de 10, listen viser, så der er
+// noget at rangere efter nærhed (se lib/geocodingAdressevaelger.js). Falder
+// automatisk tilbage til et lavere tal, hvis Adressevælgeren ikke tillader det.
+const LANDET_MAKSIMUM = 100;
+// Antal husnumre vi henter, når man har valgt en vej (typisk højst 100).
+const HUSNUMRE_MAKSIMUM = 100;
+
+// Naturlig sortering af husnumre: 1, 1A, 1B, 2, 3, 10 (ikke 1, 10, 2, 3).
+function husnummerSortKey(f) {
+  const raw = String(f.husnummer || (f.titel || "").match(/\s(\d+[A-Za-zÆØÅæøå]?)\b/)?.[1] || "");
+  const m = raw.match(/^(\d+)(.*)$/);
+  return m ? [parseInt(m[1], 10), m[2].toLowerCase()] : [Infinity, raw.toLowerCase()];
+}
+function compareHusnumre(a, b) {
+  const [na, la] = husnummerSortKey(a);
+  const [nb, lb] = husnummerSortKey(b);
+  return na !== nb ? na - nb : la.localeCompare(lb, "da");
+}
 
 // Forslag med en KONKRET adgang (husnummer/adresse) frem for blot et
 // gadenavn eller "gadenavn + postnummer" (som betyder søgningen endnu er
@@ -98,7 +117,7 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus,
       const [naer, kommune, landet] = await Promise.all([
         storePostnr ? searchAdressevaelger(value, undefined, ENDPOINT, storePostnr) : tomt,
         kommunekode ? searchAdressevaelger(value, kommunekode, ENDPOINT) : tomt,
-        searchAdressevaelger(value, undefined, ENDPOINT),
+        searchAdressevaelger(value, undefined, ENDPOINT, undefined, LANDET_MAKSIMUM),
       ]);
       if (cancelled) return;
 
@@ -153,6 +172,35 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus,
   //   - Findes der INGEN (fx et enfamiliehus), er husnummeret selv den
   //     endelige adresse.
   const selectSuggestion = async (f) => {
+    // VEJ + POSTNUMMER valgt (fx "Kløvervej 5750 Ringe, 15 husnumre"): vis en
+    // ny liste med vejens husnumre, så man kan vælge det rigtige i stedet for
+    // selv at skulle taste det. Adressen er først specifik, når et husnummer
+    // er valgt, så status forbliver "usikker" indtil da.
+    if (f.type === "navngivenvejpostnummer" && f.vejnavn && f.postnr) {
+      const vejTekst = `${f.vejnavn} ${f.postnr}`;
+      // Kun hvis teksten reelt ændrer sig, udløser onChange en effekt, der
+      // forbruger flaget - ellers ville næste tastetryk blive sprunget over.
+      selectedRef.current = vejTekst !== value;
+      onChange(vejTekst);
+      setStatus("tjekker");
+      const result = await searchAdressevaelger(`${f.vejnavn} ${f.postnr}`, undefined, ENDPOINT, undefined, HUSNUMRE_MAKSIMUM);
+      const husnumre = (result.fund || []).filter((x) => x.type === "husnummer").sort(compareHusnumre);
+      if (husnumre.length === 0) {
+        // Ingen husnumre at vise - lad brugeren taste husnummeret selv.
+        onChange(f.titel);
+        setSuggestions([]);
+        setShowSuggestions(false);
+        setStatus("usikker");
+        onValidationChange?.("usikker");
+        return;
+      }
+      setSuggestions(husnumre);
+      setShowSuggestions(true);
+      setStatus("usikker");
+      onValidationChange?.("usikker");
+      return;
+    }
+
     if (f.type !== "husnummer" || !f.vejnavn || !f.husnummer) {
       selectedRef.current = true;
       onChange(f.titel);
