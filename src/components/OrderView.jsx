@@ -8,6 +8,7 @@ import { LineItemDetails, Notes, Photos, Reports, TimeLog } from "../components/
 import { CustomerHistoryLookup } from "../components/OrderFormFields";
 import { AddressInput } from "../components/AddressInput";
 import { AddressNotesPanel } from "../components/AddressNotes";
+import { kraeverBeskrivelse } from "../lib/ydelser";
 
 const cloneLineItems = (list) => (list || []).map((v) => ({ ...v, tillaeg: (v.tillaeg || []).map((y) => ({ ...y })) }));
 
@@ -171,7 +172,8 @@ function LineItemEditor({ order, catalog, onSave, onCancel, embedded = false, it
   const changeService = (id, serviceId) => {
     const s = primaryServices.find((p) => p.id === serviceId);
     const current = items.find((v) => v.id === id);
-    patch(id, { primaerYdelse: s ? { id: s.id, navn: s.navn, minutter: current?.primaerYdelse?.minutter || 0 } : null });
+    // En opgavebeskrivelse hører til den ydelse, der kræver den - skiftes ydelse, ryddes den.
+    patch(id, { primaerYdelse: s ? { id: s.id, navn: s.navn, minutter: current?.primaerYdelse?.minutter || 0 } : null, ...(kraeverBeskrivelse(s) ? {} : { opgavebeskrivelse: "" }) });
   };
 
   // Standardtid for et tillæg - matrixen (pr. varetype) har forrang,
@@ -267,6 +269,12 @@ function LineItemEditor({ order, catalog, onSave, onCancel, embedded = false, it
                       className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand disabled:opacity-60"
                     />
                   </label>
+                  {kraeverBeskrivelse(primaryServices.find((p) => p.id === v.primaerYdelse?.id)) && (
+                    <label className="text-xs text-muted sm:col-span-2">
+                      Opgavebeskrivelse
+                      <textarea value={v.opgavebeskrivelse || ""} onChange={(e) => patch(v.id, { opgavebeskrivelse: e.target.value })} rows={3} maxLength={600} placeholder="Hvad skal montøren gøre?" className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+                    </label>
+                  )}
                   {v.mangler?.note && (
                     <p className="sm:col-span-2 text-[11px] text-danger flex items-start gap-1.5">
                       <AlertTriangle size={12} className="shrink-0 mt-0.5" aria-hidden="true" />
@@ -626,6 +634,9 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
                 <p className="text-xs text-muted mb-1 flex items-center gap-1"><User size={11} className="shrink-0" aria-hidden="true" /> Booket af {order.oprettetAf.navn}</p>
               )}
               <h1 className="font-display text-3xl uppercase tracking-tight text-ink leading-none">{buildTitle(order.varelinjer)}</h1>
+              {order.varelinjer.filter((v) => (v.opgavebeskrivelse || "").trim()).map((v) => (
+                <p key={v.id} className="text-sm text-ink mt-2 rounded-lg bg-panel border border-line px-3 py-2"><span className="font-semibold">{lineItemLabel(v)}:</span> {v.opgavebeskrivelse}</p>
+              ))}
 
               {order.problem && (
                 <div className="mt-2.5 rounded-lg bg-danger/10 border border-danger px-3 py-2">
