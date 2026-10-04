@@ -334,17 +334,21 @@ function LineItemEditor({ order, catalog, onSave, onCancel, embedded = false, it
   );
 }
 
-// ---------------- Slet sag (august 2026) ----------------
+// ---------------- Slet sag (august 2026, ændret til papirkurv oktober 2026) ----------------
 // Kræver rettigheden sag_slet - admin og sælger har den, montør og lager
-// ikke (håndhævet af RLS-policyen "delete orders with permission").
+// ikke (håndhævet i databasen).
 //
-// Bekræftelsen nævner sagsnummer OG kundenavn, og lister hvad der
-// forsvinder med. En sag er sjældent bare en linje i en liste: den kan
-// have noter fra to kolleger, billeder fra installationen og registreret
-// tid. Det skal man se, FØR man trykker - ikke opdage bagefter.
+// En slettet sag flyttes til PAPIRKURVEN og kan gendannes med alt indhold - se
+// components/TrashPanel.jsx (på siden Salg & ordrebooking). Teksten skal
+// derfor sige præcis det: hverken mere dramatisk ("permanent") eller mere
+// beroligende end virkeligheden.
+//
+// Bekræftelsen nævner sagsnummer OG kundenavn, og lister hvad der følger med.
+// En sag er sjældent bare en linje i en liste: den kan have noter fra to
+// kolleger, billeder fra installationen og registreret tid.
 function DeleteOrderPanel({ order, onConfirm, onCancel }) {
   const [busy, setBusy] = useState(false);
-  const mister = [
+  const foelgerMed = [
     order.noter?.length ? `${order.noter.length} ${order.noter.length === 1 ? "note" : "noter"}` : null,
     order.billeder?.length ? `${order.billeder.length} ${order.billeder.length === 1 ? "billede" : "billeder"}` : null,
     order.rapporter?.length ? `${order.rapporter.length} ${order.rapporter.length === 1 ? "rapport" : "rapporter"}` : null,
@@ -354,14 +358,15 @@ function DeleteOrderPanel({ order, onConfirm, onCancel }) {
   return (
     <div className="rounded-xl bg-white border border-danger p-4 mb-5 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-danger mb-1 flex items-center gap-1.5">
-        <Trash2 size={14} aria-hidden="true" /> Slet sag #{order.nr} permanent?
+        <Trash2 size={14} aria-hidden="true" /> Flyt sag #{order.nr} til papirkurven?
       </h3>
       <p className="text-sm text-ink">{order.kunde?.navn}{order.kunde?.adresse ? ` · ${order.kunde.adresse}` : ""}</p>
       <p className="text-xs text-muted mt-1">{buildTitle(order.varelinjer)}</p>
 
-      {mister.length > 0 && (
-        <p className="text-xs text-danger mt-2">Følgende slettes med og kan ikke hentes tilbage: {mister.join(", ")}.</p>
-      )}
+      <p className="text-xs text-muted mt-2">
+        Sagen forsvinder fra planlægningen og alle andres skærme, men kan gendannes fra Papirkurv på siden Salg &amp; ordrebooking.
+        {foelgerMed.length > 0 ? ` Følgende gemmes med: ${foelgerMed.join(", ")}.` : ""}
+      </p>
       <p className="text-xs text-muted mt-2">
         Skal sagen bare ikke udføres, er det ofte bedre at færdigmelde den — så bevares historikken. Slet kun, hvis sagen aldrig skulle have været oprettet.
       </p>
@@ -372,7 +377,7 @@ function DeleteOrderPanel({ order, onConfirm, onCancel }) {
           disabled={busy}
           className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-danger hover:bg-ink focus:outline-none focus:ring-2 focus:ring-ink transition-colors disabled:opacity-60"
         >
-          {busy ? "Sletter..." : "Ja, slet sagen"}
+          {busy ? "Flytter..." : "Ja, flyt til papirkurven"}
         </button>
         <button onClick={onCancel} disabled={busy} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted focus:outline-none focus:ring-2 focus:ring-muted transition-colors disabled:opacity-60">Behold sagen</button>
       </div>
