@@ -14,6 +14,10 @@ import { supabase } from "./supabaseClient";
 import { logError } from "./errorLog";
 import { isNetworkError } from "./offlineQueue";
 
+// Papirkurv (oktober 2026): en slettet sag får deleted_at sat og forsvinder fra
+// alle almindelige opslag herunder, men beholder noter, billeder og tid, så den
+// kan gendannes. En sag i papirkurven opfattes af resten af appen som "slettet".
+//
 // Supabase afkorter svar ved 1000 rækker. Over den grænse må vi ikke
 // tolke "mangler i svaret" som "slettet" (se useOrders.refresh).
 export const MAKS_RAEKKER = 1000;
@@ -22,7 +26,7 @@ const BID = 80; // antal id'er pr. forespørgsel (URL-længde)
 
 export async function fetchAllOrders(storeId) {
   if (!storeId) return { ok: true, rows: [] };
-  const { data, error } = await supabase.from("orders").select("id, version, data").eq("store_id", storeId);
+  const { data, error } = await supabase.from("orders").select("id, version, data").eq("store_id", storeId).is("deleted_at", null);
   if (error) {
     logError("orderStore:fetchAllOrders", error.message);
     return { ok: false, rows: [], netvaerk: isNetworkError(error) };
@@ -34,7 +38,7 @@ export async function fetchAllOrders(storeId) {
 // sagsbasen hentes ikke hvert 20. sekund.
 export async function fetchOrderVersions(storeId) {
   if (!storeId) return { ok: true, rows: [] };
-  const { data, error } = await supabase.from("orders").select("id, version").eq("store_id", storeId);
+  const { data, error } = await supabase.from("orders").select("id, version").eq("store_id", storeId).is("deleted_at", null);
   if (error) {
     if (!isNetworkError(error)) logError("orderStore:fetchOrderVersions", error.message);
     return { ok: false, rows: [], netvaerk: isNetworkError(error) };
@@ -47,7 +51,7 @@ export async function fetchOrdersByIds(storeId, ids) {
   const rows = [];
   for (let i = 0; i < ids.length; i += BID) {
     const del = ids.slice(i, i + BID).map(String);
-    const { data, error } = await supabase.from("orders").select("id, version, data").eq("store_id", storeId).in("id", del);
+    const { data, error } = await supabase.from("orders").select("id, version, data").eq("store_id", storeId).in("id", del).is("deleted_at", null);
     if (error) {
       if (!isNetworkError(error)) logError("orderStore:fetchOrdersByIds", error.message);
       return { ok: false, rows: [], netvaerk: isNetworkError(error) };
@@ -85,4 +89,60 @@ export async function saveOrderVersioned(storeId, order, expectedVersion) {
   }
   logError("orderStore:saveOrderVersioned", "Uventet svar fra save_order", { svar: data });
   return { status: "error", fejl: "Uventet svar fra serveren" };
+}
+
+// ---------------------------------------------------------------------------
+// PAPIRKURV (oktober 2026) - se supabase/migrations/20261004_order_trash.sql
+
+// Sendes, når en sag er flyttet til eller hentet tilbage fra papirkurven, så
+// sagslisten (hooks/useOrders.js) opdaterer sig med det samme i stedet for at
+// vente på den løbende opdatering.
+export const ORDERS_CHANGED_EVENT = "p1sybs:orders-changed";
+
+export function notifyOrdersChanged() {
+  try {
+    if (typeof window !== "undefined") window.dispatchEvent(new Event(ORDERS_CHANGED_EVENT));
+  } catch (_) { /* en besked må aldrig vælte et kald */ }
+}
+
+async function kaldStatus(navn, storeId, id) {
+  if (!storeId || !id) return { status: "error", fejl: "Mangler butik eller sag" };
+  const { data, error } = await supabase.rpc(navn, { p_store_id: storeId, p_id: String(id) });
+  if (error) {
+    if (isNetworkError(error)) return { status: "network", fejl: error.message };
+    logError(`orderStore:${navn}`, error.message, { orderId: id });
+    return { status: "error", fejl: error.message };
+  }
+  if (data?.status === "ok" || data?.status === "not_found") return { status: data.status, version: data.version };
+  logError(`orderStore:${navn}`, "Uventet svar", { svar: data });
+  return { status: "error", fejl: "Uventet svar fra serveren" };
+}
+
+// "ok" | "not_found" (findes ikke / allerede i papirkurven) | "network" | "error"
+export const trashOrder = (storeId, id) => kaldStatus("trash_order", storeId, id);
+export const restoreOrder = (storeId, id) => kaldStatus("restore_order", storeId, id);
+// Sletter ENDELIGT - virker kun på en sag, der allerede ligger i papirkurven.
+export const purgeTrashedOrder = (storeId, id) => kaldStatus("purge_trashed_order", storeId, id);
+
+export async function fetchTrashedOrders(storeId) {
+  if (!storeId) return { ok: true, rows: [] };
+  const { data, error } = await supabase
+    .from("orders")
+    .select("id, data, deleted_at")
+    .eq("store_id", storeId)
+    .not("deleted_at", "is", null)
+    .order("deleted_at", { ascending: false });
+  if (error) {
+    if (!isNetworkError(error)) logError("orderStore:fetchTrashedOrders", error.message);
+    return { ok: false, rows: [], netvaerk: isNetworkError(error) };
+  }
+  return { ok: true, rows: data || [] };
+}
+
+// Må brugeren slette/gendanne sager? Databasen håndhæver det uanset hvad -
+// dette bruges kun til at vise en venlig besked i stedet for en knap, der
+// kun giver en fejl.
+export async function canDeleteOrders() {
+  const { data, error } = await supabase.rpc("has_permission", { perm: "sag_slet" });
+  return !error && data === true;
 }
