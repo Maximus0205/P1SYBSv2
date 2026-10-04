@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { deleteOrder as deleteOrderRow, syncPosOnFinish } from "../lib/dataStore";
-import { fetchAllOrders, fetchOrderVersions, fetchOrdersByIds, saveOrderVersioned, MAKS_RAEKKER } from "../lib/orderStore";
+import { syncPosOnFinish } from "../lib/dataStore";
+import { fetchAllOrders, fetchOrderVersions, fetchOrdersByIds, saveOrderVersioned, trashOrder, ORDERS_CHANGED_EVENT, MAKS_RAEKKER } from "../lib/orderStore";
 import { uid, dailyOrderCompare, lineItemFingerprint } from "../data/domain";
 import { SAGSTYPE_KUNDE } from "../data/caseTypes";
 import { enqueueOrder, flushQueue, queueLength, subscribeQueue, getQueuedPost, removeFromQueue } from "../lib/offlineQueue";
@@ -193,10 +193,13 @@ export function useOrders(storeId) {
     const vedFokus = () => { if (document.visibilityState === "visible") refresh(); };
     document.addEventListener("visibilitychange", vedFokus);
     window.addEventListener("focus", refresh);
+    // En sag gendannet fra papirkurven skal vises straks (se components/TrashPanel.jsx).
+    window.addEventListener(ORDERS_CHANGED_EVENT, refresh);
     return () => {
       clearInterval(iv);
       document.removeEventListener("visibilitychange", vedFokus);
       window.removeEventListener("focus", refresh);
+      window.removeEventListener(ORDERS_CHANGED_EVENT, refresh);
     };
   }, [storeId, refresh]);
 
@@ -530,20 +533,33 @@ export function useOrders(storeId) {
   // bevares, så alle eksisterende kald fungerer uændret.
   const findOrder = (_orders, id) => ordersRef.current.find((x) => x.id === id);
 
-  // SLETTER en sag permanent. Kræver sag_slet (admin og sælger har den).
-  // BEVIDST IKKE KØET OFFLINE: en sletning er uigenkaldelig, og at udføre
-  // den timer senere - hvor brugeren for længst har glemt den, og en
-  // kollega måske har arbejdet videre på sagen - er ikke en tjeneste.
+  // SLETTER en sag - flytter den til PAPIRKURVEN (oktober 2026), så den kan
+  // gendannes med noter, billeder og tid (se components/TrashPanel.jsx og
+  // supabase/migrations/20261004_order_trash.sql). Kræver sag_slet (admin og
+  // sælger har den) - håndhævet af databasen.
+  // BEVIDST IKKE KØET OFFLINE: en sletning udført timer senere, hvor brugeren
+  // for længst har glemt den, og en kollega måske har arbejdet videre på sagen,
+  // er ikke en tjeneste.
+  // Udføres efter evt. igangværende gem af samme sag (runSerial), så en rettelse
+  // på vej ikke løber ind i en allerede slettet sag.
   const deleteOrder = async (orderId) => {
     if (!storeId) return false;
     const previous = findOrder(orders, orderId);
     if (!previous) return false;
     setOrders((prev) => prev.filter((s) => s.id !== orderId));
-    const ok = await deleteOrderRow(storeId, orderId);
-    if (!ok) {
+    const r = await runSerial(orderId, () => trashOrder(storeId, orderId));
+    // "not_found": den er allerede væk (slettet af en anden) - samme resultat som ønsket.
+    if (r.status !== "ok" && r.status !== "not_found") {
       setOrders((prev) => (prev.some((s) => s.id === orderId) ? prev : [...prev, previous]));
+      reportSaveFailure(
+        r.status === "network"
+          ? "Ingen forbindelse – sagen blev ikke slettet. Prøv igen, når du har forbindelse."
+          : `Sagen blev ikke slettet. ${r.fejl || ""}`.trim()
+      );
       return false;
     }
+    // En ventende offline-ændring på en slettet sag er ikke længere relevant.
+    removeFromQueue(orderId, storeId);
     versionsRef.current.delete(orderId);
     baseRef.current.delete(orderId);
     return true;
