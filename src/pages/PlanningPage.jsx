@@ -5,6 +5,7 @@ import { geocodeAddress, geocodeAddresses, drivingDistances, routeDrivingTime, o
 import { suggestPlan, planningWindow, WORKDAY_MINUTES } from "../lib/scheduling";
 import { DateSelector } from "../components/common";
 import { OrderCardCompact } from "../components/OrderCardCompact";
+import { forslagsDatoer, fristStatus, urgensNoegle } from "../lib/frist";
 
 // ---------------------------------------------------------------------------
 // Planlægning + Kørsel er fusioneret til ÉN fane (august 2026). Siden er
@@ -117,7 +118,9 @@ function classify(orders, technicians, personnel, vehicles, timeOff, windowHours
   const sortByDate = (a, b) => (a.dato || "9999").localeCompare(b.dato || "9999") || (a.start || "").localeCompare(b.start || "");
   technicianProblem.sort(sortByDate);
   sickLeave.sort(sortByDate);
-  needsPlan.sort(sortByDate);
+  // Mest presserende frist først (se lib/frist.js): en tomgang med frist i morgen skal ikke
+  // havne bag sager uden dato.
+  needsPlan.sort((a, b) => urgensNoegle(a).localeCompare(urgensNoegle(b)) || (a.start || "").localeCompare(b.start || ""));
   inProgressToday.sort(sortByDate);
   upcoming.sort(sortByDate);
   unresolved.sort((a, b) => (b.problem?.tid || "").localeCompare(a.problem?.tid || ""));
@@ -148,6 +151,15 @@ function matchesSearch(order, search) {
 // planlægger, der åbner "Montørproblem", skal kunne se HVILKET problem
 // hver enkelt sag har - "bilen er ude af drift" og "ingen montør
 // tilknyttet" kræver forskellige beslutninger.
+// Fristen på en tomgang (se lib/frist.js): rød når den er overskredet, orange når den er nær.
+function FristMaerke({ order }) {
+  const f = fristStatus(order, todayISO());
+  if (!f) return null;
+  const farve = f.niveau === "overskredet" ? "text-danger" : f.niveau === "snart" ? "text-brand" : "text-muted";
+  const tekst = f.niveau === "overskredet" ? `Fristen ${formatShortDate(order.senestDato)} er overskredet` : f.dage === 0 ? "Senest i dag" : `Senest ${formatShortDate(order.senestDato)}`;
+  return <p className={`text-[11px] font-semibold flex items-center gap-1 ${farve}`}><CalendarClock size={11} className="shrink-0" aria-hidden="true" /> {tekst}</p>;
+}
+
 function ReplanCard({ order, technicians, suggestion, loadingSuggestion, onApplySuggestion, onManualChange, onOpen }) {
   return (
     <div className="rounded-lg bg-white border border-line p-3 mb-2 last:mb-0 shadow-sm">
@@ -158,6 +170,8 @@ function ReplanCard({ order, technicians, suggestion, loadingSuggestion, onApply
         </button>
         <span className="text-[11px] font-mono text-muted shrink-0 pt-0.5">{order.dato ? formatShortDate(order.dato) : "ingen dato"}</span>
       </div>
+
+      {order.senestDato && <div className="mb-1.5"><FristMaerke order={order} /></div>}
 
       {order._issue && (
         <p className="text-[11px] text-danger flex items-center gap-1 mb-1.5"><AlertCircle size={11} className="shrink-0" aria-hidden="true" /> {order._issue}</p>
@@ -175,13 +189,14 @@ function ReplanCard({ order, technicians, suggestion, loadingSuggestion, onApply
           <button onClick={() => onApplySuggestion(order, suggestion)} className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors rounded-lg px-3 py-2 flex items-center gap-1"><Check size={11} aria-hidden="true" /> Brug</button>
         </div>
       ) : (
-        <p className="text-[11px] text-muted italic mb-2">Intet forslag med en dækket bil fundet inden for de næste 14 dage — tildel manuelt nedenfor.</p>
+        <p className="text-[11px] text-muted italic mb-2">{order.senestDato ? "Intet forslag med en dækket bil fundet inden fristen — tildel manuelt nedenfor." : "Intet forslag med en dækket bil fundet inden for de næste 14 dage — tildel manuelt nedenfor."}</p>
       )}
 
       <div className="flex gap-1.5 flex-wrap">
         <input
           type="date"
           value={order.dato || ""}
+          max={order.senestDato || undefined}
           onChange={(e) => onManualChange(order.id, { dato: e.target.value || null })}
           aria-label={`Dato for sag ${order.nr}`}
           className="rounded-lg border border-line bg-panel px-2 py-2 text-xs text-ink font-mono focus:outline-none focus:border-brand"
@@ -211,10 +226,13 @@ function ReplanTile({ items, orders, technicians, personnel, timeOff, onUpdateBo
     const run = async () => {
       if (items.length === 0) { setSuggestions({}); return; }
       setLoading(true);
-      const dates = planningWindow(todayISO(), 14);
       const results = {};
       for (const order of items) {
         if (!order.kunde?.adresse) continue;
+        // FRIST (oktober 2026): en tomgang med frist foreslås kun dage til og med fristen (højst
+        // seks uger frem); uden frist som før de næste 14 dage. Se lib/frist.js.
+        const dates = forslagsDatoer(order, todayISO());
+
         const windowOrders = orders.filter((o) => o.id !== order.id && dates.includes(o.dato) && o.kunde?.adresse);
         const bkey = buildingKey(order.kunde.adresse);
         const sameBuildingDates = bkey ? [...new Set(windowOrders.filter((o) => buildingKey(o.kunde.adresse) === bkey).map((o) => o.dato))] : [];
@@ -439,6 +457,7 @@ function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnician
           >
             <p className="text-sm font-semibold text-ink truncate">{order.kunde?.navn}</p>
             <p className="text-xs text-muted truncate">{buildTitle(order.varelinjer)}</p>
+            {order.senestDato && <FristMaerke order={order} />}
             {order.kunde?.adresse && (
               <p className="text-[11px] text-muted truncate flex items-center gap-1">
                 <MapPin size={10} className="shrink-0" aria-hidden="true" /> {order.kunde.adresse}
