@@ -1,10 +1,12 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Plus, Building2, Clock, Hash, ChevronLeft, ChevronRight, Check, KeyRound, AlertTriangle, Search, Loader2, Sparkles } from "lucide-react";
 import { TIME_SLOTS, buildTitle, formatDuration, createLineItem, lineItemMinutes, timeSlotById, timeSlotText, todayISO, emptyKeyAccess, keyAccessText } from "../data/domain";
 import { CASE_TYPES, SAGSTYPE_KUNDE, SAGSTYPE_TOMGANG, tomgangWarnings, TOMGANG_COLOR } from "../data/caseTypes";
 import { buildEstimateIndex, buildClusterIndex } from "../data/estimates";
 import { findKeyCabinets } from "../data/keyCabinets";
 import { lookupPosOrder } from "../lib/dataStore";
+import { erPosAktiv } from "../lib/posStatus";
+import { foersteArbejdsdagFra } from "../lib/arbejdsuge";
 import { useOrderDraft } from "../hooks/useOrderDraft";
 import { klokkeslaet } from "../lib/orderDrafts";
 import { ReceiptUpload } from "../components/ReceiptUpload";
@@ -165,7 +167,9 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
   const [deliveryNote, setDeliveryNote] = useState(d.deliveryNote || "");
   const [keyAccess, setKeyAccess] = useState(() => ({ ...emptyKeyAccess(), ...(d.keyAccess || {}) }));
   // En gemt dato i fortiden giver ingen mening at genoptage - så bruges dagens valgte dato.
-  const [date, setDate] = useState(() => (d.date && d.date >= todayISO() ? d.date : (selectedDate || todayISO())));
+  // Er datoen en lørdag eller søndag, starter bookingen mandag i den kommende uge (se
+  // lib/arbejdsuge.js): der er ingen grund til at vise en uge, der næsten er slut.
+  const [date, setDate] = useState(() => foersteArbejdsdagFra(d.date && d.date >= todayISO() ? d.date : (selectedDate || todayISO())));
   const [timeSlotId, setTimeSlotId] = useState(d.timeSlotId || "heldag");
   const [vehicleId, setVehicleId] = useState(d.vehicleId || "");
   const [lineItems, setLineItems] = useState(() => (
@@ -175,6 +179,17 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
   ));
   const [saving, setSaving] = useState(false);
   const [attemptedNext, setAttemptedNext] = useState(false);
+
+  // POS-opslaget vises kun, hvis butikken faktisk har slået POS til (oktober 2026).
+  // Før stod "Hent fra POS" på alle kundesager, også i butikker uden POS, hvor det
+  // kun kunne give en fejl.
+  const [posAktiv, setPosAktiv] = useState(false);
+  useEffect(() => {
+    let levende = true;
+    if (!storeId) return undefined;
+    erPosAktiv().then((ja) => { if (levende) setPosAktiv(ja); });
+    return () => { levende = false; };
+  }, [storeId]);
 
   // KLADDE: et billede af en TOM formular (til at se, om der er tastet noget)
   // og et samlet billede af alle felter, som gemmes løbende.
@@ -377,7 +392,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
           <CaseTypePicker value={caseTypeId} onChange={changeCaseType} />
 
           {!erTomgang && <ReceiptUpload productTypes={productTypes} onFill={fillFromPdf} />}
-          {!erTomgang && storeId && <PosLookupPanel storeId={storeId} onApply={applyPosResult} />}
+          {!erTomgang && storeId && posAktiv && <PosLookupPanel storeId={storeId} onApply={applyPosResult} />}
 
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">
             {erTomgang ? "Rekvirent (hvem har bestilt arbejdet)" : "Kunde"}
