@@ -1,12 +1,11 @@
 import React, { useMemo, useState } from "react";
-import { Search, X, Trash2 } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { isToday, formatLongDate } from "../data/domain";
 import { DateSelector } from "../components/common";
 import { NewOrderForm } from "../components/NewOrderForm";
 import { CsvImport } from "../components/CsvImport";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 import { OrderDrafts } from "../components/OrderDrafts";
-import { TrashPanel } from "../components/TrashPanel";
 import { useKladder } from "../hooks/useKladder";
 import { nyKladdeId, fjernKladde } from "../lib/orderDrafts";
 
@@ -43,7 +42,7 @@ function matchesSearch(order, search) {
 //
 // addressNotes (september 2026): videresendes til NewOrderForm, som viser
 // en ADVARSEL under adressefeltet på levering-trinnet, hvis adressen
-// allerede er flagget - se components/AddressNotes.jsx. Man kan bevidst
+// allerede er flaget - se components/AddressNotes.jsx. Man kan bevidst
 // IKKE oprette et nyt flag under selve bookingen (kun se en advarsel om et
 // eksisterende), så der er ingen tilsvarende "onAdd"-funktion at sende med
 // her - selve flagningen sker på den bookede sag bagefter.
@@ -64,8 +63,8 @@ function matchesSearch(order, search) {
 // en gemt kladde ved genoptagelse. Lukkes formularen (eller forlader man siden)
 // med indtastet data, bliver kladden stående - intet tabes.
 //
-// PAPIRKURV (oktober 2026): slettede sager kan hentes tilbage herfra - se
-// components/TrashPanel.jsx.
+// PAPIRKURV (oktober 2026): slettede sager kan hentes tilbage fra knappen "Papirkurv"
+// på Forsiden (pages/DashboardPage.jsx) - se components/TrashPanel.jsx.
 function SalesPage({ storeId, orders, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, addressNotes, keyCabinets, selectedDate, onDateChange, onOpen, onAdd, onImport, storeFocus, storeKommuneKode, storePostnr }) {
   const [panel, setPanel] = useState("ny");
   const [search, setSearch] = useState("");
@@ -96,9 +95,6 @@ function SalesPage({ storeId, orders, technicians, personnel, timeOff, productTy
           <button onClick={() => setPanel(panel === "import" ? null : "import")} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-ink border border-ink hover:border-brand hover:text-brand transition-colors">
             Importér CSV
           </button>
-          <button onClick={() => setPanel(panel === "papirkurv" ? null : "papirkurv")} aria-pressed={panel === "papirkurv"} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-ink border border-ink hover:border-brand hover:text-brand transition-colors flex items-center gap-1.5">
-            <Trash2 size={14} aria-hidden="true" /> Papirkurv
-          </button>
           <button onClick={() => (panel === "ny" ? setPanel(null) : startNy())} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors">
             + Book sag
           </button>
@@ -109,7 +105,6 @@ function SalesPage({ storeId, orders, technicians, personnel, timeOff, productTy
 
       {panel === "ny" && <div className="mb-6"><NewOrderForm key={seed.id} draftId={seed.id} draft={seed.draft} userId={userId} storeId={storeId} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} defaultTimeEstimates={defaultTimeEstimates} addressNotes={addressNotes} keyCabinets={keyCabinets} orders={orders} selectedDate={selectedDate} onAdd={onAdd} onClose={() => setPanel(null)} onOpen={onOpen} storeFocus={storeFocus} storeKommuneKode={storeKommuneKode} storePostnr={storePostnr} /></div>}
       {panel === "import" && <div className="mb-6"><CsvImport technicians={technicians} productTypes={productTypes} primaryServices={primaryServices} onImport={onImport} onClose={() => setPanel(null)} /></div>}
-      {panel === "papirkurv" && <TrashPanel storeId={storeId} onClose={() => setPanel(null)} />}
 
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-ink">Sager {isToday(selectedDate) ? "i dag" : `d. ${selectedDate}`}</h2>
