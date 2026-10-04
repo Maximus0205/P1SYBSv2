@@ -562,7 +562,7 @@ export default function App() {
           <Route path="/dashboard" element={
             <DashboardPage
               profile={profile} permissions={effectivePermissions}
-              orders={orders} technicians={technicians} personnel={personnel} vehicles={vehicles} timeOff={timeOff} store={effectiveStore}
+              orders={orders} technicians={technicians} personnel={personnel} vehicles={vehicles} primaryServices={catalog.primaryServices} timeOff={timeOff} store={effectiveStore}
               notifications={notifications} onOpen={onOpen}
               onNavigate={(key) => navigate(`/${key}`)}
               dashboardWidgets={dashboardWidgets} onUpdateWidgets={updateDashboardWidgetsFor}
@@ -603,7 +603,7 @@ export default function App() {
           <Route path="/lager" element={
             <Gate allowed={allowedPages} page="lager">
               <WarehousePage
-                orders={orders} vehicles={vehicles}
+                orders={orders} vehicles={vehicles} primaryServices={catalog.primaryServices}
                 selectedDate={selectedDate} onDateChange={setSelectedDate}
                 onToggleLineItemPicked={ordersStore.toggleLineItemPicked}
                 onReportMissingItem={reportMissingItem}
