@@ -7,17 +7,21 @@ import { kladdeEtiket, tidTekst } from "../lib/orderDrafts";
 //
 // Kassér kræver et ekstra tryk: en kladde er tastet arbejde, og et uheldigt tryk
 // på mobil må ikke fjerne den.
-function OrderDrafts({ kladder, onResume, onDiscard, antalTrin = 4 }) {
+//
+// kompakt (oktober 2026): vises inde i "Opret sag"-widgetten på Forsiden, hvor listen ikke skal
+// have sit eget kort rundt om sig.
+function OrderDrafts({ kladder, onResume, onDiscard, antalTrin = 4, kompakt = false }) {
   const [bekraeft, setBekraeft] = useState(null);
   if (!kladder || kladder.length === 0) return null;
 
   return (
-    <div className="rounded-xl border border-brand bg-white p-4 mb-6 shadow-sm" role="region" aria-label="Parkerede bookinger">
+    <div className={kompakt ? "mt-3 pt-3 border-t border-divider" : "rounded-xl border border-brand bg-white p-4 mb-6 shadow-sm"} role="region" aria-label="Parkerede bookinger">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-1.5">
         <Clock size={15} className="text-brand shrink-0" aria-hidden="true" />
         Parkerede bookinger ({kladder.length})
       </h2>
-      <p className="text-xs text-muted mb-3">Ufærdige sager, der blev afbrudt. Fortsæt, hvor du slap — de gemmes på denne enhed i op til 14 dage.</p>
+      {!kompakt && <p className="text-xs text-muted mb-3">Ufærdige sager, der blev afbrudt. Fortsæt, hvor du slap — de gemmes på denne enhed i op til 14 dage.</p>}
+      {kompakt && <p className="text-[11px] text-muted mb-2">Kun dine egne, gemt på denne enhed i op til 14 dage.</p>}
       <ul className="space-y-2">
         {kladder.map((k) => {
           const { navn, linje2 } = kladdeEtiket(k);
