@@ -7,6 +7,7 @@ import { findKeyCabinets } from "../data/keyCabinets";
 import { lookupPosOrder } from "../lib/dataStore";
 import { erPosAktiv } from "../lib/posStatus";
 import { foersteArbejdsdagFra } from "../lib/arbejdsuge";
+import { fristFejl as beregnFristFejl } from "../lib/frist";
 import { useOrderDraft } from "../hooks/useOrderDraft";
 import { klokkeslaet } from "../lib/orderDrafts";
 import { ReceiptUpload } from "../components/ReceiptUpload";
@@ -171,6 +172,12 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
   // lib/arbejdsuge.js): der er ingen grund til at vise en uge, der næsten er slut.
   const [date, setDate] = useState(() => foersteArbejdsdagFra(d.date && d.date >= todayISO() ? d.date : (selectedDate || todayISO())));
   const [timeSlotId, setTimeSlotId] = useState(d.timeSlotId || "heldag");
+  // FRIST PÅ TOMGANG (oktober 2026): en tomgang har sjældent en bestemt dag, kun en SENESTE
+  // dag. Den kan bookes på en fast dato (med en valgfri frist) eller FLEKSIBELT: ingen fast
+  // dato, kun en frist - så lander den under "Skal planlægges", og planlæggeren placerer den,
+  // hvor der er plads, inden fristen. Se lib/frist.js.
+  const [fleksibel, setFleksibel] = useState(!!d.fleksibel);
+  const [senestDato, setSenestDato] = useState(d.senestDato || "");
   const [vehicleId, setVehicleId] = useState(d.vehicleId || "");
   const [lineItems, setLineItems] = useState(() => (
     Array.isArray(d.lineItems) && d.lineItems.length > 0
@@ -196,12 +203,14 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const blank = useMemo(() => ({ lineItem: createLineItem(productTypes, primaryServices, undefined, "", defaultTimeEstimates), keyAccess: emptyKeyAccess() }), []);
   const snapshot = useMemo(
-    () => ({ caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, deliveryNote, keyAccess, date, timeSlotId, vehicleId, lineItems }),
-    [caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, deliveryNote, keyAccess, date, timeSlotId, vehicleId, lineItems]
+    () => ({ caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, deliveryNote, keyAccess, date, timeSlotId, vehicleId, lineItems, fleksibel, senestDato }),
+    [caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, deliveryNote, keyAccess, date, timeSlotId, vehicleId, lineItems, fleksibel, senestDato]
   );
   const kladde = useOrderDraft({ draftId, storeId, userId, state: snapshot, step, blank });
 
   const erTomgang = caseTypeId === SAGSTYPE_TOMGANG;
+  const udenFastDato = erTomgang && fleksibel;
+  const fristFejl = beregnFristFejl({ erTomgang, fleksibel, senestDato, dato: date, idag: todayISO() });
   const titlePreview = buildTitle(lineItems);
   const expectedMinutes = lineItems.reduce((sum, l) => sum + lineItemMinutes(l), 0);
 
@@ -334,7 +343,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
   // Fejler oprettelsen, bliver formularen stående med alt det tastede, og
   // kladden består - tidligere lukkede formularen uanset udfaldet, og alt var tabt.
   const submit = async () => {
-    if (!customerName.trim() || !date) return;
+    if (!customerName.trim() || (!udenFastDato && !date) || fristFejl) return;
     const t = timeSlotById(timeSlotId);
     setSaving(true);
     const nyId = await onAdd({
@@ -344,8 +353,11 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
       // Dækker et nøgleskab adressen, gemmes ingen nøgleoplysning - se
       // skabDaekkerAdressen ovenfor.
       noegle: skabDaekkerAdressen ? emptyKeyAccess() : keyAccess,
-      dato: date, tidsrumId: timeSlotId, start: t.start, slut: t.slut,
-      bilId: vehicleId || null,
+      // Fleksibel tomgang: ingen fast dato, tid eller bil - kun en frist. Sagen lander
+      // under "Skal planlægges" og placeres af planlæggeren.
+      dato: udenFastDato ? null : date, tidsrumId: udenFastDato ? null : timeSlotId, start: udenFastDato ? null : t.start, slut: udenFastDato ? null : t.slut,
+      bilId: udenFastDato ? null : (vehicleId || null),
+      senestDato: erTomgang && senestDato ? senestDato : null,
       varelinjer: lineItems,
       ordrenummer: externalReference.trim(),
     });
@@ -551,6 +563,30 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
       {step === 3 && (
         <div>
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Tidspunkt & bil</h4>
+          {erTomgang && (
+            <div className="mb-4 rounded-xl border border-line bg-panel p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink mb-2">Hvornår skal tomgangen udføres?</p>
+              <div className="grid gap-2 sm:grid-cols-2 mb-3">
+                <button type="button" aria-pressed={!fleksibel} onClick={() => setFleksibel(false)} className={`rounded-xl border-2 p-3 text-left bg-white hover:bg-panel focus:outline-none focus:ring-2 focus:ring-brand ${!fleksibel ? "border-brand" : "border-line"}`}>
+                  <p className={`text-sm font-semibold ${!fleksibel ? "text-brand" : "text-ink"}`}>Fast dato</p>
+                  <p className="text-[11px] text-muted mt-0.5 leading-snug">Book en bestemt dag og bil nu.</p>
+                </button>
+                <button type="button" aria-pressed={fleksibel} onClick={() => setFleksibel(true)} className={`rounded-xl border-2 p-3 text-left bg-white hover:bg-panel focus:outline-none focus:ring-2 focus:ring-brand ${fleksibel ? "border-brand" : "border-line"}`}>
+                  <p className={`text-sm font-semibold ${fleksibel ? "text-brand" : "text-ink"}`}>Fleksibel</p>
+                  <p className="text-[11px] text-muted mt-0.5 leading-snug">Ingen fast dato — den placeres i planlægningen, inden fristen.</p>
+                </button>
+              </div>
+              <label className="text-xs text-muted block">
+                Senest udført {fleksibel ? "(påkrævet)" : "(valgfri)"}
+                <input type="date" value={senestDato} min={todayISO()} onChange={(e) => setSenestDato(e.target.value)} aria-label="Senest udført" className="w-full mt-1 rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
+              </label>
+              {fristFejl && <p role="alert" className="text-xs text-danger mt-2">{fristFejl}</p>}
+              {fleksibel && !fristFejl && <p className="text-[11px] text-muted mt-2">Sagen oprettes uden dato og bil og vises under "Skal planlægges" med fristen.</p>}
+            </div>
+          )}
+
+          {!udenFastDato && (
+          <>
           <p className="text-xs text-muted mb-3">
             Forslag til "{titlePreview}" {erTomgang ? "på" : "hos"} {address || (erTomgang ? "lejemålet" : "kunden")} herunder — tryk på ét for at bruge det, eller vælg selv i ugevisningen.
           </p>
@@ -587,6 +623,8 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
               </select>
             </label>
           </div>
+          </>
+          )}
 
           {erTomgang && advarsler.length > 0 && (
             <p className="text-xs text-danger flex items-start gap-1.5 mt-2">
@@ -616,10 +654,10 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
         ) : (
           <button
             onClick={submit}
-            disabled={saving || !date}
+            disabled={saving || (!udenFastDato && !date) || !!fristFejl}
             className="px-5 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60 flex items-center gap-1.5"
           >
-            <Check size={15} aria-hidden="true" /> {saving ? "Booker..." : erTomgang ? "Book tomgang" : "Book sag"}
+            <Check size={15} aria-hidden="true" /> {saving ? "Booker..." : udenFastDato ? "Opret tomgang" : erTomgang ? "Book tomgang" : "Book sag"}
           </button>
         )}
       </div>
