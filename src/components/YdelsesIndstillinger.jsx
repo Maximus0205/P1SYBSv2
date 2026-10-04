@@ -1,5 +1,5 @@
 import React from "react";
-import { standardYdelse, kraeverBeskrivelse } from "../lib/ydelser";
+import { standardYdelse, kraeverBeskrivelse, skalPlukkes } from "../lib/ydelser";
 
 // Butikkens indstillinger for de PRIMÆRE YDELSER (oktober 2026), vist øverst under
 // Admin -> Varer & ydelser -> Primære ydelser:
@@ -8,7 +8,9 @@ import { standardYdelse, kraeverBeskrivelse } from "../lib/ydelser";
 //   * OPGAVEBESKRIVELSE: viser et fritekstfelt på varelinjen, så montøren ved, hvad der skal
 //     gøres (typisk en servicetur). Er det aldrig sat, regnes en ydelse med "service" i
 //     navnet for en servicetur.
-// Gemmes som egenskaber på selve ydelsen (standard, kraeverBeskrivelse) via den samme
+//   * PLUKKES PÅ LAGER: om en varelinje med ydelsen står på lagerets plukliste. Slået fra for en
+//     servicetur, hvor produktet typisk allerede er hos kunden.
+// Gemmes som egenskaber på selve ydelsen (standard, kraeverBeskrivelse, plukkes) via den samme
 // opdatering som resten af kataloget - se lib/ydelser.js.
 function YdelsesIndstillinger({ primaryServices, onUpdate }) {
   const liste = primaryServices || [];
@@ -23,10 +25,11 @@ function YdelsesIndstillinger({ primaryServices, onUpdate }) {
 
   return (
     <div className="rounded-xl border border-line bg-white p-5 mb-5 shadow-sm">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1">Standard og opgavebeskrivelse</h3>
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1">Standard, opgavebeskrivelse og pluk</h3>
       <p className="text-xs text-muted mb-3">
         <strong>Standard</strong> er den ydelse, en ny varelinje starter på, når der bookes en sag. Sælgeren kan altid vælge en anden.
         <strong> Opgavebeskrivelse</strong> giver et felt på varelinjen, hvor sælgeren skriver, hvad montøren skal gøre — fx ved en servicetur.
+        <strong> Plukkes</strong> styrer, om varen står på lagerets plukliste — slå det fra, når produktet allerede er hos kunden.
       </p>
       <fieldset>
         <legend className="sr-only">Standardydelse og opgavebeskrivelse pr. ydelse</legend>
@@ -40,6 +43,10 @@ function YdelsesIndstillinger({ primaryServices, onUpdate }) {
             <label className="flex items-center gap-2 min-h-[44px] text-xs text-muted cursor-pointer">
               <input type="checkbox" checked={kraeverBeskrivelse(p)} onChange={() => onUpdate(p.id, { kraeverBeskrivelse: !kraeverBeskrivelse(p) })} className="w-5 h-5 accent-ink" aria-label={`${p.navn} kræver opgavebeskrivelse`} />
               Opgavebeskrivelse
+            </label>
+            <label className="flex items-center gap-2 min-h-[44px] text-xs text-muted cursor-pointer">
+              <input type="checkbox" checked={skalPlukkes(p)} onChange={() => onUpdate(p.id, { plukkes: !skalPlukkes(p) })} className="w-5 h-5 accent-ink" aria-label={`${p.navn} plukkes på lager`} />
+              Plukkes
             </label>
           </div>
         ))}
