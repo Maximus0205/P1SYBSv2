@@ -7,6 +7,12 @@ globalThis.localStorage = {
   setItem: (k, v) => { lager.set(k, String(v)); },
   removeItem: (k) => { lager.delete(k); },
 };
+const fane = new Map();
+globalThis.sessionStorage = {
+  getItem: (k) => (fane.has(k) ? fane.get(k) : null),
+  setItem: (k, v) => { fane.set(k, String(v)); },
+  removeItem: (k) => { fane.delete(k); },
+};
 const D = await import("../src/lib/orderDrafts.js");
 
 let fail = 0, pass = 0;
@@ -107,6 +113,20 @@ const nu = Date.parse("2026-10-04T12:00:00Z");
 eq("tid: lige nu", D.tidTekst("2026-10-04T11:59:40Z", nu), "lige nu");
 eq("tid: minutter", D.tidTekst("2026-10-04T11:45:00Z", nu), "for 15 min. siden");
 eq("tid: ulæselig", D.tidTekst("xx", nu), "");
+
+// --- genoptag fra Forsiden (kortvarig besked til bookingsiden)
+eq("intet bedt om: ingen genoptagelse", D.hentGenoptagelse(), null);
+eq("bed om en kladde: ok", D.bedOmGenoptagelse("k-123"), true);
+eq("bookingsiden får id'et", D.hentGenoptagelse(), "k-123");
+eq("det læses kun ÉN gang (så en genindlæsning ikke genoptager igen)", D.hentGenoptagelse(), null);
+D.bedOmGenoptagelse("a"); D.bedOmGenoptagelse("b");
+eq("seneste ønske vinder", D.hentGenoptagelse(), "b");
+eq("beskeden gemmes IKKE sammen med kladderne", [...lager.keys()].some((k) => k.includes("genoptag")), false);
+const ægte = globalThis.sessionStorage;
+globalThis.sessionStorage = { getItem() { throw new Error("blokeret"); }, setItem() { throw new Error("blokeret"); }, removeItem() { throw new Error("blokeret"); } };
+eq("browser uden sessionStorage: ok=false, intet crash", D.bedOmGenoptagelse("x"), false);
+eq("browser uden sessionStorage: ingen genoptagelse, intet crash", D.hentGenoptagelse(), null);
+globalThis.sessionStorage = ægte;
 
 console.log(`\n${pass} bestået, ${fail} fejlet`);
 process.exit(fail ? 1 : 0);
