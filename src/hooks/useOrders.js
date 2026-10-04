@@ -504,7 +504,10 @@ export function useOrders(storeId) {
   //
   // bilId (september 2026) erstatter montorId - en sag tildeles nu en
   // BIL, ikke en person, se rebind_orders_to_vehicle_instead_of_person.
-  const addOrder = async ({ sagstype, kunde, koeber, noegle, dato, tidsrumId, start, slut, bilId, varelinjer, ordrenummer, createdBy }) => {
+  //
+  // senestDato (oktober 2026): en TOMGANG kan have en frist - den seneste dag, hvor den skal
+  // være udført - i stedet for (eller ud over) en fast dato. Se lib/frist.js.
+  const addOrder = async ({ sagstype, kunde, koeber, noegle, dato, tidsrumId, start, slut, bilId, senestDato, varelinjer, ordrenummer, createdBy }) => {
     if (!storeId) return;
     const newOrder = {
       id: uid(), nr: "...", ordrenummer: ordrenummer?.trim() || "",
@@ -512,6 +515,7 @@ export function useOrders(storeId) {
       kunde, koeber: koeber || null, noegle: noegle || {},
       dato: dato || null, tidsrumId: dato ? tidsrumId : null, start: dato ? start : null, slut: dato ? slut : null,
       bilId: bilId || null,
+      senestDato: senestDato || null,
       status: "planlagt", plukket: false, varelinjer, noter: [], billeder: [], rapporter: [], materialer: [], stemplerInd: null, logs: [],
       oprettetAf: createdBy || null,
     };
