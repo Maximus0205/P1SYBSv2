@@ -2,7 +2,8 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { MessageSquare, Check, Loader2, X } from "lucide-react";
 import { sendArrivalSms } from "../lib/arrivalSms";
-import { ENKELT_TIDER, INTERVALLER, MAKS_MINUTTER, ankomstFrase, intervalKnapTekst, tolkAnkomst } from "../lib/arrivalTime";
+import { MAKS_MINUTTER, ankomstFrase, byggBesked, intervalKnapTekst, tolkAnkomst } from "../lib/arrivalTime";
+import { getSmsSettings, seneste, standardIndstillinger } from "../lib/smsSettings";
 
 // Knap + panel til at sende ankomst-SMS'en - via en Edge Function der sender
 // fra firmaets fælles nummer. IKKE via montørens egen telefon: montøren bruger
@@ -19,18 +20,26 @@ import { ENKELT_TIDER, INTERVALLER, MAKS_MINUTTER, ankomstFrase, intervalKnapTek
 // panelet.
 //
 // TIDEN kan vælges på tre måder, alle med modtageren synlig:
-//   * hurtigknapper med én tid (5, 10, 15, 30, 60 min) - sender med det samme
-//   * hurtigknapper med et INTERVAL (15-30, 30-60, 1-2 timer) - sender med det samme
+//   * hurtigknapper med én tid (standard 5, 10, 15, 30, 60 min) - sender med det samme
+//   * hurtigknapper med et INTERVAL (standard 15-30, 30-60, 1-2 timer) - sender med det samme
 //   * "Skriv selv": et antal minutter, evt. med en øvre grænse ("mellem 30 og
 //     60 minutter"). Her vises den sætning kunden får, og der sendes først, når
 //     man trykker Send.
 // Et interval bruges, når montøren ikke kan love et præcist tidspunkt, fx fordi
 // forrige opgave kan trække ud.
+//
+// BUTIKKENS INDSTILLINGER (oktober 2026): knapperne, teksten og til/fra kommer fra
+// butikkens egne indstillinger (Admin -> SMS, se lib/smsSettings.js). De hentes, når
+// panelet åbnes; er de hentet før, vises de med det samme og opdateres i baggrunden.
+// Kan de ikke hentes, vises standardknapperne og en bemærkning - SMS'en sendes stadig,
+// og serveren bruger altid butikkens rigtige tekst.
 function ArrivalSmsButton({ phone, customerName, variant }) {
   const [open, setOpen] = React.useState(false);
   const [status, setStatus] = React.useState({ state: "idle" });
   const [fraTekst, setFraTekst] = React.useState("");
   const [tilTekst, setTilTekst] = React.useState("");
+  const [indst, setIndst] = React.useState(() => seneste()?.settings || null);
+  const [indstFejl, setIndstFejl] = React.useState(false);
   const triggerRef = React.useRef(null);
   const panelRef = React.useRef(null);
   const sendingRef = React.useRef(false);
@@ -65,6 +74,18 @@ function ArrivalSmsButton({ phone, customerName, variant }) {
     };
   }, [open, luk]);
 
+  // Hent butikkens indstillinger, hver gang panelet åbnes.
+  React.useEffect(() => {
+    if (!open) return undefined;
+    let levende = true;
+    setIndstFejl(false);
+    getSmsSettings().then((r) => {
+      if (!levende) return;
+      if (r.ok) setIndst(r.settings); else setIndstFejl(true);
+    });
+    return () => { levende = false; };
+  }, [open]);
+
   if (!phone) return null;
 
   // Felterne nulstilles, hver gang panelet åbnes (se knappen nederst): ellers ville
@@ -92,6 +113,8 @@ function ArrivalSmsButton({ phone, customerName, variant }) {
       ? <Check size={erStak ? 15 : 13} className="text-success" aria-hidden="true" />
       : <MessageSquare size={erStak ? 15 : 13} aria-hidden="true" />;
 
+  const knapper = indst || (indstFejl ? standardIndstillinger() : null);
+  const slaaetFra = indst ? indst.enabled === false : false;
   const tolket = tolkAnkomst(fraTekst, tilTekst);
   const kanSendeEgen = tolket.ok && !laast;
   const sendEgen = () => { if (tolket.ok) send(tolket.fra, tolket.til); };
@@ -123,23 +146,46 @@ function ArrivalSmsButton({ phone, customerName, variant }) {
           </button>
         </div>
 
-        <p className="text-[11px] uppercase tracking-wide text-muted font-semibold mb-2">Ankomst om…</p>
-        <div className="grid grid-cols-3 gap-2">
-          {ENKELT_TIDER.map((m) => (
-            <button key={m} type="button" onClick={() => send(m, null)} disabled={laast} className={knapKlasse}>
-              {m} min
-            </button>
-          ))}
-        </div>
+        {slaaetFra && (
+          <p role="alert" className="text-sm text-danger font-semibold mb-3">SMS til kunder er slået fra for jeres butik. Kontakt en administrator, hvis den skal slås til.</p>
+        )}
+        {indstFejl && !indst && (
+          <p className="text-[11px] text-muted mb-3">Butikkens indstillinger kunne ikke hentes. Standardknapperne vises, og SMS'en får butikkens egen tekst, som kan afvige fra eksemplet.</p>
+        )}
+        {!knapper && <p className="text-xs text-muted flex items-center gap-1.5 mb-3"><Loader2 size={13} className="animate-spin" aria-hidden="true" /> Henter butikkens knapper…</p>}
 
-        <p className="text-[11px] uppercase tracking-wide text-muted font-semibold mt-4 mb-2">Eller et interval</p>
-        <div className="grid grid-cols-3 gap-2">
-          {INTERVALLER.map(([a, b]) => (
-            <button key={`${a}-${b}`} type="button" onClick={() => send(a, b)} disabled={laast} aria-label={`Ankomst ${ankomstFrase(a, b)}`} className={knapKlasse}>
-              {intervalKnapTekst(a, b)}
-            </button>
-          ))}
-        </div>
+        {knapper && !slaaetFra && (
+          <>
+            {knapper.quickSingles.length > 0 && (
+              <>
+                <p className="text-[11px] uppercase tracking-wide text-muted font-semibold mb-2">Ankomst om…</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {knapper.quickSingles.map((m) => (
+                    <button key={m} type="button" onClick={() => send(m, null)} disabled={laast} className={knapKlasse}>
+                      {m} min
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {knapper.quickIntervals.length > 0 && (
+              <>
+                <p className="text-[11px] uppercase tracking-wide text-muted font-semibold mt-4 mb-2">Eller et interval</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {knapper.quickIntervals.map(([a, b]) => (
+                    <button key={`${a}-${b}`} type="button" onClick={() => send(a, b)} disabled={laast} aria-label={`Ankomst ${ankomstFrase(a, b)}`} className={knapKlasse}>
+                      {intervalKnapTekst(a, b)}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {!slaaetFra && (
+          <>
 
         <p className="text-[11px] uppercase tracking-wide text-muted font-semibold mt-4 mb-2">Skriv selv (minutter)</p>
         <div className="flex items-end gap-2">
@@ -179,19 +225,24 @@ function ArrivalSmsButton({ phone, customerName, variant }) {
         </div>
 
         <div className="mt-2 min-h-[20px]" aria-live="polite">
-          {tolket.ok && <p className="text-xs text-ink">Kunden får: <span className="font-semibold">“…vi forventer at ankomme hos dig {ankomstFrase(tolket.fra, tolket.til)}.”</span></p>}
+          {tolket.ok && indst && (
+            <p className="text-xs text-ink">Kunden får: <span className="font-semibold">“{byggBesked(tolket.til === null ? indst.templateSingle : indst.templateInterval, customerName, tolket.fra, tolket.til)}”</span>{indst.sender ? <span className="text-muted"> Sendes fra {indst.sender}.</span> : null}</p>
+          )}
+          {tolket.ok && !indst && <p className="text-xs text-ink">Kunden får en besked om, at I ankommer <span className="font-semibold">{ankomstFrase(tolket.fra, tolket.til)}</span>.</p>}
           {!tolket.ok && !tolket.tom && <p role="alert" className="text-xs text-danger">{tolket.fejl}</p>}
           {!tolket.ok && tolket.tom && <p className="text-[11px] text-muted">Skriv kun “Fra” for én tid, eller begge for et interval (højst {MAKS_MINUTTER} min).</p>}
         </div>
         <button type="button" onClick={sendEgen} disabled={!kanSendeEgen} className="mt-2 w-full min-h-[48px] rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-40">
           Send SMS
         </button>
+          </>
+        )}
 
         <div className="mt-3 min-h-[20px]" aria-live="polite">
           {sender && <p className="text-xs text-muted flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" aria-hidden="true" /> Sender…</p>}
           {status.state === "sent" && <p className="text-xs text-success font-semibold flex items-center gap-1.5"><Check size={13} aria-hidden="true" /> SMS sendt</p>}
           {status.state === "error" && <p role="alert" className="text-xs text-danger font-semibold">{status.fejl}</p>}
-          {status.state === "idle" && <p className="text-[11px] text-muted">Knapperne herover sender med det samme fra butikkens nummer.</p>}
+          {status.state === "idle" && knapper && !slaaetFra && <p className="text-[11px] text-muted">Knapperne herover sender med det samme fra butikkens nummer.</p>}
         </div>
       </div>
     </div>,
