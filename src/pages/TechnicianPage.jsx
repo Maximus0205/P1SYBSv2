@@ -1,5 +1,5 @@
 import React from "react";
-import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, Loader2, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash, X, Plus, User, Lock, PlayCircle, CheckCheck, Camera, CalendarCheck2, DoorOpen } from "lucide-react";
+import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash, X, Plus, User, Lock, PlayCircle, CheckCheck, Camera, CalendarCheck2, DoorOpen } from "lucide-react";
 import { buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel, dailyOrderCompare, canDo, missingLineItems } from "../data/domain";
 import { isTomgang, showsArrivalContact, followUpTypeLabel, TOMGANG_COLOR } from "../data/caseTypes";
 import { manualKeyAccessText, routeUrlViaCabinets } from "../data/keyCabinets";
@@ -8,7 +8,7 @@ import { Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
 import { BookingEditor, DuplicatePanel, PosStatusBanner } from "../components/OrderView";
 import { AddressNotesPanel } from "../components/AddressNotes";
 import { KeyCabinetAlert, KeyCabinetLines, useCabinetMatches } from "../components/KeyCabinetAlert";
-import { sendArrivalSms } from "../lib/dataStore";
+import { ArrivalSmsButton } from "../components/ArrivalSmsButton";
 
 // Universelt Google Maps-link: åbner Google Maps-appen hvis den er
 // installeret (iOS og Android), ellers i browseren. Vi bruger søge-linket
@@ -28,8 +28,6 @@ const mapsUrl = (address) => `https://www.google.com/maps/search/?api=1&query=${
 // uanset om nummeret er skrevet med mellemrum ("12 34 56 78").
 const telHref = (phone) => `tel:${(phone || "").replace(/[^\d+]/g, "")}`;
 
-const ARRIVAL_PRESETS_MIN = [5, 10, 15, 30, 60];
-
 // Lille TOMGANG-mærkat - genbruges på både rutekortet og sagsdetaljen, så
 // den ser ens ud begge steder og i oprettelsesformularen/sagslisten.
 function TomgangBadge() {
@@ -43,93 +41,10 @@ function TomgangBadge() {
   );
 }
 
-// Popover til at vælge "ankomst om X minutter" og sende SMS'en MED DET
-// SAMME ved tryk - via en Edge Function der sender fra firmaets fælles
-// nummer. IKKE via montørens egen telefon: montøren bruger typisk sin
-// private telefon og skal hverken dele sit nummer med kunden eller selv
-// afsende noget manuelt.
-//
-// variant="stak" (september 2026) gør knappen til ét lag i den lodrette
-// handlingsstak på rutekortet - se OrderStopCard. Selve popoveren er
-// uændret; kun knappens udseende skifter, så den passer ind mellem
-// Naviger og Ring.
-function ArrivalSmsButton({ phone, customerName, variant }) {
-  const [open, setOpen] = React.useState(false);
-  const [status, setStatus] = React.useState({ state: "idle" });
-  const ref = React.useRef(null);
-
-  React.useEffect(() => {
-    if (!open) return;
-    const onOutside = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener("mousedown", onOutside);
-    document.addEventListener("touchstart", onOutside);
-    return () => {
-      document.removeEventListener("mousedown", onOutside);
-      document.removeEventListener("touchstart", onOutside);
-    };
-  }, [open]);
-
-  React.useEffect(() => {
-    if (status.state !== "sent") return;
-    const t = setTimeout(() => { setStatus({ state: "idle" }); setOpen(false); }, 1600);
-    return () => clearTimeout(t);
-  }, [status]);
-
-  if (!phone) return null;
-
-  const send = async (minutter) => {
-    setStatus({ state: "sending" });
-    const result = await sendArrivalSms({ telefon: phone, minutter, kundeNavn: customerName });
-    if (result.ok) setStatus({ state: "sent" });
-    else setStatus({ state: "error", fejl: result.fejl });
-  };
-
-  const erStak = variant === "stak";
-  const ikon = status.state === "sending"
-    ? <Loader2 size={erStak ? 15 : 13} className="animate-spin" aria-hidden="true" />
-    : status.state === "sent"
-      ? <Check size={erStak ? 15 : 13} className="text-success" aria-hidden="true" />
-      : <MessageSquare size={erStak ? 15 : 13} aria-hidden="true" />;
-
-  return (
-    <div ref={ref} className={erStak ? "relative" : "relative"} onClick={(e) => e.stopPropagation()}>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        disabled={status.state === "sending"}
-        aria-expanded={open}
-        aria-label="Send SMS om forventet ankomst"
-        className={erStak
-          ? "w-full h-[46px] flex flex-col items-center justify-center gap-0.5 text-ink hover:bg-panel focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand transition-colors disabled:opacity-60"
-          : "inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-ink border border-line hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60"}
-        title="Send SMS om forventet ankomst"
-      >
-        {ikon}
-        <span className={erStak ? "text-[9px] font-semibold uppercase tracking-wide" : ""}>
-          {status.state === "sent" ? "Sendt" : "SMS"}
-        </span>
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-line rounded-xl shadow-lg p-2 w-56">
-          <p className="text-[11px] uppercase tracking-wide text-muted font-semibold px-1 pb-1.5">Send "ankomst om…" nu</p>
-          <div className="grid grid-cols-3 gap-1.5">
-            {ARRIVAL_PRESETS_MIN.map((m) => (
-              <button
-                key={m}
-                onClick={() => send(m)}
-                disabled={status.state === "sending"}
-                className="text-center px-2 py-2.5 rounded-lg text-xs font-mono border border-line hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-50"
-              >
-                {m} min
-              </button>
-            ))}
-          </div>
-          {status.state === "error" && <p className="text-[11px] text-danger mt-1.5">{status.fejl}</p>}
-          <p className="text-[10px] text-muted mt-2">Sendes med det samme fra butikkens nummer.</p>
-        </div>
-      )}
-    </div>
-  );
-}
+// ArrivalSmsButton (SMS om forventet ankomst) ligger siden oktober 2026 i
+// components/ArrivalSmsButton.jsx. Valget af minutter åbnede før som en boks
+// under knappen, som handlingsstakken herunder (overflow-hidden, 74 px) klippede
+// over; det vises nu som et panel i bunden af skærmen.
 
 // FORÆLDET (september 2026): montør-vælgeren blev brugt, da sælgere og
 // admins kunne bladre gennem alle montørers ruter. Nu vises montørfanen
