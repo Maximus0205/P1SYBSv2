@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Check, KeyRound, AlertTriangle, Lock, RotateCw, X } from "lucide-react";
 import { lineItemLabel, formatLongDate, canDo, isMissingActive } from "../data/domain";
 import { DateSelector } from "../components/common";
+import { linjeSkalPlukkes } from "../lib/ydelser";
 
 // Lagersiden viser ét pluk-PUNKT pr. varelinje - IKKE ét punkt pr. ordre.
 // En ordre med 3 varelinjer giver altså 3 selvstændige rækker her, som hver
@@ -100,7 +101,7 @@ function ReportMissingDialog({ order, lineItem, onConfirm, onCancel }) {
   );
 }
 
-function WarehousePage({ orders, vehicles, selectedDate, onDateChange, onToggleLineItemPicked, onReportMissingItem, onClearMissingItem, onOpen, permissions }) {
+function WarehousePage({ orders, vehicles, primaryServices, selectedDate, onDateChange, onToggleLineItemPicked, onReportMissingItem, onClearMissingItem, onOpen, permissions }) {
   const canPick = canDo(permissions, "sag_pluk") || canDo(permissions, "sag_feltarbejde");
   const [reporting, setReporting] = useState(null); // { order, lineItem }
 
@@ -110,7 +111,13 @@ function WarehousePage({ orders, vehicles, selectedDate, onDateChange, onToggleL
 
   // Flad liste af { order, lineItem } - ét element pr. varelinje på tværs
   // af dagens plukkeklare ordrer.
-  const points = pickableOrders.flatMap((order) => (order.varelinjer || []).map((lineItem) => ({ order, lineItem })));
+  //
+  // SERVICETUR PLUKKES IKKE (oktober 2026): ved en servicetur er produktet typisk allerede hos
+  // kunden, så linjen hører ikke på pluklisten. Butikkens admin kan slå det til/fra pr. ydelse
+  // (Admin -> Varer & ydelser -> Primære ydelser) - se lib/ydelser.js: linjeSkalPlukkes.
+  const alleLinjer = pickableOrders.flatMap((order) => (order.varelinjer || []).map((lineItem) => ({ order, lineItem })));
+  const points = alleLinjer.filter((p) => linjeSkalPlukkes(p.lineItem, primaryServices));
+  const udenPlukCount = alleLinjer.length - points.length;
   const sortFn = (a, b) => (a.order.start || "").localeCompare(b.order.start || "");
 
   // Manglende varer får deres EGEN sektion øverst. De hører ikke hjemme
@@ -199,6 +206,12 @@ function WarehousePage({ orders, vehicles, selectedDate, onDateChange, onToggleL
       {hiddenCount > 0 && (
         <p className="text-xs text-muted italic mb-4 flex items-center gap-1.5">
           <AlertTriangle size={12} className="shrink-0" aria-hidden="true" /> {hiddenCount} {hiddenCount === 1 ? "sag er" : "sager er"} skjult her, fordi den mangler en bil, eller bilen er ude af drift — se Planlægning under "Kræver handling".
+        </p>
+      )}
+
+      {udenPlukCount > 0 && (
+        <p className="text-xs text-muted italic mb-4">
+          {udenPlukCount} {udenPlukCount === 1 ? "varelinje vises" : "varelinjer vises"} ikke her, fordi {udenPlukCount === 1 ? "den hører" : "de hører"} til en ydelse uden pluk (fx servicetur, hvor varen er hos kunden).
         </p>
       )}
 
