@@ -4,6 +4,7 @@ import { TechnicianRow, SickLeaveWindowSetting, LoginPolicySetting, VehicleRow, 
 import { PosIntegrationAdmin } from "../components/PosIntegrationAdmin";
 import { StorageIntegrationAdmin } from "../components/StorageIntegrationAdmin";
 import { SmsSettingsAdmin } from "../components/SmsSettingsAdmin";
+import { YdelsesIndstillinger } from "../components/YdelsesIndstillinger";
 import { getPermissionsCatalog, getRoleDefaultPermissions } from "../lib/dataStore";
 
 // RETTET (august 2026): Admin-sidens FANER vises nu ud fra brugerens
@@ -183,7 +184,12 @@ function AdminPage({
           </div>
           {productTab === "kategorier" && <ProductCategoryAdmin productCategories={productCategories} onAdd={onAddProductCategory} onUpdate={onUpdateProductCategory} onDelete={onDeleteProductCategory} />}
           {productTab === "varetyper" && <ProductTypeAdmin productTypes={productTypes} productCategories={productCategories} onAdd={onAddProductType} onUpdate={onUpdateProductType} onDelete={onDeleteProductType} />}
-          {productTab === "primaer" && <PrimaryServiceAdmin primaryServices={primaryServices} onAdd={onAddPrimaryService} onUpdate={onUpdatePrimaryService} onDelete={onDeletePrimaryService} />}
+          {productTab === "primaer" && (
+            <>
+              <YdelsesIndstillinger primaryServices={primaryServices} onUpdate={onUpdatePrimaryService} />
+              <PrimaryServiceAdmin primaryServices={primaryServices} onAdd={onAddPrimaryService} onUpdate={onUpdatePrimaryService} onDelete={onDeletePrimaryService} />
+            </>
+          )}
           {productTab === "tillaeg" && <AddOnServiceAdmin addOnServices={addOnServices} productTypes={productTypes} primaryServices={primaryServices} onAdd={onAddAddOnService} onUpdate={onUpdateAddOnService} onDelete={onDeleteAddOnService} />}
           {productTab === "standardtider" && <DefaultTimeEstimateAdmin productTypes={productTypes} primaryServices={primaryServices} addOnServices={addOnServices} defaultTimeEstimates={defaultTimeEstimates || []} onSetEstimate={onSetDefaultTimeEstimate} />}
         </div>
