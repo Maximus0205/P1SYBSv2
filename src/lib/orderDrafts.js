@@ -159,3 +159,24 @@ export function tidTekst(iso, nu = Date.now()) {
   if (new Date(nu).toDateString() === d.toDateString()) return `i dag kl. ${kl}`;
   return `${d.toLocaleDateString("da-DK", { day: "numeric", month: "short" })} kl. ${kl}`;
 }
+
+// GENOPTAG FRA FORSIDEN (oktober 2026): "Fortsæt" på en parkeret booking i widgetten på Forsiden
+// fører til bookingformularen. Hvilken kladde, der skal genoptages, huskes kortvarigt i fanens
+// sessionStorage og læses (og fjernes) ÉN gang af bookingsiden. sessionStorage frem for en URL,
+// fordi kladde-id'et ikke skal ligge i adresselinjen eller historikken, og fordi det forsvinder med
+// fanen, hvis det aldrig bliver brugt.
+const GENOPTAG = "p1sybs.genoptag.v1";
+
+export function bedOmGenoptagelse(id) {
+  try { sessionStorage.setItem(GENOPTAG, String(id)); return true; } catch (_) { return false; }
+}
+
+export function hentGenoptagelse() {
+  try {
+    const id = sessionStorage.getItem(GENOPTAG);
+    if (id !== null) sessionStorage.removeItem(GENOPTAG);
+    return id || null;
+  } catch (_) {
+    return null;
+  }
+}
