@@ -3,6 +3,7 @@ import { Trash2, Plus } from "lucide-react";
 import { TechnicianRow, SickLeaveWindowSetting, LoginPolicySetting, VehicleRow, UserRow, NewUserForm, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin, DefaultTimeEstimateAdmin } from "../components/AdminParts";
 import { PosIntegrationAdmin } from "../components/PosIntegrationAdmin";
 import { StorageIntegrationAdmin } from "../components/StorageIntegrationAdmin";
+import { SmsSettingsAdmin } from "../components/SmsSettingsAdmin";
 import { getPermissionsCatalog, getRoleDefaultPermissions } from "../lib/dataStore";
 
 // RETTET (august 2026): Admin-sidens FANER vises nu ud fra brugerens
@@ -31,6 +32,7 @@ function AdminPage({
     { k: "brugere", l: "Brugere", perm: "admin_brugere" },
     { k: "varer", l: "Varer & ydelser", perm: "admin_katalog" },
     { k: "integrationer", l: "Integrationer", perm: "admin_integrationer" },
+    { k: "sms", l: "SMS", perm: "admin_butik" },
   ];
   const visibleTabs = allTabs.filter((f) => hasPerm(permissions, f.perm));
   const visibleTabKeys = visibleTabs.map((f) => f.k).join(",");
@@ -196,6 +198,15 @@ function AdminPage({
           <div className="mt-6">
             <StorageIntegrationAdmin storeId={store?.id} />
           </div>
+        </div>
+      )}
+
+      {tab === "sms" && (
+        <div>
+          <p className="text-xs text-muted mb-4">
+            Ankomst-SMS'en, som montører og sælgere kan sende til kunden. Her styrer du, om den er slået til, hvad den siger, og hvilke hurtigknapper der vises. Afsenderen sættes af systemadministratoren.
+          </p>
+          <SmsSettingsAdmin storeId={store?.id} isSystemAdmin={permissions === null} />
         </div>
       )}
     </div>
