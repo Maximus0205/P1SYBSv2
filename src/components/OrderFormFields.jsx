@@ -6,6 +6,8 @@ import { lookupPunkt1Product } from "../lib/dataStore";
 import { geocodeAddress, geocodeAddresses, drivingDistances } from "../lib/geocoding";
 import { suggestBookingDates } from "../lib/scheduling";
 import { MinutesInput } from "../components/common";
+import { forslagsVindue, foersteArbejdsdagFra } from "../lib/arbejdsuge";
+import { kraeverBeskrivelse } from "../lib/ydelser";
 
 // Forsøger at splitte en punkt1.dk-produkttitel (fx "Point 5-Series
 // PODW56042W opvaskemaskine") op i mærke + modelnummer. Mærket antages at
@@ -383,6 +385,11 @@ function ProductTypeInput({ lineItem, productTypes, onSelectType, onFreeText }) 
 function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices, defaultTimeEstimates, estimateIndex, onChange, onRemove, canRemove }) {
   const available = availableAddOns(lineItem.varetypeId, lineItem.primaerYdelse?.id, addOnServices);
 
+  // OPGAVEBESKRIVELSE (oktober 2026): nogle ydelser, typisk en servicetur, kan ikke
+  // forstås ud fra varetype alene - montøren skal vide, HVAD der skal gøres. Se
+  // lib/ydelser.js: kraeverBeskrivelse (butikkens admin kan slå det til/fra pr. ydelse).
+  const skalBeskrives = kraeverBeskrivelse(primaryServices.find((p) => p.id === lineItem.primaerYdelse?.id));
+
   const changeProductType = (newId) => {
     if (newId === lineItem.varetypeId) return;
     const vt = productTypes.find((v) => v.id === newId);
@@ -418,11 +425,14 @@ function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices
     if (!py) return;
     const newAvailable = availableAddOns(lineItem.varetypeId, newId, addOnServices);
     const standard = getDefaultEstimateMinutes(defaultTimeEstimates, lineItem.varetypeId, newId);
-    onChange({
+    const naeste = {
       ...lineItem,
       primaerYdelse: { id: py.id, navn: py.navn, minutter: standard ?? 0 },
       tillaeg: lineItem.tillaeg.filter((t) => newAvailable.some((n) => n.navn === t.navn)),
-    });
+    };
+    // En beskrivelse hører til den ydelse, der kræver den - skifter man til en anden, fjernes den.
+    if (!kraeverBeskrivelse(py)) delete naeste.opgavebeskrivelse;
+    onChange(naeste);
   };
 
   const changePrimaryServiceMinutes = (min) => onChange({ ...lineItem, primaerYdelse: { ...lineItem.primaerYdelse, minutter: Number(min) || 0 } });
@@ -514,6 +524,21 @@ function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices
         min
       </label>
       <EstimateSuggestion estimateIndex={estimateIndex} lineItem={lineItem} onApply={changePrimaryServiceMinutes} />
+
+      {skalBeskrives && (
+        <label className="block mb-2 text-xs text-muted">
+          Opgavebeskrivelse
+          <textarea
+            value={lineItem.opgavebeskrivelse || ""}
+            onChange={(e) => onChange({ ...lineItem, opgavebeskrivelse: e.target.value })}
+            rows={3}
+            maxLength={600}
+            placeholder="Hvad skal montøren gøre? Fx 'Isterningmaskinen virker ikke - tjek vandtilslutning og filter'"
+            className="w-full mt-1 rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand"
+          />
+          {!(lineItem.opgavebeskrivelse || "").trim() && <span className="block text-[11px] text-brand mt-1">Beskriv opgaven, så montøren ved, hvad der skal gøres.</span>}
+        </label>
+      )}
 
       {available.length > 0 && (
         <div className="mb-2 border-t border-divider pt-2">
@@ -838,7 +863,10 @@ function shortDateLabel(iso) {
 }
 
 function InteractiveWeekPicker({ orders, technicians, date, onSelectDate }) {
-  const [weekAnchor, setWeekAnchor] = useState(date || todayISO());
+  // Lørdag/søndag viser ugevisningen den KOMMENDE uge (se lib/arbejdsuge.js): den uge, der
+  // næsten er slut, kan man ikke booke i.
+  const startUge = foersteArbejdsdagFra(todayISO());
+  const [weekAnchor, setWeekAnchor] = useState(foersteArbejdsdagFra(date || todayISO()));
   const week = weekDays(weekAnchor);
   const today = todayISO();
   const rows = [...technicians, { id: null, navn: "Ikke tildelt" }];
@@ -857,8 +885,8 @@ function InteractiveWeekPicker({ orders, technicians, date, onSelectDate }) {
         </button>
         <div className="text-center">
           <p className="text-xs font-semibold uppercase tracking-wide text-ink">{shortDateLabel(week[0])} – {shortDateLabel(week[6])}</p>
-          {weekAnchor !== today && (
-            <button onClick={() => setWeekAnchor(today)} className="text-[10px] font-semibold uppercase tracking-wide text-brand hover:underline">Gå til denne uge</button>
+          {week[0] !== weekDays(startUge)[0] && (
+            <button onClick={() => setWeekAnchor(startUge)} className="text-[10px] font-semibold uppercase tracking-wide text-brand hover:underline">Gå til {startUge === today ? "denne" : "næste"} uge</button>
           )}
         </div>
         <button onClick={() => setWeekAnchor((w) => addDays(w, 7))} className="p-1.5 rounded-lg text-muted hover:text-brand border border-line hover:border-brand transition-colors" title="Næste uge">
@@ -956,8 +984,11 @@ function SuggestedDates({ orders, technicians, personnel, timeOff, date, address
     }
     setLoading(true); setError(null);
 
+    // Forslag ud over den nuværende uge (oktober 2026): tre uger frem, ikke kun ugen
+    // omkring den valgte dato - ellers kunne motoren aldrig foreslå en ledig dag i næste
+    // uge, når denne er fuld. Se lib/arbejdsuge.js: forslagsVindue.
     const anchor = date || todayISO();
-    const week = weekDays(anchor);
+    const week = forslagsVindue({ idag: todayISO(), valgtDato: anchor });
     const weekOrders = (orders || []).filter((o) => week.includes(o.dato) && o.kunde?.adresse);
 
     // Samme opgang/bygning - ingen netværkskald nødvendigt.
@@ -974,7 +1005,10 @@ function SuggestedDates({ orders, technicians, personnel, timeOff, date, address
     try {
       const source = await geocodeAddress(address);
       if (source) {
-        const others = weekOrders.filter((o) => o.dato !== anchor);
+        // Køreafstand slås kun op for de første 14 dage (hvert opslag er et netværkskald);
+        // "samme opgang" kræver intet opslag og gælder hele vinduet.
+        const naerDage = new Set(week.slice(0, 14));
+        const others = weekOrders.filter((o) => o.dato !== anchor && naerDage.has(o.dato));
         const coordMap = await geocodeAddresses(others.map((o) => o.kunde.adresse));
         const withCoords = others
           .map((o) => ({ order: o, coord: coordMap.get(o.kunde.adresse.trim().toLowerCase()) }))
@@ -1013,7 +1047,7 @@ function SuggestedDates({ orders, technicians, personnel, timeOff, date, address
         </button>
       </div>
 
-      {loading && <p className="text-xs text-muted">Beregner ud fra opgang, afstand og kapacitet...</p>}
+      {loading && <p className="text-xs text-muted">Beregner ud fra opgang, afstand og kapacitet de kommende uger...</p>}
       {error && <p className="text-xs text-danger">{error}</p>}
 
       {!loading && !error && suggestions?.length > 0 && (
@@ -1046,7 +1080,7 @@ function SuggestedDates({ orders, technicians, personnel, timeOff, date, address
       </button>
       {showDetails && <div className="mt-2"><WeeklyScheduleOverview orders={orders} technicians={technicians} date={date} /></div>}
 
-      <p className="text-[10px] text-muted mt-2">Forslag ud fra samme opgang, køreafstand og ugens kapacitet — et forslag, ikke en automatisk booking. Tryk på et forslag for at bruge det.</p>
+      <p className="text-[10px] text-muted mt-2">Forslag ud fra samme opgang, køreafstand og kapacitet de næste tre uger — et forslag, ikke en automatisk booking. Tryk på et forslag for at bruge det.</p>
     </div>
   );
 }
