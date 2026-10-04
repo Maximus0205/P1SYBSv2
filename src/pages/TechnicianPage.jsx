@@ -191,7 +191,10 @@ function OrderStopCard({ order: s, keyCabinets, onOpen, onMoveUp, onMoveDown, ca
   const skabe = useCabinetMatches(s, keyCabinets);
   const synligeSkabe = erAfsluttet ? [] : skabe;
   const noegleTekst = manualKeyAccessText(s.noegle);
-  const hasAlerts = Boolean(synligeSkabe.length > 0 || noegleTekst || s.kunde.leveringsnote || s.problem || mangler.length > 0);
+  // OPGAVEBESKRIVELSE (oktober 2026): hvad der skal gøres, fx ved en servicetur - vises her,
+  // så montøren ser det allerede i ruteoversigten og ikke først, når sagen åbnes.
+  const opgaver = (s.varelinjer || []).filter((v) => (v.opgavebeskrivelse || "").trim());
+  const hasAlerts = Boolean(synligeSkabe.length > 0 || noegleTekst || s.kunde.leveringsnote || s.problem || mangler.length > 0 || opgaver.length > 0);
 
   return (
     <div className="rounded-xl bg-white border border-[#ECECEC] shadow-sm hover:shadow-md transition-shadow p-3.5">
@@ -239,6 +242,11 @@ function OrderStopCard({ order: s, keyCabinets, onOpen, onMoveUp, onMoveDown, ca
           {s.kunde.leveringsnote && (
             <p className="text-xs font-semibold text-brand flex items-start gap-1.5"><AlertTriangle size={13} className="shrink-0 mt-0.5" aria-hidden="true" /> {s.kunde.leveringsnote}</p>
           )}
+          {opgaver.map((v) => (
+            <p key={v.id} className="text-xs font-semibold text-brand flex items-start gap-1.5">
+              <Pencil size={13} className="shrink-0 mt-0.5" aria-hidden="true" /> <span className="line-clamp-2">Opgave: {v.opgavebeskrivelse}</span>
+            </p>
+          ))}
           {mangler.length > 0 && (
             <p className="text-xs font-semibold text-danger flex items-start gap-1.5">
               <AlertTriangle size={13} className="shrink-0 mt-0.5" aria-hidden="true" />
@@ -329,6 +337,9 @@ function TechnicianLineItems({ order }) {
           <div key={v.id} className={i < order.varelinjer.length - 1 ? "pb-3 border-b border-divider" : ""}>
             <p className="text-sm font-semibold text-ink">{lineItemLabel(v)}</p>
             {v.primaerYdelse?.navn && <p className="text-xs text-ink">{v.primaerYdelse.navn}</p>}
+            {(v.opgavebeskrivelse || "").trim() && (
+              <p className="text-xs text-ink mt-1 rounded-lg bg-brand/5 border border-brand/20 px-2 py-1.5"><span className="font-semibold text-brand">Opgave:</span> {v.opgavebeskrivelse}</p>
+            )}
             {(v.tillaeg || []).length > 0 && (
               <p className="text-xs text-ink mt-0.5">{v.tillaeg.map((y) => y.navn).join(" · ")}</p>
             )}
