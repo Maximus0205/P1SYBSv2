@@ -1,10 +1,14 @@
 import React, { useMemo, useState } from "react";
-import { Search, X } from "lucide-react";
+import { Search, X, Trash2 } from "lucide-react";
 import { isToday, formatLongDate } from "../data/domain";
 import { DateSelector } from "../components/common";
 import { NewOrderForm } from "../components/NewOrderForm";
 import { CsvImport } from "../components/CsvImport";
 import { OrderCardCompact } from "../components/OrderCardCompact";
+import { OrderDrafts } from "../components/OrderDrafts";
+import { TrashPanel } from "../components/TrashPanel";
+import { useKladder } from "../hooks/useKladder";
+import { nyKladdeId, fjernKladde } from "../lib/orderDrafts";
 
 const norm = (s) => (s || "").toString().toLowerCase();
 const normPhone = (s) => (s || "").replace(/\D/g, "");
@@ -52,12 +56,30 @@ function matchesSearch(order, search) {
 // NewOrderForm's adressefelt, så adressesøgningen prioriterer butikkens
 // eget kommuneområde og postnummer - se lib/geocodingAdressevaelger.js,
 // components/AddressInput.jsx og App.jsx.
+//
+// KLADDER (oktober 2026): en ufærdig booking gemmes løbende som en kladde på
+// denne enhed (se lib/orderDrafts.js) og vises her under "Parkerede
+// bookinger", så man kan fortsætte, hvor man slap, hvis man blev afbrudt.
+// seed er den booking, formularen viser: et nyt id til en tom booking, eller
+// en gemt kladde ved genoptagelse. Lukkes formularen (eller forlader man siden)
+// med indtastet data, bliver kladden stående - intet tabes.
+//
+// PAPIRKURV (oktober 2026): slettede sager kan hentes tilbage herfra - se
+// components/TrashPanel.jsx.
 function SalesPage({ storeId, orders, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, addressNotes, keyCabinets, selectedDate, onDateChange, onOpen, onAdd, onImport, storeFocus, storeKommuneKode, storePostnr }) {
   const [panel, setPanel] = useState("ny");
   const [search, setSearch] = useState("");
+  const { userId, kladder } = useKladder(storeId);
+  const [seed, setSeed] = useState(() => ({ id: nyKladdeId(), draft: null }));
   const sortFn = (a, b) => (a.start || "").localeCompare(b.start || "");
   const todaysOrders = orders.filter((s) => s.dato === selectedDate).sort(sortFn);
   const visibleOrders = useMemo(() => todaysOrders.filter((s) => matchesSearch(s, search)), [todaysOrders, search]);
+
+  // Den kladde, formularen netop viser, hører ikke til på listen over parkerede.
+  const parkerede = kladder.filter((k) => panel !== "ny" || k.id !== seed.id);
+
+  const startNy = () => { setSeed({ id: nyKladdeId(), draft: null }); setPanel("ny"); };
+  const genoptag = (k) => { setSeed({ id: k.id, draft: k }); setPanel("ny"); };
 
   return (
     <div>
@@ -70,18 +92,24 @@ function SalesPage({ storeId, orders, technicians, personnel, timeOff, productTy
             <DateSelector date={selectedDate} onChange={onDateChange} />
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button onClick={() => setPanel(panel === "import" ? null : "import")} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-ink border border-ink hover:border-brand hover:text-brand transition-colors">
             Importér CSV
           </button>
-          <button onClick={() => setPanel(panel === "ny" ? null : "ny")} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors">
+          <button onClick={() => setPanel(panel === "papirkurv" ? null : "papirkurv")} aria-pressed={panel === "papirkurv"} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-ink border border-ink hover:border-brand hover:text-brand transition-colors flex items-center gap-1.5">
+            <Trash2 size={14} aria-hidden="true" /> Papirkurv
+          </button>
+          <button onClick={() => (panel === "ny" ? setPanel(null) : startNy())} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors">
             + Book sag
           </button>
         </div>
       </div>
 
-      {panel === "ny" && <div className="mb-6"><NewOrderForm storeId={storeId} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} defaultTimeEstimates={defaultTimeEstimates} addressNotes={addressNotes} keyCabinets={keyCabinets} orders={orders} selectedDate={selectedDate} onAdd={onAdd} onClose={() => setPanel(null)} onOpen={onOpen} storeFocus={storeFocus} storeKommuneKode={storeKommuneKode} storePostnr={storePostnr} /></div>}
+      <OrderDrafts kladder={parkerede} onResume={genoptag} onDiscard={(k) => fjernKladde(k.id)} />
+
+      {panel === "ny" && <div className="mb-6"><NewOrderForm key={seed.id} draftId={seed.id} draft={seed.draft} userId={userId} storeId={storeId} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} defaultTimeEstimates={defaultTimeEstimates} addressNotes={addressNotes} keyCabinets={keyCabinets} orders={orders} selectedDate={selectedDate} onAdd={onAdd} onClose={() => setPanel(null)} onOpen={onOpen} storeFocus={storeFocus} storeKommuneKode={storeKommuneKode} storePostnr={storePostnr} /></div>}
       {panel === "import" && <div className="mb-6"><CsvImport technicians={technicians} productTypes={productTypes} primaryServices={primaryServices} onImport={onImport} onClose={() => setPanel(null)} /></div>}
+      {panel === "papirkurv" && <TrashPanel storeId={storeId} onClose={() => setPanel(null)} />}
 
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-ink">Sager {isToday(selectedDate) ? "i dag" : `d. ${selectedDate}`}</h2>
