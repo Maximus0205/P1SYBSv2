@@ -5,6 +5,7 @@ import { OrderCardCompact } from "../components/OrderCardCompact";
 import { classify } from "./PlanningPage";
 import { isOrderPickable } from "./WarehousePage";
 import { TrashPanel } from "../components/TrashPanel";
+import { linjeSkalPlukkes } from "../lib/ydelser";
 
 // ---------------------------------------------------------------------------
 // FORSIDE / DASHBOARD (august 2026): en tilpasselig samling af "widgets" -
@@ -102,20 +103,21 @@ function TodayRouteWidget({ orders, technicians, vehicles, profile, onOpen, onNa
   );
 }
 
-function PickListWidget({ orders, vehicles, onNavigate }) {
+function PickListWidget({ orders, vehicles, primaryServices, onNavigate }) {
   const catalogEntry = DASHBOARD_WIDGET_CATALOG.find((w) => w.key === "pick_list");
   const today = todayISO();
   const { missing, ready, kanIkkeFindes } = useMemo(() => {
     const todaysOrders = orders.filter((s) => s.dato === today);
     const pickable = todaysOrders.filter((o) => isOrderPickable(o, vehicles));
-    const points = pickable.flatMap((order) => (order.varelinjer || []).map((lineItem) => ({ order, lineItem })));
-    const manglende = pickable.reduce((sum, o) => sum + missingLineItems(o).length, 0);
+    // Linjer uden pluk (fx servicetur, hvor varen er hos kunden) tælles ikke med - se lib/ydelser.js.
+    const points = pickable.flatMap((order) => (order.varelinjer || []).map((lineItem) => ({ order, lineItem }))).filter((p) => linjeSkalPlukkes(p.lineItem, primaryServices));
+    const manglende = pickable.reduce((sum, o) => sum + missingLineItems(o).filter((v) => linjeSkalPlukkes(v, primaryServices)).length, 0);
     return {
       missing: points.filter((p) => !p.lineItem.plukket && !p.lineItem.mangler?.note),
       ready: points.filter((p) => p.lineItem.plukket),
       kanIkkeFindes: manglende,
     };
-  }, [orders, vehicles, today]);
+  }, [orders, vehicles, primaryServices, today]);
   return (
     <WidgetCard title={catalogEntry.label} icon={catalogEntry.icon} onTitleClick={() => onNavigate("lager")}>
       <div className="grid grid-cols-2 gap-2">
@@ -329,7 +331,7 @@ function CustomizePanel({ activeKeys, availableCatalog, onSave }) {
   );
 }
 
-function DashboardPage({ profile, permissions, orders, technicians, personnel, vehicles, timeOff, store, notifications, onOpen, onNavigate, dashboardWidgets, onUpdateWidgets }) {
+function DashboardPage({ profile, permissions, orders, technicians, personnel, vehicles, primaryServices, timeOff, store, notifications, onOpen, onNavigate, dashboardWidgets, onUpdateWidgets }) {
   const [customizing, setCustomizing] = useState(false);
   // PAPIRKURV (oktober 2026): en knap, ikke en widget - papirkurven vises først, når
   // man trykker, og kun for dem der må slette/gendanne sager (sag_slet).
@@ -339,7 +341,7 @@ function DashboardPage({ profile, permissions, orders, technicians, personnel, v
   const availableCatalog = DASHBOARD_WIDGET_CATALOG.filter((w) => canDo(permissions, w.requires));
   const activeKeys = dashboardWidgets.filter((k) => availableCatalog.some((w) => w.key === k));
 
-  const widgetProps = { orders, technicians, personnel, vehicles, timeOff, store, profile, notifications, onOpen, onNavigate };
+  const widgetProps = { orders, technicians, personnel, vehicles, primaryServices, timeOff, store, profile, notifications, onOpen, onNavigate };
 
   return (
     <div>
