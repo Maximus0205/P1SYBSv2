@@ -5,6 +5,8 @@ import { CASE_TYPES, SAGSTYPE_KUNDE, SAGSTYPE_TOMGANG, tomgangWarnings, TOMGANG_
 import { buildEstimateIndex, buildClusterIndex } from "../data/estimates";
 import { findKeyCabinets } from "../data/keyCabinets";
 import { lookupPosOrder } from "../lib/dataStore";
+import { useOrderDraft } from "../hooks/useOrderDraft";
+import { klokkeslaet } from "../lib/orderDrafts";
 import { ReceiptUpload } from "../components/ReceiptUpload";
 import { LineItemEditor, KeyAccessFields, CustomerHistory, SuggestedDates, InteractiveWeekPicker, ClusterEstimateNote } from "../components/OrderFormFields";
 import { AddressInput } from "../components/AddressInput";
@@ -32,6 +34,14 @@ import { KeyCabinetBookingHint } from "../components/KeyCabinetAlert";
 // menneskerne, der kan køre en rute - sendes med til SuggestedDates, så
 // dato-forslaget kan tjekke DÆKNING pr. bil (er der nogen til at køre den
 // den dag) i stedet for at antage alle biler altid er i spil.
+//
+// KLADDE (oktober 2026): bliver man afbrudt midt i en booking, gemmes det
+// tastede løbende som en KLADDE på denne enhed (se lib/orderDrafts.js og
+// hooks/useOrderDraft.js) og kan genoptages fra "Parkerede bookinger" på
+// siden Salg. draftId er kladdens id (nyt for en ny booking), draft er den
+// gemte kladde ved genoptagelse, og userId bruges til, at kladden kun vises
+// for den, der har tastet den. En kladde oprettes først, når der faktisk er
+// tastet noget, og fjernes, når sagen er booket.
 const STEPS = [
   { key: "kunde", label: "Kunde" },
   { key: "levering", label: "Levering" },
@@ -136,28 +146,45 @@ function PosLookupPanel({ storeId, onApply }) {
   );
 }
 
-function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, addressNotes, keyCabinets, orders, selectedDate, onAdd, onClose, onOpen, storeFocus, storeKommuneKode, storePostnr }) {
-  const [step, setStep] = useState(0);
-  const [caseTypeId, setCaseTypeId] = useState(SAGSTYPE_KUNDE);
-  const [customerName, setCustomerName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [externalReference, setExternalReference] = useState("");
-  const [hasBuyer, setHasBuyer] = useState(false);
-  const [buyerName, setBuyerName] = useState("");
-  const [buyerPhone, setBuyerPhone] = useState("");
-  const [buyerEmail, setBuyerEmail] = useState("");
-  const [buyerAddress, setBuyerAddress] = useState("");
-  const [address, setAddress] = useState("");
+function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, addressNotes, keyCabinets, orders, selectedDate, onAdd, onClose, onOpen, storeFocus, storeKommuneKode, storePostnr, draftId, draft, userId }) {
+  // Startværdier: en tom formular, eller den gemte kladde ved genoptagelse.
+  const d = draft?.state || {};
+  const [step, setStep] = useState(Math.min(Math.max(Number(draft?.step) || 0, 0), STEPS.length - 1));
+  const [caseTypeId, setCaseTypeId] = useState(d.caseTypeId || SAGSTYPE_KUNDE);
+  const [customerName, setCustomerName] = useState(d.customerName || "");
+  const [phone, setPhone] = useState(d.phone || "");
+  const [email, setEmail] = useState(d.email || "");
+  const [externalReference, setExternalReference] = useState(d.externalReference || "");
+  const [hasBuyer, setHasBuyer] = useState(!!d.hasBuyer);
+  const [buyerName, setBuyerName] = useState(d.buyerName || "");
+  const [buyerPhone, setBuyerPhone] = useState(d.buyerPhone || "");
+  const [buyerEmail, setBuyerEmail] = useState(d.buyerEmail || "");
+  const [buyerAddress, setBuyerAddress] = useState(d.buyerAddress || "");
+  const [address, setAddress] = useState(d.address || "");
   const [addressStatus, setAddressStatus] = useState("tom");
-  const [deliveryNote, setDeliveryNote] = useState("");
-  const [keyAccess, setKeyAccess] = useState(emptyKeyAccess());
-  const [date, setDate] = useState(selectedDate || todayISO());
-  const [timeSlotId, setTimeSlotId] = useState("heldag");
-  const [vehicleId, setVehicleId] = useState("");
-  const [lineItems, setLineItems] = useState([createLineItem(productTypes, primaryServices, undefined, "", defaultTimeEstimates)]);
+  const [deliveryNote, setDeliveryNote] = useState(d.deliveryNote || "");
+  const [keyAccess, setKeyAccess] = useState(() => ({ ...emptyKeyAccess(), ...(d.keyAccess || {}) }));
+  // En gemt dato i fortiden giver ingen mening at genoptage - så bruges dagens valgte dato.
+  const [date, setDate] = useState(() => (d.date && d.date >= todayISO() ? d.date : (selectedDate || todayISO())));
+  const [timeSlotId, setTimeSlotId] = useState(d.timeSlotId || "heldag");
+  const [vehicleId, setVehicleId] = useState(d.vehicleId || "");
+  const [lineItems, setLineItems] = useState(() => (
+    Array.isArray(d.lineItems) && d.lineItems.length > 0
+      ? d.lineItems
+      : [createLineItem(productTypes, primaryServices, undefined, "", defaultTimeEstimates)]
+  ));
   const [saving, setSaving] = useState(false);
   const [attemptedNext, setAttemptedNext] = useState(false);
+
+  // KLADDE: et billede af en TOM formular (til at se, om der er tastet noget)
+  // og et samlet billede af alle felter, som gemmes løbende.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const blank = useMemo(() => ({ lineItem: createLineItem(productTypes, primaryServices, undefined, "", defaultTimeEstimates), keyAccess: emptyKeyAccess() }), []);
+  const snapshot = useMemo(
+    () => ({ caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, deliveryNote, keyAccess, date, timeSlotId, vehicleId, lineItems }),
+    [caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, deliveryNote, keyAccess, date, timeSlotId, vehicleId, lineItems]
+  );
+  const kladde = useOrderDraft({ draftId, storeId, userId, state: snapshot, step, blank });
 
   const erTomgang = caseTypeId === SAGSTYPE_TOMGANG;
   const titlePreview = buildTitle(lineItems);
@@ -288,11 +315,14 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
   // registreret" en falsk alarm, og udelades.
   const advarsler = skabDaekkerAdressen ? [] : tomgangWarnings({ sagstype: caseTypeId, noegle: keyAccess });
 
+  // Kladden fjernes KUN, når sagen faktisk er oprettet (onAdd giver sagens id).
+  // Fejler oprettelsen, bliver formularen stående med alt det tastede, og
+  // kladden består - tidligere lukkede formularen uanset udfaldet, og alt var tabt.
   const submit = async () => {
     if (!customerName.trim() || !date) return;
     const t = timeSlotById(timeSlotId);
     setSaving(true);
-    await onAdd({
+    const nyId = await onAdd({
       sagstype: caseTypeId,
       kunde: { navn: customerName.trim(), telefon: phone.trim(), email: email.trim(), adresse: address.trim(), leveringsnote: deliveryNote.trim() },
       koeber: hasBuyer ? { navn: buyerName.trim(), telefon: buyerPhone.trim(), email: buyerEmail.trim(), adresse: buyerAddress.trim() } : null,
@@ -305,17 +335,41 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
       ordrenummer: externalReference.trim(),
     });
     setSaving(false);
+    if (nyId) {
+      kladde.afslut();
+      onClose();
+    }
+  };
+
+  const kasserKladde = () => {
+    if (!window.confirm("Kassér kladden? Det du har tastet, bliver slettet.")) return;
+    kladde.afslut();
     onClose();
   };
 
   return (
     <div className="rounded-xl border border-line bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-1">
+      <div className="flex items-center justify-between gap-3 mb-1">
         <h3 className="font-display text-xl uppercase tracking-wide text-ink">
           {erTomgang ? "Book tomgangskørsel" : "Book ny sag"}
         </h3>
-        <button onClick={onClose} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-1 py-1">Annuller</button>
+        <button onClick={onClose} className="min-h-[44px] text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-2 py-1">
+          {kladde.harIndhold ? "Luk (gemmes som kladde)" : "Annuller"}
+        </button>
       </div>
+
+      {kladde.harIndhold && (
+        <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
+          <p className={`text-[11px] ${kladde.fejl ? "text-danger font-semibold" : "text-muted"}`} aria-live="polite">
+            {kladde.fejl
+              ? "Kladden kunne ikke gemmes på denne enhed — færdiggør sagen, før du forlader siden."
+              : kladde.gemtTid
+                ? `Kladde gemt kl. ${klokkeslaet(kladde.gemtTid)} — du kan lukke og fortsætte senere.`
+                : "Gemmer kladde…"}
+          </p>
+          <button type="button" onClick={kasserKladde} className="min-h-[44px] text-[11px] font-semibold uppercase tracking-wide text-muted hover:text-danger focus:outline-none focus:ring-2 focus:ring-danger rounded px-2">Kassér kladde</button>
+        </div>
+      )}
       <StepProgress step={step} />
 
       {step === 0 && (
