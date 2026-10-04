@@ -1,4 +1,5 @@
 import { RotateCw, Trash2, Cable, Wifi, Wrench, Tag, ShoppingCart, Route, Truck, Package, Settings2, Building2, Archive, Home, Bell, AlertCircle, CalendarClock, MapPin } from "lucide-react";
+import { standardYdelse } from "../lib/ydelser";
 
 // Core domain helpers and default data for the app. Function/constant names
 // are English (part of the codebase's English rename); the actual STRING
@@ -172,7 +173,10 @@ const createLineItem = (productTypes, primaryServices, productTypeId, text = "",
   const firstProductType = productTypes[0];
   const id = productTypeId || (firstProductType ? firstProductType.id : OTHER_PRODUCT_TYPE_ID);
   const productType = productTypes.find((v) => v.id === id);
-  const primaryService = primaryServices[0];
+  // STANDARDYDELSE (oktober 2026): en ny varelinje starter på den ydelse, butikkens admin har
+  // valgt som standard - ellers "Montering", ellers den første. Før blev blindt den FØRSTE
+  // ydelse på listen brugt, så trin 3 startede fx på "Kantstenslevering". Se lib/ydelser.js.
+  const primaryService = standardYdelse(primaryServices);
   const defaultMinutes = primaryService ? getDefaultEstimateMinutes(defaultTimeEstimates, id, primaryService.id) : null;
   return {
     id: uid(),
