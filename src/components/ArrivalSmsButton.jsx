@@ -1,29 +1,36 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { MessageSquare, Check, Loader2, X } from "lucide-react";
-import { sendArrivalSms } from "../lib/dataStore";
+import { sendArrivalSms } from "../lib/arrivalSms";
+import { ENKELT_TIDER, INTERVALLER, MAKS_MINUTTER, ankomstFrase, intervalKnapTekst, tolkAnkomst } from "../lib/arrivalTime";
 
-const ARRIVAL_PRESETS_MIN = [5, 10, 15, 30, 60];
-
-// Knap + panel til at sende "ankomst om X minutter" som SMS - via en Edge
-// Function der sender fra firmaets fælles nummer. IKKE via montørens egen
-// telefon: montøren bruger typisk sin private telefon og skal hverken dele sit
-// nummer med kunden eller selv afsende noget manuelt.
+// Knap + panel til at sende ankomst-SMS'en - via en Edge Function der sender
+// fra firmaets fælles nummer. IKKE via montørens egen telefon: montøren bruger
+// typisk sin private telefon og skal hverken dele sit nummer med kunden eller
+// selv afsende noget manuelt.
 //
 // variant="stak" gør knappen til ét lag i den lodrette handlingsstak på
 // rutekortet (se ActionStack i pages/TechnicianPage.jsx).
 //
-// PANELET (oktober 2026, rettet): valget af minutter åbnede før som en lille
-// boks lige under knappen. Men knappen sidder i handlingsstakken på 74 px, som
-// har overflow-hidden - og boksen på 224 px blev klippet, så kun yderste kant
-// kunne ses henover Ring-knappen. Nu vises valget som et panel i bunden af
-// skærmen (midt på skærmen på en stor skærm), tegnet via en portal direkte under
-// <body>, så ingen omgivende beskæring eller stakkeorden kan ramme det.
-// Valgene er store nok til en tommelfinger, og modtageren vises, så man kan se,
-// hvem SMS'en går til, før man trykker.
+// PANELET (oktober 2026): vises i bunden af skærmen (midt på en stor skærm),
+// tegnet via en portal direkte under <body>. Det åbnede før som en lille boks
+// under knappen, men knappen sidder i en kolonne på 74 px med overflow-hidden, og
+// boksen blev klippet over. Portalen gør, at ingen omgivende beskæring kan ramme
+// panelet.
+//
+// TIDEN kan vælges på tre måder, alle med modtageren synlig:
+//   * hurtigknapper med én tid (5, 10, 15, 30, 60 min) - sender med det samme
+//   * hurtigknapper med et INTERVAL (15-30, 30-60, 1-2 timer) - sender med det samme
+//   * "Skriv selv": et antal minutter, evt. med en øvre grænse ("mellem 30 og
+//     60 minutter"). Her vises den sætning kunden får, og der sendes først, når
+//     man trykker Send.
+// Et interval bruges, når montøren ikke kan love et præcist tidspunkt, fx fordi
+// forrige opgave kan trække ud.
 function ArrivalSmsButton({ phone, customerName, variant }) {
   const [open, setOpen] = React.useState(false);
   const [status, setStatus] = React.useState({ state: "idle" });
+  const [fraTekst, setFraTekst] = React.useState("");
+  const [tilTekst, setTilTekst] = React.useState("");
   const triggerRef = React.useRef(null);
   const panelRef = React.useRef(null);
   const sendingRef = React.useRef(false);
@@ -60,12 +67,14 @@ function ArrivalSmsButton({ phone, customerName, variant }) {
 
   if (!phone) return null;
 
-  const send = async (minutter) => {
+  // Felterne nulstilles, hver gang panelet åbnes (se knappen nederst): ellers ville
+  // en "til"-tid fra forrige SMS stå tilbage og blive sendt med en ny, enkelt tid.
+  const send = async (fra, til) => {
     if (sendingRef.current) return;
     sendingRef.current = true;
     setStatus({ state: "sending" });
     try {
-      const result = await sendArrivalSms({ telefon: phone, minutter, kundeNavn: customerName });
+      const result = await sendArrivalSms({ telefon: phone, minutter: fra, minutterTil: til, kundeNavn: customerName });
       setStatus(result.ok ? { state: "sent" } : { state: "error", fejl: result.fejl || "SMS'en kunne ikke sendes." });
     } catch (e) {
       setStatus({ state: "error", fejl: "SMS'en kunne ikke sendes. Prøv igen." });
@@ -76,11 +85,18 @@ function ArrivalSmsButton({ phone, customerName, variant }) {
 
   const erStak = variant === "stak";
   const sender = status.state === "sending";
+  const laast = sender || status.state === "sent";
   const ikon = sender
     ? <Loader2 size={erStak ? 15 : 13} className="animate-spin" aria-hidden="true" />
     : status.state === "sent"
       ? <Check size={erStak ? 15 : 13} className="text-success" aria-hidden="true" />
       : <MessageSquare size={erStak ? 15 : 13} aria-hidden="true" />;
+
+  const tolket = tolkAnkomst(fraTekst, tilTekst);
+  const kanSendeEgen = tolket.ok && !laast;
+  const sendEgen = () => { if (tolket.ok) send(tolket.fra, tolket.til); };
+  const feltKlasse = "w-full min-h-[48px] rounded-lg border border-line bg-white px-3 text-base font-mono text-ink text-center focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand disabled:opacity-50";
+  const knapKlasse = "min-h-[52px] rounded-lg text-sm font-mono font-semibold text-ink border border-line hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-50";
 
   const panel = open && typeof document !== "undefined" ? createPortal(
     <div
@@ -95,7 +111,7 @@ function ArrivalSmsButton({ phone, customerName, variant }) {
         aria-labelledby="sms-titel"
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        className="w-full sm:max-w-sm bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] focus:outline-none"
+        className="w-full sm:max-w-sm max-h-[90dvh] overflow-y-auto bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] focus:outline-none"
       >
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="min-w-0">
@@ -109,24 +125,73 @@ function ArrivalSmsButton({ phone, customerName, variant }) {
 
         <p className="text-[11px] uppercase tracking-wide text-muted font-semibold mb-2">Ankomst om…</p>
         <div className="grid grid-cols-3 gap-2">
-          {ARRIVAL_PRESETS_MIN.map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => send(m)}
-              disabled={sender || status.state === "sent"}
-              className="min-h-[52px] rounded-lg text-sm font-mono font-semibold text-ink border border-line hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-50"
-            >
+          {ENKELT_TIDER.map((m) => (
+            <button key={m} type="button" onClick={() => send(m, null)} disabled={laast} className={knapKlasse}>
               {m} min
             </button>
           ))}
         </div>
 
+        <p className="text-[11px] uppercase tracking-wide text-muted font-semibold mt-4 mb-2">Eller et interval</p>
+        <div className="grid grid-cols-3 gap-2">
+          {INTERVALLER.map(([a, b]) => (
+            <button key={`${a}-${b}`} type="button" onClick={() => send(a, b)} disabled={laast} aria-label={`Ankomst ${ankomstFrase(a, b)}`} className={knapKlasse}>
+              {intervalKnapTekst(a, b)}
+            </button>
+          ))}
+        </div>
+
+        <p className="text-[11px] uppercase tracking-wide text-muted font-semibold mt-4 mb-2">Skriv selv (minutter)</p>
+        <div className="flex items-end gap-2">
+          <label className="flex-1 text-[11px] text-muted">
+            Fra
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={3}
+              value={fraTekst}
+              onChange={(e) => setFraTekst(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && kanSendeEgen) { e.preventDefault(); sendEgen(); } }}
+              disabled={laast}
+              placeholder="30"
+              aria-label="Fra minutter"
+              className={`${feltKlasse} mt-1`}
+            />
+          </label>
+          <span className="pb-3 text-muted" aria-hidden="true">–</span>
+          <label className="flex-1 text-[11px] text-muted">
+            Til (valgfri)
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={3}
+              value={tilTekst}
+              onChange={(e) => setTilTekst(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && kanSendeEgen) { e.preventDefault(); sendEgen(); } }}
+              disabled={laast}
+              placeholder="60"
+              aria-label="Til minutter"
+              className={`${feltKlasse} mt-1`}
+            />
+          </label>
+        </div>
+
+        <div className="mt-2 min-h-[20px]" aria-live="polite">
+          {tolket.ok && <p className="text-xs text-ink">Kunden får: <span className="font-semibold">“…vi forventer at ankomme hos dig {ankomstFrase(tolket.fra, tolket.til)}.”</span></p>}
+          {!tolket.ok && !tolket.tom && <p role="alert" className="text-xs text-danger">{tolket.fejl}</p>}
+          {!tolket.ok && tolket.tom && <p className="text-[11px] text-muted">Skriv kun “Fra” for én tid, eller begge for et interval (højst {MAKS_MINUTTER} min).</p>}
+        </div>
+        <button type="button" onClick={sendEgen} disabled={!kanSendeEgen} className="mt-2 w-full min-h-[48px] rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-40">
+          Send SMS
+        </button>
+
         <div className="mt-3 min-h-[20px]" aria-live="polite">
           {sender && <p className="text-xs text-muted flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" aria-hidden="true" /> Sender…</p>}
           {status.state === "sent" && <p className="text-xs text-success font-semibold flex items-center gap-1.5"><Check size={13} aria-hidden="true" /> SMS sendt</p>}
           {status.state === "error" && <p role="alert" className="text-xs text-danger font-semibold">{status.fejl}</p>}
-          {status.state === "idle" && <p className="text-[11px] text-muted">Sendes med det samme fra butikkens nummer.</p>}
+          {status.state === "idle" && <p className="text-[11px] text-muted">Knapperne herover sender med det samme fra butikkens nummer.</p>}
         </div>
       </div>
     </div>,
@@ -138,7 +203,7 @@ function ArrivalSmsButton({ phone, customerName, variant }) {
       <button
         ref={triggerRef}
         type="button"
-        onClick={() => { setStatus({ state: "idle" }); setOpen(true); }}
+        onClick={() => { setStatus({ state: "idle" }); setFraTekst(""); setTilTekst(""); setOpen(true); }}
         disabled={sender}
         aria-haspopup="dialog"
         aria-expanded={open}
