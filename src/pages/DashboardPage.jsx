@@ -5,6 +5,7 @@ import { OrderCardCompact } from "../components/OrderCardCompact";
 import { classify } from "./PlanningPage";
 import { isOrderPickable } from "./WarehousePage";
 import { TrashPanel } from "../components/TrashPanel";
+import { ParkeredeSager } from "../components/ParkeredeSager";
 import { linjeSkalPlukkes } from "../lib/ydelser";
 
 // ---------------------------------------------------------------------------
@@ -143,7 +144,11 @@ function PickListWidget({ orders, vehicles, primaryServices, onNavigate }) {
 // oprette en sag er en HANDLING, man foretager et par gange om dagen, ikke
 // et sted man opholder sig. En hel fane til to knapper og en formular gav
 // et navigationspunkt, folk skulle igennem for at komme videre.
-function QuickBookingWidget({ onNavigate }) {
+//
+// PARKEREDE SAGER (oktober 2026): ufærdige bookinger ligger HER, under knapperne, og kun
+// for den sælger, der påbegyndte dem - se components/ParkeredeSager.jsx. "Fortsæt" åbner
+// bookingformularen præcis, hvor man slap.
+function QuickBookingWidget({ onNavigate, store }) {
   const catalogEntry = DASHBOARD_WIDGET_CATALOG.find((w) => w.key === "quick_booking");
   return (
     <WidgetCard title={catalogEntry.label} icon={catalogEntry.icon}>
@@ -163,6 +168,7 @@ function QuickBookingWidget({ onNavigate }) {
           <span className="text-xs font-semibold uppercase tracking-wide">Importér fra fil</span>
         </button>
       </div>
+      <ParkeredeSager storeId={store?.id} onGenoptag={() => onNavigate("salg")} />
     </WidgetCard>
   );
 }
