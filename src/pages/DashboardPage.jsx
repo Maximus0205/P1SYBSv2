@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from "react";
-import { Settings2, Plus, ChevronUp, ChevronDown, Upload, AlertTriangle, Truck } from "lucide-react";
+import { Settings2, Plus, ChevronUp, ChevronDown, Upload, AlertTriangle, Truck, Trash2 } from "lucide-react";
 import { todayISO, dailyOrderCompare, canDo, DASHBOARD_WIDGET_CATALOG, missingLineItems, lineItemLabel } from "../data/domain";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 import { classify } from "./PlanningPage";
 import { isOrderPickable } from "./WarehousePage";
+import { TrashPanel } from "../components/TrashPanel";
 
 // ---------------------------------------------------------------------------
 // FORSIDE / DASHBOARD (august 2026): en tilpasselig samling af "widgets" -
@@ -330,6 +331,10 @@ function CustomizePanel({ activeKeys, availableCatalog, onSave }) {
 
 function DashboardPage({ profile, permissions, orders, technicians, personnel, vehicles, timeOff, store, notifications, onOpen, onNavigate, dashboardWidgets, onUpdateWidgets }) {
   const [customizing, setCustomizing] = useState(false);
+  // PAPIRKURV (oktober 2026): en knap, ikke en widget - papirkurven vises først, når
+  // man trykker, og kun for dem der må slette/gendanne sager (sag_slet).
+  const [visPapirkurv, setVisPapirkurv] = useState(false);
+  const maaSePapirkurv = canDo(permissions, "sag_slet");
 
   const availableCatalog = DASHBOARD_WIDGET_CATALOG.filter((w) => canDo(permissions, w.requires));
   const activeKeys = dashboardWidgets.filter((k) => availableCatalog.some((w) => w.key === k));
@@ -343,14 +348,23 @@ function DashboardPage({ profile, permissions, orders, technicians, personnel, v
           <p className="font-mono text-[11px] tracking-widest uppercase text-brand mb-1">Forside</p>
           <h1 className="font-display text-4xl uppercase tracking-tight text-ink">Hej, {profile.navn?.split(" ")[0] || "der"}</h1>
         </div>
-        <button onClick={() => setCustomizing((v) => !v)} aria-expanded={customizing} className="px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5">
-          <Settings2 size={15} aria-hidden="true" /> {customizing ? "Færdig" : "Tilpas"}
-        </button>
+        <div className="flex gap-2 flex-wrap">
+          {maaSePapirkurv && (
+            <button onClick={() => setVisPapirkurv((v) => !v)} aria-expanded={visPapirkurv} className="px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5">
+              <Trash2 size={15} aria-hidden="true" /> Papirkurv
+            </button>
+          )}
+          <button onClick={() => setCustomizing((v) => !v)} aria-expanded={customizing} className="px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5">
+            <Settings2 size={15} aria-hidden="true" /> {customizing ? "Færdig" : "Tilpas"}
+          </button>
+        </div>
       </div>
 
       {customizing && (
         <CustomizePanel activeKeys={activeKeys} availableCatalog={availableCatalog} onSave={onUpdateWidgets} />
       )}
+
+      {visPapirkurv && maaSePapirkurv && <TrashPanel storeId={store?.id} onClose={() => setVisPapirkurv(false)} />}
 
       {activeKeys.length === 0 ? (
         <p className="text-sm text-muted italic">Ingen widgets valgt endnu — tryk "Tilpas" for at sætte din forside op.</p>
