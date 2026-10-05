@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { syncPosOnFinish } from "../lib/dataStore";
+import { pos } from "../adapters";
+import { pausePatch } from "../lib/opgaveTid";
 import { fetchAllOrders, fetchOrderVersions, fetchOrdersByIds, saveOrderVersioned, trashOrder, ORDERS_CHANGED_EVENT, MAKS_RAEKKER } from "../lib/orderStore";
 import { uid, dailyOrderCompare, lineItemFingerprint } from "../data/domain";
 import { SAGSTYPE_KUNDE } from "../data/caseTypes";
@@ -713,9 +714,15 @@ export function useOrders(storeId) {
   // Funktionen skriver posStatus direkte i databasen, hvilket tæller
   // sagens versionsnummer op. Derfor hentes de nyeste versioner bagefter
   // (refresh), så vores næste gem ikke bygger på en forældet udgave.
+  //
+  // SLÅET FRA (oktober 2026): POS-synkroniseringen er endnu ikke en aktiv del af integrationen (Flow
+  // Retails API er ikke koblet på), så den kører ikke ved færdigmelding. Adapteren (adapters/pos) laver
+  // da intet kald og skriver ingen status - og sagen får hverken en fejl-banner eller en tom
+  // posStatus. Slås til ét sted: kapabiliteter.synkVedAfslutning i adapters/index.js.
   const runPosSync = (orderId) => {
     if (!storeId) return;
-    syncPosOnFinish({ storeId, orderId }).then((result) => {
+    pos.synkVedAfslutning({ storeId, orderId }).then((result) => {
+      if (result.sprunget) return;
       if (result.posStatus) {
         setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, posStatus: result.posStatus } : o)));
       } else if (!result.ok) {
@@ -862,8 +869,12 @@ export function useOrders(storeId) {
   const markProblem = (orderId, note) => {
     const s = findOrder(orders, orderId);
     if (!s || !note?.trim()) return;
+    // TIDEN SÆTTES PÅ PAUSE (oktober 2026): kører opgaven, lukkes den kørende periode, så tiden ikke
+    // fortsætter, mens opgaven ikke kommer i mål. Genoptages den (Start/Genoptag), starter en ny
+    // periode. Se lib/opgaveTid.js.
     saveOneOrder({
       ...s,
+      ...pausePatch(s, new Date().toISOString(), uid()),
       problem: { note: note.trim(), tid: new Date().toLocaleString("da-DK") },
       notifikationSet: { ...(s.notifikationSet || {}), problem: false },
     });
