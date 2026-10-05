@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Clock } from "lucide-react";
-import { kladdeEtiket, tidTekst } from "../lib/orderDrafts";
+import { kladdeEtiket, kladdeErSynket, tidTekst } from "../lib/orderDrafts";
 
 // Parkerede bookinger ("kladder") - ufærdige sager, der blev afbrudt og kan
 // genoptages præcis, hvor man slap. Se lib/orderDrafts.js.
@@ -20,8 +20,8 @@ function OrderDrafts({ kladder, onResume, onDiscard, antalTrin = 4, kompakt = fa
         <Clock size={15} className="text-brand shrink-0" aria-hidden="true" />
         Parkerede bookinger ({kladder.length})
       </h2>
-      {!kompakt && <p className="text-xs text-muted mb-3">Ufærdige sager, der blev afbrudt. Fortsæt, hvor du slap — de gemmes på denne enhed i op til 14 dage.</p>}
-      {kompakt && <p className="text-[11px] text-muted mb-2">Kun dine egne, gemt på denne enhed i op til 14 dage.</p>}
+      {!kompakt && <p className="text-xs text-muted mb-3">Ufærdige sager, der blev afbrudt. Fortsæt, hvor du slap — de følger dig på tværs af dine enheder og gemmes i op til 14 dage.</p>}
+      {kompakt && <p className="text-[11px] text-muted mb-2">Kun dine egne — de følger dig på tværs af enheder og gemmes i op til 14 dage.</p>}
       <ul className="space-y-2">
         {kladder.map((k) => {
           const { navn, linje2 } = kladdeEtiket(k);
@@ -33,6 +33,7 @@ function OrderDrafts({ kladder, onResume, onDiscard, antalTrin = 4, kompakt = fa
                   <p className="text-sm font-semibold text-ink truncate">{navn}</p>
                   {linje2 && <p className="text-xs text-muted truncate">{linje2}</p>}
                   <p className="text-[11px] text-muted mt-0.5">Trin {Math.min((k.step || 0) + 1, antalTrin)} af {antalTrin} · gemt {tidTekst(k.savedAt)}</p>
+                  {!kladdeErSynket(k) && <p className="text-[11px] text-brand mt-0.5">Endnu ikke sendt til dine andre enheder</p>}
                 </div>
                 {sikker ? (
                   <div className="flex items-center gap-2 flex-wrap">
