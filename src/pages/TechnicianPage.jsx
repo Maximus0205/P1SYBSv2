@@ -9,6 +9,8 @@ import { BookingEditor, DuplicatePanel, PosStatusBanner } from "../components/Or
 import { AddressNotesPanel } from "../components/AddressNotes";
 import { KeyCabinetAlert, KeyCabinetLines, useCabinetMatches } from "../components/KeyCabinetAlert";
 import { ArrivalSmsButton } from "../components/ArrivalSmsButton";
+import { OpgaveTimer } from "../components/OpgaveTimer";
+import { erPauset } from "../lib/opgaveTid";
 
 // Universelt Google Maps-link: åbner Google Maps-appen hvis den er
 // installeret (iOS og Android), ellers i browseren. Vi bruger søge-linket
@@ -204,10 +206,8 @@ function OrderStopCard({ order: s, keyCabinets, onOpen, onMoveUp, onMoveDown, ca
         <button type="button" onClick={() => onOpen(s.id)} className="text-left min-w-0 flex-1 focus:outline-none focus:ring-2 focus:ring-brand rounded">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="font-mono text-sm font-semibold text-ink">{s.start}–{s.slut}</span>
-            {s.stemplerInd ? (
-              <span className="font-mono text-[11px] text-brand flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" /> i gang
-              </span>
+            {s.stemplerInd || erPauset(s) ? (
+              <OpgaveTimer order={s} />
             ) : (
               <span className="font-mono text-[11px] text-muted flex items-center gap-1" title="Forventet/registreret tidsforbrug">
                 <Clock size={10} aria-hidden="true" /> {formatDuration(totalMinutes(s) > 0 ? totalMinutes(s) : orderExpectedMinutes(s))}
@@ -415,7 +415,7 @@ function ProblemPanel({ order, onSubmit, onCancel }) {
   return (
     <div className="rounded-xl bg-white border border-danger p-4 mb-4 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-danger mb-1 flex items-center gap-1.5"><AlertTriangle size={14} aria-hidden="true" /> Marker: kom ikke i mål</h3>
-      <p className="text-xs text-muted mb-3">Fx kunden ikke hjemme, mangler dele, adgangsproblem. Sælgeren der har booket sagen ({order.oprettetAf?.navn || "ukendt"}) får automatisk besked om det.</p>
+      <p className="text-xs text-muted mb-3">Fx kunden ikke hjemme, mangler dele, adgangsproblem. Sælgeren der har booket sagen ({order.oprettetAf?.navn || "ukendt"}) får automatisk besked om det.{order.stemplerInd ? " Tiden på opgaven sættes på pause, til du genoptager den." : ""}</p>
       <textarea
         autoFocus value={note} onChange={(e) => setNote(e.target.value)} rows={3}
         placeholder="Kort beskrivelse af hvad der gik galt..."
@@ -538,6 +538,8 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
 
   const erAfsluttet = order.status === "afsluttet";
   const erIGang = order.status === "igang";
+  // Sat på pause (fx markeret "kom ikke i mål"): i gang, men uden en kørende periode - se lib/opgaveTid.js.
+  const pauset = erPauset(order);
 
   return (
     <div>
@@ -622,9 +624,9 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
                 </div>
               ) : (
                 <div className="flex gap-2 flex-wrap">
-                  {!erIGang && onStartOrder && (
+                  {(!erIGang || pauset) && onStartOrder && (
                     <button onClick={onStartOrder} className="flex-1 min-w-[150px] px-4 py-3.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center justify-center gap-2">
-                      <PlayCircle size={17} aria-hidden="true" /> Start opgave
+                      <PlayCircle size={17} aria-hidden="true" /> {pauset ? "Genoptag opgave" : "Start opgave"}
                     </button>
                   )}
                   {onFinishOrder && (
@@ -634,10 +636,11 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
                   )}
                 </div>
               )}
-              {erIGang && order.stemplerInd && (
-                <p className="text-[11px] text-brand mt-2 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" /> Opgaven er i gang — tiden tælles indtil du færdigmelder.
-                </p>
+              {erIGang && (
+                <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
+                  <OpgaveTimer order={order} stor />
+                  <p className="text-[11px] text-muted">{order.stemplerInd ? "Tiden tælles, indtil du færdigmelder eller markerer, at opgaven ikke kom i mål." : "Tiden står på pause, til du genoptager opgaven."}</p>
+                </div>
               )}
             </div>
           )}
