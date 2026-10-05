@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { getStoreUsers, createUserAsAdmin, updateProfile, resetPasswordAsAdmin, updateUserPermissions, deleteUserAsAdmin } from "../lib/dataStore";
+import { sletBruger } from "../lib/sletBruger";
 
 // Al state og CRUD for BRUGERE (som "montører" udledes af, se koererSelv
 // i App.jsx) er samlet her.
@@ -64,39 +65,15 @@ export function useUsers(storeId) {
   // Henter FØRST konsekvenserne (tjekKun) og viser dem i bekræftelsen.
   // Det er ikke en formalitet: fravær og sygemeldinger slettes med
   // brugeren (CASCADE), og kommende sager tildelt personen bliver
-  // liggende og dukker op under "Montørproblem". At slette en montør midt
-  // i en uge med 12 sager i kalenderen skal man vide, at man gør.
+  // liggende og dukker op under "Sygemelding / feriefridag". At slette en
+  // montør midt i en uge med 12 sager i kalenderen skal man vide, at man gør.
   //
-  // Rettighedstjekket og de to spærringer - man kan ikke slette sig selv,
-  // og man kan ikke slette butikkens sidste admin - ligger i edge
-  // functionen, ikke her. UI'et er ikke sikkerhedsgrænsen.
+  // Selve flowet (tjek, bekræftelse, sletning) ligger siden oktober 2026 i lib/sletBruger.js, så Admin og
+  // Systemadmin bruger det SAMME. Rettighedstjekket og de to spærringer - man kan ikke slette sig selv, og man kan
+  // ikke slette butikkens sidste admin - ligger i edge functionen, ikke her. UI'et er ikke sikkerhedsgrænsen.
   const deleteUser = async (id) => {
-    const tjek = await deleteUserAsAdmin(id, { tjekKun: true });
-    if (!tjek.ok) {
-      window.alert(tjek.fejl || "Kunne ikke slette brugeren.");
-      return { ok: false, fejl: tjek.fejl };
-    }
-
-    const k = tjek.konsekvenser || {};
-    const linjer = [
-      `Slet ${k.navn || "brugeren"} permanent?`,
-      "",
-      "Loginet og profilen slettes og kan ikke gendannes.",
-    ];
-    if (k.fravaersperioder > 0) {
-      linjer.push(`· ${k.fravaersperioder} ${k.fravaersperioder === 1 ? "registreret fravær/sygemelding slettes" : "registrerede fravær/sygemeldinger slettes"} med.`);
-    }
-    if (k.kommendeSager > 0) {
-      linjer.push(`· ${k.kommendeSager} ${k.kommendeSager === 1 ? "kommende sag er" : "kommende sager er"} tildelt personen. ${k.kommendeSager === 1 ? "Den" : "De"} slettes IKKE, men skal tildeles en anden montør - se Planlægning under "Montørproblem".`);
-    }
-    if (!window.confirm(linjer.join("\n"))) return { ok: false, annulleret: true };
-
-    const result = await deleteUserAsAdmin(id);
-    if (!result.ok) {
-      window.alert(result.fejl || "Kunne ikke slette brugeren.");
-      return result;
-    }
-    if (storeId) await load(storeId);
+    const result = await sletBruger(id, { slet: deleteUserAsAdmin, bekraeft: (t) => window.confirm(t), advar: (t) => window.alert(t) });
+    if (result.ok && storeId) await load(storeId);
     return result;
   };
 
