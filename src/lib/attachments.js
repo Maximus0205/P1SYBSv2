@@ -1,250 +1,26 @@
-// Vedhæftninger: billeder, underskrifter og anden dokumentation på en sag
-// (august 2026).
-//
-// HVORFOR EN NY FIL OG IKKE I dataStore.js: dataStore taler med
-// DATABASEN. Dette modul taler med et FILLAGER gennem en Edge Function,
-// har sit eget to-fase-flow og sin egen fejlhåndtering. Det er en
-// selvstændig bekymring, og dataStore er stor nok i forvejen.
-//
-// BAGGRUND: billeder og underskrifter lå som base64 direkte i sagens
-// jsonb-blob. Én sag med billeder fylder 2,5 MB, og appen henter ALLE
-// butikkens sager med hele blobben ved hver indlæsning - også på
-// montørernes mobiler. Filerne ligger nu i et fillager, og sagen gemmer
-// kun en reference.
-//
-// HVOR FILEN LIGGER er butikkens valg: enten en bøtte, vi hoster, eller
-// en de selv skaffer (typisk et eget NAS, se
-// components/StorageIntegrationAdmin.jsx) - se Edge Function
-// "sagsdokumentation" for selve forgreningen. Det er bevidst usynligt
-// herfra: klienten kender kun vedhæftningens id og beder Edge Function'en
-// om en URL - OG om selve uploaden skal ske med Supabase Storage's egen
-// "uploadToSignedUrl" eller en almindelig signeret PUT (se
-// egetLager-feltet nedenfor). Skifter en butik lagerplads, ændres intet
-// andet i frontenden.
-//
-// TO FASER VED UPLOAD:
-//   1. start-upload    -> serveren opretter en "pending"-række og giver
-//                         en signeret upload-URL (og, ved eget lager,
-//                         ingen "token" - se egetLager nedenfor)
-//   2. selve uploaden  -> browseren sender filen direkte til lageret
-//   3. bekraeft-upload -> serveren tjekker at filen FAKTISK kom frem,
-//                         læser dens rigtige størrelse og aktiverer den
-//
-// Mister mobilen dækning midt i trin 2 - hvilket sker, når montøren står
-// i en kælder - efterlades kun en pending-række, som ryddes op
-// automatisk. Sagen kommer ALDRIG til at pege på en fil, der ikke findes.
-
-import { supabase } from "./supabaseClient";
-import { logError } from "./errorLog";
+// Vedhæftninger: billeder, underskrifter og anden dokumentation på en sag. Selve logikken (to-fase-upload, signerede
+// URL'er, lagerforbrug, opsætning af butikkens eget lager) ligger siden oktober 2026 i adapteren src/adapters/lager
+// (uafhængig af appen og genbrugelig i andre projekter). Denne fil er de gamle navne, plus det, der er appens sag:
+// at melde en mislykket upload eller sletning til brugeren (se lib/saveStatus.js) - en upload, der fejler i
+// stilhed, er præcis den fejltype, montøren opdager for sent.
+import { lager } from "../adapters";
 import { reportSaveFailure } from "./saveStatus";
 
-const FUNKTION = "sagsdokumentation";
+export { formatBytes } from "../adapters/lager";
 
-// Edge Functions sender deres rigtige fejlbesked som { fejl: "..." } i
-// svarets body. Uden dette viser supabase-js kun en generisk
-// "non-2xx status code"-tekst. Samme mønster som readEdgeFunctionError i
-// dataStore.js.
-async function laesFejl(data, error, standardBesked) {
-  if (data?.fejl) return data.fejl;
-  if (error?.context && typeof error.context.clone === "function") {
-    try {
-      const body = await error.context.clone().json();
-      if (body?.fejl) return body.fejl;
-    } catch (_) {
-      // Ikke JSON - brug standardbeskeden nedenfor.
-    }
-  }
-  return error?.message || standardBesked;
+export const getAttachments = (orderId, storeId) => lager.hentVedhaeftninger(orderId, storeId);
+export const getAttachmentUrl = (attachmentId) => lager.hentUrl(attachmentId);
+export const getAttachmentUrls = (attachmentIds) => lager.hentUrls(attachmentIds);
+export const getStorageUsage = (storeId) => lager.hentForbrug(storeId);
+
+export async function uploadAttachment(args) {
+  const r = await lager.upload(args);
+  if (!r.ok && args?.orderId && args?.file) reportSaveFailure(`Dokumentationen blev ikke gemt: ${r.fejl}`);
+  return r;
 }
 
-async function kald(krop, standardBesked) {
-  const { data, error } = await supabase.functions.invoke(FUNKTION, { body: krop });
-  if (error || data?.fejl) {
-    const fejl = await laesFejl(data, error, standardBesked);
-    logError(`attachments:${krop.handling}`, fejl);
-    return { ok: false, fejl };
-  }
-  return { ok: true, ...data };
-}
-
-// Henter en sags vedhæftninger. Kun 'active' - en afbrudt upload skal
-// ikke vises som et billede, der ikke kan hentes.
-//
-// storeId er VALGFRIT: RLS på attachments afgrænser allerede til den
-// indloggedes egen butik, så et sags-id fra en anden butik giver
-// ingenting uanset hvad. Det gør, at komponenter som Photos kan hente
-// deres egne data uden at butiks-id'et skal sendes ned gennem hvert
-// eneste lag af props. Sendes det med, bruges det som ekstra afgrænsning.
-export async function getAttachments(orderId, storeId) {
-  if (!orderId) return [];
-  let query = supabase
-    .from("attachments")
-    .select("id, kind, navn, mime_type, bytes, created_at, created_by")
-    .eq("order_id", String(orderId))
-    .eq("status", "active")
-    .order("created_at", { ascending: true });
-  if (storeId) query = query.eq("store_id", storeId);
-  const { data, error } = await query;
-  if (error) {
-    logError("attachments:getAttachments", error.message);
-    return [];
-  }
-  return data || [];
-}
-
-// Signeret URL til at VISE én vedhæftning. Kortlivet med vilje - en URL
-// der virker for evigt, er reelt en offentlig fil, og en sagsmappe
-// indeholder billeder fra kundens hjem og deres underskrift.
-//
-// Derfor må den heller ikke gemmes i sagen eller caches langtidsholdbart:
-// hent den, når billedet skal vises.
-export async function getAttachmentUrl(attachmentId) {
-  return kald({ handling: "hent-url", vedhaeftningId: attachmentId }, "Kunne ikke hente filen");
-}
-
-// Som ovenstående, men for flere ad gangen. En sag med otte billeder skal
-// ikke koste otte rundture - særligt ikke over mobildata i en kælder.
-// Returnerer { ok, urls: { <id>: { url, navn, mimeType } } }.
-export async function getAttachmentUrls(attachmentIds) {
-  if (!attachmentIds || attachmentIds.length === 0) return { ok: true, urls: {} };
-  return kald({ handling: "hent-urls", vedhaeftningIder: attachmentIds }, "Kunne ikke hente filerne");
-}
-
-// Uploader én fil. Kører hele to-fase-flowet og melder selv fejl videre
-// til brugeren (se lib/saveStatus.js) - en upload, der fejler i stilhed,
-// er præcis den fejltype, montøren opdager for sent.
-//
-// onProgress kaldes med 'starter' | 'sender' | 'bekraefter', så
-// kaldende UI kan vise hvad der sker. En upload over mobildata tager
-// tid nok til, at en tavs knap føles som om appen er gået i stå.
-//
-// EGET LAGER (september 2026, tilføjet): start-upload svarer med
-// egetLager:true, hvis butikken har sat sit eget S3-kompatible lager op
-// (se storage-integration Edge Function). I det tilfælde er "uploadUrl"
-// en almindelig, allerede FÆRDIGSIGNERET PUT-URL (AWS Signature V4) -
-// den bruges med en helt almindelig fetch(), IKKE Supabase Storage's
-// egen uploadToSignedUrl (som er specifik for Supabase's eget
-// token-baserede skema og ikke forstår en fremmed S3-tjeneste).
-export async function uploadAttachment({ orderId, file, kind, onProgress }) {
-  if (!orderId || !file) return { ok: false, fejl: "Mangler sag eller fil" };
-
-  onProgress?.("starter");
-  const start = await kald({
-    handling: "start-upload",
-    sagId: String(orderId),
-    filnavn: file.name,
-    mimeType: file.type,
-    kind: kind || "billede",
-  }, "Kunne ikke starte uploaden");
-  if (!start.ok) {
-    reportSaveFailure(`Dokumentationen blev ikke gemt: ${start.fejl}`);
-    return start;
-  }
-
-  onProgress?.("sender");
-  if (start.egetLager) {
-    // Almindelig, allerede signeret PUT mod butikkens eget lager - intet
-    // Supabase-specifikt token at bruge her.
-    try {
-      const res = await fetch(start.uploadUrl, {
-        method: "PUT",
-        body: file,
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-      });
-      if (!res.ok) {
-        const fejlTekst = `Lageret svarede med status ${res.status}`;
-        logError("attachments:upload", fejlTekst);
-        reportSaveFailure(`Dokumentationen blev ikke gemt: ${fejlTekst}`);
-        return { ok: false, fejl: fejlTekst };
-      }
-    } catch (e) {
-      // Samme filosofi som Supabase-grenen nedenfor: den pending-række,
-      // serveren oprettede, bliver stående og ryddes op automatisk - vi
-      // forsøger IKKE at slette den her, en fejl her skyldes typisk
-      // netværk/CORS, og et oprydningskald ville fejle af samme grund.
-      const besked = e?.message || "Ukendt netværksfejl";
-      logError("attachments:upload", besked);
-      reportSaveFailure(`Dokumentationen blev ikke gemt: ${besked}`);
-      return { ok: false, fejl: besked };
-    }
-  } else {
-    const { error: uploadFejl } = await supabase.storage
-      .from("sagsdokumentation")
-      .uploadToSignedUrl(start.lagerNoegle, start.token, file, {
-        contentType: file.type || "application/octet-stream",
-      });
-    if (uploadFejl) {
-      logError("attachments:upload", uploadFejl.message);
-      reportSaveFailure(`Dokumentationen blev ikke gemt: ${uploadFejl.message}`);
-      return { ok: false, fejl: uploadFejl.message };
-    }
-  }
-
-  onProgress?.("bekraefter");
-  const bekraeft = await kald({
-    handling: "bekraeft-upload",
-    vedhaeftningId: start.vedhaeftningId,
-  }, "Filen blev sendt, men kunne ikke bekræftes");
-  if (!bekraeft.ok) {
-    reportSaveFailure(`Dokumentationen blev ikke gemt: ${bekraeft.fejl}`);
-    return bekraeft;
-  }
-
-  return {
-    ok: true,
-    id: start.vedhaeftningId,
-    bytes: bekraeft.bytes,
-    // Sat når butikken nærmer sig sin kvote. Kun en ADVARSEL - uploaden
-    // er allerede gennemført. En montør hos kunden må aldrig blokeres af
-    // en kvote; det er en samtale mellem os og butikkens administrator,
-    // ikke noget der skal stoppe en underskrift midt i en aflevering.
-    // Findes ikke ved eget lager (butikkens egen disk, ingen kvote vi
-    // kender) - se sagsdokumentation Edge Function.
-    pladsAdvarsel: start.pladsAdvarsel ?? null,
-  };
-}
-
-// Markerer en vedhæftning til sletning. Fjerner IKKE rækken: selve filen
-// skal væk fra lageret først, ellers står der en fil, ingen kan se, men
-// som stadig fylder i butikkens forbrug. Oprydningsjobbet
-// (sagsdokumentation-oprydning) fjerner begge dele i den rigtige
-// rækkefølge.
 export async function markAttachmentForDeletion(attachmentId) {
-  const { error } = await supabase
-    .from("attachments").update({ status: "deleting" }).eq("id", attachmentId);
-  if (error) {
-    logError("attachments:markForDeletion", error.message);
-    reportSaveFailure(`Kunne ikke fjerne dokumentationen: ${error.message}`);
-    return { ok: false, fejl: error.message };
-  }
-  return { ok: true };
-}
-
-// Lagerforbrug pr. butik - til Admin/System. Kvoten er NULL, når butikken
-// selv skaffer lagerplads: et fillager har ikke noget "ledig plads"-
-// begreb, og disken bag det er butikkens eget anliggende. Så vises kun
-// forbruget. Et opdigtet "tilgængeligt"-tal ville være værre end
-// ingenting, og UI'et skal derfor tjekke for null frem for at regne med 0.
-export async function getStorageUsage(storeId) {
-  let query = supabase
-    .from("store_storage_usage")
-    .select("store_id, store_name, brugt_bytes, kvote_bytes, ledig_bytes, pct_brugt, antal_filer, antal_afbrudte");
-  if (storeId) query = query.eq("store_id", storeId);
-  const { data, error } = await query;
-  if (error) {
-    logError("attachments:getStorageUsage", error.message);
-    return [];
-  }
-  return data || [];
-}
-
-// Til visning: 5242880 -> "5,0 MB". Dansk decimalkomma.
-export function formatBytes(bytes) {
-  if (bytes === null || bytes === undefined) return "-";
-  if (bytes < 1024) return `${bytes} B`;
-  const enheder = ["KB", "MB", "GB", "TB"];
-  let vaerdi = bytes / 1024;
-  let i = 0;
-  while (vaerdi >= 1024 && i < enheder.length - 1) { vaerdi /= 1024; i++; }
-  return `${vaerdi.toFixed(1).replace(".", ",")} ${enheder[i]}`;
+  const r = await lager.markerTilSletning(attachmentId);
+  if (!r.ok) reportSaveFailure(`Kunne ikke fjerne dokumentationen: ${r.fejl}`);
+  return r;
 }
