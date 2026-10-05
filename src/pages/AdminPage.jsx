@@ -4,6 +4,7 @@ import { TechnicianRow, SickLeaveWindowSetting, LoginPolicySetting, VehicleRow, 
 import { PosIntegrationAdmin } from "../components/PosIntegrationAdmin";
 import { StorageIntegrationAdmin } from "../components/StorageIntegrationAdmin";
 import { SmsSettingsAdmin } from "../components/SmsSettingsAdmin";
+import { KladdeIndstillinger } from "../components/KladdeIndstillinger";
 import { YdelsesIndstillinger } from "../components/YdelsesIndstillinger";
 import { getPermissionsCatalog, getRoleDefaultPermissions } from "../lib/dataStore";
 
@@ -34,6 +35,7 @@ function AdminPage({
     { k: "varer", l: "Varer & ydelser", perm: "admin_katalog" },
     { k: "integrationer", l: "Integrationer", perm: "admin_integrationer" },
     { k: "sms", l: "SMS", perm: "admin_butik" },
+    { k: "kladder", l: "Kladder", perm: "admin_butik" },
   ];
   const visibleTabs = allTabs.filter((f) => hasPerm(permissions, f.perm));
   const visibleTabKeys = visibleTabs.map((f) => f.k).join(",");
@@ -213,6 +215,15 @@ function AdminPage({
             Ankomst-SMS'en, som montører og sælgere kan sende til kunden. Her styrer du, om den er slået til, hvad den siger, og hvilke hurtigknapper der vises. Afsenderen sættes af systemadministratoren.
           </p>
           <SmsSettingsAdmin storeId={store?.id} isSystemAdmin={permissions === null} />
+        </div>
+      )}
+
+      {tab === "kladder" && (
+        <div>
+          <p className="text-xs text-muted mb-4">
+            Her bestemmer du, om sælgerne kan parkere en ufærdig booking, og hvor længe den ligger. Kladderne kan kun ses af den sælger, der oprettede dem.
+          </p>
+          <KladdeIndstillinger storeId={store?.id} />
         </div>
       )}
     </div>
