@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { gemKladde, fjernKladde, harIndhold } from "../lib/orderDrafts";
+import { gemKladde, fjernKladde, harIndhold, kladderAktiveret } from "../lib/orderDrafts";
 
 // Gemmer en ufærdig booking løbende som en kladde - se lib/orderDrafts.js for
 // hvorfor og hvordan. Bruges af NewOrderForm.
@@ -28,6 +28,8 @@ export function useOrderDraft({ draftId, storeId, userId, state, step, blank }) 
   const flush = useCallback(() => {
     const l = seneste.current;
     if (afsluttetRef.current || !l.storeId || !l.userId) return;
+    // Slået fra af butikkens administrator: der parkeres intet, og formularen viser hverken "gemt" eller en fejl.
+    if (!kladderAktiveret(l.storeId)) return;
     if (!l.indhold) {
       // Er alt slettet igen, er der ingenting at parkere.
       fjernKladde(l.draftId);
