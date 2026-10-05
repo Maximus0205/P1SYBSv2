@@ -48,11 +48,11 @@ function Stat({ label, value, color }) {
 }
 
 function NeedsActionWidget({ orders, technicians, personnel, vehicles, timeOff, store, onNavigate }) {
-  const { technicianProblem, sickLeave, needsPlan, unresolved } = useMemo(
+  const { fravaer, needsPlan, unresolved } = useMemo(
     () => classify(orders, technicians, personnel, vehicles, timeOff, store?.sygemeldingVindueTimer),
     [orders, technicians, personnel, vehicles, timeOff, store?.sygemeldingVindueTimer]
   );
-  const total = technicianProblem.length + sickLeave.length + needsPlan.length + unresolved.length;
+  const total = fravaer.length + needsPlan.length + unresolved.length;
   const catalogEntry = DASHBOARD_WIDGET_CATALOG.find((w) => w.key === "needs_action");
   return (
     <WidgetCard title={catalogEntry.label} icon={catalogEntry.icon} onTitleClick={() => onNavigate("planlaegning")}>
@@ -60,8 +60,7 @@ function NeedsActionWidget({ orders, technicians, personnel, vehicles, timeOff, 
         <p className="text-sm text-success italic">Intet kræver handling lige nu.</p>
       ) : (
         <div className="grid grid-cols-2 gap-2">
-          <Stat label="Montørproblem" value={technicianProblem.length} color="#B3261E" />
-          <Stat label="Sygemelding" value={sickLeave.length} color="#C8232E" />
+          <Stat label="Sygemelding / feriefridag" value={fravaer.length} color="#C8232E" />
           <Stat label="Skal planlægges" value={needsPlan.length} color="#B36B1E" />
           <Stat label="Uafsluttet/fejl" value={unresolved.length} color="#8B5E3C" />
         </div>
