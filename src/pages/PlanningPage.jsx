@@ -6,6 +6,8 @@ import { suggestPlan, planningWindow, WORKDAY_MINUTES } from "../lib/scheduling"
 import { DateSelector } from "../components/common";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 import { forslagsDatoer, fristStatus, urgensNoegle } from "../lib/frist";
+import { foersteArbejdsdagFra } from "../lib/arbejdsuge";
+import { samlFravaer } from "../lib/fravaer";
 
 // ---------------------------------------------------------------------------
 // Planlægning + Kørsel er fusioneret til ÉN fane (august 2026). Siden er
@@ -47,6 +49,9 @@ import { forslagsDatoer, fristStatus, urgensNoegle } from "../lib/frist";
 // Tile 1-3 bruger ALLE samme forslagsmotor (suggestPlan, lib/scheduling.js)
 // - INGEN AI. Tile 4 har bevidst intet forslag - det kræver en menneskelig
 // opfølgning.
+//
+// OKTOBER 2026: punkt 1 og 2 er lagt sammen til ÉN flise, "Sygemelding / feriefridag" - se
+// lib/fravaer.js. Der er nu tre fliser. Hver sag viser stadig sin egen årsag.
 // ---------------------------------------------------------------------------
 
 // Er der et strukturelt eller planlagt problem med SELVE BILEN på denne
@@ -116,8 +121,9 @@ function classify(orders, technicians, personnel, vehicles, timeOff, windowHours
   }
 
   const sortByDate = (a, b) => (a.dato || "9999").localeCompare(b.dato || "9999") || (a.start || "").localeCompare(b.start || "");
-  technicianProblem.sort(sortByDate);
-  sickLeave.sort(sortByDate);
+  // Montørproblem og sygemelding er lagt sammen til ÉN liste (oktober 2026): "Sygemelding/feriefridag".
+  // Hver sag beholder sin egen årsag. Se lib/fravaer.js.
+  const fravaer = samlFravaer(technicianProblem, sickLeave, sortByDate);
   // Mest presserende frist først (se lib/frist.js): en tomgang med frist i morgen skal ikke
   // havne bag sager uden dato.
   needsPlan.sort((a, b) => urgensNoegle(a).localeCompare(urgensNoegle(b)) || (a.start || "").localeCompare(b.start || ""));
@@ -126,7 +132,7 @@ function classify(orders, technicians, personnel, vehicles, timeOff, windowHours
   unresolved.sort((a, b) => (b.problem?.tid || "").localeCompare(a.problem?.tid || ""));
   done.sort((a, b) => (b.dato || "").localeCompare(a.dato || ""));
 
-  return { technicianProblem, sickLeave, needsPlan, unresolved, inProgressToday, upcoming, done };
+  return { fravaer, needsPlan, unresolved, inProgressToday, upcoming, done };
 }
 
 const norm = (s) => (s || "").toString().toLowerCase();
@@ -555,8 +561,10 @@ function TechnicianDaySection({ row, day, dayOrders, technicians, onOpen, onAssi
 // ville give kort på under 70 px bredde - ulæselige og umulige at ramme.
 function WeekOverview({ orders, technicians, personnel, timeOff, store, onAssign, onReorder, onSetVisitOrder, onOpen }) {
   const [open, setOpen] = useState(true);
-  const [weekAnchor, setWeekAnchor] = useState(todayISO());
-  const [selectedDay, setSelectedDay] = useState(todayISO());
+  // Fra lørdag (og søndag) vises den KOMMENDE uge: de forløbne arbejdsdage er uden interesse (oktober 2026).
+  const startUge = foersteArbejdsdagFra(todayISO());
+  const [weekAnchor, setWeekAnchor] = useState(startUge);
+  const [selectedDay, setSelectedDay] = useState(startUge);
   const [driveMinutes, setDriveMinutes] = useState({});
   const [driveLoading, setDriveLoading] = useState(false);
   const [optimizing, setOptimizing] = useState({});
@@ -744,7 +752,7 @@ function WeekOverview({ orders, technicians, personnel, timeOff, store, onAssign
         <LayoutGrid size={15} className="text-brand shrink-0" aria-hidden="true" />
         <div className="flex-1 min-w-0">
           <span className="text-sm font-semibold uppercase tracking-wide text-ink">Overblik</span>
-          <span className="text-xs text-muted ml-2">{weekOrders.length} sager denne uge{unassignedThisWeek > 0 ? ` · ${unassignedThisWeek} ikke tildelt` : ""}</span>
+          <span className="text-xs text-muted ml-2">{weekOrders.length} sager {weekdays5[0] === weekDays(startUge)[0] && startUge !== today ? "næste uge" : "denne uge"}{unassignedThisWeek > 0 ? ` · ${unassignedThisWeek} ikke tildelt` : ""}</span>
         </div>
         <ChevronDown size={16} className={`text-muted transition-transform shrink-0 ${open ? "rotate-180" : ""}`} aria-hidden="true" />
       </button>
@@ -757,7 +765,7 @@ function WeekOverview({ orders, technicians, personnel, timeOff, store, onAssign
             </button>
             <div className="text-center">
               <p className="text-sm font-semibold text-ink">{shortDateLabel(weekdays5[0])} – {shortDateLabel(weekdays5[4])}</p>
-              {weekAnchor !== today && <button onClick={() => setWeekAnchor(today)} className="text-[10px] font-semibold uppercase tracking-wide text-brand hover:underline focus:outline-none focus:ring-2 focus:ring-brand rounded px-1">Gå til denne uge</button>}
+              {weekdays5[0] !== weekDays(startUge)[0] && <button onClick={() => { setWeekAnchor(startUge); setSelectedDay(startUge); }} className="text-[10px] font-semibold uppercase tracking-wide text-brand hover:underline focus:outline-none focus:ring-2 focus:ring-brand rounded px-1">Gå til {startUge === today ? "denne" : "næste"} uge</button>}
             </div>
             <button onClick={() => setWeekAnchor((w) => addDays(w, 7))} aria-label="Næste uge" className="p-2.5 rounded-lg border border-line text-muted hover:text-brand hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors" title="Næste uge">
               <ChevronRight size={15} aria-hidden="true" />
@@ -856,7 +864,7 @@ function WeekOverview({ orders, technicians, personnel, timeOff, store, onAssign
 function PlanningPage({ orders, technicians, personnel, vehicles, timeOff, store, selectedDate, onDateChange, onOpen, onAssign, onReorder, onSetVisitOrder, onUpdateBooking, onClearProblem, onUpdateTechnician, onRefresh, refreshing }) {
   const [search, setSearch] = useState("");
   const [openTile, setOpenTile] = useState(null);
-  const { technicianProblem, sickLeave, needsPlan, unresolved, inProgressToday, upcoming, done } = useMemo(
+  const { fravaer, needsPlan, unresolved, inProgressToday, upcoming, done } = useMemo(
     () => classify(orders, technicians, personnel, vehicles, timeOff, store?.sygemeldingVindueTimer),
     [orders, technicians, personnel, vehicles, timeOff, store?.sygemeldingVindueTimer]
   );
@@ -866,7 +874,7 @@ function PlanningPage({ orders, technicians, personnel, vehicles, timeOff, store
     return [...orders].filter((s) => matchesSearch(s, search)).sort((a, b) => (b.dato + b.start).localeCompare(a.dato + a.start));
   }, [orders, search]);
 
-  const totalNeedsAction = technicianProblem.length + sickLeave.length + needsPlan.length + unresolved.length;
+  const totalNeedsAction = fravaer.length + needsPlan.length + unresolved.length;
 
   return (
     <div>
@@ -915,27 +923,18 @@ function PlanningPage({ orders, technicians, personnel, vehicles, timeOff, store
 
           <div className="mb-4">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-ink mb-2 flex items-center gap-1.5"><AlertCircle size={15} className="text-danger" aria-hidden="true" /> Kræver handling</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-              <TileButton icon={UserX} color="#B3261E" count={technicianProblem.length} label="Montørproblem" selected={openTile === "problem"} onClick={() => setOpenTile(openTile === "problem" ? null : "problem")} />
-              <TileButton icon={Stethoscope} color="#C8232E" count={sickLeave.length} label="Sygemelding" selected={openTile === "sygdom"} onClick={() => setOpenTile(openTile === "sygdom" ? null : "sygdom")} />
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+              <TileButton icon={Stethoscope} color="#C8232E" count={fravaer.length} label="Sygemelding / feriefridag" selected={openTile === "fravaer"} onClick={() => setOpenTile(openTile === "fravaer" ? null : "fravaer")} />
               <TileButton icon={CalendarX2} color="#B36B1E" count={needsPlan.length} label="Skal planlægges" selected={openTile === "planlaeg"} onClick={() => setOpenTile(openTile === "planlaeg" ? null : "planlaeg")} />
               <TileButton icon={AlertTriangle} color="#8B5E3C" count={unresolved.length} label="Uafsluttet / fejl" selected={openTile === "problemer"} onClick={() => setOpenTile(openTile === "problemer" ? null : "problemer")} />
             </div>
 
             {openTile && (
               <div className="rounded-xl bg-panel border border-line p-3">
-                {openTile === "problem" && (
-                  technicianProblem.length === 0 ? <p className="text-sm text-muted italic">Ingen montørproblemer lige nu.</p> : (
+                {openTile === "fravaer" && (
+                  fravaer.length === 0 ? <p className="text-sm text-muted italic">Ingen sager berørt af sygemelding eller feriefridag lige nu.</p> : (
                     <ReplanTile
-                      items={technicianProblem} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff}
-                      onUpdateBooking={onUpdateBooking} onOpen={onOpen}
-                    />
-                  )
-                )}
-                {openTile === "sygdom" && (
-                  sickLeave.length === 0 ? <p className="text-sm text-muted italic">Ingen sager berørt af sygemelding lige nu.</p> : (
-                    <ReplanTile
-                      items={sickLeave} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff}
+                      items={fravaer} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff}
                       onUpdateBooking={onUpdateBooking} onOpen={onOpen}
                     />
                   )
