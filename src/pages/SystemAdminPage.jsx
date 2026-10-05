@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus, X, Bug, RefreshCw, Plug, HardDrive, ChevronLeft } from "lucide-react";
-import { getAllStores, createStoreAsSystemAdmin, updateStoreAsSystemAdmin, deleteStoreAsSystemAdmin, getAllUsersAsSystemAdmin, updateProfile, resetPasswordAsAdmin, createUserAsAdmin, getErrorLogs, deleteErrorLog, clearErrorLogs, getAllPosIntegrationsAsSystemAdmin, getAllStorageIntegrationsAsSystemAdmin } from "../lib/dataStore";
+import { getAllStores, createStoreAsSystemAdmin, updateStoreAsSystemAdmin, deleteStoreAsSystemAdmin, getAllUsersAsSystemAdmin, updateProfile, resetPasswordAsAdmin, createUserAsAdmin, deleteUserAsAdmin, getErrorLogs, deleteErrorLog, clearErrorLogs, getAllPosIntegrationsAsSystemAdmin, getAllStorageIntegrationsAsSystemAdmin } from "../lib/dataStore";
+import { sletBruger } from "../lib/sletBruger";
 import { getStorageUsage, formatBytes } from "../lib/attachments";
 import { geocodeAddresses } from "../lib/geocoding";
 import { suggestUsername, isValidUsername } from "../lib/username";
@@ -570,6 +571,16 @@ function SystemAdminUserRow({ user, stores, onUpdated, currentUserId, onOwnStore
     if (isSelf && "butik_id" in fields && onOwnStoreLinked) onOwnStoreLinked(fields.butik_id);
   };
 
+  // SLET BRUGER (oktober 2026): før kunne systemadmin ikke slette herfra, kun på Admin-siden. Samme flow som dér
+  // (lib/sletBruger.js): først vises konsekvenserne, og først derefter slettes. Edge Functionen spærrer selv
+  // sletning af en selv og af en butiks sidste admin; den vælger dog ikke, hvem en systemadmin må slette.
+  const remove = async () => {
+    setBusy(true);
+    const r = await sletBruger(user.id, { slet: deleteUserAsAdmin, bekraeft: (t) => window.confirm(t), advar: (t) => window.alert(t) });
+    setBusy(false);
+    if (r.ok) onUpdated();
+  };
+
   const reset = async () => {
     if (newPassword.length < 6) { setResetMessage("Mindst 6 tegn."); return; }
     setBusy(true);
@@ -608,6 +619,7 @@ function SystemAdminUserRow({ user, stores, onUpdated, currentUserId, onOwnStore
         </select>
         {!editingName && <button onClick={() => setEditingName(true)} className="p-1.5 text-muted hover:text-brand" title="Ret navn"><Pencil size={15} /></button>}
         <button onClick={() => { setShowReset((v) => !v); setResetMessage(""); setNewPassword(""); }} className="p-1.5 text-muted hover:text-brand" title="Nulstil adgangskode"><KeyRound size={15} /></button>
+        {!isSelf && <button onClick={remove} disabled={busy} aria-label={`Slet ${user.navn}`} className="p-1.5 text-muted hover:text-danger disabled:opacity-50" title="Slet bruger"><Trash2 size={15} aria-hidden="true" /></button>}
         {busy && <Loader2 size={14} className="animate-spin text-muted" />}
       </div>
       {showReset && (
