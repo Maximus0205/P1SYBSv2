@@ -750,6 +750,10 @@ export function useOrders(storeId) {
   // startetTidspunkt sættes KUN første gang. Bliver en montør afbrudt og
   // starter igen, er den rigtige samlede varighed stadig fra første start
   // til færdigmelding - ikke fra genoptagelsen.
+  //
+  // GENOPTAGELSE FJERNER "KOM IKKE I MÅL" (oktober 2026): markeringen skal fortælle sælgeren, at sagen ikke kunne løses
+  // på den aftalte dag. Bliver opgaven genoptaget, er den ikke længere en sag, der ikke kom i mål - så markeringen
+  // fjernes, og sagen forsvinder fra "Uafsluttet / fejl". Tiden på pause genoptages samtidig (se markProblem).
   const startOrder = (orderId) => {
     const s = findOrder(orders, orderId);
     if (!s) return;
@@ -760,6 +764,7 @@ export function useOrders(storeId) {
       startetTidspunkt: s.startetTidspunkt || nu,
       stemplerInd: s.stemplerInd || nu,
       afsluttetTidspunkt: null,
+      problem: null,
     });
   };
 
