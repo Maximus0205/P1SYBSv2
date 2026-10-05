@@ -22,7 +22,8 @@
 // PRIVATLIV: en kladde indeholder kundens navn, telefon og adresse. Derfor:
 //   * en kladde tilhører BRUGEREN og BUTIKKEN - en anden bruger ser den ikke i appen, og databasen
 //     afviser, at andre (heller ikke butiksadmin eller systemadmin) læser den
-//   * den slettes automatisk efter 14 dage
+//   * den slettes automatisk efter butikkens frist (standard 14 dage; butikkens administrator vælger 1-90 dage, og
+//     om kladder overhovedet er slået til - se "INDSTILLINGER PR. BUTIK" nedenfor)
 //   * den slettes straks, når sagen er booket eller kladden kasseres
 //   * den fjernes IKKE ved log ud: en automatisk udlogning efter inaktivitet
 //     (se loginpolitikken) er netop en af de situationer, kladden skal overleve.
@@ -35,7 +36,49 @@ import { deepEqual } from "./orderMerge.js";
 const NOEGLE = "p1sybs.kladder.v1";
 const GRAVSTEN = "p1sybs.kladder.slettet.v1";
 const MAKS_KLADDER = 20;
-const MAKS_ALDER_MS = 14 * 24 * 60 * 60 * 1000;
+const DAG_MS = 24 * 60 * 60 * 1000;
+// En gravsten må leve længere end den længste mulige frist (90 dage), så en sletning aldrig glemmes for tidligt.
+const GRAVSTEN_ALDER_MS = 90 * DAG_MS;
+
+// ---------------------------------------------------------------------------------------------------------
+// INDSTILLINGER PR. BUTIK (oktober 2026): butikkens administrator bestemmer, OM kladder er slået til, og HVOR MANGE
+// DAGE de ligger (1-90). Kladder indeholder kundens navn, telefon og adresse. Databasen håndhæver indstillingen
+// (den afviser at gemme, når funktionen er slået fra, og sletter kladder, der ikke længere må ligge); her følger den
+// lokale cache med, så formularen ikke parkerer noget, listen ikke viser noget, og kopierne på enheden ikke bliver
+// stående. Indstillingen huskes pr. butik i browseren, så den gælder fra første sekund ved næste åbning - før den
+// er hentet fra databasen, gælder standarden (til, 14 dage).
+const INDST = "p1sybs.kladder.indstillinger.v1";
+export const STANDARD_INDSTILLINGER = Object.freeze({ aktiveret: true, dage: 14 });
+export const MIN_DAGE = 1;
+export const MAKS_DAGE = 90;
+
+// Retter en indstilling til noget gyldigt: til/fra er "til", medmindre den udtrykkeligt er false; dage afrundes og
+// holdes inden for 1-90 (uleselige værdier giver 14).
+export function rensIndstillinger(raa) {
+  // null, undefined og tom tekst er "ikke udfyldt" og giver standarden (Number(null) er 0, som ellers ville give 1 dag).
+  const udfyldt = raa?.dage !== null && raa?.dage !== undefined && raa?.dage !== "";
+  const d = udfyldt ? Math.round(Number(raa.dage)) : NaN;
+  return {
+    aktiveret: raa?.aktiveret !== false,
+    dage: Number.isFinite(d) ? Math.min(MAKS_DAGE, Math.max(MIN_DAGE, d)) : STANDARD_INDSTILLINGER.dage,
+  };
+}
+
+function laesIndstillinger() {
+  try {
+    const raa = localStorage.getItem(INDST);
+    const o = raa ? JSON.parse(raa) : {};
+    return o && typeof o === "object" && !Array.isArray(o) ? o : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+export function kladdeIndstillinger(storeId) {
+  const raa = laesIndstillinger()[storeId];
+  return raa ? rensIndstillinger(raa) : { ...STANDARD_INDSTILLINGER };
+}
+export const kladderAktiveret = (storeId) => kladdeIndstillinger(storeId).aktiveret;
 
 const listeners = new Set();
 let storageLytter = false;
@@ -79,8 +122,12 @@ function skriv(liste) {
   return true;
 }
 
-// Kladder ældre end 14 dage (eller med ulæselig tid) regnes ikke længere med.
-const levende = (liste, nu) => liste.filter((k) => nu - Date.parse(k.savedAt) < MAKS_ALDER_MS);
+// Kladder ældre end deres butiks frist (eller med ulæselig tid) regnes ikke længere med.
+const levende = (liste, nu) => {
+  const indst = laesIndstillinger();
+  const frist = (storeId) => (indst[storeId] ? rensIndstillinger(indst[storeId]).dage : STANDARD_INDSTILLINGER.dage) * DAG_MS;
+  return liste.filter((k) => nu - Date.parse(k.savedAt) < frist(k.storeId));
+};
 
 export function nyKladdeId() {
   return `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
@@ -117,6 +164,7 @@ export function harIndhold(s, blank) {
 }
 
 export function hentKladder(storeId, userId) {
+  if (!kladderAktiveret(storeId)) return [];
   return levende(laes(), Date.now())
     .filter((k) => k.storeId === storeId && k.userId === userId)
     .sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt));
@@ -127,6 +175,8 @@ export function hentKladder(storeId, userId) {
 export function gemKladde({ id, storeId, userId, state, step }) {
   const nu = Date.now();
   const savedAt = new Date(nu).toISOString();
+  // Slået fra af butikkens administrator: der parkeres ikke noget (og intet sendes til databasen).
+  if (!kladderAktiveret(storeId)) return { ok: false, savedAt, slaaetFra: true };
   const kendt = laes().find((k) => k.id === id);
   let liste = levende(laes(), nu).filter((k) => k.id !== id);
   // version bevares (så en senere afsendelse kan opdage en ændring fra en anden enhed); rev tælles op,
@@ -157,7 +207,7 @@ function laesGravsten(nu = Date.now()) {
   try {
     const raa = localStorage.getItem(GRAVSTEN);
     const l = raa ? JSON.parse(raa) : [];
-    return Array.isArray(l) ? l.filter((g) => g && typeof g.id === "string" && nu - Date.parse(g.tid) < MAKS_ALDER_MS) : [];
+    return Array.isArray(l) ? l.filter((g) => g && typeof g.id === "string" && nu - Date.parse(g.tid) < GRAVSTEN_ALDER_MS) : [];
   } catch (_) {
     return [];
   }
@@ -244,6 +294,28 @@ export function anvendRemote(storeId, userId, remote) {
   const raa = laes();
   const ny = fletRemote(raa, remote, { storeId, userId, slettede: hentGravsten(userId).map((g) => g.id) });
   if (JSON.stringify(ny) !== JSON.stringify(raa)) skriv(ny);
+}
+
+// Gemmer butikkens indstilling lokalt (efter den er hentet fra databasen, eller lige er ændret) og giver besked til
+// alle lyttere, så lister og formularer retter sig med det samme.
+export function saetKladdeIndstillinger(storeId, raa) {
+  if (!storeId) return { ...STANDARD_INDSTILLINGER };
+  const ny = rensIndstillinger(raa);
+  const alle = laesIndstillinger();
+  const gammel = alle[storeId] ? rensIndstillinger(alle[storeId]) : null;
+  if (gammel && gammel.aktiveret === ny.aktiveret && gammel.dage === ny.dage) return ny;
+  alle[storeId] = ny;
+  try { localStorage.setItem(INDST, JSON.stringify(alle)); } catch (_) { /* fuld/blokeret: databasen håndhæver alligevel */ }
+  notify();
+  return ny;
+}
+
+// Fjerner brugerens lokale kladder i en butik - bruges, når butikkens administrator har slået kladder fra (kundens
+// oplysninger må ikke blive stående på enheden, når databasen allerede har slettet dem).
+export function rydKladder(storeId, userId) {
+  const foer = laes();
+  const efter = foer.filter((k) => !(k.storeId === storeId && k.userId === userId));
+  if (efter.length !== foer.length) skriv(efter);
 }
 
 export function subscribeKladder(fn) {
