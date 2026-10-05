@@ -27,6 +27,9 @@ adapters/
   pos/                    POS (Flow Retail): opslag, synkronisering ved afslutning, opsætning
   sms/                    SMS (GatewayAPI): ankomst-SMS
   punkt1/                 produktopslag på punkt1.dk
+  ors/                    OpenRouteService: adresseopslag, afstande, køretid, bedste rækkefølge
+  adressevaelger/         Klimadatastyrelsens Adressevælger: adresseforslag, koordinater, kommunekode
+  lager/                  filer og dokumentation på en sag + opsætning af butikkens eget NAS (S3)
   index.js                sammensætning til DENNE app (den eneste fil, der kender appen)
 ```
 
@@ -50,8 +53,13 @@ export const sms = opretSmsAdapter({ transport });
 | POS (Flow Retail) | `pos/` | færdig. `synkVedAfslutning` er slået fra |
 | SMS (GatewayAPI) | `sms/` | færdig |
 | Produktopslag (punkt1.dk) | `punkt1/` | færdig |
-| Lager (NAS, S3) | - | mangler: `lib/attachments.js` + opsætningen i `lib/dataStore.js` |
-| Ruter og afstande (OpenRouteService) | - | mangler: `lib/geocoding.js` |
-| Adressevælger (Dataforsyningen) | - | mangler: `lib/geocodingAdressevaelger.js` |
+| Lager (NAS, S3) | `lager/` | færdig |
+| Ruter og afstande (OpenRouteService) | `ors/` | færdig |
+| Adressevælger (Dataforsyningen) | `adressevaelger/` | færdig |
 
-Indtil de sidste er flyttet, ligger de gamle funktioner i `lib/dataStore.js` stadig; de er forældede, og nye kald skal bruge adapteren.
+De gamle filer (`lib/dataStore.js`, `lib/arrivalSms.js`, `lib/posStatus.js`, `lib/geocoding.js`,
+`lib/geocodingAdressevaelger.js`, `lib/attachments.js`) er nu kun tynde delegater med de gamle navne, så
+eksisterende kald virker uændret. Nye kald skal bruge adapteren direkte (`import { ors } from "../adapters"`).
+
+Det, der IKKE er en adapter, er appens egen bagvedliggende login (PIN, biometri, oprettelse og sletning af
+brugere): det er appens egne Edge Functions, ikke en ekstern tjeneste.
