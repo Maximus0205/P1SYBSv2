@@ -189,6 +189,23 @@ export function opretOrsAdapter({ transport, advar, pauseMs = 300 } = {}) {
       return Math.round(sekunder / 60);
     },
 
+    // Fuld matrix mellem alle punkter (minutter og km) til kapacitetsmotoren (src/engine/kapacitet). punkter: [{ id, lat, lon }].
+    // Svarer { ids, minutter, km } (km er null, hvis proxyen kun gav køretid), eller null hvis kaldet fejlede. Punkter uden
+    // koordinater udelades (de kommer ikke med i ids), så motoren falder tilbage på et skøn for dem.
+    async koerselsmatrix(punkter) {
+      const gyldige = (punkter || []).filter((p) => p && p.id !== undefined && p.lat != null && p.lon != null);
+      if (gyldige.length < 2) return null;
+      const data = await kaldProxy({ handling: "matrix", punkter: gyldige.map((p) => ({ lat: p.lat, lon: p.lon })) });
+      const d = data?.durations;
+      if (!Array.isArray(d)) return null;
+      const k = data?.distances;
+      return {
+        ids: gyldige.map((p) => p.id),
+        minutter: d.map((raekke) => raekke.map((x) => (x == null ? null : x / 60))),
+        km: Array.isArray(k) ? k.map((raekke) => raekke.map((x) => (x == null ? null : x / 1000))) : null,
+      };
+    },
+
     // Bedste besøgsrækkefølge, med punkter[0] som FAST udgangspunkt (typisk butikken). Hele afstandsmatricen
     // hentes i ÉT kald, og derefter vælges lokalt altid det nærmeste ubesøgte punkt ("nærmeste nabo"). Ikke
     // bevist optimalt for mange stop, men et solidt, hurtigt og forklarligt forslag for de 2-8 stop på en dag.
