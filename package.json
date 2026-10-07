@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node tests/keyCabinets.test.mjs && node tests/orderMerge.test.mjs && node tests/offlineQueue.test.mjs && node tests/orderDrafts.test.mjs && node tests/draftSync.test.mjs && node tests/kladdeIndstillinger.test.mjs && node tests/arrivalTime.test.mjs && node tests/csvSager.test.mjs && node tests/ydelser.test.mjs && node tests/arbejdsuge.test.mjs && node tests/frist.test.mjs && node tests/opgaveTid.test.mjs && node tests/fravaer.test.mjs && node tests/sletBruger.test.mjs && node tests/adapters.test.mjs && node tests/adapters.eksterne.test.mjs"
+    "test": "node tests/keyCabinets.test.mjs && node tests/orderMerge.test.mjs && node tests/offlineQueue.test.mjs && node tests/orderDrafts.test.mjs && node tests/draftSync.test.mjs && node tests/kladdeIndstillinger.test.mjs && node tests/arrivalTime.test.mjs && node tests/csvSager.test.mjs && node tests/ydelser.test.mjs && node tests/arbejdsuge.test.mjs && node tests/frist.test.mjs && node tests/opgaveTid.test.mjs && node tests/fravaer.test.mjs && node tests/sletBruger.test.mjs && node tests/adapters.test.mjs && node tests/adapters.eksterne.test.mjs && node tests/ors.matrix.test.mjs && node tests/engine.kapacitet.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
