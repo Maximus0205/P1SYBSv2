@@ -5,6 +5,9 @@ import { PosIntegrationAdmin } from "../components/PosIntegrationAdmin";
 import { StorageIntegrationAdmin } from "../components/StorageIntegrationAdmin";
 import { SmsSettingsAdmin } from "../components/SmsSettingsAdmin";
 import { KladdeIndstillinger } from "../components/KladdeIndstillinger";
+import { KapacitetsIndstillinger } from "../components/KapacitetsIndstillinger";
+import { BilKapacitet } from "../components/BilKapacitet";
+import { MontoerKalender } from "../components/MontoerKalender";
 import { YdelsesIndstillinger } from "../components/YdelsesIndstillinger";
 import { getPermissionsCatalog, getRoleDefaultPermissions } from "../lib/dataStore";
 
@@ -36,6 +39,7 @@ function AdminPage({
     { k: "integrationer", l: "Integrationer", perm: "admin_integrationer" },
     { k: "sms", l: "SMS", perm: "admin_butik" },
     { k: "kladder", l: "Kladder", perm: "admin_butik" },
+    { k: "kapacitet", l: "Kapacitet", perm: "admin_butik" },
   ];
   const visibleTabs = allTabs.filter((f) => hasPerm(permissions, f.perm));
   const visibleTabKeys = visibleTabs.map((f) => f.k).join(",");
@@ -120,6 +124,7 @@ function AdminPage({
               ))}
             </div>
           )}
+          <MontoerKalender storeId={store?.id} personer={technicians} maaRedigere={hasPerm(permissions, "admin_kalender")} />
         </div>
       )}
 
@@ -147,6 +152,7 @@ function AdminPage({
               })}
             </div>
           )}
+          <BilKapacitet vehicles={vehicles} onUpdate={onUpdateVehicle} />
         </div>
       )}
 
@@ -224,6 +230,15 @@ function AdminPage({
             Her bestemmer du, om sælgerne kan parkere en ufærdig booking, og hvor længe den ligger. Kladderne kan kun ses af den sælger, der oprettede dem.
           </p>
           <KladdeIndstillinger storeId={store?.id} />
+        </div>
+      )}
+
+      {tab === "kapacitet" && (
+        <div>
+          <p className="text-xs text-muted mb-4">
+            De indstillinger, planlægningen regner efter: tider, kørsel, nyttelast og plads, og hvilke regler der blokerer en booking. Alt har en fornuftig standard. Bilens nyttelast og lasterum sættes under Biler, og montørernes arbejdstid under Montører.
+          </p>
+          <KapacitetsIndstillinger storeId={store?.id} butikAdresse={store?.adresse} />
         </div>
       )}
     </div>
