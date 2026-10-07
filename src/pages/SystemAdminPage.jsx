@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus, X, Bug, RefreshCw, Plug, HardDrive, ChevronLeft } from "lucide-react";
+import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus, X, Bug, RefreshCw, Plug, HardDrive, ChevronLeft, Calculator } from "lucide-react";
 import { getAllStores, createStoreAsSystemAdmin, updateStoreAsSystemAdmin, deleteStoreAsSystemAdmin, getAllUsersAsSystemAdmin, updateProfile, resetPasswordAsAdmin, createUserAsAdmin, deleteUserAsAdmin, getErrorLogs, deleteErrorLog, clearErrorLogs, getAllPosIntegrationsAsSystemAdmin, getAllStorageIntegrationsAsSystemAdmin } from "../lib/dataStore";
 import { sletBruger } from "../lib/sletBruger";
 import { getStorageUsage, formatBytes } from "../lib/attachments";
@@ -8,6 +8,7 @@ import { suggestUsername, isValidUsername } from "../lib/username";
 import { AddressInput } from "../components/AddressInput";
 import { PosIntegrationAdmin } from "../components/PosIntegrationAdmin";
 import { StorageIntegrationAdmin } from "../components/StorageIntegrationAdmin";
+import { KapacitetsLab } from "../components/KapacitetsLab";
 
 const ROLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montør" };
 
@@ -42,6 +43,9 @@ function SystemAdminPage({ currentUserId, onOwnStoreLinked }) {
         <button onClick={() => setTab("lager")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "lager" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
           <HardDrive size={15} /> Lager (NAS)
         </button>
+        <button onClick={() => setTab("kapacitet")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "kapacitet" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
+          <Calculator size={15} /> Kapacitetsmotor
+        </button>
         <button onClick={() => setTab("fejl")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "fejl" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
           <Bug size={15} /> Fejl-log
         </button>
@@ -50,6 +54,7 @@ function SystemAdminPage({ currentUserId, onOwnStoreLinked }) {
       {tab === "butikker" && <StoresTab stores={stores} loading={loading} reload={reloadStores} currentUserId={currentUserId} onOwnStoreLinked={onOwnStoreLinked} />}
       {tab === "integrationer" && <PosIntegrationsTab stores={stores} />}
       {tab === "lager" && <StorageIntegrationsTab stores={stores} />}
+      {tab === "kapacitet" && <KapacitetsLab stores={stores} />}
       {tab === "fejl" && <ErrorLogTab stores={stores} />}
     </div>
   );
