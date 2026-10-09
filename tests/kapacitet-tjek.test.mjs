@@ -78,6 +78,15 @@ eq("tjek: ingen montør på bilen den dag blokerer", kor({ personer: [] }).beslu
 const scenarier = [kor({}), omlast, tung, ukendt, kor({ kandidat: kand("333"), ordrer: tre })];
 const raaTekst = JSON.stringify(scenarier);
 for (const hemmelig of ["123.45", "77.7", "66.6", "55.5", "246.9", "370.35", "363.5", "400", "363"]) eq(`privatliv: "${hemmelig}" findes ikke i svaret til sælger`, raaTekst.includes(hemmelig), false);
+// Kørsel: manglende koordinater meldes tydeligt og giver ikke et misvisende "0 km"
+const medKoord = (adresser) => new Map(adresser.map((a, i) => [a, { lat: 55.4 + i * 0.05, lon: 10.4 + i * 0.05 }]));
+const ordreA = [ordre("a", { varelinjer: [{ id: "a-l", varetypeNavn: "Køleskab", primaerYdelse: { minutter: 30 }, punkt1Id: "111" }] })];
+const udenAdr = kor({ ordrer: ordreA, kandidat: kand("111", { adresse: "Findes ikke 1" }), koord: medKoord(["Vej a"]) });
+eq("kørsel: kandidatens adresse ikke fundet giver tydelig note og km = null", [udenAdr.ekstra.km, udenAdr.noter.some((n) => /kunne ikke findes/.test(n)), udenAdr.noter.some((n) => /skøn/.test(n))], [null, true, false]);
+const medAdr = kor({ ordrer: ordreA, kandidat: kand("111", { adresse: "Vej k" }), koord: medKoord(["Vej a", "Vej k"]) });
+eq("kørsel: alle adresser fundet giver km som tal og skøn-note", [typeof medAdr.ekstra.km, medAdr.ekstra.km > 0, medAdr.noter.some((n) => /skøn/.test(n)), medAdr.noter.some((n) => /kunne ikke findes/.test(n))], ["number", true, true, false]);
+const andenUden = kor({ ordrer: ordreA, kandidat: kand("111", { adresse: "Vej k" }), koord: medKoord(["Vej k"]) });
+eq("kørsel: en anden sags adresse ikke fundet nævnes (uden at skjule km)", [typeof andenUden.ekstra.km, andenUden.noter.some((n) => /anden sag/.test(n))], ["number", true]);
 eq("privatliv: ingen detaljer til almindelig bruger", scenarier.every((s) => !("detaljer" in s)), true);
 const adm = kor({ kandidat: kand("333"), erAdmin: true });
 eq("privatliv: systemadmin får detaljer (til test og fejlsøgning)", ["detaljer" in adm, Array.isArray(adm.detaljer.brud)], [true, true]);

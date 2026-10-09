@@ -152,19 +152,24 @@ const TEKSTER = {
   ukendtData: "Vægt eller mål mangler for nogle varer, så pladsen kan ikke vurderes fuldt ud.",
 };
 
-export function renseSvar({ vurdering, erAdmin, kanOverrule, manglerNavne, bilMangler }) {
+export function renseSvar({ vurdering, erAdmin, kanOverrule, manglerNavne, bilMangler, kandidatUdenKoord = false, stopUdenKoord = 0 }) {
   const efter = vurdering.efter;
   const alle = [...(efter.brud || []), ...(efter.advarsler || [])];
   const set = new Set();
   const meddelelser = [];
   const noter = [];
+  let harKoerselsfund = false;
   for (const f of alle) {
-    if (f.regel === "koersel") { noter.push("Køretiden er et skøn ud fra luftlinje."); continue; }
+    if (f.regel === "koersel") { harKoerselsfund = true; continue; }
     const n = `${f.regel}|${f.niveau}`;
     if (set.has(n)) continue;
     set.add(n);
     meddelelser.push({ regel: f.regel, niveau: f.niveau, tekst: TEKSTER[f.regel] || "En regel i kapacitetsmotoren er brudt." });
   }
+  // Kørsel: sig tydeligt, når en adresse ikke kunne findes (så er km ikke medregnet), i stedet for at vise et misvisende 0 km.
+  if (kandidatUdenKoord) noter.push("Adressen på denne sag kunne ikke findes, så kørsel til den er ikke medregnet. Tjek stavningen af adressen.");
+  else if (stopUdenKoord > 0) noter.push(stopUdenKoord === 1 ? "Adressen på én anden sag på bilen kunne ikke findes, så dens kørsel er ikke medregnet." : `Adressen på ${stopUdenKoord} andre sager på bilen kunne ikke findes, så deres kørsel er ikke medregnet.`);
+  else if (harKoerselsfund) noter.push("Køretiden er et skøn ud fra luftlinje.");
   const omlastninger = vurdering.ekstra ? vurdering.ekstra.omlastninger : 0;
   if (omlastninger > 0) noter.push(omlastninger === 1 ? "Kræver én omlastning på lageret i løbet af dagen." : `Kræver ${omlastninger} omlastninger på lageret i løbet af dagen.`);
   if (bilMangler) noter.push("Bilens nyttelast eller lasterum er ikke sat under Admin → Biler, så vægt og plads kan ikke vurderes.");
@@ -173,7 +178,7 @@ export function renseSvar({ vurdering, erAdmin, kanOverrule, manglerNavne, bilMa
   const beslutning = blokeret ? "blokeret" : meddelelser.length ? "advarsel" : "ok";
   const svar = {
     beslutning, kanOverrule: blokeret ? kanOverrule === true : false, meddelelser, noter,
-    ekstra: vurdering.ekstra ? { min: vurdering.ekstra.min, km: vurdering.ekstra.km, omlastninger: vurdering.ekstra.omlastninger } : null,
+    ekstra: vurdering.ekstra ? { min: vurdering.ekstra.min, km: kandidatUdenKoord ? null : vurdering.ekstra.km, omlastninger: vurdering.ekstra.omlastninger } : null,
     ledigMin: efter.noegletal?.ledigMin ?? null,
   };
   if (erAdmin) svar.detaljer = { brud: efter.brud, advarsler: efter.advarsler, noegletal: efter.noegletal, forklaring: efter.forklaring, forudsaetninger: efter.forudsaetninger };
@@ -188,6 +193,8 @@ export function koerTjek({ dato, butik, bil, personer, ordrer, sagId, kandidat, 
   const vurdering = vurderTilfoejelse(input, kStop);
   const manglerNavne = kandidat.varer.filter((v) => !(v.punkt1Id && maalById.get(v.punkt1Id))).map((v) => v.navn);
   const bilMangler = !(Number(bil?.nyttelastKg) > 0) && !bil?.lasterum;
-  return { svar: renseSvar({ vurdering, erAdmin, kanOverrule, manglerNavne, bilMangler }), stopAntal: stop.length };
+  const kandidatUdenKoord = !koord?.get(kandidat.adresse);
+  const stopUdenKoord = stop.filter((s) => !koord?.get(s.adresse)).length;
+  return { svar: renseSvar({ vurdering, erAdmin, kanOverrule, manglerNavne, bilMangler, kandidatUdenKoord, stopUdenKoord }), stopAntal: stop.length };
 }
 export { tilMin };
