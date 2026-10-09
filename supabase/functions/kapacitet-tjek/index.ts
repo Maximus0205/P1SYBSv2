@@ -4,7 +4,7 @@
 // (ingen tabel, ingen cache, ingen logning af maal). Svaret til browseren indeholder aldrig maal eller vaegt (se renseSvar i tjek.js).
 //
 // Sikkerhed: kun indloggede brugere (verify_jwt). Al data laeses med BRUGERENS eget token, saa RLS gaelder; alle forespoergsler er desuden
-// afgraenset til brugerens egen butik. Regler laeses fra butikken (+ brugerens egne overstyringer); retten til at overrule kommer fra
+// afgraenset til brugerens egen butik. Regler laeses fra butikken (samme for alle i butikken); retten til at overrule kommer fra
 // rettigheden "overstyr_kapacitet" (eller systemadmin). Funktionen aendrer intet i databasen.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -61,12 +61,11 @@ Deno.serve(async (req) => {
   if (!butikId && erAdmin && typeof body.storeId === "string" && UUID.test(body.storeId)) butikId = body.storeId;
   if (!butikId) return svar({ fejl: "Ingen butik" }, 400);
 
-  const [butikR, bilR, personerR, ordrerR, regelR, rettR] = await Promise.all([
+  const [butikR, bilR, personerR, ordrerR, rettR] = await Promise.all([
     klient.from("stores").select("id, lat, lon, capacity_settings").eq("id", butikId).maybeSingle(),
     klient.from("vehicles").select("id, data").eq("id", f.bilId).eq("store_id", butikId).maybeSingle(),
     klient.from("profiles").select("id, name").eq("store_id", butikId).eq("vehicle_id", f.bilId),
     klient.from("orders").select("id, data").eq("store_id", butikId).is("deleted_at", null).filter("data->>dato", "eq", f.dato).filter("data->>bilId", "eq", f.bilId).limit(80),
-    klient.from("user_capacity_rules").select("regler").eq("user_id", user.id).maybeSingle(),
     klient.rpc("has_permission", { perm: "overstyr_kapacitet" }),
   ]);
   if (butikR.error || !butikR.data) return svar({ fejl: "Butikken kunne ikke hentes" }, 500);
@@ -84,7 +83,6 @@ Deno.serve(async (req) => {
   const ordrer = (ordrerR.data ?? []).map((o: { id: string; data: Record<string, unknown> }) => ({ ...o.data, id: o.id }));
   const bil = { ...(bilR.data.data as Record<string, unknown>), id: bilR.data.id };
   const indstillinger = butikR.data.capacity_settings;
-  const brugerRegler = regelR.data?.regler ?? null;
 
   // Personer og tilgaengelighed bygges i tjek.js (samme motor som resten). Vi bruger butikkens egne indstillinger til standardtider.
   const motorPersoner = bygPersoner({ dato: f.dato, personer, arbejdstider: arbR.data, uaendringer: uaR.data, fravaer: fravR.data, indstillinger });
@@ -103,7 +101,7 @@ Deno.serve(async (req) => {
   try {
     const { svar: resultat } = koerTjek({
       dato: f.dato, butik: butikR.data, bil, personer: motorPersoner, ordrer, sagId: f.sagId, kandidat: f.kandidat,
-      maalById, koord, brugerRegler, erAdmin, kanOverrule: erAdmin || rettR.data === true,
+      maalById, koord, erAdmin, kanOverrule: erAdmin || rettR.data === true,
     });
     return svar(resultat);
   } catch (e) {
