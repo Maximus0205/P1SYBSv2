@@ -3,11 +3,9 @@ import { Check, AlertCircle, Loader2 } from "lucide-react";
 import { hentKapacitetsIndstillinger, gemKapacitetsIndstillinger } from "../lib/kapacitetStore";
 import { geocodeAddress } from "../lib/geocoding";
 import { rensIndstillinger } from "../engine/kapacitet";
-import { REGLER, NIVEAUER } from "../engine/kapacitet/indstillinger";
 
 // Admin -> Kapacitet (oktober 2026): de indstillinger, den digitale disponent (kapacitetsmotoren) planlægger efter. Alt har en fornuftig
 // standard, så intet SKAL rettes. Personers vægt (86,5 kg) er en fast faktor og kan ikke sættes her.
-const NIVEAU_TEKST = { fra: "Fra", raadgivende: "Rådgivende (advarsel)", krav: "Krav (blokerer)" };
 const DAGE = [[1, "Man"], [2, "Tir"], [3, "Ons"], [4, "Tor"], [5, "Fre"], [6, "Lør"], [7, "Søn"]];
 
 function Felt({ id, label, hjaelp, enhed, children }) {
@@ -87,7 +85,6 @@ function KapacitetsIndstillinger({ storeId, butikAdresse }) {
           <Felt id="kap-omlast" label="Omlastning" hjaelp="Lægges automatisk ind som et lager-stop, når bilen ikke kan have det hele på én gang (skrot afleveres, nyt læsses)." enhed="min">{tal("tider", "omlastningMin", "kap-omlast")}</Felt>
           <Felt id="kap-afslut" label="Tømning ved dagens slutning" enhed="min">{tal("tider", "dagsafslutningMin", "kap-afslut")}</Felt>
           <Felt id="kap-buffer" label="Buffer pr. stop" hjaelp="Parkering, gå ind, afslutte hos kunden." enhed="min">{tal("tider", "stopBufferMin", "kap-buffer")}</Felt>
-          <Felt id="kap-pause" label="Pause lægges tidligst" hjaelp="Så mange minutter efter dagens start (210 = 3,5 time)." enhed="min">{tal("tider", "pauseEfterMin", "kap-pause")}</Felt>
           <Felt id="kap-overtid" label="Tilladt overtid" hjaelp="Hvor langt over sluttid en dag må strække sig." enhed="min">{tal("tider", "tilladtOvertidMin", "kap-overtid")}</Felt>
         </div>
       </div>
@@ -116,41 +113,15 @@ function KapacitetsIndstillinger({ storeId, butikAdresse }) {
       </div>
 
       <div className={kort}>
-        <h3 className={overskrift}>Kørsel og økonomi</h3>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Felt id="kap-trafik" label="Trafiktillæg" hjaelp="Ruteberegningen kender ikke trafikken." enhed="%">{tal("koersel", "trafikTillaegPct", "kap-trafik")}</Felt>
-          <Felt id="kap-timepris" label="Timepris pr. person" hjaelp="Bruges kun til at vælge den billigste rute." enhed="kr">{tal("oekonomi", "timeprisKr", "kap-timepris")}</Felt>
-          <Felt id="kap-kmpris" label="Pris pr. km" enhed="kr">{tal("oekonomi", "kmprisKr", "kap-kmpris")}</Felt>
-        </div>
-      </div>
-
-      <div className={kort}>
-        <h3 className={overskrift}>Nyttelast og plads</h3>
+        <h3 className={overskrift}>Kørsel</h3>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Felt id="kap-vmargin" label="Sikkerhedsmargin på nyttelast" hjaelp="Trækkes fra den tilladte vægt. Bilens nyttelast og værktøj sættes under Biler." enhed="%">{tal("nyttelast", "sikkerhedsmarginPct", "kap-vmargin")}</Felt>
-          <Felt id="kap-emb" label="Emballagemargin" hjaelp="Lægges til hver side af varens mål (karton og skum)." enhed="cm">{tal("pakning", "emballageMarginCm", "kap-emb")}</Felt>
+          <Felt id="kap-trafik" label="Trafiktillæg" hjaelp="Ruteberegningen kender ikke trafikken." enhed="%">{tal("koersel", "trafikTillaegPct", "kap-trafik")}</Felt>
         </div>
-        <p className="text-[11px] text-muted mt-3">Personer i bilen regnes automatisk med en fast standardvægt; den kan ikke ændres.</p>
       </div>
 
       <div className={kort}>
         <h3 className={overskrift}>Samling af kørsel</h3>
         <Felt id="kap-samling" label="Højst ekstra ventetid for at samle kørsel" hjaelp="Bruges af forslag ved booking (kommer): en kunde skal ikke vente længere end dette for at spare kørsel." enhed="dage">{tal("samling", "maksEkstraVentetidDage", "kap-samling")}</Felt>
-      </div>
-
-      <div className={kort}>
-        <h3 className={overskrift}>Hvilke regler styrer planlægningen?</h3>
-        <p className="text-xs text-muted mb-3"><strong>Krav</strong> blokerer en booking, der bryder reglen. <strong>Rådgivende</strong> advarer, men blokerer ikke. <strong>Fra</strong> ignorerer reglen.</p>
-        <div className="space-y-3">
-          {Object.entries(REGLER).map(([noegle, tekst]) => (
-            <div key={noegle} className="flex items-center justify-between gap-3 flex-wrap">
-              <label htmlFor={`regel-${noegle}`} className="text-sm text-ink flex-1 min-w-[200px]">{tekst}</label>
-              <select id={`regel-${noegle}`} value={ind.regler[noegle]} onChange={(e) => sæt("regler", noegle, e.target.value)} className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink min-h-[44px] focus:outline-none focus:border-brand">
-                {NIVEAUER.map((n) => <option key={n} value={n}>{NIVEAU_TEKST[n]}</option>)}
-              </select>
-            </div>
-          ))}
-        </div>
       </div>
 
       {fejl && <p role="alert" className="text-xs text-danger mb-3 flex items-center gap-1.5"><AlertCircle size={13} className="shrink-0" aria-hidden="true" /> {fejl}</p>}
