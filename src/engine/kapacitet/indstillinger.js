@@ -13,7 +13,7 @@ export const PERSONVAEGT_KG = 86.5;
 
 export const NIVEAUER = ["fra", "raadgivende", "krav"];
 
-// Regler, admin kan sætte til Fra / Rådgivende (advarsel) / Krav (blokerer).
+// Regler, systemadmin kan sætte til Fra / Rådgivende (advarsel) / Krav (blokerer) - som butiksstandard og/eller individuelt pr. bruger.
 export const REGLER = {
   arbejdstid: "Montørens arbejdstid og kalender (inkl. hjemme til sluttid)",
   tidsrum: "Kundens tidsrum (formiddag/eftermiddag)",
@@ -32,7 +32,7 @@ export const STANDARD = Object.freeze({
     morgenLaesningMin: 15,   // læsning af bilen om morgenen
     dagsafslutningMin: 15,   // tømning af bilen ved dagens slutning
     stopBufferMin: 5,        // parkering, gå ind, afslutte hos kunden - pr. stop
-    pauseEfterMin: 210,      // pausen lægges tidligst så mange minutter efter dagens start (08:00 + 3,5 t = 11:30)
+    pauseEfterMin: 210,      // UDFASET (okt. 2026): pausen placeres ikke længere af systemet; feltet bevares kun så gemte indstillinger stadig er gyldige
     tilladtOvertidMin: 0,    // hvor langt over sluttid en dag må strække sig
     standardStart: "08:00",
     standardSlut: "16:00",
@@ -40,9 +40,7 @@ export const STANDARD = Object.freeze({
     arbejdsdage: [1, 2, 3, 4, 5], // 1 = mandag ... 7 = søndag
   },
   koersel: { trafikTillaegPct: 15 }, // ORS kender ikke live-trafik
-  oekonomi: { timeprisKr: 350, kmprisKr: 3 }, // bruges KUN til at vælge billigste rute
-  pakning: { emballageMarginCm: 3 },          // lægges til hver side af varens mål
-  nyttelast: { sikkerhedsmarginPct: 5 },
+  // Ingen priser og ingen marginer (okt. 2026): ruter vælges efter kortest tid og distance, og varernes brutto-mål bruges som de er.
   samling: { maksEkstraVentetidDage: 3 },
   regler: {
     arbejdstid: "krav", tidsrum: "krav", toMand: "krav", nyttelast: "krav", plads: "krav",
@@ -95,12 +93,19 @@ export function rensIndstillinger(raa) {
       arbejdsdage: dage,
     },
     koersel: { trafikTillaegPct: tal(g("koersel").trafikTillaegPct, 0, 100, S.koersel.trafikTillaegPct) },
-    oekonomi: { timeprisKr: tal(g("oekonomi").timeprisKr, 0, 5000, S.oekonomi.timeprisKr), kmprisKr: tal(g("oekonomi").kmprisKr, 0, 50, S.oekonomi.kmprisKr) },
-    pakning: { emballageMarginCm: tal(g("pakning").emballageMarginCm, 0, 20, S.pakning.emballageMarginCm) },
-    nyttelast: { sikkerhedsmarginPct: tal(g("nyttelast").sikkerhedsmarginPct, 0, 50, S.nyttelast.sikkerhedsmarginPct) },
     samling: { maksEkstraVentetidDage: heltal(g("samling").maksEkstraVentetidDage, 0, 30, S.samling.maksEkstraVentetidDage) },
     regler,
   };
 }
 
 export const niveau = (ind, regel) => ind?.regler?.[regel] || "fra";
+
+// Lægger en brugers INDIVIDUELLE regelniveauer oven på butikkens (kun kendte regler og gyldige niveauer; alt andet ignoreres).
+// Returnerer nye indstillinger; de oprindelige røres ikke.
+export function medBrugerRegler(ind, brugerRegler) {
+  const basis = rensIndstillinger(ind);
+  if (!brugerRegler || typeof brugerRegler !== "object" || Array.isArray(brugerRegler)) return basis;
+  const regler = { ...basis.regler };
+  for (const k of Object.keys(REGLER)) if (NIVEAUER.includes(brugerRegler[k])) regler[k] = brugerRegler[k];
+  return { ...basis, regler };
+}
