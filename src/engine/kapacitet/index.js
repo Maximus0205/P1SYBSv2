@@ -1,26 +1,26 @@
 // KAPACITETSMOTOREN - den digitale disponent (oktober 2026). Ren logik uden afhængigheder (tests/engine.kapacitet.test.mjs).
 //
 // FORMÅL: for ÉN bil på ÉN dag at afgøre, om en samling stop kan lade sig gøre, og i hvilken rækkefølge og med hvilke
-// lager-stop de bedst køres - så montøren når det hele, bilen ikke overlæsses, varerne er der plads til, og kørslen er billigst.
+// lager-stop de bedst køres - så montøren når det hele, bilen ikke overlæsses, varerne er der plads til, og kørslen er kortest (først tid, så distance).
 //
 // DAGENS FORM (som butikken arbejder): møde ind på lageret -> læsse bilen -> køre alle stop -> hjem og tømme bilen. Kun når vægt
 // eller størrelse tvinger det, deles dagen i flere TURE med et lager-stop imellem (omlastning). Skrot afleveres på lageret ved
 // samme lejlighed - der pendles aldrig hjem for at aflevere skrot.
 //
 // VÆGT: nyt produkt af, gammelt på, ca. 1:1 - så vægten på bilen er den samme gennem en tur og lig det, der blev læsset fra
-// lageret. Nyttelast til varer = bilens nyttelast - værktøj - (86,5 kg x personer i bilen) - sikkerhedsmargin.
+// lageret. Nyttelast til varer = bilens nyttelast - værktøj - (86,5 kg x personer i bilen).
 //
 // REGLER: hver regel kan være Fra, Rådgivende (giver en advarsel) eller Krav (giver et brud, og planen er ikke ok). Rådgivende
 // og Fra styrer IKKE planlægningen (der deles ikke ture for en rådgivende nyttelast); kun Krav gør.
 //
 // SKØN: mangler en køretidsmatrix, bruges luftlinje x 1,3 ved 50 km/t - og det meldes. Mangler bilens nyttelast eller lasterum,
-// springes den del over. Ukendt vægt/mål gættes ALDRIG; det giver en advarsel (eller et brud, hvis admin har sat den til Krav).
+// springes den del over. Ukendt vægt/mål gættes ALDRIG; det giver en advarsel (eller et brud, hvis systemadmin har sat den til Krav).
 
 import { tilMin, tilHHMM, samlVinduer, faellesVinduer, foersteLedigeStart, sumVinduer, traekFraVinduer } from "./tid.js";
-import { rensIndstillinger, niveau, PERSONVAEGT_KG } from "./indstillinger.js";
+import { rensIndstillinger, medBrugerRegler, niveau, PERSONVAEGT_KG } from "./indstillinger.js";
 import { pakVarer, harMaal } from "./pakning.js";
 
-export { rensIndstillinger, PERSONVAEGT_KG, tilMin, tilHHMM };
+export { rensIndstillinger, medBrugerRegler, PERSONVAEGT_KG, tilMin, tilHHMM };
 export { pakVarer, standardStabling } from "./pakning.js";
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -142,9 +142,8 @@ function byggKontekst(input, ind) {
   const antalPersoner = personer.length;
   const nytte = Number(bil.nyttelastKg);
   const vaerktoej = Number(bil.vaerktoejKg) || 0;
-  const margin = ind.nyttelast.sikkerhedsmarginPct;
   const brutto = Number.isFinite(nytte) && nytte > 0 ? nytte - vaerktoej - PERSONVAEGT_KG * antalPersoner : null;
-  const tilladtKg = brutto === null ? null : Math.max(0, brutto * (1 - margin / 100));
+  const tilladtKg = brutto === null ? null : Math.max(0, brutto);
   const lr = bil.lasterum || {};
   const lasterum = [lr.laengdeCm, lr.breddeCm, lr.hoejdeCm].every((x) => Number(x) > 0)
     ? { laengdeCm: Number(lr.laengdeCm), breddeCm: Number(lr.breddeCm), hoejdeCm: Number(lr.hoejdeCm) } : null;
@@ -159,7 +158,7 @@ function byggKontekst(input, ind) {
   const lev = (regel) => niveau(ind, regel);
   return Object.assign(ctx, {
     ind, personer, primaer, helpere, antalPersoner, vinduerM, vinduerH, harHelper: vinduerH.length > 0,
-    bil, pace: (Number(bil.tempo) || 100) / 100, tilladtKg, brutto, margin, lasterum, emballage: ind.pakning.emballageMarginCm,
+    bil, pace: (Number(bil.tempo) || 100) / 100, tilladtKg, brutto, lasterum, emballage: 0, // ingen sikkerheds- eller emballagemargin: varernes mål er bruttomål (inkl. emballage)
     dagStart, dagSlut, overtid: overtidMin, pauseMin: Math.max(0, Number(input.pauseMin ?? primaer?.pauseMin ?? ind.tider.standardPauseMin) || 0),
     pauseEfterMin: ind.tider.pauseEfterMin, trafik: ind.koersel.trafikTillaegPct / 100,
     krav: { nyttelast: lev("nyttelast") === "krav", plads: lev("plads") === "krav" }, lev, vaerktoej,
@@ -234,15 +233,12 @@ function simuler(sekvens, ctx) {
   const funde = []; // { regel, besked, stopId?, tal?, vaegt }
   const fund = (regel, besked, vaegt, ekstra = {}) => { if (ctx.lev(regel) !== "fra") funde.push({ regel, niveau: ctx.lev(regel), besked, vaegt, ...ekstra }); };
 
-  let t = ctx.dagStart; let km = 0; let koerMin = 0; let ventMin = 0; let arbejdMin = 0; let laesMin = 0; let omlastMin = 0; let pauseTaget = false; let pauseMin = 0;
+  let t = ctx.dagStart; let km = 0; let koerMin = 0; let ventMin = 0; let arbejdMin = 0; let laesMin = 0; let omlastMin = 0;
   const udenfor = new Set();
   const push = (type, fra, til, ekstra = {}) => haendelser.push({ type, fra, til, minutter: til - fra, ...ekstra });
   const vent = (til, aarsag) => { if (til > t) { push("vent", t, til, { aarsag }); ventMin += til - t; t = til; } };
-  const tagPause = () => {
-    if (!pauseTaget && ctx.pauseMin > 0 && t - ctx.dagStart >= ctx.pauseEfterMin && t + ctx.pauseMin <= ctx.dagSlut + ctx.overtid) {
-      push("pause", t, t + ctx.pauseMin); t += ctx.pauseMin; pauseMin += ctx.pauseMin; pauseTaget = true;
-    }
-  };
+  // PAUSE placeres ALDRIG af systemet: chaufføren vælger selv, hvor den passer ind (eller springer den over og går tidligere).
+  // Den indgår kun som en reserve ved dagens slutning, se nedenfor.
   // Aktivitet, der kræver montøren til stede; ikke afbrydelig. Ender den uden for kalenderen, noteres det.
   const aktivitet = (varighed, vinduer, hvad) => {
     const s = foersteLedigeStart(vinduer, t, varighed);
@@ -269,7 +265,6 @@ function simuler(sekvens, ctx) {
   let sted = "lager";
   ture.forEach((tur, ti) => {
     if (ti > 0) {
-      tagPause();
       koer(sted, "lager");
       const om = ctx.ind.tider.omlastningMin;
       aktivitet(om, ctx.vinduerM, "Omlastning");
@@ -277,7 +272,6 @@ function simuler(sekvens, ctx) {
       sted = "lager";
     }
     tur.besoeg.forEach((b) => {
-      tagPause();
       const stop = b.stop;
       koer(sted, stop.id);
       const arbejde = Math.round(Number(stop.minutter || 0) * ctx.pace * b.andel) + ctx.ind.tider.stopBufferMin;
@@ -300,15 +294,17 @@ function simuler(sekvens, ctx) {
     });
   });
 
-  tagPause();
   koer(sted, "lager");
   const afs = ctx.ind.tider.dagsafslutningMin;
   aktivitet(afs, ctx.vinduerM, "Tømning af bilen");
   push("hjem", t, t + afs, { sted: "lager" }); t += afs;
-  const slutMin = t;
+  const slutMin = t; // tidligst hjemme, hvis pausen springes over
+  // Pausen skal kunne være der: ventetid kan rumme den, resten er en reserve før arbejdstidens slutning.
+  const pauseReserve = Math.max(0, Math.round(ctx.pauseMin - ventMin));
+  const slutMedPause = slutMin + pauseReserve;
   const grænse = ctx.dagSlut + ctx.overtid;
-  if (slutMin > grænse + 1e-9) {
-    fund("arbejdstid", `Dagen slutter først kl. ${tilHHMM(slutMin)}, ${Math.round(slutMin - ctx.dagSlut)} min efter arbejdstidens slutning (${tilHHMM(ctx.dagSlut)})${ctx.overtid ? ` - ${ctx.overtid} min overtid er tilladt` : ""}.`, 1 + (slutMin - grænse) / 10, { tal: { overMin: Math.round(slutMin - ctx.dagSlut) } });
+  if (slutMedPause > grænse + 1e-9) {
+    fund("arbejdstid", `Dagen slutter først kl. ${tilHHMM(slutMedPause)}${pauseReserve ? ` (inkl. ${pauseReserve} min pause, som chaufføren selv placerer)` : ""}, ${Math.round(slutMedPause - ctx.dagSlut)} min efter arbejdstidens slutning (${tilHHMM(ctx.dagSlut)})${ctx.overtid ? ` - ${ctx.overtid} min overtid er tilladt` : ""}.`, 1 + (slutMedPause - grænse) / 10, { tal: { overMin: Math.round(slutMedPause - ctx.dagSlut) } });
   }
 
   // To-mands-krav
@@ -346,20 +342,17 @@ function simuler(sekvens, ctx) {
   }
 
   const totalMin = slutMin - ctx.dagStart;
-  const betaltMin = Math.max(0, totalMin - pauseMin);
-  const timeKr = (betaltMin / 60) * ctx.ind.oekonomi.timeprisKr * Math.max(1, ctx.antalPersoner);
-  const kmKr = km * ctx.ind.oekonomi.kmprisKr;
   const brud = funde.filter((f) => f.niveau === "krav");
   const advarsler = funde.filter((f) => f.niveau === "raadgivende");
   const hard = brud.reduce((s, f) => s + f.vaegt, 0) + ufoerbare.length * 3;
   const blød = advarsler.reduce((s, f) => s + f.vaegt, 0);
   return {
-    score: [hard, blød, timeKr + kmKr],
+    score: [hard, blød, totalMin, km], // ingen priser: kortest samlet tid, derefter kortest distance
     haendelser, ture: tureUd, brud, advarsler, ufoerbare,
     noegletal: {
       startMin: ctx.dagStart, slutMin, hjemmeKl: tilHHMM(slutMin), koerselMin: Math.round(koerMin), km: Math.round(km * 10) / 10, arbejdeMin: arbejdMin,
-      venteMin: Math.round(ventMin), laesningMin: laesMin, omlastninger: Math.max(0, ture.length - 1), omlastningMin: omlastMin, pauseMin,
-      ledigMin: Math.max(0, Math.round(ctx.dagSlut + ctx.overtid - slutMin)), omkostningKr: Math.round(timeKr + kmKr), timeKr: Math.round(timeKr), kmKr: Math.round(kmKr),
+      venteMin: Math.round(ventMin), laesningMin: laesMin, omlastninger: Math.max(0, ture.length - 1), omlastningMin: omlastMin, pauseMin: pauseReserve,
+      ledigMin: Math.max(0, Math.round(ctx.dagSlut + ctx.overtid - slutMedPause)),
     },
   };
 }
@@ -420,7 +413,7 @@ export function planlaegDag(input) {
 
   const forudsaetninger = {
     personVaegtKg: PERSONVAEGT_KG, antalPersoner: ctx.antalPersoner, nyttelastKg: Number(ctx.bil.nyttelastKg) > 0 ? Number(ctx.bil.nyttelastKg) : null,
-    vaerktoejKg: ctx.vaerktoej, tilladtKg: ctx.tilladtKg === null ? null : Math.round(ctx.tilladtKg * 10) / 10, sikkerhedsmarginPct: ctx.margin,
+    vaerktoejKg: ctx.vaerktoej, tilladtKg: ctx.tilladtKg === null ? null : Math.round(ctx.tilladtKg * 10) / 10,
     lasterumSat: !!ctx.lasterum, tempoPct: Math.round(ctx.pace * 100), trafikTillaegPct: ind.koersel.trafikTillaegPct, harMedhjaelper: ctx.harHelper,
     skoenKoersel: false, dagStart: tilHHMM(ctx.dagStart), dagSlut: tilHHMM(ctx.dagSlut),
   };
@@ -430,12 +423,12 @@ export function planlaegDag(input) {
     const brud = ctx.lev("arbejdstid") === "fra" ? [] : [{ regel: "arbejdstid", niveau: ctx.lev("arbejdstid"), besked, vaegt: 5 }];
     // Uden stop er en dag uden montør ikke en fejl, blot en dag uden kapacitet.
     const kritisk = stop.length === 0 ? [] : brud.filter((b) => b.niveau === "krav");
-    return { ok: kritisk.length === 0, dato: input.dato, bil: { id: ctx.bil.id, navn: ctx.bil.navn }, haendelser: [], ture: [], rutefolge: [], brud: kritisk, advarsler: stop.length === 0 ? [] : brud.filter((b) => b.niveau !== "krav"), noegletal: { ledigMin: 0, startMin: null, slutMin: null, hjemmeKl: null, koerselMin: 0, km: 0, arbejdeMin: 0, venteMin: 0, laesningMin: 0, omlastninger: 0, omlastningMin: 0, pauseMin: 0, omkostningKr: 0, timeKr: 0, kmKr: 0 }, forklaring: [besked], forudsaetninger };
+    return { ok: kritisk.length === 0, dato: input.dato, bil: { id: ctx.bil.id, navn: ctx.bil.navn }, haendelser: [], ture: [], rutefolge: [], brud: kritisk, advarsler: stop.length === 0 ? [] : brud.filter((b) => b.niveau !== "krav"), noegletal: { ledigMin: 0, startMin: null, slutMin: null, hjemmeKl: null, koerselMin: 0, km: 0, arbejdeMin: 0, venteMin: 0, laesningMin: 0, omlastninger: 0, omlastningMin: 0, pauseMin: 0 }, forklaring: [besked], forudsaetninger };
   }
 
   if (stop.length === 0) {
     const ledig = Math.max(0, sumVinduer(ctx.primaer.vinduer) - ctx.pauseMin);
-    return { ok: true, dato: input.dato, bil: { id: ctx.bil.id, navn: ctx.bil.navn }, haendelser: [], ture: [], rutefolge: [], brud: [], advarsler: [], noegletal: { ledigMin: ledig, startMin: ctx.dagStart, slutMin: null, hjemmeKl: null, koerselMin: 0, km: 0, arbejdeMin: 0, venteMin: 0, laesningMin: 0, omlastninger: 0, omlastningMin: 0, pauseMin: 0, omkostningKr: 0, timeKr: 0, kmKr: 0 }, forklaring: [`Ingen stop - ${Math.floor(ledig / 60)} t ${ledig % 60} min ledig.`], forudsaetninger };
+    return { ok: true, dato: input.dato, bil: { id: ctx.bil.id, navn: ctx.bil.navn }, haendelser: [], ture: [], rutefolge: [], brud: [], advarsler: [], noegletal: { ledigMin: ledig, startMin: ctx.dagStart, slutMin: null, hjemmeKl: null, koerselMin: 0, km: 0, arbejdeMin: 0, venteMin: 0, laesningMin: 0, omlastninger: 0, omlastningMin: 0, pauseMin: 0 }, forklaring: [`Ingen stop - ${Math.floor(ledig / 60)} t ${ledig % 60} min ledig.`], forudsaetninger };
   }
 
   const bedst = optimer(stop, ctx);
@@ -450,9 +443,10 @@ export function planlaegDag(input) {
   if (bedst.ture.length > 1) {
     bedst.ture.forEach((tu, i) => { if (i > 0) forklaring.push(`Tur ${tu.nr} er nødvendig, fordi alt ikke kan være på bilen på én gang (${bedst.ture[i - 1].vaegtKg} kg på tur ${i}${ctx.tilladtKg !== null ? `, højst ${forudsaetninger.tilladtKg} kg` : ""}). Det koster ${ind.tider.omlastningMin} min omlastning plus kørsel til lageret og tilbage.`); });
   }
-  forklaring.push(`Kørsel ${n.km} km / ${n.koerselMin} min, arbejde ${n.arbejdeMin} min${n.venteMin ? `, ventetid ${n.venteMin} min` : ""}. Hjemme og tømt kl. ${n.hjemmeKl}; ${n.ledigMin} min tilbage af arbejdstiden. Anslået omkostning ca. ${n.omkostningKr} kr (løn ${n.timeKr} kr + kørsel ${n.kmKr} kr).`);
+  forklaring.push(`Kørsel ${n.km} km / ${n.koerselMin} min, arbejde ${n.arbejdeMin} min${n.venteMin ? `, ventetid ${n.venteMin} min` : ""}. Hjemme og tømt kl. ${n.hjemmeKl}; ${n.ledigMin} min tilbage af arbejdstiden. Planen er valgt efter kortest samlet tid og derefter kortest distance.`);
+  if (n.pauseMin > 0) forklaring.push(`Pause (${n.pauseMin} min) placeres ikke af systemet - chaufføren tager den, hvor den passer, eller springer den over og er hjemme tidligere.`);
   bedst.ture.forEach((tu) => { if (tu.tilladtKg !== null) forklaring.push(`Tur ${tu.nr}: ${tu.vaegtKg} kg af ${tu.tilladtKg} kg tilladt${tu.gulvPct !== null ? `, gulvet ${tu.gulvPct} % brugt` : ""}.`); });
-  const tilladtLinje = ctx.tilladtKg !== null ? `Tilladt vægt på bilen = nyttelast ${forudsaetninger.nyttelastKg} kg − værktøj ${ctx.vaerktoej} kg − ${ctx.antalPersoner} ${ctx.antalPersoner === 1 ? "person" : "personer"} á ${PERSONVAEGT_KG} kg − ${ctx.margin} % sikkerhedsmargin = ${forudsaetninger.tilladtKg} kg.` : null;
+  const tilladtLinje = ctx.tilladtKg !== null ? `Tilladt vægt på bilen = nyttelast ${forudsaetninger.nyttelastKg} kg − værktøj ${ctx.vaerktoej} kg − ${ctx.antalPersoner} ${ctx.antalPersoner === 1 ? "person" : "personer"} á ${PERSONVAEGT_KG} kg = ${forudsaetninger.tilladtKg} kg.` : null;
   if (tilladtLinje) forklaring.push(tilladtLinje);
 
   return {
@@ -474,8 +468,8 @@ export function vurderTilfoejelse(input, nytStop) {
     efter,
     foer,
     ekstra: efter.noegletal && foer.noegletal && foer.noegletal.slutMin !== null ? {
-      min: Math.round((b.slutMin - a.slutMin) * 10) / 10, km: Math.round((b.km - a.km) * 10) / 10, kr: b.omkostningKr - a.omkostningKr, omlastninger: b.omlastninger - a.omlastninger,
-    } : efter.noegletal ? { min: Math.round((b.slutMin - b.startMin) * 10) / 10, km: b.km, kr: b.omkostningKr, omlastninger: b.omlastninger } : null,
+      min: Math.round((b.slutMin - a.slutMin) * 10) / 10, km: Math.round((b.km - a.km) * 10) / 10, omlastninger: b.omlastninger - a.omlastninger,
+    } : efter.noegletal ? { min: Math.round((b.slutMin - b.startMin) * 10) / 10, km: b.km, omlastninger: b.omlastninger } : null,
     aarsager: efter.brud.map((x) => x.besked),
   };
 }
