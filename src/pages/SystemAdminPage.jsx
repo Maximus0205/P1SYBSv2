@@ -9,6 +9,7 @@ import { AddressInput } from "../components/AddressInput";
 import { PosIntegrationAdmin } from "../components/PosIntegrationAdmin";
 import { StorageIntegrationAdmin } from "../components/StorageIntegrationAdmin";
 import { KapacitetsLab } from "../components/KapacitetsLab";
+import { KapacitetsRegler } from "../components/KapacitetsRegler";
 
 const ROLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montør" };
 
@@ -54,7 +55,7 @@ function SystemAdminPage({ currentUserId, onOwnStoreLinked }) {
       {tab === "butikker" && <StoresTab stores={stores} loading={loading} reload={reloadStores} currentUserId={currentUserId} onOwnStoreLinked={onOwnStoreLinked} />}
       {tab === "integrationer" && <PosIntegrationsTab stores={stores} />}
       {tab === "lager" && <StorageIntegrationsTab stores={stores} />}
-      {tab === "kapacitet" && <KapacitetsLab stores={stores} />}
+      {tab === "kapacitet" && <><KapacitetsRegler stores={stores} /><KapacitetsLab stores={stores} /></>}
       {tab === "fejl" && <ErrorLogTab stores={stores} />}
     </div>
   );
