@@ -58,7 +58,7 @@ function Resultat({ res, navne }) {
         </p>
         {n && n.hjemmeKl && (
           <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 text-sm">
-            {[["Hjemme kl.", n.hjemmeKl], ["Kørsel", `${n.km} km / ${n.koerselMin} min`], ["Arbejde", `${n.arbejdeMin} min`], ["Ventetid", `${n.venteMin} min`], ["Omlastninger", n.omlastninger], ["Ledig tid", `${n.ledigMin} min`], ["Omkostning", `${n.omkostningKr} kr`], ["Ture", res.ture.length]].map(([k, v]) => (
+            {[["Hjemme kl.", n.hjemmeKl], ["Kørsel", `${n.km} km / ${n.koerselMin} min`], ["Arbejde", `${n.arbejdeMin} min`], ["Ventetid", `${n.venteMin} min`], ["Omlastninger", n.omlastninger], ["Ledig tid", `${n.ledigMin} min`], ["Ture", res.ture.length]].map(([k, v]) => (
               <div key={k}><dt className="text-[11px] uppercase tracking-wide text-muted">{k}</dt><dd className="font-mono text-ink">{v}</dd></div>
             ))}
           </dl>
@@ -270,7 +270,7 @@ function KapacitetsLab({ stores = [] }) {
       {vurdering && (
         <div className={`${kort} mb-4 ${vurdering.mulig ? "border-success" : "border-danger"}`}>
           <p className={`text-sm font-semibold ${vurdering.mulig ? "text-success" : "text-danger"}`}>{vurdering.mulig ? "Kandidaten kan lægges på dagen" : "Kandidaten kan IKKE lægges på dagen"}</p>
-          {vurdering.ekstra && <p className="text-sm text-ink mt-1 font-mono">Ekstra: {vurdering.ekstra.min} min · {vurdering.ekstra.km} km · {vurdering.ekstra.kr} kr · {vurdering.ekstra.omlastninger} omlastning(er)</p>}
+          {vurdering.ekstra && <p className="text-sm text-ink mt-1 font-mono">Ekstra: {vurdering.ekstra.min} min · {vurdering.ekstra.km} km · {vurdering.ekstra.omlastninger} omlastning(er)</p>}
           {vurdering.aarsager.map((a, i) => <p key={i} className="text-xs text-danger mt-1">{a}</p>)}
         </div>
       )}
