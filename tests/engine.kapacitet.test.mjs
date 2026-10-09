@@ -1,6 +1,6 @@
 // Regressionstest til kapacitetsmotoren (src/engine/kapacitet). Kør med:  node tests/engine.kapacitet.test.mjs
 // Alle forventninger er regnet i hånden ud fra en simpel "verden på en linje": 1 enhed = 1 minut = 0,5 km.
-import { planlaegDag, vurderTilfoejelse, dagensTilgaengelighed, rensIndstillinger, PERSONVAEGT_KG, tilHHMM, tilMin, pakVarer, standardStabling, skoenMatrix } from "../src/engine/kapacitet/index.js";
+import { planlaegDag, vurderTilfoejelse, dagensTilgaengelighed, rensIndstillinger, medBrugerRegler, PERSONVAEGT_KG, tilHHMM, tilMin, pakVarer, standardStabling, skoenMatrix } from "../src/engine/kapacitet/index.js";
 
 let pass = 0, fail = 0;
 const eq = (name, got, want) => {
@@ -29,7 +29,7 @@ eq("indstillinger: ugyldige tider og regler giver standard", [rensIndstillinger(
 eq("indstillinger: arbejdsdage renses", rensIndstillinger({ tider: { arbejdsdage: [1, 1, 6, 9, "x", 3.5, 0] } }).tider.arbejdsdage, [1, 6]);
 eq("indstillinger: lagerkoordinater kræver begge og gyldige værdier", [rensIndstillinger({ lager: { lat: 55, lon: 10 } }).lager.lat, rensIndstillinger({ lager: { lat: 55, lon: null } }).lager.lat, rensIndstillinger({ lager: { lat: 999, lon: 10 } }).lager.lat], [55, null, null]);
 eq("indstillinger: personvægten er FAST og kan ikke sættes udefra", [PERSONVAEGT_KG, "personVaegtKg" in rensIndstillinger({ personVaegtKg: 200, pakning: { personVaegtKg: 200 }, nyttelast: { personVaegtKg: 200 } }), JSON.stringify(rensIndstillinger({ nyttelast: { personVaegtKg: 200 } })).includes("200")], [86.5, false, false]);
-eq("indstillinger: ukendte felter kasseres", Object.keys(rensIndstillinger({ hacker: 1, tider: { x: 1 } })).sort(), ["koersel", "lager", "nyttelast", "oekonomi", "pakning", "regler", "samling", "tider"]);
+eq("indstillinger: ukendte felter kasseres", Object.keys(rensIndstillinger({ hacker: 1, tider: { x: 1 } })).sort(), ["koersel", "lager", "regler", "samling", "tider"]);
 
 // =====================================================================================================
 // PERSONERS TILGÆNGELIGHED
@@ -87,8 +87,8 @@ eq("pakning: første stops varer ligger nærmest bagdøren (højest y = længst 
 const M1 = linje({ lager: 0, A: 20 });
 let r = plan({ matrix: M1, stop: [stop("A", 60)] });
 eq("ét stop: 08:00 læs 15 → kør 20 → stop 65 → kør 20 → tøm 15 = hjemme 10:15", [r.ok, r.noegletal.hjemmeKl, typer(r), r.haendelser.map((h) => tilHHMM(h.fra))], [true, "10:15", ["laes", "koersel", "stop", "koersel", "hjem"], ["08:00", "08:15", "08:35", "09:40", "10:00"]]);
-eq("ét stop: nøgletal", [r.noegletal.km, r.noegletal.koerselMin, r.noegletal.arbejdeMin, r.noegletal.venteMin, r.noegletal.ledigMin, r.noegletal.omlastninger], [20, 40, 65, 0, 345, 0]);
-eq("ét stop: omkostning 135 min = 2,25 t × 350 = 788 kr + 20 km × 3 = 60 kr", [r.noegletal.timeKr, r.noegletal.kmKr, r.noegletal.omkostningKr], [788, 60, 848]);
+eq("ét stop: nøgletal", [r.noegletal.km, r.noegletal.koerselMin, r.noegletal.arbejdeMin, r.noegletal.venteMin, r.noegletal.ledigMin, r.noegletal.omlastninger], [20, 40, 65, 0, 315, 0]);
+eq("ingen priser i resultatet (timepris og kilometerpris er fjernet)", ["omkostningKr" in r.noegletal, "timeKr" in r.noegletal, "kmKr" in r.noegletal, "oekonomi" in rensIndstillinger({ oekonomi: { timeprisKr: 1 } })], [false, false, false, false]);
 r = plan({ matrix: M1, bil: { id: "b", tempo: 130 }, stop: [stop("A", 60)] });
 eq("tempo 130 %: 60 min bliver 78 + 5 buffer, hjemme 10:33", r.noegletal.hjemmeKl, "10:33");
 r = plan({ matrix: M1, bil: { id: "b", tempo: 80 }, stop: [stop("A", 60)] });
@@ -98,7 +98,7 @@ eq("trafiktillæg 15 %: 20 min bliver 23 min hver vej, hjemme 10:21", [r.noeglet
 r = plan({ matrix: M1, indstillinger: { koersel: { trafikTillaegPct: 0 }, tider: { stopBufferMin: 0, omlastningMin: 0, morgenLaesningMin: 0, dagsafslutningMin: 0 } }, stop: [stop("A", 60)] });
 eq("alle faste tider på 0: kun kørsel og arbejde (08:00 + 20 + 60 + 20 = 09:40)", r.noegletal.hjemmeKl, "09:40");
 r = plan({ matrix: M1, stop: [stop("A", 60)], personer: [montoer([{ fra: 600, til: 960 }])] });
-eq("montør der først møder kl. 10: dagen starter 10:00 og kapaciteten er kortere", [r.noegletal.startMin, r.noegletal.hjemmeKl, r.noegletal.ledigMin], [600, "12:15", 225]);
+eq("montør der først møder kl. 10: dagen starter 10:00 og kapaciteten er kortere", [r.noegletal.startMin, r.noegletal.hjemmeKl, r.noegletal.ledigMin], [600, "12:15", 195]);
 
 // =====================================================================================================
 // TOM DAG OG INGEN MONTØR
@@ -118,8 +118,8 @@ eq("ingen montør og ingen stop: ikke en fejl, men 0 ledig", [r.ok, r.noegletal.
 const M3 = linje({ lager: 0, A: 10, B: 10, C: 10 });
 const tre = [stop("A", 150), stop("B", 150), stop("C", 150)];
 r = plan({ matrix: M3, stop: tre });
-eq("tre lange stop: hjemme 17:05, 65 min over → brud (krav)", [r.ok, r.noegletal.hjemmeKl, r.brud.length, r.brud[0].regel, r.brud[0].tal.overMin], [false, "17:05", 1, "arbejdstid", 65]);
-eq("pausen lægges 3,5 time efter dagens start (11:30), første gang der er et naturligt sted", r.haendelser.filter((h) => h.type === "pause").map((h) => tilHHMM(h.fra)), ["13:35"]);
+eq("tre lange stop: hjemme 16:35 uden pause, 17:05 med pausen → 65 min over → brud (krav)", [r.ok, r.noegletal.hjemmeKl, r.brud.length, r.brud[0].regel, r.brud[0].tal.overMin], [false, "16:35", 1, "arbejdstid", 65]);
+eq("pausen placeres ALDRIG af systemet (chaufføren vælger selv)", r.haendelser.filter((h) => h.type === "pause").length, 0);
 r = plan({ matrix: M3, stop: tre, indstillinger: { koersel: { trafikTillaegPct: 0 }, regler: { arbejdstid: "raadgivende" } } });
 eq("arbejdstid rådgivende: planen er ok, men der er en advarsel", [r.ok, r.brud.length, r.advarsler.some((a) => a.regel === "arbejdstid")], [true, 0, true]);
 r = plan({ matrix: M3, stop: tre, indstillinger: { koersel: { trafikTillaegPct: 0 }, regler: { arbejdstid: "fra" } } });
@@ -127,13 +127,13 @@ eq("arbejdstid fra: ingen brud og ingen advarsel", [r.ok, r.brud.length, r.advar
 r = plan({ matrix: M3, stop: tre, indstillinger: { koersel: { trafikTillaegPct: 0 }, tider: { tilladtOvertidMin: 120 } } });
 eq("tilladt overtid 120 min: 17:05 er inden for 18:00", [r.ok, r.noegletal.ledigMin], [true, 55]);
 r = plan({ matrix: M1, stop: [stop("A", 200)], indstillinger: { koersel: { trafikTillaegPct: 0 } } });
-eq("pause: efter et langt stop lægges pausen før hjemkørslen (ca. 12:15)", [typer(r), r.haendelser.find((h) => h.type === "pause") && tilHHMM(r.haendelser.find((h) => h.type === "pause").fra)], [["laes", "koersel", "stop", "pause", "koersel", "hjem"], "12:00"]);
+eq("pause: ingen pause-hændelse i tidslinjen, men 30 min reserveres", [typer(r).includes("pause"), r.noegletal.pauseMin], [false, 30]);
 r = plan({ matrix: M1, stop: [stop("A", 60)] });
 eq("pause: kommer slet ikke, hvis dagen er slut før 11:30", typer(r).includes("pause"), false);
 r = plan({ matrix: M1, stop: [stop("A", 100)], personer: [montoer([{ fra: 600, til: 960 }])] });
-eq("pause: følger dagens START (en montør, der starter kl. 10, får ikke pause kl. 12:20, kun 2 t 20 min inde i dagen)", [typer(r).includes("pause"), r.noegletal.hjemmeKl], [false, "12:55"]);
+eq("pause: ingen pause-hændelse for sen starter, hjemme-tid uændret", [typer(r).includes("pause"), r.noegletal.hjemmeKl], [false, "12:55"]);
 r = plan({ matrix: M1, stop: [stop("A", 300)], personer: [montoer([{ fra: 600, til: 1020 }])] });
-eq("pause: en lang dag fra kl. 10 får den, så snart der er gået 3,5 time (her efter stoppet, kl. 15:40)", r.haendelser.filter((h) => h.type === "pause").map((h) => tilHHMM(h.fra)), ["15:40"]);
+eq("pause: aldrig en pause-hændelse, heller ikke på en lang dag", r.haendelser.some((h) => h.type === "pause"), false);
 
 // =====================================================================================================
 // KALENDER: hul midt på dagen
@@ -181,8 +181,8 @@ r = plan({ matrix: M2, bil: bil(), indstillinger: { koersel: { trafikTillaegPct:
 eq("tilladt vægt = 1000 − 50 − 2 × 86,5 = 777 kg (margin 0)", [r.forudsaetninger.tilladtKg, r.forudsaetninger.antalPersoner], [777, 2]);
 r = plan({ matrix: M2, bil: bil(), indstillinger: { koersel: { trafikTillaegPct: 0 }, nyttelast: { sikkerhedsmarginPct: 0 } }, stop: [stop("A", 60, { varer: [vare("a", 600)] })] });
 eq("med én person: 1000 − 50 − 86,5 = 863,5 kg", r.forudsaetninger.tilladtKg, 863.5);
-r = plan({ matrix: M2, bil: bil(), indstillinger: { koersel: { trafikTillaegPct: 0 }, nyttelast: { sikkerhedsmarginPct: 10 } }, personer: [montoer(), hjaelper()], stop: [stop("A", 60, { varer: [vare("a", 600)] })] });
-eq("sikkerhedsmargin 10 %: 777 × 0,9 = 699,3 kg", r.forudsaetninger.tilladtKg, 699.3);
+r = plan({ matrix: M2, bil: bil(), indstillinger: { koersel: { trafikTillaegPct: 0 }, nyttelast: { sikkerhedsmarginPct: 10 } /* ignoreres: marginer er fjernet */ }, personer: [montoer(), hjaelper()], stop: [stop("A", 60, { varer: [vare("a", 600)] })] });
+eq("ingen sikkerhedsmargin: en indstillet margin ignoreres, hele nyttelasten (777 kg) kan bruges", r.forudsaetninger.tilladtKg, 777);
 
 const to600 = [stop("A", 60, { varer: [vare("a", 600)] }), stop("B", 60, { varer: [vare("b", 600)] })];
 r = plan({ matrix: M2, bil: bil(), indstillinger: { koersel: { trafikTillaegPct: 0 }, nyttelast: { sikkerhedsmarginPct: 0 } }, personer: [montoer(), hjaelper()], stop: to600 });
@@ -194,7 +194,7 @@ eq("forklaringen nævner hvorfor tur 2 er nødvendig", r.forklaring.some((l) => 
 r = plan({ matrix: M2, bil: bil(), pauseMin: 0, indstillinger: { koersel: { trafikTillaegPct: 0 }, nyttelast: { sikkerhedsmarginPct: 0 }, tider: { omlastningMin: 30 } }, personer: [montoer(), hjaelper()], stop: to600 });
 eq("admin kan ændre omlastningstiden (30 min giver 15 min senere hjem end 11:55: 12:10)", r.noegletal.hjemmeKl, "12:10");
 r = plan({ matrix: M2, bil: bil(), indstillinger: { koersel: { trafikTillaegPct: 0 }, nyttelast: { sikkerhedsmarginPct: 0 }, tider: { omlastningMin: 30 } }, personer: [montoer(), hjaelper()], stop: to600 });
-eq("…og med pausen på (der nu rammer 3,5 t efter start): 12:40", r.noegletal.hjemmeKl, "12:40");
+eq("…pausen forsinker ikke tidslinjen (hjemme som uden pause: 12:10), men er en reserve", [r.noegletal.hjemmeKl, r.noegletal.pauseMin], ["12:10", 30]);
 
 r = plan({ matrix: M2, bil: bil(), indstillinger: { koersel: { trafikTillaegPct: 0 }, nyttelast: { sikkerhedsmarginPct: 0 } }, stop: [stop("A", 60, { varer: [vare("a", 900)] })] });
 eq("én vare på 900 kg mod 863,5: kan aldrig bæres - brud, og planen er ikke ok", [r.ok, r.brud.some((b) => b.regel === "nyttelast"), r.brud[0].besked.includes("for tung")], [false, true, true]);
@@ -218,9 +218,9 @@ r = plan({ matrix: M2, bil: rumBil(300, 150, 200), indstillinger: { koersel: { t
 eq("to opvaskemaskiner i en lille kasse: ok, én tur", [r.ok, r.ture.length], [true, 1]);
 r = plan({ matrix: M2, bil: rumBil(300, 150, 120), stop: [stop("A", 60, { varer: [vare("k", 60, { l: 70, b: 70, h: 170 }, "Køleskab")] })] });
 eq("køleskab 170 cm i en kasse på 120 cm: brud om plads", [r.ok, r.brud.some((b) => b.regel === "plads"), r.brud.find((b) => b.regel === "plads").besked.includes("høj")], [false, true, true]);
-r = plan({ matrix: M2, bil: rumBil(300, 150, 200), stop: [stop("A", 60, { varer: [vare("k", 60, { l: 70, b: 70, h: 170 }, "Køleskab", { antal: 4 })] })] });
+r = plan({ matrix: M2, bil: rumBil(210, 100, 200), stop: [stop("A", 60, { varer: [vare("k", 60, { l: 70, b: 70, h: 170 }, "Køleskab", { antal: 4 })] })] });
 eq("4 køleskabe i en kasse med plads til 3: tur 1 har 3, tur 2 har 1", [r.ok, r.ture.map((t) => t.besoeg.reduce((s, b) => s + b.varer.length, 0))], [true, [3, 1]]);
-r = plan({ matrix: M2, bil: rumBil(300, 150, 200), indstillinger: { koersel: { trafikTillaegPct: 0 }, regler: { plads: "raadgivende" } }, stop: [stop("A", 60, { varer: [vare("k", 60, { l: 70, b: 70, h: 170 }, "Køleskab", { antal: 4 })] })] });
+r = plan({ matrix: M2, bil: rumBil(210, 100, 200), indstillinger: { koersel: { trafikTillaegPct: 0 }, regler: { plads: "raadgivende" } }, stop: [stop("A", 60, { varer: [vare("k", 60, { l: 70, b: 70, h: 170 }, "Køleskab", { antal: 4 })] })] });
 eq("plads rådgivende: ingen deling, men en advarsel", [r.ok, r.ture.length, r.advarsler.some((a) => a.regel === "plads")], [true, 1, true]);
 r = plan({ matrix: M2, bil: bil(), stop: [stop("A", 60, { varer: [vare("k", 60, { l: 70, b: 70, h: 170 }, "Køleskab")] })] });
 eq("lasterum ikke sat: pladsen springes over", [r.ok, r.forudsaetninger.lasterumSat], [true, false]);
@@ -276,6 +276,36 @@ v = vurderTilfoejelse(base, stop("B", 600));
 eq("tilføj et stop, der ikke er plads til: ikke muligt, med årsag", [v.mulig, v.aarsager.some((x) => x.includes("arbejdstid") || x.includes("Dagen slutter"))], [false, true]);
 v = vurderTilfoejelse({ ...base, stop: [] }, stop("B", 60));
 eq("tilføj til en tom dag: ekstra er hele dagen", [v.mulig, v.ekstra.min > 60], [true, true]);
+
+// PAUSE ER FLEKSIBEL (okt. 2026): ventetid kan rumme den; ellers er den en reserve; den placeres aldrig af systemet
+r = plan({ matrix: M3, stop: [stop("A", 60, { tidsrum: { fra: 720, til: 900 } })], indstillinger: { koersel: { trafikTillaegPct: 0 } } });
+eq("pause: ventetid på kunden (>= 30 min) rummer pausen, så der reserveres intet", [r.noegletal.venteMin >= 30, r.noegletal.pauseMin], [true, 0]);
+r = plan({ matrix: M3, stop: tre, pauseMin: 0, indstillinger: { koersel: { trafikTillaegPct: 0 } } });
+eq("pause 0 min: hjemme 16:35, 35 min over arbejdstidens slutning", [r.noegletal.hjemmeKl, r.brud[0].tal.overMin], ["16:35", 35]);
+
+
+// INDIVIDUELLE REGLER PR. BRUGER (okt. 2026): oven på butikkens standard; ukendte regler/niveauer ignoreres; originalen røres ikke
+{
+  const butik = rensIndstillinger({ regler: { plads: "raadgivende" } });
+  const med = medBrugerRegler(butik, { plads: "krav", nyttelast: "fra", hacker: "krav", toMand: "ugyldigt" });
+  eq("brugerregler: overstyrer kendte regler, resten følger butikken", [med.regler.plads, med.regler.nyttelast, med.regler.toMand, "hacker" in med.regler], ["krav", "fra", "krav", false]);
+  eq("brugerregler: butikkens indstillinger ændres ikke", [butik.regler.plads, butik.regler.nyttelast], ["raadgivende", "krav"]);
+  eq("brugerregler: tom/ugyldig overstyring giver butikkens regler", [medBrugerRegler(butik, null).regler.plads, medBrugerRegler(butik, []).regler.plads, medBrugerRegler(butik, "x").regler.plads], ["raadgivende", "raadgivende", "raadgivende"]);
+  const stor = { matrix: M2, bil: rumBil(210, 100, 200), stop: [stop("A", 60, { varer: [vare("k", 60, { l: 70, b: 70, h: 170 }, "Køleskab", { antal: 4 })] })] };
+  eq("brugerregler: samme dag giver forskelligt udfald pr. bruger (rådgivende deler ikke ture)", [plan({ ...stor, indstillinger: medBrugerRegler(rensIndstillinger({}), { plads: "raadgivende" }) }).ture.length, plan({ ...stor, indstillinger: medBrugerRegler(rensIndstillinger({}), { plads: "krav" }) }).ture.length], [1, 2]);
+}
+
+// RUTEVALG: ingen priser - kortest samlet tid vinder, selv om en anden rækkefølge er kortere i km
+{
+  const asym = { ids: ["lager", "A", "B"], minutter: [[0, 10, 20], [10, 0, 5], [10, 5, 0]], km: [[0, 30, 5], [30, 0, 5], [30, 5, 0]] };
+  // A→B: lager→A 10 min/30 km, A→B 5/5, B→lager 10/30 = 25 min, 65 km.  B→A: lager→B 20/5, B→A 5/5, A→lager 10/30 = 35 min, 40 km.
+  const rr = plan({ matrix: asym, stop: [stop("A", 60), stop("B", 60)], indstillinger: { koersel: { trafikTillaegPct: 0 } } });
+  eq("rutevalg: kortest tid (A→B, 25 min) vælges frem for kortest distance (B→A, 40 km)", [rr.rutefolge, rr.noegletal.koerselMin, rr.noegletal.km], [["A", "B"], 25, 65]);
+  const lig = { ids: ["lager", "A", "B"], minutter: [[0, 10, 10], [10, 0, 10], [10, 10, 0]], km: [[0, 5, 20], [5, 0, 5], [5, 5, 0]] };
+  // Lige lang tid begge veje (30 min): A→B er 5+5+5 = 15 km, B→A er 20+5+5 = 30 km.
+  const r3 = plan({ matrix: lig, stop: [stop("B", 60), stop("A", 60)], indstillinger: { koersel: { trafikTillaegPct: 0 } } });
+  eq("rutevalg: ved lige tid afgør distancen (A→B, 15 km)", [r3.rutefolge, r3.noegletal.km], [["A", "B"], 15]);
+}
 
 console.log(`\n${pass} bestået, ${fail} fejlet`);
 process.exit(fail ? 1 : 0);
