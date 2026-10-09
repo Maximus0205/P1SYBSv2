@@ -73,7 +73,7 @@ function KapacitetsTjek({ dato, bilId, adresse, minutter, tidsrumId, varelinjer,
         </ul>
       )}
       {svar.ekstra && (svar.ekstra.min > 0 || svar.ekstra.km > 0) && (
-        <p className="text-xs text-muted mt-1.5">Sagen tilføjer ca. {Math.round(svar.ekstra.min)} min. og {Math.round(svar.ekstra.km)} km til bilens dag.</p>
+        <p className="text-xs text-muted mt-1.5">Sagen tilføjer ca. {Math.round(svar.ekstra.min)} min.{svar.ekstra.km === null ? "" : ` og ${Math.round(svar.ekstra.km)} km`} til bilens dag.</p>
       )}
       {svar.noter.map((n) => <p key={n} className="text-[11px] text-muted mt-1">{n}</p>)}
       {blokeret && (

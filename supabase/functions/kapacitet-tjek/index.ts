@@ -29,14 +29,18 @@ async function hentBrutto(id: string) {
 }
 
 // DAWA (Danmarks Adressers Web API): aabent, uden noegle. struktur=mini giver x (laengdegrad) og y (breddegrad).
+// Proever foerst adresser (med etage/doer), derefter adgangsadresser (kun vej + husnr). Adressen logges aldrig (persondata), kun status.
 async function geokod(adresse: string) {
   if (!adresse) return null;
-  try {
-    const res = await fetch(`https://api.dataforsyningen.dk/adresser?q=${encodeURIComponent(adresse)}&per_side=1&struktur=mini`, { signal: AbortSignal.timeout(4000) });
-    if (!res.ok) return null;
-    const r = (await res.json())?.[0];
-    return r && Number.isFinite(r.x) && Number.isFinite(r.y) ? { lat: r.y, lon: r.x } : null;
-  } catch (_) { return null; }
+  for (const sti of ["adresser", "adgangsadresser"]) {
+    try {
+      const res = await fetch(`https://api.dataforsyningen.dk/${sti}?q=${encodeURIComponent(adresse)}&per_side=1&struktur=mini`, { signal: AbortSignal.timeout(4000) });
+      if (!res.ok) { console.error(`geokod ${sti}: HTTP ${res.status}`); continue; }
+      const r = (await res.json())?.[0];
+      if (r && Number.isFinite(r.x) && Number.isFinite(r.y)) return { lat: r.y, lon: r.x };
+    } catch (e) { console.error(`geokod ${sti} fejlede:`, e instanceof Error ? e.name : "ukendt"); }
+  }
+  return null;
 }
 
 Deno.serve(async (req) => {
