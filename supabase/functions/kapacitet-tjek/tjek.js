@@ -5,7 +5,7 @@
 // GEMMES ALDRIG. Svaret til browseren (renseSvar) indeholder aldrig mål eller vægt - kun beslutning, regelnavne, varenavne og
 // tid/distance. Kun systemadmin får motorens fulde tekster (som kan indeholde tal) i feltet "detaljer".
 
-import { planlaegDag, vurderTilfoejelse, dagensTilgaengelighed, skoenMatrix, medBrugerRegler, tilMin } from "./engine/index.js";
+import { planlaegDag, vurderTilfoejelse, dagensTilgaengelighed, skoenMatrix, rensIndstillinger, tilMin } from "./engine/index.js";
 
 const TIDSRUM = { formiddag: { fra: 8 * 60, til: 12 * 60 }, eftermiddag: { fra: 12 * 60, til: 16 * 60 } }; // som TIME_SLOTS i src/data/domain.js; heldag = ingen begrænsning
 const DATO = /^\d{4}-\d{2}-\d{2}$/;
@@ -181,9 +181,9 @@ export function renseSvar({ vurdering, erAdmin, kanOverrule, manglerNavne, bilMa
 }
 
 // Hele beregningen for en forespørgsel, når data er hentet. Returnerer { svar }.
-export function koerTjek({ dato, butik, bil, personer, ordrer, sagId, kandidat, maalById, koord, brugerRegler, erAdmin, kanOverrule }) {
+export function koerTjek({ dato, butik, bil, personer, ordrer, sagId, kandidat, maalById, koord, erAdmin, kanOverrule }) {
   const stop = ordrerTilStop(ordrer, sagId);
-  const indstillinger = medBrugerRegler(butik?.capacity_settings, brugerRegler);
+  const indstillinger = rensIndstillinger(butik?.capacity_settings);
   const { input, kStop } = bygMotorInput({ dato, butik, bil, personer, stop, kandidat, maalById, koord, indstillinger });
   const vurdering = vurderTilfoejelse(input, kStop);
   const manglerNavne = kandidat.varer.filter((v) => !(v.punkt1Id && maalById.get(v.punkt1Id))).map((v) => v.navn);

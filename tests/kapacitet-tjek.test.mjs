@@ -54,7 +54,7 @@ const PERSONER = bygPersoner({ dato: "2026-11-09", indstillinger: {}, personer: 
 const HEMMELIG = { vaegtKg: 123.45, maal: { l: 77.7, b: 66.6, h: 55.5 } };
 const maal = new Map([["111", HEMMELIG], ["222", HEMMELIG], ["333", { vaegtKg: 400, maal: { l: 80, b: 80, h: 80 } }]]);
 const kand = (punkt1Id, extra = {}) => ({ adresse: "", minutter: 30, tidsrum: null, kraever2Mand: false, varer: [{ id: "k1", navn: "Vaskemaskine", type: "Vaskemaskine", antal: 1, punkt1Id }], ...extra });
-const kor = (o) => koerTjek({ dato: "2026-11-09", butik: BUTIK, bil: BIL, personer: PERSONER, ordrer: [], sagId: null, kandidat: kand("111"), maalById: maal, koord: new Map(), brugerRegler: null, erAdmin: false, kanOverrule: false, ...o }).svar;
+const kor = (o) => koerTjek({ dato: "2026-11-09", butik: BUTIK, bil: BIL, personer: PERSONER, ordrer: [], sagId: null, kandidat: kand("111"), maalById: maal, koord: new Map(), erAdmin: false, kanOverrule: false, ...o }).svar;
 
 eq("tjek: én vare passer", kor({}).beslutning, "ok");
 const to = [ordre("a", { varelinjer: [{ id: "a-l", varetypeNavn: "Køleskab", primaerYdelse: { minutter: 30 }, punkt1Id: "111" }] })];
@@ -66,8 +66,9 @@ eq("tjek: for tungt på én gang giver omlastning, ikke afvisning", [omlast.besl
 const tung = kor({ kandidat: kand("333"), ordrer: [] });
 eq("tjek: en vare tungere end bilen tillader blokerer", [tung.beslutning, tung.meddelelser.some((m) => m.regel === "nyttelast" && m.niveau === "krav")], ["blokeret", true]);
 eq("tjek: overrule-flag følger rettigheden og kun ved blokering", [kor({ kandidat: kand("333"), kanOverrule: true }).kanOverrule, kor({ kandidat: kand("333"), kanOverrule: false }).kanOverrule, kor({ kanOverrule: true }).kanOverrule], [true, false, false]);
-eq("tjek: brugerens egen regel (rådgivende) gør blokering til advarsel", kor({ kandidat: kand("333"), brugerRegler: { nyttelast: "raadgivende" } }).beslutning, "advarsel");
-eq("tjek: regel sat til Fra ignoreres", kor({ kandidat: kand("333"), brugerRegler: { nyttelast: "fra" } }).meddelelser.some((m) => m.regel === "nyttelast"), false);
+const medRegel = (regler) => ({ butik: { ...BUTIK, capacity_settings: { ...BUTIK.capacity_settings, regler } } });
+eq("tjek: butikkens regel (rådgivende) gør blokering til advarsel", kor({ kandidat: kand("333"), ...medRegel({ nyttelast: "raadgivende" }) }).beslutning, "advarsel");
+eq("tjek: regel sat til Fra ignoreres", kor({ kandidat: kand("333"), ...medRegel({ nyttelast: "fra" }) }).meddelelser.some((m) => m.regel === "nyttelast"), false);
 const ukendt = kor({ kandidat: kand(null) });
 eq("tjek: ukendte mål gættes ikke - advarsel og navn i note", [ukendt.beslutning, ukendt.noter.some((n) => /Vaskemaskine/.test(n))], ["advarsel", true]);
 eq("tjek: bil uden nyttelast/lasterum nævnes", kor({ bil: { id: "bil1", navn: "X" } }).noter.some((n) => /nyttelast eller lasterum/.test(n)), true);
