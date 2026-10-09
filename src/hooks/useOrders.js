@@ -67,8 +67,8 @@ export function useOrders(storeId) {
   const storeRef = useRef(storeId);
   storeRef.current = storeId;
   // Den SENESTE kendte liste. To ændringer i samme øjeblik (fx to hurtige
-  // tryk, før skærmen er tegnet igen) skal bygge oven på hinanden i stedet
-  // for begge at tage udgangspunkt i den samme, forældede skærmkopi - ellers
+  // tryk, før skærmen er tegnet igen) skal bygge oven på hinanden i stedet for
+  // begge at tage udgangspunkt i den samme, forældede skærmkopi - ellers
   // overskriver den anden den første, også uden nogen anden bruger involveret.
   const ordersRef = useRef(orders);
   ordersRef.current = orders;
@@ -508,7 +508,7 @@ export function useOrders(storeId) {
   //
   // senestDato (oktober 2026): en TOMGANG kan have en frist - den seneste dag, hvor den skal
   // være udført - i stedet for (eller ud over) en fast dato. Se lib/frist.js.
-  const addOrder = async ({ sagstype, kunde, koeber, noegle, dato, tidsrumId, start, slut, bilId, senestDato, varelinjer, ordrenummer, createdBy }) => {
+  const addOrder = async ({ sagstype, kunde, koeber, noegle, dato, tidsrumId, start, slut, bilId, senestDato, varelinjer, ordrenummer, createdBy, kapacitetOverrulet }) => {
     if (!storeId) return;
     const newOrder = {
       id: uid(), nr: "...", ordrenummer: ordrenummer?.trim() || "",
@@ -517,6 +517,7 @@ export function useOrders(storeId) {
       dato: dato || null, tidsrumId: dato ? tidsrumId : null, start: dato ? start : null, slut: dato ? slut : null,
       bilId: bilId || null,
       senestDato: senestDato || null,
+      ...(kapacitetOverrulet ? { kapacitetOverrulet } : {}),
       status: "planlagt", plukket: false, varelinjer, noter: [], billeder: [], rapporter: [], materialer: [], stemplerInd: null, logs: [],
       oprettetAf: createdBy || null,
     };
