@@ -1,6 +1,5 @@
 import { supabase } from "./supabaseClient";
 import { rensIndstillinger } from "../engine/kapacitet";
-import { REGLER, NIVEAUER } from "../engine/kapacitet/indstillinger";
 
 // Læsning og gemning af det, kapacitetsmotoren (src/engine/kapacitet) arbejder efter: butikkens indstillinger, montørernes
 // normale arbejdstid pr. ugedag og ændringer på bestemte datoer. Se supabase/migrations/20261006_capacity.sql for
@@ -61,7 +60,7 @@ export async function sletUaendring(id) {
   return error ? { ok: false, fejl: error.message } : { ok: true };
 }
 
-// ---- Regler (Fra / Rådgivende / Krav): kun systemadmin kan ændre dem; databasen håndhæver det (RPC update_capacity_rules og RLS) ----
+// ---- Regler (Fra / Rådgivende / Krav): gælder pr. butik; kun systemadmin kan ændre dem, og databasen håndhæver det (RPC update_capacity_rules) ----
 
 // Butikkens standardregler (renset). null = kunne ikke hentes.
 export async function hentButiksRegler(storeId) {
@@ -71,31 +70,5 @@ export async function hentButiksRegler(storeId) {
 
 export async function gemButiksRegler(storeId, regler) {
   const { error } = await supabase.rpc("update_capacity_rules", { p_store_id: storeId, p_regler: rensIndstillinger({ regler }).regler });
-  return error ? { ok: false, fejl: error.message } : { ok: true };
-}
-
-// En brugers individuelle regelniveauer ({} = følger butikken). En almindelig bruger kan kun læse sine egne.
-export async function hentBrugerRegler(userId) {
-  if (!userId) return {};
-  const { data, error } = await supabase.from("user_capacity_rules").select("regler").eq("user_id", userId).maybeSingle();
-  return error || !data ? {} : data.regler || {};
-}
-
-// Alle individuelle overstyringer i en butik (systemadmin): { [userId]: regler }
-export async function hentBrugerReglerForButik(storeId) {
-  if (!storeId) return {};
-  const { data, error } = await supabase.from("user_capacity_rules").select("user_id, regler").eq("store_id", storeId);
-  if (error) return null;
-  return Object.fromEntries((data || []).map((r) => [r.user_id, r.regler || {}]));
-}
-
-// Tomt objekt = fjern overstyringen (brugeren følger butikkens standard).
-export async function gemBrugerRegler({ userId, storeId, regler }) {
-  const rent = Object.fromEntries(Object.entries(regler || {}).filter(([k, v]) => k in REGLER && NIVEAUER.includes(v)));
-  if (Object.keys(rent).length === 0) {
-    const { error } = await supabase.from("user_capacity_rules").delete().eq("user_id", userId);
-    return error ? { ok: false, fejl: error.message } : { ok: true };
-  }
-  const { error } = await supabase.from("user_capacity_rules").upsert({ user_id: userId, store_id: storeId, regler: rent, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
   return error ? { ok: false, fejl: error.message } : { ok: true };
 }

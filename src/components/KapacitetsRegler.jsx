@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { Check, AlertCircle, Loader2 } from "lucide-react";
-import { supabase } from "../lib/supabaseClient";
-import { hentButiksRegler, gemButiksRegler, hentBrugerReglerForButik, gemBrugerRegler } from "../lib/kapacitetStore";
+import { hentButiksRegler, gemButiksRegler } from "../lib/kapacitetStore";
 import { REGLER, NIVEAUER } from "../engine/kapacitet/indstillinger";
 
 // Systemadmin -> Kapacitetsmotor -> "Hvilke regler styrer planlægningen?" (flyttet fra Admin, oktober 2026).
-// Butikkens standard + individuel overstyring pr. bruger. Kun systemadmin kan ændre (databasen håndhæver det). Retten til at OVERRULE
-// motoren (booke trods blokerende regler) gives separat under Brugere -> rettigheder ("Overrule kapacitetsmotoren").
+// Reglerne gælder pr. BUTIK (samme for alle i butikken). Kun systemadmin kan ændre dem (databasen håndhæver det). Retten til at OVERRULE
+// motoren (booke trods blokerende regler) gives pr. bruger under Brugere -> rettigheder ("Overrule kapacitetsmotoren").
 const NIVEAU_TEKST = { fra: "Fra", raadgivende: "Rådgivende (advarsel)", krav: "Krav (blokerer)" };
 const vaelger = "rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink min-h-[44px] focus:outline-none focus:border-brand";
 const kort = "rounded-xl border border-line bg-white p-5 shadow-sm mb-4 max-w-2xl";
@@ -26,11 +25,7 @@ function KapacitetsRegler({ stores = [] }) {
   const [butik, setButik] = useState(stores[0]?.id || "");
   const [standard, setStandard] = useState(null);
   const [gemtStandard, setGemtStandard] = useState("");
-  const [brugere, setBrugere] = useState([]);
-  const [overstyringer, setOverstyringer] = useState({});
-  const [bruger, setBruger] = useState("");
-  const [udkast, setUdkast] = useState({});
-  const [busy, setBusy] = useState("");
+  const [busy, setBusy] = useState(false);
   const [fejl, setFejl] = useState("");
   const [besked, setBesked] = useState("");
   const [indlaesFejl, setIndlaesFejl] = useState(false);
@@ -40,48 +35,28 @@ function KapacitetsRegler({ stores = [] }) {
   useEffect(() => {
     if (!butik) return undefined;
     let levende = true;
-    setStandard(null); setBrugere([]); setOverstyringer({}); setBruger(""); setUdkast({}); setFejl(""); setBesked(""); setIndlaesFejl(false);
-    Promise.all([
-      hentButiksRegler(butik),
-      hentBrugerReglerForButik(butik),
-      supabase.from("profiles").select("id, name, role, username").eq("store_id", butik).order("name"),
-    ]).then(([r, o, p]) => {
+    setStandard(null); setFejl(""); setBesked(""); setIndlaesFejl(false);
+    hentButiksRegler(butik).then((r) => {
       if (!levende) return;
-      if (!r || o === null || p.error) { setIndlaesFejl(true); return; }
-      setStandard(r); setGemtStandard(JSON.stringify(r)); setOverstyringer(o); setBrugere(p.data || []);
+      if (!r) { setIndlaesFejl(true); return; }
+      setStandard(r); setGemtStandard(JSON.stringify(r));
     });
     return () => { levende = false; };
   }, [butik]);
 
-  const vaelgBruger = (id) => { setBruger(id); setUdkast({ ...(overstyringer[id] || {}) }); setFejl(""); setBesked(""); };
-
   const gemStandard = async () => {
-    setBusy("standard"); setFejl(""); setBesked("");
+    setBusy(true); setFejl(""); setBesked("");
     const r = await gemButiksRegler(butik, standard);
-    setBusy("");
+    setBusy(false);
     if (!r.ok) return setFejl(r.fejl || "Reglerne blev ikke gemt.");
-    setGemtStandard(JSON.stringify(standard)); setBesked("Butikkens standard er gemt.");
-  };
-
-  const gemBruger = async () => {
-    setBusy("bruger"); setFejl(""); setBesked("");
-    const r = await gemBrugerRegler({ userId: bruger, storeId: butik, regler: udkast });
-    setBusy("");
-    if (!r.ok) return setFejl(r.fejl || "Reglerne blev ikke gemt.");
-    const rent = Object.fromEntries(Object.entries(udkast).filter(([k, v]) => k in REGLER && NIVEAUER.includes(v)));
-    setOverstyringer((p) => { const n = { ...p }; if (Object.keys(rent).length) n[bruger] = rent; else delete n[bruger]; return n; });
-    setBesked(Object.keys(rent).length ? "Individuelle regler er gemt." : "Brugeren følger nu butikkens standard.");
+    setGemtStandard(JSON.stringify(standard)); setBesked("Reglerne er gemt for butikken.");
   };
 
   if (stores.length === 0) return null;
-  const valgtBruger = brugere.find((b) => b.id === bruger);
-  const udkastGemt = JSON.stringify(Object.fromEntries(Object.entries(overstyringer[bruger] || {}).sort()));
-  const udkastNu = JSON.stringify(Object.fromEntries(Object.entries(udkast).filter(([, v]) => NIVEAUER.includes(v)).sort()));
-
   return (
     <section aria-labelledby="kap-regler-h" className="mb-8">
       <h2 id="kap-regler-h" className="text-base font-semibold text-ink mb-1">Hvilke regler styrer planlægningen?</h2>
-      <p className="text-xs text-muted mb-4 max-w-2xl"><strong>Krav</strong> blokerer en booking, der bryder reglen. <strong>Rådgivende</strong> advarer, men blokerer ikke. <strong>Fra</strong> ignorerer reglen. Butikkens standard gælder alle; her kan du give enkelte brugere andre niveauer. At kunne <em>overrule</em> motoren gives separat under Admin &rarr; Brugere &rarr; rettigheder.</p>
+      <p className="text-xs text-muted mb-4 max-w-2xl"><strong>Krav</strong> blokerer en booking, der bryder reglen. <strong>Rådgivende</strong> advarer, men blokerer ikke. <strong>Fra</strong> ignorerer reglen. Reglerne gælder alle i den valgte butik. At kunne <em>overrule</em> motoren gives pr. bruger under Admin &rarr; Brugere &rarr; rettigheder.</p>
 
       {stores.length > 1 && (
         <div className="mb-4">
@@ -96,7 +71,7 @@ function KapacitetsRegler({ stores = [] }) {
       {standard && (
         <>
           <div className={kort}>
-            <h3 className={overskrift}>Butikkens standard</h3>
+            <h3 className={overskrift}>Butikkens regler</h3>
             <div className="space-y-3">
               {Object.entries(REGLER).map(([k, tekst]) => (
                 <div key={k} className="flex items-center justify-between gap-3 flex-wrap">
@@ -107,33 +82,9 @@ function KapacitetsRegler({ stores = [] }) {
                 </div>
               ))}
             </div>
-            <button onClick={gemStandard} disabled={busy !== "" || JSON.stringify(standard) === gemtStandard} className={knap}>{busy === "standard" && <Loader2 size={14} className="animate-spin" aria-hidden="true" />} Gem butikkens standard</button>
+            <button onClick={gemStandard} disabled={busy || JSON.stringify(standard) === gemtStandard} className={knap}>{busy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />} Gem reglerne</button>
           </div>
 
-          <div className={kort}>
-            <h3 className={overskrift}>Individuelt pr. bruger</h3>
-            <label htmlFor="regler-bruger" className="block text-xs font-semibold uppercase tracking-wide text-muted mb-1">Bruger</label>
-            <select id="regler-bruger" value={bruger} onChange={(e) => vaelgBruger(e.target.value)} className={`${vaelger} w-full max-w-sm`}>
-              <option value="">Vælg bruger...</option>
-              {brugere.map((b) => <option key={b.id} value={b.id}>{b.name || b.username || b.id}{b.role ? ` (${b.role})` : ""}{overstyringer[b.id] ? " · egne regler" : ""}</option>)}
-            </select>
-            {valgtBruger && (
-              <>
-                <div className="space-y-3 mt-4">
-                  {Object.entries(REGLER).map(([k, tekst]) => (
-                    <div key={k} className="flex items-center justify-between gap-3 flex-wrap">
-                      <label htmlFor={`bru-${k}`} className="text-sm text-ink flex-1 min-w-[200px]">{tekst}</label>
-                      <select id={`bru-${k}`} value={udkast[k] || ""} onChange={(e) => { const v = e.target.value; setUdkast((p) => { const n = { ...p }; if (v) n[k] = v; else delete n[k]; return n; }); setBesked(""); }} className={vaelger}>
-                        <option value="">Følger butikken ({NIVEAU_TEKST[standard[k]]})</option>
-                        {NIVEAUER.map((n) => <option key={n} value={n}>{NIVEAU_TEKST[n]}</option>)}
-                      </select>
-                    </div>
-                  ))}
-                </div>
-                <button onClick={gemBruger} disabled={busy !== "" || udkastGemt === udkastNu} className={knap}>{busy === "bruger" && <Loader2 size={14} className="animate-spin" aria-hidden="true" />} Gem for {valgtBruger.name || valgtBruger.username}</button>
-              </>
-            )}
-          </div>
           <Status fejl={fejl} besked={besked} />
         </>
       )}
