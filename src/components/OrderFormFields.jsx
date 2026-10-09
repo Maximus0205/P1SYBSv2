@@ -111,7 +111,7 @@ function ModelNumberLookup({ model, onSelectProduct }) {
       });
       if (match) {
         confirmedRef.current = term;
-        onSelectProduct({ ...guessBrandAndModel(match.title), title: match.title });
+        onSelectProduct({ ...guessBrandAndModel(match.title), title: match.title, productId: match.productId });
       }
     }, 500);
     return () => clearTimeout(timerRef.current);
@@ -122,7 +122,7 @@ function ModelNumberLookup({ model, onSelectProduct }) {
     confirmedRef.current = guess.model;
     setCheckedTerm(guess.model);
     setResult({ matchCount: 1, products: [product] }); // synteser et "bekræftet" resultat - ingen genopslag nødvendigt
-    onSelectProduct({ ...guess, title: product.title });
+    onSelectProduct({ ...guess, title: product.title, productId: product.productId });
   };
 
   if (!model || model.trim().length < 3) return null;
@@ -374,7 +374,7 @@ function ProductTypeInput({ lineItem, productTypes, onSelectType, onFreeText }) 
 //     mening, i sagens egen visning (se OrderParts.jsx: LineItemDetails).
 //
 //  4. RETTET (september 2026): changePrimaryService satte tidligere
-//     minutter = Number(py.minutter) || 0 - men "py" er en r\u00e5 primær
+//     minutter = Number(py.minutter) || 0 - men "py" er en rå primær
 //     ydelse fra kataloget ({id, navn}), som ALDRIG har haft et
 //     "minutter"-felt (kun tillægsydelser har det). Resultatet var, at
 //     enhver ændring af primær ydelse nulstillede tiden til 0, UANSET
@@ -414,8 +414,8 @@ function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices
     });
   };
 
-  // RETTET (september 2026): sl\u00e5r nu standardtider-matrixen op for den
-  // NYE kombination af (nuv\u00e6rende varetype, ny ydelse) - i stedet for det
+  // RETTET (september 2026): slår nu standardtider-matrixen op for den
+  // NYE kombination af (nuværende varetype, ny ydelse) - i stedet for det
   // ikke-eksisterende "py.minutter" (se noten ved LineItemEditor ovenfor).
   // Findes der ikke noget admin-sat tal for netop den kombination, bliver
   // det 0, ligesom en helt ny sag uden noget sat i matrixen - sælgeren
@@ -469,7 +469,7 @@ function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices
   // kombination, beholdes det tal, der allerede stod (typisk 0 fra
   // oprettelsen) - ligesom andre steder, overskrives et evt. allerede
   // tastet tal ikke med en gætte-nulstilling.
-  const applyProductLookup = ({ brand, model: matchedModel, title }) => {
+  const applyProductLookup = ({ brand, model: matchedModel, title, productId }) => {
     const matchedType = guessProductType(title, productTypes);
     const nextVaretypeId = matchedType ? matchedType.id : lineItem.varetypeId;
     const nextPrimaerYdelse = matchedType && lineItem.primaerYdelse
@@ -479,6 +479,8 @@ function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices
       ...lineItem,
       maerke: brand || lineItem.maerke,
       model: matchedModel || lineItem.model,
+      // Skjult reference til punkt1-produktet (bruges kun server-side til kapacitetstjek; indeholder ingen mål)
+      ...(productId ? { punkt1Id: String(productId) } : {}),
       ...(matchedType ? { varetypeId: matchedType.id, varetypeNavn: matchedType.navn, varetypeTekst: "" } : {}),
       primaerYdelse: nextPrimaerYdelse,
     });
