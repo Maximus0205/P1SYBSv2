@@ -175,7 +175,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
   const [timeSlotId, setTimeSlotId] = useState(d.timeSlotId || "heldag");
   // FRIST PÅ TOMGANG (oktober 2026): en tomgang har sjældent en bestemt dag, kun en SENESTE
   // dag. Den kan bookes på en fast dato (med en valgfri frist) eller FLEKSIBELT: ingen fast
-  // dato, kun en frist - så lander den under "Skal planlæggges", og planlæggeren placerer den,
+  // dato, kun en frist - så lander den under "Skal planlægges", og planlæggeren placerer den,
   // hvor der er plads, inden fristen. Se lib/frist.js.
   const [fleksibel, setFleksibel] = useState(!!d.fleksibel);
   const [senestDato, setSenestDato] = useState(d.senestDato || "");
@@ -359,7 +359,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
       // skabDaekkerAdressen ovenfor.
       noegle: skabDaekkerAdressen ? emptyKeyAccess() : keyAccess,
       // Fleksibel tomgang: ingen fast dato, tid eller bil - kun en frist. Sagen lander
-      // under "Skal planlæggges" og placeres af planlæggeren.
+      // under "Skal planlægges" og placeres af planlæggeren.
       dato: udenFastDato ? null : date, tidsrumId: udenFastDato ? null : timeSlotId, start: udenFastDato ? null : t.start, slut: udenFastDato ? null : t.slut,
       bilId: udenFastDato ? null : (vehicleId || null),
       senestDato: erTomgang && senestDato ? senestDato : null,
@@ -396,7 +396,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
         <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
           <p className={`text-[11px] ${kladde.fejl ? "text-danger font-semibold" : "text-muted"}`} aria-live="polite">
             {kladde.fejl
-              ? "Kladden kunne ikke gemmes på denne enhed — færdiggr sagen, før du forlader siden."
+              ? "Kladden kunne ikke gemmes på denne enhed — færdiggør sagen, før du forlader siden."
               : kladde.gemtTid
                 ? `Kladde gemt kl. ${klokkeslaet(kladde.gemtTid)} — du kan lukke og fortsætte senere.`
                 : "Gemmer kladde…"}
@@ -588,7 +588,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
                 <input type="date" value={senestDato} min={todayISO()} onChange={(e) => setSenestDato(e.target.value)} aria-label="Senest udført" className="w-full mt-1 rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
               </label>
               {fristFejl && <p role="alert" className="text-xs text-danger mt-2">{fristFejl}</p>}
-              {fleksibel && !fristFejl && <p className="text-[11px] text-muted mt-2">Sagen oprettes uden dato og bil og vises under "Skal planlæggges" med fristen.</p>}
+              {fleksibel && !fristFejl && <p className="text-[11px] text-muted mt-2">Sagen oprettes uden dato og bil og vises under "Skal planlægges" med fristen.</p>}
             </div>
           )}
 
