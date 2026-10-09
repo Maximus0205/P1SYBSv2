@@ -5,6 +5,7 @@ import { ors } from "../adapters";
 import { geocodeAddress } from "../lib/geocoding";
 import { hentKapacitetsIndstillinger } from "../lib/kapacitetStore";
 import { getVehicles } from "../lib/dataStore";
+import { Punkt1MaalTest } from "./Punkt1MaalTest";
 
 // KAPACITETSMOTOREN - TESTLABORATORIUM (oktober 2026, kun systemadmin). Her kan motoren afprøves uden at røre rigtige sager: tast en bil, en
 // besætning, et lager og en række stop med varer, og se hvordan den digitale disponent ville lægge dagen, hvorfor, og hvad der bryder reglerne.
@@ -183,6 +184,8 @@ function KapacitetsLab({ stores = [] }) {
 
   return (
     <div>
+      <Punkt1MaalTest />
+
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1">Kapacitetsmotor - testlaboratorium</h3>
       <p className="text-xs text-muted mb-4">Afprøv den digitale disponent uden at røre rigtige sager. Intet gemmes. Personer i bilen regnes med {PERSONVAEGT_KG} kg hver (fast). Markér ét stop som <strong>kandidat</strong> for at se, hvad det koster at lægge netop det stop oven i dagen.</p>
 
