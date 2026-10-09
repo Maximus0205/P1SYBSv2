@@ -15,6 +15,7 @@ import { LineItemEditor, KeyAccessFields, CustomerHistory, SuggestedDates, Inter
 import { AddressInput } from "../components/AddressInput";
 import { AddressNotesPanel } from "../components/AddressNotes";
 import { KeyCabinetBookingHint } from "../components/KeyCabinetAlert";
+import { KapacitetsTjek } from "../components/KapacitetsTjek";
 
 // Bookingflowet er delt op i 4 mindre "kort" (trin) i stedet for én lang
 // formular:
@@ -174,7 +175,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
   const [timeSlotId, setTimeSlotId] = useState(d.timeSlotId || "heldag");
   // FRIST PÅ TOMGANG (oktober 2026): en tomgang har sjældent en bestemt dag, kun en SENESTE
   // dag. Den kan bookes på en fast dato (med en valgfri frist) eller FLEKSIBELT: ingen fast
-  // dato, kun en frist - så lander den under "Skal planlægges", og planlæggeren placerer den,
+  // dato, kun en frist - så lander den under "Skal planlæggges", og planlæggeren placerer den,
   // hvor der er plads, inden fristen. Se lib/frist.js.
   const [fleksibel, setFleksibel] = useState(!!d.fleksibel);
   const [senestDato, setSenestDato] = useState(d.senestDato || "");
@@ -339,11 +340,15 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
   // registreret" en falsk alarm, og udelades.
   const advarsler = skabDaekkerAdressen ? [] : tomgangWarnings({ sagstype: caseTypeId, noegle: keyAccess });
 
+  // KAPACITETSTJEK (oktober 2026): status fra KapacitetsTjek på trin 4. "blokeret" slår Book fra, medmindre brugeren
+  // har retten til at overrule og har krydset det af ("overrulet"); så noteres reglernes NAVNE (ingen tal) på sagen.
+  const [kapStatus, setKapStatus] = useState({ blokeret: false, overrulet: false, regler: [] });
+
   // Kladden fjernes KUN, når sagen faktisk er oprettet (onAdd giver sagens id).
   // Fejler oprettelsen, bliver formularen stående med alt det tastede, og
   // kladden består - tidligere lukkede formularen uanset udfaldet, og alt var tabt.
   const submit = async () => {
-    if (!customerName.trim() || (!udenFastDato && !date) || fristFejl) return;
+    if (!customerName.trim() || (!udenFastDato && !date) || fristFejl || (!udenFastDato && kapStatus.blokeret)) return;
     const t = timeSlotById(timeSlotId);
     setSaving(true);
     const nyId = await onAdd({
@@ -354,11 +359,13 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
       // skabDaekkerAdressen ovenfor.
       noegle: skabDaekkerAdressen ? emptyKeyAccess() : keyAccess,
       // Fleksibel tomgang: ingen fast dato, tid eller bil - kun en frist. Sagen lander
-      // under "Skal planlægges" og placeres af planlæggeren.
+      // under "Skal planlæggges" og placeres af planlæggeren.
       dato: udenFastDato ? null : date, tidsrumId: udenFastDato ? null : timeSlotId, start: udenFastDato ? null : t.start, slut: udenFastDato ? null : t.slut,
       bilId: udenFastDato ? null : (vehicleId || null),
       senestDato: erTomgang && senestDato ? senestDato : null,
       varelinjer: lineItems,
+      // Revisionsspor: kun regelnavne, ingen mål/tal.
+      kapacitetOverrulet: !udenFastDato && kapStatus.overrulet ? { regler: kapStatus.regler, tidspunkt: new Date().toISOString() } : null,
       ordrenummer: externalReference.trim(),
     });
     setSaving(false);
@@ -389,7 +396,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
         <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
           <p className={`text-[11px] ${kladde.fejl ? "text-danger font-semibold" : "text-muted"}`} aria-live="polite">
             {kladde.fejl
-              ? "Kladden kunne ikke gemmes på denne enhed — færdiggør sagen, før du forlader siden."
+              ? "Kladden kunne ikke gemmes på denne enhed — færdiggr sagen, før du forlader siden."
               : kladde.gemtTid
                 ? `Kladde gemt kl. ${klokkeslaet(kladde.gemtTid)} — du kan lukke og fortsætte senere.`
                 : "Gemmer kladde…"}
@@ -581,7 +588,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
                 <input type="date" value={senestDato} min={todayISO()} onChange={(e) => setSenestDato(e.target.value)} aria-label="Senest udført" className="w-full mt-1 rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
               </label>
               {fristFejl && <p role="alert" className="text-xs text-danger mt-2">{fristFejl}</p>}
-              {fleksibel && !fristFejl && <p className="text-[11px] text-muted mt-2">Sagen oprettes uden dato og bil og vises under "Skal planlægges" med fristen.</p>}
+              {fleksibel && !fristFejl && <p className="text-[11px] text-muted mt-2">Sagen oprettes uden dato og bil og vises under "Skal planlæggges" med fristen.</p>}
             </div>
           )}
 
@@ -623,6 +630,9 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
               </select>
             </label>
           </div>
+          {vehicleId && date && (
+            <KapacitetsTjek dato={date} bilId={vehicleId} adresse={address} minutter={expectedMinutes} tidsrumId={timeSlotId} varelinjer={lineItems} onStatus={setKapStatus} />
+          )}
           </>
           )}
 
@@ -654,7 +664,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
         ) : (
           <button
             onClick={submit}
-            disabled={saving || (!udenFastDato && !date) || !!fristFejl}
+            disabled={saving || (!udenFastDato && !date) || !!fristFejl || (!udenFastDato && kapStatus.blokeret)}
             className="px-5 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60 flex items-center gap-1.5"
           >
             <Check size={15} aria-hidden="true" /> {saving ? "Booker..." : udenFastDato ? "Opret tomgang" : erTomgang ? "Book tomgang" : "Book sag"}
