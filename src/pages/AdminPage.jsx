@@ -236,7 +236,7 @@ function AdminPage({
       {tab === "kapacitet" && (
         <div>
           <p className="text-xs text-muted mb-4">
-            De indstillinger, planlægningen regner efter: tider, kørsel, nyttelast og plads, og hvilke regler der blokerer en booking. Alt har en fornuftig standard. Bilens nyttelast og lasterum sættes under Biler, og montørernes arbejdstid under Montører.
+            De indstillinger, planlægningen regner efter: tider, kørsel og samling af kørsel. Hvilke regler der blokerer en booking, styres af systemadministratoren. Alt har en fornuftig standard. Bilens nyttelast og lasterum sættes under Biler, og montørernes arbejdstid under Montører.
           </p>
           <KapacitetsIndstillinger storeId={store?.id} butikAdresse={store?.adresse} />
         </div>
