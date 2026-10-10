@@ -1,6 +1,6 @@
 // Test af Edge Function-logikken til kapacitetstjek ved booking (supabase/functions/kapacitet-tjek/tjek.js). Kør:  node tests/kapacitet-tjek.test.mjs
 import { readFileSync } from "node:fs";
-import { validerForespoergsel, punkt1BruttoFraSvar, ordrerTilStop, punkt1Ider, bygPersoner, koerTjek } from "../supabase/functions/kapacitet-tjek/tjek.js";
+import { validerForespoergsel, punkt1BruttoFraSvar, ordrerTilStop, punkt1Ider, bygPersoner, koerTjek, matrixPunkter, ruteMatrixFraOrs } from "../supabase/functions/kapacitet-tjek/tjek.js";
 
 let pass = 0, fail = 0;
 const eq = (name, got, want) => {
@@ -87,6 +87,17 @@ const medAdr = kor({ ordrer: ordreA, kandidat: kand("111", { adresse: "Vej k" })
 eq("kørsel: alle adresser fundet giver km som tal og skøn-note", [typeof medAdr.ekstra.km, medAdr.ekstra.km > 0, medAdr.noter.some((n) => /skøn/.test(n)), medAdr.noter.some((n) => /kunne ikke findes/.test(n))], ["number", true, true, false]);
 const andenUden = kor({ ordrer: ordreA, kandidat: kand("111", { adresse: "Vej k" }), koord: medKoord(["Vej k"]) });
 eq("kørsel: en anden sags adresse ikke fundet nævnes (uden at skjule km)", [typeof andenUden.ekstra.km, andenUden.noter.some((n) => /anden sag/.test(n))], ["number", true]);
+// ORS-matrix: rigtig køretid/km bruges, når den findes; ukendte strækninger falder tilbage til luftlinje
+const punkter = matrixPunkter({ butik: BUTIK, stop: ordrerTilStop(ordreA, null), kandidat: { adresse: "Vej k" }, koord: medKoord(["Vej a", "Vej k"]) });
+eq("matrix: punkter er lager, sagerne og kandidaten (kun dem med koordinater)", punkter.map((p) => p.id), ["lager", "a", "kandidat"]);
+eq("matrix: kandidat uden koordinater udelades", matrixPunkter({ butik: BUTIK, stop: [], kandidat: { adresse: "x" }, koord: new Map() }).map((p) => p.id), ["lager"]);
+const orsSvar = { durations: [[0, 600, 1200], [600, 0, 900], [1200, 900, 0]], distances: [[0, 10000, 20000], [10000, 0, 15000], [20000, 15000, 0]] };
+const rm = ruteMatrixFraOrs(punkter, orsSvar);
+eq("matrix: sekunder -> minutter og meter -> km", [rm.minutter[0][1], rm.km[0][2], rm.skoen, rm.ids], [10, 20, false, ["lager", "a", "kandidat"]]);
+eq("matrix: forkert form giver null (så bruges luftlinje)", [ruteMatrixFraOrs(punkter, null), ruteMatrixFraOrs(punkter, { durations: [[0]], distances: [[0]] }), ruteMatrixFraOrs([punkter[0]], orsSvar)], [null, null, null]);
+eq("matrix: ukendt strækning (null fra ORS) bliver null", ruteMatrixFraOrs(punkter, { durations: [[0, null, 1], [1, 0, 1], [1, 1, 0]], distances: orsSvar.distances }).minutter[0][1], null);
+const medOrs = kor({ ordrer: ordreA, kandidat: kand("111", { adresse: "Vej k" }), koord: medKoord(["Vej a", "Vej k"]), ruteMatrix: rm });
+eq("matrix: motoren bruger ORS-tallene og kalder det ikke et skøn", [medOrs.noter.some((n) => /skøn/.test(n)), medOrs.ekstra.km > 0], [false, true]);
 eq("privatliv: ingen detaljer til almindelig bruger", scenarier.every((s) => !("detaljer" in s)), true);
 const adm = kor({ kandidat: kand("333"), erAdmin: true });
 eq("privatliv: systemadmin får detaljer (til test og fejlsøgning)", ["detaljer" in adm, Array.isArray(adm.detaljer.brud)], [true, true]);
