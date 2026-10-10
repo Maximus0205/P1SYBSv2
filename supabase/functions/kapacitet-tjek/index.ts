@@ -8,7 +8,7 @@
 // rettigheden "overstyr_kapacitet" (eller systemadmin). Funktionen aendrer intet i databasen.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { validerForespoergsel, punkt1BruttoFraSvar, ordrerTilStop, punkt1Ider, bygPersoner, koerTjek } from "./tjek.js";
+import { validerForespoergsel, punkt1BruttoFraSvar, ordrerTilStop, punkt1Ider, bygPersoner, koerTjek, matrixPunkter, ruteMatrixFraOrs } from "./tjek.js";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -28,19 +28,66 @@ async function hentBrutto(id: string) {
   } catch (_) { return null; }
 }
 
-// DAWA (Danmarks Adressers Web API): aabent, uden noegle. struktur=mini giver x (laengdegrad) og y (breddegrad).
-// Proever foerst adresser (med etage/doer), derefter adgangsadresser (kun vej + husnr). Adressen logges aldrig (persondata), kun status.
-async function geokod(adresse: string) {
-  if (!adresse) return null;
+// ADRESSE -> KOORDINATER. Samme vej som resten af appen: ORS' adresseopslag gennem Edge Functionen ors-proxy (nøglen ligger kun dér),
+// kaldt med BRUGERENS eget token. Kan ORS ikke svare, proever vi DAWA (aabent, uden noegle) som reserve. Adresser logges aldrig
+// (persondata), kun status. Resultater huskes kun i hukommelsen i denne instans (kun vellykkede opslag) for at spare ORS' kvote.
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
+const GEO_CACHE = new Map<string, { lat: number; lon: number }>();
+const MATRIX_CACHE = new Map<string, unknown>();
+type Punkt = { id: string; lat: number; lon: number };
+
+async function orsKald(auth: string, body: Record<string, unknown>) {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/ors-proxy`, {
+      method: "POST", signal: AbortSignal.timeout(8000),
+      headers: { "Content-Type": "application/json", Authorization: auth, apikey: ANON },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) { console.error(`ors-proxy ${body.handling}: HTTP ${res.status}`); return null; }
+    return await res.json();
+  } catch (e) { console.error(`ors-proxy ${body.handling} fejlede:`, e instanceof Error ? e.name : "ukendt"); return null; }
+}
+
+// "Vej 5750" -> "Vej, 5750" (som appens egen adapter)
+const medKomma = (a: string) => a.replace(/^(.*\S)\s+(\d{4})$/, "$1, $2");
+
+async function geokod(adresse: string, auth: string, fokus: { lat: number; lon: number } | null) {
+  const noegle = adresse.trim().toLowerCase();
+  if (!noegle || noegle.length < 5) return null;
+  const hit = GEO_CACHE.get(noegle);
+  if (hit) return hit;
+  const data = await orsKald(auth, { handling: "soeg", tekst: medKomma(adresse.trim()), fokus: fokus ?? undefined });
+  const features = Array.isArray(data?.features) ? data.features : [];
+  const f = features.find((x: { properties?: { housenumber?: string } }) => x?.properties?.housenumber) || features[0];
+  const c = f?.geometry?.coordinates; // [lon, lat]
+  if (Array.isArray(c) && Number.isFinite(c[0]) && Number.isFinite(c[1])) {
+    const r = { lat: c[1], lon: c[0] };
+    GEO_CACHE.set(noegle, r);
+    return r;
+  }
+  // Reserve: DAWA. Proever foerst adresser (med etage/doer), derefter adgangsadresser (kun vej + husnr).
   for (const sti of ["adresser", "adgangsadresser"]) {
     try {
       const res = await fetch(`https://api.dataforsyningen.dk/${sti}?q=${encodeURIComponent(adresse)}&per_side=1&struktur=mini`, { signal: AbortSignal.timeout(4000) });
-      if (!res.ok) { console.error(`geokod ${sti}: HTTP ${res.status}`); continue; }
+      if (!res.ok) { console.error(`dawa ${sti}: HTTP ${res.status}`); continue; }
       const r = (await res.json())?.[0];
-      if (r && Number.isFinite(r.x) && Number.isFinite(r.y)) return { lat: r.y, lon: r.x };
-    } catch (e) { console.error(`geokod ${sti} fejlede:`, e instanceof Error ? e.name : "ukendt"); }
+      if (r && Number.isFinite(r.x) && Number.isFinite(r.y)) { const k = { lat: r.y, lon: r.x }; GEO_CACHE.set(noegle, k); return k; }
+    } catch (e) { console.error(`dawa ${sti} fejlede:`, e instanceof Error ? e.name : "ukendt"); }
   }
   return null;
+}
+
+// Rigtig koretid og kilometer mellem alle punkter (ORS-matrix). null = ORS kunne ikke svare; saa bruger motoren luftlinje.
+async function hentMatrix(punkter: Punkt[], auth: string) {
+  if (punkter.length < 2 || punkter.length > 40) return null;
+  const noegle = JSON.stringify(punkter.map((p) => [p.id, p.lat, p.lon]));
+  if (MATRIX_CACHE.has(noegle)) return ruteMatrixFraOrs(punkter, MATRIX_CACHE.get(noegle));
+  const data = await orsKald(auth, { handling: "matrix", punkter: punkter.map((p) => ({ lat: p.lat, lon: p.lon })) });
+  if (!data) return null;
+  if (MATRIX_CACHE.size > 200) MATRIX_CACHE.clear();
+  MATRIX_CACHE.set(noegle, data);
+  return ruteMatrixFraOrs(punkter, data);
 }
 
 Deno.serve(async (req) => {
@@ -95,17 +142,27 @@ Deno.serve(async (req) => {
   const stop = ordrerTilStop(ordrer, f.sagId);
   const pIder = punkt1Ider(stop, f.kandidat);
   const adresser = [...new Set([f.kandidat.adresse, ...stop.map((s) => s.adresse)].filter(Boolean))].slice(0, 25) as string[];
+  const auth = req.headers.get("Authorization") ?? "";
+  const fokus = Number.isFinite(butikR.data.lat) && Number.isFinite(butikR.data.lon) ? { lat: butikR.data.lat as number, lon: butikR.data.lon as number } : null;
+  const geokodAlle = async () => {
+    const ud: (readonly [string, { lat: number; lon: number } | null])[] = [];
+    for (let i = 0; i < adresser.length; i += 4) { // hoejst 4 ad gangen (ORS' hastighedsgraense)
+      ud.push(...await Promise.all(adresser.slice(i, i + 4).map(async (a) => [a, await geokod(a, auth, fokus)] as const)));
+    }
+    return ud;
+  };
   const [maalListe, koordListe] = await Promise.all([
     Promise.all(pIder.map(async (id) => [id, await hentBrutto(id)] as const)),
-    Promise.all(adresser.map(async (a) => [a, await geokod(a)] as const)),
+    geokodAlle(),
   ]);
   const maalById = new Map(maalListe.filter(([, m]) => m).map(([id, m]) => [id, m]));
   const koord = new Map(koordListe.filter(([, k]) => k).map(([a, k]) => [a, k]));
+  const ruteMatrix = await hentMatrix(matrixPunkter({ butik: butikR.data, stop, kandidat: f.kandidat, koord }), auth);
 
   try {
     const { svar: resultat } = koerTjek({
       dato: f.dato, butik: butikR.data, bil, personer: motorPersoner, ordrer, sagId: f.sagId, kandidat: f.kandidat,
-      maalById, koord, erAdmin, kanOverrule: erAdmin || rettR.data === true,
+      maalById, koord, erAdmin, kanOverrule: erAdmin || rettR.data === true, ruteMatrix,
     });
     return svar(resultat);
   } catch (e) {
