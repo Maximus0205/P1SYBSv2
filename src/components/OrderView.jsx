@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { KeyRound, Building2, Hash, Pencil, X, Check, Copy, AlertTriangle, User, Lock, Trash2, Plus, RotateCw, Plug, RefreshCw } from "lucide-react";
-import { TIME_SLOTS, buildTitle, timeSlotById, timeSlotText, lineItemLabel, canDo, createLineItem, missingLineItems, OTHER_PRODUCT_TYPE_ID, availableAddOns, getDefaultEstimateMinutes } from "../data/domain";
+import { TIME_SLOTS, buildTitle, timeSlotById, timeSlotText, lineItemLabel, canDo, createLineItem, missingLineItems, OTHER_PRODUCT_TYPE_ID, availableAddOns, getDefaultEstimateMinutes, lineItemMinutes } from "../data/domain";
 import { manualKeyAccessText } from "../data/keyCabinets";
 import { FOLLOWUP_TYPES, followUpTypeLabel } from "../data/caseTypes";
 import { StatusBadge, MinutesInput } from "../components/common";
 import { LineItemDetails, Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
-import { CustomerHistoryLookup } from "../components/OrderFormFields";
+import { CustomerHistoryLookup, ModelNumberLookup } from "../components/OrderFormFields";
+import { KapacitetsTjek } from "../components/KapacitetsTjek";
+import { KapacitetsForslag } from "../components/KapacitetsForslag";
 import { AddressInput } from "../components/AddressInput";
 import { AddressNotesPanel } from "../components/AddressNotes";
 import { kraeverBeskrivelse } from "../lib/ydelser";
@@ -47,14 +49,25 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
   const [address, setAddress] = useState(order.kunde.adresse);
   const [items, setItems] = useState(() => cloneLineItems(order.varelinjer));
   const [itemsTouched, setItemsTouched] = useState(false);
+  // punkt1-opslaget kan "stille" finde den skjulte produktreference (punkt1Id) på en eksisterende varelinje. Den bruges med det samme
+  // af kapacitetstjekket og gemmes, når sagen gemmes, men den alene tæller ikke som en redigering af varerne.
+  const [idFundet, setIdFundet] = useState(false);
+  // Kapacitetstjek (som ved ny booking): status fra KapacitetsTjek. Blokering gælder kun, når planen eller varerne er ændret.
+  const [kapStatus, setKapStatus] = useState({ blokeret: false, overrulet: false, regler: [] });
 
-  const updateItems = (updater) => { setItems(updater); setItemsTouched(true); };
+  const updateItems = (updater, meta) => {
+    setItems(updater);
+    if (meta?.stille) setIdFundet(true); else setItemsTouched(true);
+  };
+  const planAendret = date !== order.dato || (vehicleId || "") !== (order.bilId || "") || (timeSlotId || "heldag") !== (order.tidsrumId || "heldag") || itemsTouched;
+  const kapBlokeret = canPlan && planAendret && kapStatus.blokeret;
+  const forventetMinutter = items.reduce((sum, l) => sum + lineItemMinutes(l), 0);
 
   // En sag uden varelinjer er ikke en sag - samme krav som den gamle editor.
   const itemsInvalid = canEditItems && itemsTouched && items.length === 0;
 
   const save = () => {
-    if (itemsInvalid) return;
+    if (itemsInvalid || kapBlokeret) return;
     const fields = {};
     if (canPlan) {
       const t = timeSlotById(timeSlotId);
@@ -63,7 +76,11 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
     if (canEditCustomer) {
       fields.kunde = { ...order.kunde, adresse: address.trim() };
     }
-    if (canEditItems && itemsTouched) {
+    if (canPlan && planAendret && kapStatus.overrulet) {
+      // Kun reglernes NAVNE noteres (aldrig mål eller vægt), samme som ved ny booking.
+      fields.kapacitetOverrulet = { regler: kapStatus.regler, tidspunkt: new Date().toISOString() };
+    }
+    if (canEditItems && (itemsTouched || idFundet)) {
       // Det afledte "hele ordren er plukket"-flag følger med, ellers kunne
       // en fjernet uplukket linje efterlade sagen som "ikke plukket".
       fields.varelinjer = items;
@@ -103,6 +120,17 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
         </label>
       </div>
 
+      {date && vehicleId && (
+        <KapacitetsTjek dato={date} bilId={vehicleId} adresse={address} minutter={forventetMinutter} tidsrumId={timeSlotId || "heldag"} varelinjer={items} sagId={order.id} onStatus={setKapStatus} />
+      )}
+      {canPlan && (
+        <KapacitetsForslag
+          sagId={order.id} adresse={address} minutter={forventetMinutter} tidsrumId={timeSlotId || "heldag"} varelinjer={items}
+          nuvaerende={{ dato: order.dato, bilId: order.bilId }}
+          onVaelg={({ dato, bilId }) => { setDate(dato); setVehicleId(bilId); }}
+        />
+      )}
+
       {canEditItems && (
         <div className="mt-4 pt-4 border-t border-divider">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Varer &amp; ydelser</h4>
@@ -115,7 +143,7 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
         <p className="text-[11px] text-muted mb-3 flex items-center gap-1.5"><Lock size={11} className="shrink-0" aria-hidden="true" /> Nogle felter er låst - du mangler rettigheden til at redigere dem.</p>
       )}
       <div className="flex gap-2">
-        <button onClick={save} disabled={itemsInvalid} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"><Check size={14} aria-hidden="true" /> Gem ændringer</button>
+        <button onClick={save} disabled={itemsInvalid || kapBlokeret} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"><Check size={14} aria-hidden="true" /> Gem ændringer</button>
         <button onClick={onCancel} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted focus:outline-none focus:ring-2 focus:ring-muted transition-colors flex items-center gap-1.5"><X size={14} aria-hidden="true" /> Annuller</button>
       </div>
     </div>
@@ -258,8 +286,19 @@ function LineItemEditor({ order, catalog, onSave, onCancel, embedded = false, it
                   </label>
                   <label className="text-xs text-muted">
                     Model
-                    <input value={v.model || ""} onChange={(e) => patch(v.id, { model: e.target.value })} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+                    <input value={v.model || ""} onChange={(e) => patch(v.id, { model: e.target.value, punkt1Id: undefined })} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
                   </label>
+                  {/* Samme punkt1-opslag som ved ny booking: bekræfter modelnummeret og husker den skjulte produktreference (ingen mål på klienten).
+                      Et ændret modelnummer nulstiller referencen, så en gammel reference aldrig hører til en ny vare. */}
+                  <div className="sm:col-span-2 -mt-1">
+                    <ModelNumberLookup
+                      model={v.model}
+                      onSelectProduct={({ brand, model: m, productId }) => setItems(
+                        (prev) => prev.map((x) => (x.id === v.id ? { ...x, ...(brand ? { maerke: brand } : {}), ...(m ? { model: m } : {}), ...(productId ? { punkt1Id: String(productId) } : {}) } : x)),
+                        { stille: true },
+                      )}
+                    />
+                  </div>
                   <label className="text-xs text-muted">
                     Forventet tid (minutter)
                     <MinutesInput
