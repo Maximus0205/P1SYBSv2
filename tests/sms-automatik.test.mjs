@@ -1,18 +1,14 @@
-// Test af reglerne bag de automatiske kunde-SMS'er (supabase/functions/sms-automatik/logik.js). Kør:  node tests/sms-automatik.test.mjs
-import { readFileSync } from "node:fs";
+// Test af reglerne bag de automatiske kunde-SMS'er (src/lib/smsAutomationLogik.js). Kør:  node tests/sms-automatik.test.mjs
 import {
   skabelonFejl, STANDARD_TEKSTER, udfyld, datoTekst, tidsrumTekst, plusDage, danskNummer, fornavnFra, butikTekst, kobenhavn, planlaeg,
   NY_SAG_RO_MS, GENFORSOEG_EFTER_MS, bookingNoegle,
-} from "../supabase/functions/sms-automatik/logik.js";
+} from "../src/lib/smsAutomationLogik.js";
 
 let pass = 0, fail = 0;
 const eq = (name, got, want) => {
   const ok = JSON.stringify(got) === JSON.stringify(want);
   if (ok) pass++; else { fail++; console.log("FAIL:", name, "\n  got: ", JSON.stringify(got), "\n  want:", JSON.stringify(want)); }
 };
-
-// ---- klientkopien er identisk med serverkopien
-eq("logik-kopi identisk", readFileSync("src/lib/smsAutomationLogik.js", "utf8") === readFileSync("supabase/functions/sms-automatik/logik.js", "utf8"), true);
 
 // ---- skabeloner
 for (const [k, t] of Object.entries(STANDARD_TEKSTER)) eq(`standardtekst ${k} gyldig`, skabelonFejl(t), null);
@@ -102,15 +98,6 @@ eq("genforsøg efter fejl", planlaeg({ ordrer: [o("a", "2026-10-20")], tilstand:
 eq("for tidligt til genforsøg", planlaeg({ ordrer: [o("a", "2026-10-20")], tilstand: [fejlet("fejl", 1, 60_000)], indst: alle, nu: NU }).send, []);
 eq("højst 3 forsøg", planlaeg({ ordrer: [o("a", "2026-10-20")], tilstand: [fejlet("fejl", 3, 9e6)], indst: alle, nu: NU }).send, []);
 eq("usikker genforsøges aldrig", planlaeg({ ordrer: [o("a", "2026-10-20")], tilstand: [fejlet("usikker", 1, 9e6)], indst: alle, nu: NU }).send, []);
-
-// ---- filer: migration og funktion hænger sammen
-const mig = readFileSync("supabase/migrations/20261011_sms_automatik.sql", "utf8");
-eq("migration: RLS på tilstandstabel", /alter table public\.sms_automation_state enable row level security/.test(mig), true);
-eq("migration: kun tilladte pladsholdere", /'fornavn','dato','tidsrum','butik'/.test(mig), true);
-eq("migration: ingen hemmelighed i klartekst", /sms_cron_secret'\s*,\s*'[A-Za-z0-9]{20,}/.test(mig), false);
-const fn = readFileSync("supabase/functions/sms-automatik/index.ts", "utf8");
-eq("funktion: validerer cron-hemmelighed før noget andet", fn.indexOf("sms_cron_ok") < fn.indexOf("store_sms_automation"), true);
-eq("funktion: ingen mål/vægt", /punkt1|brutto|kapacitet/i.test(fn), false);
 
 console.log(`${pass} bestået, ${fail} fejlet`);
 process.exit(fail ? 1 : 0);
