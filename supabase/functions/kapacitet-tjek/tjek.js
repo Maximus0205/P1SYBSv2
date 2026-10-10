@@ -120,7 +120,7 @@ export function bygPersoner({ dato, personer, arbejdstider, uaendringer, fravaer
 }
 
 // koord: Map adresse -> {lat, lon}. maalById: Map punkt1Id -> {maal, vaegtKg}.
-export function bygMotorInput({ dato, butik, bil, personer, stop, kandidat, maalById, koord, indstillinger }) {
+export function bygMotorInput({ dato, butik, bil, personer, stop, kandidat, maalById, koord, indstillinger, ruteMatrix = null }) {
   const koordFor = (adresse) => koord?.get(adresse) || null;
   const tilStop = (s) => {
     const k = koordFor(s.adresse);
@@ -135,11 +135,35 @@ export function bygMotorInput({ dato, butik, bil, personer, stop, kandidat, maal
   const alle = [lager, ...[...eksisterende, kStop]].filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon));
   const b = bil || {};
   const input = {
-    dato, indstillinger, lager, personer, matrix: alle.length > 1 ? skoenMatrix(alle.map((p) => ({ id: p.id, lat: p.lat, lon: p.lon }))) : undefined,
+    dato, indstillinger, lager, personer, matrix: ruteMatrix || (alle.length > 1 ? skoenMatrix(alle.map((p) => ({ id: p.id, lat: p.lat, lon: p.lon }))) : undefined),
     bil: { id: b.id, navn: b.navn, tempo: Number(b.tempo) || 100, nyttelastKg: b.nyttelastKg, vaerktoejKg: b.vaerktoejKg, lasterum: b.lasterum || null },
     stop: eksisterende,
   };
   return { input, kStop };
+}
+
+// ---- Køretid og kilometer: punkter til ORS-matricen og omsætning af svaret ----------------------------------------------------------
+// Samme id'er som motoren bruger ("lager", sagens id, "kandidat"). Kun punkter med koordinater kommer med.
+export function matrixPunkter({ butik, stop, kandidat, koord }) {
+  const k = (a) => koord?.get(a) || null;
+  const p = [];
+  if (Number.isFinite(butik?.lat) && Number.isFinite(butik?.lon)) p.push({ id: "lager", lat: butik.lat, lon: butik.lon });
+  for (const s of stop || []) { const c = k(s.adresse); if (c) p.push({ id: s.id, lat: c.lat, lon: c.lon }); }
+  const c = k(kandidat.adresse);
+  if (c) p.push({ id: "kandidat", lat: c.lat, lon: c.lon });
+  return p;
+}
+
+// ORS-matrix (sekunder/meter) -> motorens format (minutter/km). null hvis svaret ikke har den rigtige form (så bruges luftlinje).
+// Enkelte strækninger ORS ikke kunne beregne bliver null; motoren falder da tilbage til luftlinje for netop dem.
+export function ruteMatrixFraOrs(punkter, data) {
+  const n = punkter.length;
+  const d = data?.durations;
+  const a = data?.distances;
+  const form = (m) => Array.isArray(m) && m.length === n && m.every((r) => Array.isArray(r) && r.length === n);
+  if (n < 2 || !form(d) || !form(a)) return null;
+  const tal = (x, del) => (Number.isFinite(x) && x >= 0 ? x / del : null);
+  return { ids: punkter.map((p) => p.id), minutter: d.map((r) => r.map((x) => tal(x, 60))), km: a.map((r) => r.map((x) => tal(x, 1000))), skoen: false };
 }
 
 // ---- Svar til browseren: ALDRIG mål eller vægt --------------------------------------------------------------------------------------
@@ -186,10 +210,10 @@ export function renseSvar({ vurdering, erAdmin, kanOverrule, manglerNavne, bilMa
 }
 
 // Hele beregningen for en forespørgsel, når data er hentet. Returnerer { svar }.
-export function koerTjek({ dato, butik, bil, personer, ordrer, sagId, kandidat, maalById, koord, erAdmin, kanOverrule }) {
+export function koerTjek({ dato, butik, bil, personer, ordrer, sagId, kandidat, maalById, koord, erAdmin, kanOverrule, ruteMatrix = null }) {
   const stop = ordrerTilStop(ordrer, sagId);
   const indstillinger = rensIndstillinger(butik?.capacity_settings);
-  const { input, kStop } = bygMotorInput({ dato, butik, bil, personer, stop, kandidat, maalById, koord, indstillinger });
+  const { input, kStop } = bygMotorInput({ dato, butik, bil, personer, stop, kandidat, maalById, koord, indstillinger, ruteMatrix });
   const vurdering = vurderTilfoejelse(input, kStop);
   const manglerNavne = kandidat.varer.filter((v) => !(v.punkt1Id && maalById.get(v.punkt1Id))).map((v) => v.navn);
   const bilMangler = !(Number(bil?.nyttelastKg) > 0) && !bil?.lasterum;
