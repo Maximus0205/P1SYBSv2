@@ -9,7 +9,7 @@ import { MinutesInput } from "../components/common";
 import { forslagsVindue, foersteArbejdsdagFra } from "../lib/arbejdsuge";
 import { kraeverBeskrivelse } from "../lib/ydelser";
 
-// Forsøger at splitte en punkt1.dk-produkttitel (fx "Point 5-Series
+// Forøger at splitte en punkt1.dk-produkttitel (fx "Point 5-Series
 // PODW56042W opvaskemaskine") op i mærke + modelnummer. Mærket antages at
 // være FØRSTE ord i titlen (konsistent mønster i punkt1.dk's egne titler).
 // Modelnummeret findes ved at lede efter det "kode-agtige" ord i resten af
@@ -90,6 +90,7 @@ function ModelNumberLookup({ model, onSelectProduct }) {
     const term = (model || "").trim();
     if (term.length < 3) { setResult(null); setError(null); return; }
     if (term === confirmedRef.current) return; // allerede bekræftet, "result" er sat - lad den stå
+    confirmedRef.current = ""; // et andet modelnummer end det bekræftede: den gamle bekræftelse gælder ikke mere (så man kan skrive tilbage til det og få det bekræftet igen)
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(async () => {
       setLoading(true); setError(null);
@@ -1087,4 +1088,4 @@ function SuggestedDates({ orders, technicians, personnel, timeOff, date, address
   );
 }
 
-export { LineItemEditor, KeyAccessFields, CustomerHistory, CustomerHistoryLookup, SuggestedDates, InteractiveWeekPicker, ClusterEstimateNote };
+export { ModelNumberLookup, LineItemEditor, KeyAccessFields, CustomerHistory, CustomerHistoryLookup, SuggestedDates, InteractiveWeekPicker, ClusterEstimateNote };
