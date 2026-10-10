@@ -1,6 +1,6 @@
 // Test af Edge Function-logikken til kapacitetstjek ved booking (supabase/functions/kapacitet-tjek/tjek.js). Kør:  node tests/kapacitet-tjek.test.mjs
 import { readFileSync } from "node:fs";
-import { validerForespoergsel, punkt1BruttoFraSvar, ordrerTilStop, punkt1Ider, bygPersoner, koerTjek, matrixPunkter, ruteMatrixFraOrs } from "../supabase/functions/kapacitet-tjek/tjek.js";
+import { validerForespoergsel, punkt1BruttoFraSvar, ordrerTilStop, punkt1Ider, bygPersoner, koerTjek, matrixPunkter, ruteMatrixFraOrs, validerForslag, plusDage, startDato, kandidatDatoer, harHaardtBrud, forslagFraSvar, rangerForslag } from "../supabase/functions/kapacitet-tjek/tjek.js";
 
 let pass = 0, fail = 0;
 const eq = (name, got, want) => {
@@ -102,6 +102,24 @@ eq("privatliv: ingen detaljer til almindelig bruger", scenarier.every((s) => !("
 const adm = kor({ kandidat: kand("333"), erAdmin: true });
 eq("privatliv: systemadmin får detaljer (til test og fejlsøgning)", ["detaljer" in adm, Array.isArray(adm.detaljer.brud)], [true, true]);
 eq("tjek: sagen kan flyttes uden at tælle dobbelt (sagId udelades)", kor({ ordrer: tre, sagId: "a" }).ekstra.omlastninger, 0);
+
+// ---- Forslag til ny dato (ombooking)
+eq("forslag: validering", [validerForslag({ kandidat: gyldig.kandidat }).ok, validerForslag({ kandidat: gyldig.kandidat, fraDato: "i morgen" }).ok, validerForslag({}).ok, validerForslag({ kandidat: gyldig.kandidat, dage: 999 }).dage], [true, false, false, 30]);
+eq("forslag: ekskluder renses", validerForslag({ kandidat: gyldig.kandidat, ekskluder: { dato: "2026-11-09", bilId: "b1", x: 1 } }).ekskluder, { dato: "2026-11-09", bilId: "b1" });
+eq("forslag: plusDage over månedsskifte", plusDage("2026-10-31", 1), "2026-11-01");
+eq("forslag: start er i morgen uden ønske, aldrig før i dag, højst 90 dage frem", [startDato(null, "2026-10-12"), startDato("2026-09-01", "2026-10-12"), startDato("2026-10-20", "2026-10-12"), startDato("2030-01-01", "2026-10-12")], ["2026-10-13", "2026-10-12", "2026-10-20", "2027-01-10"]);
+eq("forslag: weekender springes over", kandidatDatoer("2026-10-16", 5), ["2026-10-16", "2026-10-19", "2026-10-20"]);
+eq("forslag: hårdt brud ignorerer ukendt data", [harHaardtBrud({ meddelelser: [{ niveau: "krav", regel: "ukendtData" }] }), harHaardtBrud({ meddelelser: [{ niveau: "krav", regel: "arbejdstid" }] }), harHaardtBrud({ meddelelser: [{ niveau: "raadgivende", regel: "arbejdstid" }] })], [false, true, false]);
+const fs = (dato, bilId, beslutning, min, km = 5) => forslagFraSvar({ beslutning, meddelelser: [], noter: [], ekstra: { min, km, omlastninger: 0 }, ledigMin: 60 }, { dato, bilId, bilNavn: bilId });
+const rang = rangerForslag([fs("2026-10-14", "b1", "advarsel", 10), fs("2026-10-14", "b2", "ok", 90), fs("2026-10-13", "b1", "blokeret", 5), fs("2026-10-15", "b1", "ok", 30), fs("2026-10-13", "b2", "ok", 40)], 5);
+eq("forslag: tidligste dato først, bedste bil pr. dato (ok før advarsel), blokerede udeladt", rang.map((r) => [r.dato, r.bilId]), [["2026-10-13", "b2"], ["2026-10-14", "b2"], ["2026-10-15", "b1"]]);
+eq("forslag: den nuværende tid foreslås ikke igen", rangerForslag([fs("2026-10-13", "b2", "ok", 40), fs("2026-10-14", "b1", "ok", 40)], 5, { dato: "2026-10-13", bilId: "b2" }).map((r) => r.dato), ["2026-10-14"]);
+eq("forslag: højst `maks` datoer", rangerForslag(Array.from({ length: 9 }, (_, i) => fs(`2026-11-${String(i + 1).padStart(2, "0")}`, "b1", "ok", 10)), 3).length, 3);
+eq("forslag: indeholder aldrig mål eller vægt", JSON.stringify(rang).match(/vaegt|maal|kg\b/i), null);
+// Hele vejen: et forslag ud fra koerTjek, uden koordinater, er ikke blokeret, når dagen har plads og en montør
+const skarpt = kor({ koord: new Map() });
+eq("forslag: koerTjek uden koordinater giver ikke hårdt brud på en tom dag", harHaardtBrud(skarpt), false);
+eq("forslag: dag uden montør har hårdt brud", harHaardtBrud(kor({ personer: [] })), true);
 
 console.log(`\n${pass} bestået, ${fail} fejlet`);
 process.exit(fail ? 1 : 0);
