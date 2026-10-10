@@ -14,14 +14,7 @@ const tekst = (v, max) => String(v ?? "").trim().slice(0, max);
 const heltal = (v, min, max, std) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : std; };
 
 // ---- Indgangsvalidering --------------------------------------------------------------------------------------------------------
-export function validerForespoergsel(body) {
-  const b = body && typeof body === "object" ? body : {};
-  const dato = tekst(b.dato, 10);
-  if (!DATO.test(dato) || Number.isNaN(new Date(`${dato}T00:00:00Z`).getTime())) return { ok: false, fejl: "Ugyldig dato" };
-  const bilId = tekst(b.bilId, 80);
-  if (!bilId) return { ok: false, fejl: "Bil mangler" };
-  const k = b.kandidat && typeof b.kandidat === "object" ? b.kandidat : null;
-  if (!k) return { ok: false, fejl: "Kandidat mangler" };
+function renKandidat(k) {
   const raaVarer = Array.isArray(k.varer) ? k.varer.slice(0, 40) : [];
   const varer = raaVarer.map((v, i) => {
     const pid = tekst(v?.punkt1Id, 12);
@@ -32,12 +25,33 @@ export function validerForespoergsel(body) {
   });
   const tidsrumId = tekst(k.tidsrumId, 20);
   return {
-    ok: true, dato, bilId, sagId: tekst(b.sagId, 80) || null,
-    kandidat: {
-      adresse: tekst(k.adresse, 200), minutter: heltal(k.minutter, 0, 1440, 0), kraever2Mand: k.kraever2Mand === true,
-      tidsrum: TIDSRUM[tidsrumId] || null, varer,
-    },
+    adresse: tekst(k.adresse, 200), minutter: heltal(k.minutter, 0, 1440, 0), kraever2Mand: k.kraever2Mand === true,
+    tidsrum: TIDSRUM[tidsrumId] || null, varer,
   };
+}
+const gyldigDato = (d) => DATO.test(d) && !Number.isNaN(new Date(`${d}T00:00:00Z`).getTime());
+
+export function validerForespoergsel(body) {
+  const b = body && typeof body === "object" ? body : {};
+  const dato = tekst(b.dato, 10);
+  if (!gyldigDato(dato)) return { ok: false, fejl: "Ugyldig dato" };
+  const bilId = tekst(b.bilId, 80);
+  if (!bilId) return { ok: false, fejl: "Bil mangler" };
+  const k = b.kandidat && typeof b.kandidat === "object" ? b.kandidat : null;
+  if (!k) return { ok: false, fejl: "Kandidat mangler" };
+  return { ok: true, dato, bilId, sagId: tekst(b.sagId, 80) || null, kandidat: renKandidat(k) };
+}
+
+// Forslag til ny dato/bil ved ombooking. fraDato er valgfri (standard: i morgen); ekskluder = den tid, sagen allerede har
+// (så den ikke foreslås igen).
+export function validerForslag(body) {
+  const b = body && typeof body === "object" ? body : {};
+  const fraDato = tekst(b.fraDato, 10);
+  if (fraDato && !gyldigDato(fraDato)) return { ok: false, fejl: "Ugyldig dato" };
+  const k = b.kandidat && typeof b.kandidat === "object" ? b.kandidat : null;
+  if (!k) return { ok: false, fejl: "Kandidat mangler" };
+  const e = b.ekskluder && typeof b.ekskluder === "object" ? { dato: tekst(b.ekskluder.dato, 10), bilId: tekst(b.ekskluder.bilId, 80) } : null;
+  return { ok: true, fraDato: fraDato || null, dage: heltal(b.dage, 1, 30, 21), sagId: tekst(b.sagId, 80) || null, ekskluder: e, kandidat: renKandidat(k) };
 }
 
 // ---- punkt1: brutto-mål og -vægt (samme udlæsning som den systemadmin-låste testfunktion punkt1-produktmaal) --------------------------
@@ -221,4 +235,66 @@ export function koerTjek({ dato, butik, bil, personer, ordrer, sagId, kandidat, 
   const stopUdenKoord = stop.filter((s) => !koord?.get(s.adresse)).length;
   return { svar: renseSvar({ vurdering, erAdmin, kanOverrule, manglerNavne, bilMangler, kandidatUdenKoord, stopUdenKoord }), stopAntal: stop.length };
 }
+
+// ---- Forslag til ny dato/bil: ren logik (netværk og databaselæsning ligger i index.ts) --------------------------------------------
+export const iDagKbh = (nu = new Date()) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Copenhagen" }).format(nu);
+
+export function plusDage(iso, n) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+// Første dag, der må foreslås: aldrig før i dag og højst 90 dage frem. Uden ønske: i morgen.
+export function startDato(fraDato, idag) {
+  if (!fraDato) return plusDage(idag, 1);
+  if (fraDato < idag) return idag;
+  const max = plusDage(idag, 90);
+  return fraDato > max ? max : fraDato;
+}
+
+// Hverdage i vinduet (weekender springes over - samme princip som resten af appen).
+export function kandidatDatoer(fraDato, dage) {
+  const ud = [];
+  const d = new Date(`${fraDato}T00:00:00Z`);
+  for (let i = 0; i < dage; i++) {
+    const ugedag = d.getUTCDay();
+    if (ugedag !== 0 && ugedag !== 6) ud.push(d.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return ud;
+}
+
+// Er der et hårdt brud, som ikke afhænger af mål, vægt eller kørsel? (grovsigtning før de dyre opslag)
+export const harHaardtBrud = (svar) => (svar?.meddelelser || []).some((m) => m.niveau === "krav" && m.regel !== "ukendtData");
+
+// Kompakt forslag ud fra en renset vurdering. Indeholder aldrig mål eller vægt.
+export function forslagFraSvar(svar, { dato, bilId, bilNavn, rute }) {
+  return {
+    dato, bilId, bilNavn: bilNavn || "", beslutning: svar.beslutning,
+    ekstraMin: svar.ekstra ? Math.round(svar.ekstra.min) : null,
+    ekstraKm: svar.ekstra && svar.ekstra.km !== null ? Math.round(svar.ekstra.km) : null,
+    omlastninger: svar.ekstra ? svar.ekstra.omlastninger : 0,
+    ledigMin: svar.ledigMin,
+    advarsler: (svar.meddelelser || []).map((m) => m.tekst),
+    noter: svar.noter || [], rute: rute || "skoen",
+  };
+}
+
+const RANG = { ok: 0, advarsel: 1 };
+const bedreForslag = (a, b) => (RANG[a.beslutning] - RANG[b.beslutning]) || ((a.ekstraMin ?? 0) - (b.ekstraMin ?? 0)) || ((a.ekstraKm ?? 0) - (b.ekstraKm ?? 0));
+
+// Tidligste dato først (kortest ventetid for kunden); pr. dato den bedste bil (ok før advarsel, så mindst ekstra tid og km).
+// Blokerede kombinationer udelades. Springer den tid over, sagen allerede har.
+export function rangerForslag(kandidater, maks = 5, ekskluder = null) {
+  const prDato = new Map();
+  for (const k of kandidater || []) {
+    if (!k || k.beslutning === "blokeret") continue;
+    if (ekskluder && ekskluder.dato === k.dato && ekskluder.bilId === k.bilId) continue;
+    const g = prDato.get(k.dato);
+    if (!g || bedreForslag(k, g) < 0) prDato.set(k.dato, k);
+  }
+  return [...prDato.values()].sort((a, b) => (a.dato < b.dato ? -1 : a.dato > b.dato ? 1 : 0)).slice(0, maks);
+}
+
 export { tilMin };
