@@ -10,5 +10,8 @@ dist-ssr
 .env.*
 !.env.example
 
+# Server-side kode (Edge Functions, migrationer) hører IKKE hjemme i det offentlige repo.
+supabase/
+
 .DS_Store
 *.log
