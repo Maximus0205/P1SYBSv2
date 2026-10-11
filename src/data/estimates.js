@@ -35,8 +35,21 @@
 //    indtastning. Et dårligt tal, der ser autoritativt ud, er værre end
 //    intet tal - sælgeren stoler på det og opdager først fejlen, når
 //    montøren står og mangler en time.
+//
+// 4. ALTID SAMME VARETYPE (RETTET oktober 2026). Tidligere fandtes et
+//    tredje, løsere niveau, der kun så på YDELSEN. Det gav fx "6 min med
+//    samme ydelse" på en opvaskemaskine, fordi grundlaget var et køleskab,
+//    et kølefryseskab og en vaskemaskine, der alle var monteret. Montering
+//    af en opvaskemaskine og af et køleskab er ikke den samme opgave, så et
+//    sådant tal er netop det autoritativt udseende, forkerte tal, valg 3
+//    skal forhindre. Uden mindst 3 målinger af SAMME varetype og ydelse
+//    gives intet forslag. "Andet (skriv selv)" er ikke én varetype: dér er
+//    den fritekst, sælgeren skrev, en del af nøglen.
 
 import { buildingKey } from "./domain";
+
+// Samme værdi som OTHER_PRODUCT_TYPE_ID i domain.js ("Andet (skriv selv)").
+const ANDET_ID = "andet";
 
 const MIN_OBSERVATIONER = 3;
 const MAKS_MINUTTER = 10 * 60;
@@ -71,8 +84,10 @@ function tillaegNoegle(v) {
     .join("+");
 }
 
-// Tre nøgler pr. varelinje, fra mest til mindst præcis. Slår vi op i
-// rækkefølge, får vi altid det bedste tilgængelige grundlag.
+// To nøgler pr. varelinje, fra mest til mindst præcis. Slår vi op i
+// rækkefølge, får vi altid det bedste tilgængelige grundlag. Begge kræver
+// samme varetype OG ydelse (se valg 4); mangler en af dem, er der ingen
+// nøgler og dermed intet forslag.
 //
 // Niveau 1 medtager ALTID tillægs-nøglen - også når der ingen tillæg er
 // ("ingen"). RETTET under test: uden det faldt en montering UDEN tillæg
@@ -80,14 +95,21 @@ function tillaegNoegle(v) {
 // MED dørvending, og arvede deres ekstra tid - 75 minutter i stedet for
 // 55. En opgave uden tillæg er sin egen, veldefinerede kombination, ikke
 // en upræcis udgave af de andre.
+function vareNoegle(v) {
+  const id = v?.varetypeId || "";
+  if (id !== ANDET_ID) return id;
+  const tekst = (v?.varetypeTekst || "").toLowerCase().trim().replace(/\s+/g, " ");
+  return tekst ? `${ANDET_ID}:${tekst}` : "";
+}
+
 export function signatures(v) {
-  const vare = v?.varetypeId || "";
+  const vare = vareNoegle(v);
   const ydelse = v?.primaerYdelse?.id || "";
+  if (!vare || !ydelse) return [];
   const till = tillaegNoegle(v);
   return [
     `1|${vare}|${ydelse}|${till || "ingen"}`,
     `2|${vare}|${ydelse}`,
-    `3|${ydelse}`,
   ];
 }
 
@@ -129,7 +151,6 @@ export function buildEstimateIndex(orders) {
 const GRUNDLAG_TEKST = {
   "1": "af samme vare, ydelse og tillæg",
   "2": "af samme vare og ydelse",
-  "3": "med samme ydelse",
 };
 
 // Returnerer { minutter, antal, grundlag } eller NULL, hvis der ikke er
