@@ -159,7 +159,7 @@ function StoresTab({ stores, loading, reload, currentUserId, onOwnStoreLinked })
         </div>
         {error && <p className="text-xs text-danger mt-2 flex items-center gap-1.5"><AlertCircle size={13} /> {error}</p>}
         {message && <p className="text-xs text-success mt-2 flex items-center gap-1.5"><Check size={13} /> {message}</p>}
-        <button onClick={create} disabled={busy} className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors flex items-center gap-1.5 disabled:opacity-60">
+        <button onClick={create} disabled={busy} className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark transition-colors flex items-center gap-1.5 disabled:opacity-60">
           {busy && <Loader2 size={14} className="animate-spin" />} {busy ? "Opretter..." : "Opret butik"}
         </button>
       </div>
@@ -459,7 +459,7 @@ function StoreEditor({ store, onDone, onCancel }) {
       </div>
       {error && <p className="text-xs text-danger mb-2 flex items-center gap-1.5"><AlertCircle size={12} /> {error}</p>}
       <div className="flex gap-2">
-        <button onClick={save} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors disabled:opacity-60 flex items-center gap-1.5">
+        <button onClick={save} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark transition-colors disabled:opacity-60 flex items-center gap-1.5">
           {busy && <Loader2 size={12} className="animate-spin" />} Gem
         </button>
         <button onClick={onCancel} className="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-muted border border-line">Fortryd</button>
@@ -530,7 +530,7 @@ function CreateUserDirect({ stores }) {
       </div>
       {error && <p className="text-xs text-danger mt-2 flex items-center gap-1.5"><AlertCircle size={13} /> {error}</p>}
       {message && <p className="text-xs text-success mt-2 flex items-center gap-1.5"><Check size={13} /> {message}</p>}
-      <button onClick={create} disabled={busy} className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors flex items-center gap-1.5 disabled:opacity-60">
+      <button onClick={create} disabled={busy} className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark transition-colors flex items-center gap-1.5 disabled:opacity-60">
         {busy && <Loader2 size={14} className="animate-spin" />} {busy ? "Opretter..." : "Opret bruger"}
       </button>
     </div>
@@ -631,7 +631,7 @@ function SystemAdminUserRow({ user, stores, onUpdated, currentUserId, onOwnStore
       {showReset && (
         <div className="mt-2.5 pt-2.5 border-t border-divider flex items-center gap-2 flex-wrap">
           <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Ny adgangskode (mindst 6 tegn)" className="flex-1 min-w-[160px] rounded-lg border border-line bg-panel px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-brand" />
-          <button onClick={reset} disabled={busy} className="px-3 py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors disabled:opacity-60">Sæt ny adgangskode</button>
+          <button onClick={reset} disabled={busy} className="px-3 py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark transition-colors disabled:opacity-60">Sæt ny adgangskode</button>
           {resetMessage && <span className={`text-[11px] ${resetMessage === "Nulstillet." ? "text-success" : "text-danger"}`}>{resetMessage}</span>}
         </div>
       )}

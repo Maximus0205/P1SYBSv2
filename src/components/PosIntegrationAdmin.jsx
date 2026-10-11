@@ -128,7 +128,7 @@ function PosIntegrationAdmin({ storeId, storeLabel }) {
       )}
 
       <div className="flex items-center gap-2 flex-wrap">
-        <button onClick={gem} disabled={saving} className="px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60">
+        <button onClick={gem} disabled={saving} className="px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60">
           {saving ? "Gemmer..." : "Gem"}
         </button>
         <button onClick={test} disabled={testing || !harNoegle} title={!harNoegle ? "Sæt en API-nøgle først" : "Test forbindelsen"} className="px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-40 flex items-center gap-1.5">

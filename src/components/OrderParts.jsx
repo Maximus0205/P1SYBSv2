@@ -114,7 +114,7 @@ function Notes({ order, onAdd }) {
       {onAdd ? (
         <div className="flex gap-2 mb-4">
           <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Skriv en note om sagen..." aria-label="Ny note" rows={2} className="flex-1 rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand resize-none" />
-          <button onClick={() => { if (!text.trim()) return; onAdd(text); setText(""); }} className="px-4 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors">Tilføj</button>
+          <button onClick={() => { if (!text.trim()) return; onAdd(text); setText(""); }} className="px-4 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors">Tilføj</button>
         </div>
       ) : (
         <LockedNotice text="Du kan se, men ikke tilføje, noter på denne sag." />
@@ -328,7 +328,7 @@ function Reports({ order, onAdd }) {
         <div className="rounded-xl border border-line bg-white p-4 mb-4 shadow-sm">
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Rapporttitel, fx 'Afleveringsrapport'" aria-label="Rapporttitel" className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink mb-2 focus:outline-none focus:border-brand" />
           <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Beskrivelse af udført arbejde..." aria-label="Beskrivelse af udført arbejde" rows={3} className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink mb-2 focus:outline-none focus:border-brand resize-none" />
-          <button onClick={() => { if (!title.trim() || !text.trim()) return; onAdd(title, text); setTitle(""); setText(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors">Gem rapport</button>
+          <button onClick={() => { if (!title.trim() || !text.trim()) return; onAdd(title, text); setTitle(""); setText(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors">Gem rapport</button>
         </div>
       ) : (
         <LockedNotice text="Du kan se, men ikke oprette, rapporter på denne sag." />
@@ -402,7 +402,7 @@ function ClockWidget({ order, onClockIn, onClockOut }) {
         )}
       </div>
       {order.stemplerInd ? (
-        <button onClick={onClockOut} disabled={locked} className="px-5 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-ink focus:outline-none focus:ring-2 focus:ring-ink transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5">{locked && <Lock size={13} aria-hidden="true" />} Stemplet ud</button>
+        <button onClick={onClockOut} disabled={locked} className="px-5 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-ink transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5">{locked && <Lock size={13} aria-hidden="true" />} Stemplet ud</button>
       ) : (
         <button onClick={onClockIn} disabled={locked} className="px-5 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-success hover:bg-ink focus:outline-none focus:ring-2 focus:ring-ink transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5">{locked && <Lock size={13} aria-hidden="true" />} Stemplet ind</button>
       )}
@@ -502,7 +502,7 @@ function SignaturePad({ defaultName, onSave, onCancel }) {
       </div>
       {!hasDrawn && <p className="text-[11px] text-danger mt-1.5">Der skal skrives under, før den kan gemmes.</p>}
       <div className="flex flex-wrap gap-2 mt-3">
-        <button onClick={save} disabled={!hasDrawn || !name.trim()} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-50">Gem underskrift</button>
+        <button onClick={save} disabled={!hasDrawn || !name.trim()} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-50">Gem underskrift</button>
         <button onClick={clear} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted focus:outline-none focus:ring-2 focus:ring-muted transition-colors">Ryd</button>
         {onCancel && <button onClick={onCancel} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted focus:outline-none focus:ring-2 focus:ring-muted transition-colors">Annuller</button>}
       </div>

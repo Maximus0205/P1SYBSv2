@@ -176,7 +176,7 @@ function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTi
               <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="block rounded-lg border border-line bg-white px-2 py-2 text-xs text-ink mt-0.5" />
             </label>
             <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (valgfri)" aria-label="Note til fravær" className="flex-1 min-w-[120px] rounded-lg border border-line bg-white px-2 py-2 text-xs text-ink" />
-            <button onClick={createTimeOff} className="px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1"><Plus size={13} aria-hidden="true" /> Tilføj</button>
+            <button onClick={createTimeOff} className="px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1"><Plus size={13} aria-hidden="true" /> Tilføj</button>
           </div>
           {myTimeOff.length === 0 ? (
             <p className="text-xs text-muted italic">Ingen fraværsperioder registreret.</p>
@@ -226,7 +226,7 @@ function SickLeaveWindowSetting({ store, onUpdated }) {
       <div className="flex items-center gap-2 flex-wrap">
         <input type="number" min="1" max="720" value={hours} onChange={(e) => setHours(e.target.value)} aria-label="Antal timer" className="w-24 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
         <span className="text-sm text-muted">timer</span>
-        <button onClick={save} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60">
+        <button onClick={save} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60">
           {saving ? "Gemmer..." : "Gem"}
         </button>
         {saved && <span className="text-xs text-success font-semibold">Gemt.</span>}
@@ -317,7 +317,7 @@ function LoginPolicySetting({ store, onPasswordUpdated, onLoginPolicyUpdated }) 
       </div>
 
       <div className="flex items-center gap-2">
-        <button onClick={save} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60">
+        <button onClick={save} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60">
           {saving ? "Gemmer..." : "Gem"}
         </button>
         {saved && <span className="text-xs text-success font-semibold">Gemt.</span>}
@@ -588,7 +588,7 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
             aria-label="Ny adgangskode"
             className="flex-1 min-w-[160px] rounded-lg border border-line bg-panel px-2 py-2 text-xs text-ink focus:outline-none focus:border-brand"
           />
-          <button onClick={reset} disabled={busy} className="px-3 py-2 rounded-lg text-[10px] font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60">
+          <button onClick={reset} disabled={busy} className="px-3 py-2 rounded-lg text-[10px] font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60">
             {busy ? "..." : "Sæt ny adgangskode"}
           </button>
           {resetMessage && <span className={`text-[11px] ${resetMessage.includes("nulstillet") ? "text-success" : "text-danger"}`}>{resetMessage}</span>}
@@ -666,7 +666,7 @@ function NewUserForm({ onAdd, passwordPolicy }) {
         </p>
       )}
       {error && <p className="text-xs text-danger mt-2">{error}</p>}
-      <button onClick={create} disabled={busy} className="mt-3 px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-60">
+      <button onClick={create} disabled={busy} className="mt-3 px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-60">
         <UserPlus size={15} aria-hidden="true" /> {busy ? "Opretter..." : "Opret bruger"}
       </button>
     </div>
@@ -685,7 +685,7 @@ function ProductCategoryAdmin({ productCategories, onAdd, onUpdate, onDelete }) 
         <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Opret ny varekategori</h3>
         <div className="flex gap-2">
           <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Fx 'Hvidevare'" aria-label="Navn på varekategori" className="flex-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-          <button onClick={() => { if (!newName.trim()) return; onAdd(newName.trim()); setNewName(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5"><Plus size={15} aria-hidden="true" /> Opret</button>
+          <button onClick={() => { if (!newName.trim()) return; onAdd(newName.trim()); setNewName(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5"><Plus size={15} aria-hidden="true" /> Opret</button>
         </div>
       </div>
       <div className="space-y-2">
@@ -761,7 +761,7 @@ function ProductTypeAdmin({ productTypes, productCategories, onAdd, onUpdate, on
             <option value="">Ingen kategori</option>
             {productCategories.map((k) => <option key={k.id} value={k.id}>{k.navn}</option>)}
           </select>
-          <button onClick={() => { if (!newName.trim()) return; onAdd(newName.trim(), newCategoryId || null); setNewName(""); setNewCategoryId(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5"><Plus size={15} aria-hidden="true" /> Opret</button>
+          <button onClick={() => { if (!newName.trim()) return; onAdd(newName.trim(), newCategoryId || null); setNewName(""); setNewCategoryId(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5"><Plus size={15} aria-hidden="true" /> Opret</button>
         </div>
       </div>
       <p className="text-[11px] text-muted mb-2">Hvilke tillægsydelser der er relevante for en varetype styres under fanen "Tillægsydelser" - vælg der hvilke varetyper hver tillægsydelse gælder for.</p>
@@ -809,7 +809,7 @@ function PrimaryServiceAdmin({ primaryServices, onAdd, onUpdate, onDelete }) {
         <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Opret ny primær ydelse</h3>
         <div className="flex gap-2 flex-wrap">
           <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Fx 'Montering'" aria-label="Navn på primær ydelse" className="flex-1 min-w-[160px] rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-          <button onClick={() => { if (!newName.trim()) return; onAdd(newName.trim()); setNewName(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5"><Plus size={15} aria-hidden="true" /> Opret</button>
+          <button onClick={() => { if (!newName.trim()) return; onAdd(newName.trim()); setNewName(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5"><Plus size={15} aria-hidden="true" /> Opret</button>
         </div>
       </div>
       <p className="text-[11px] text-muted mb-2">Hvilke tillægsydelser der er tilgængelige under en given primær ydelse styres under fanen "Tillægsydelser". Standardtid pr. varetype sættes under fanen "Standardtider".</p>
@@ -911,7 +911,7 @@ function AddOnServiceAdmin({ addOnServices, productTypes, primaryServices, onAdd
         <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Opret ny tillægsydelse</h3>
         <div className="flex gap-2 flex-wrap">
           <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Fx 'Dørvending'" aria-label="Navn på tillægsydelse" className="flex-1 min-w-[160px] rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-          <button onClick={() => { if (!newName.trim()) return; onAdd(newName.trim()); setNewName(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5"><Plus size={15} aria-hidden="true" /> Opret</button>
+          <button onClick={() => { if (!newName.trim()) return; onAdd(newName.trim()); setNewName(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5"><Plus size={15} aria-hidden="true" /> Opret</button>
         </div>
         <p className="text-[11px] text-muted mt-2">Efter oprettelse skal du sætte hvilke primære ydelser den gælder under (nedenfor på hver række) — ellers vises den aldrig i booking-flowet.</p>
       </div>

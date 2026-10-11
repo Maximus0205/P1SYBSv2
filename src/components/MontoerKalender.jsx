@@ -42,7 +42,7 @@ function DagRaekke({ navn, dag, raekke, std, onGem, onNulstil, disabled }) {
       <input id={id("slut")} aria-label={`${navn} slut`} type="time" value={d.slut} disabled={disabled || !d.arbejder} onChange={(e) => setD((p) => ({ ...p, slut: e.target.value }))} className={felt} />
       <input id={id("pause")} aria-label={`${navn} pause i minutter`} type="number" inputMode="numeric" value={d.pause} disabled={disabled || !d.arbejder} onChange={(e) => setD((p) => ({ ...p, pause: e.target.value }))} className={`${felt} w-20`} />
       <span className="text-xs text-muted">min pause</span>
-      {!disabled && aendret && <button onClick={gem} className={`${knap} text-white bg-ink hover:bg-brand`}>Gem</button>}
+      {!disabled && aendret && <button onClick={gem} className={`${knap} text-white bg-brand hover:bg-brand-dark`}>Gem</button>}
       {!disabled && raekke && <button onClick={() => onNulstil(dag)} className={`${knap} text-muted border border-line hover:border-brand`}>Brug standard</button>}
       {!raekke && <span className="text-[11px] text-muted">standard</span>}
       {fejl && <span role="alert" className="text-xs text-danger w-full">{fejl}</span>}
@@ -127,7 +127,7 @@ function MontoerKalender({ storeId, personer, maaRedigere = true }) {
               </select></div>
             <div><label htmlFor="kal-fra" className="block text-[11px] text-muted mb-1">{form.type === "vaek" ? "Fra" : "Kl."}</label><input id="kal-fra" type="time" value={form.fra} onChange={(e) => setForm((p) => ({ ...p, fra: e.target.value }))} className={felt} /></div>
             {form.type === "vaek" && <div><label htmlFor="kal-til" className="block text-[11px] text-muted mb-1">Til</label><input id="kal-til" type="time" value={form.til} onChange={(e) => setForm((p) => ({ ...p, til: e.target.value }))} className={felt} /></div>}
-            <button onClick={tilfoej} disabled={busy} className={`${knap} text-white bg-ink hover:bg-brand disabled:opacity-50`}>Tilføj</button>
+            <button onClick={tilfoej} disabled={busy} className={`${knap} text-white bg-brand hover:bg-brand-dark disabled:opacity-50`}>Tilføj</button>
           </div>
         )}
       </div>

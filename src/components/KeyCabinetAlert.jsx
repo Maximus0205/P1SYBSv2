@@ -94,7 +94,7 @@ export function KeyCabinetAlert({ matches, orderAddress }) {
               href={mapsUrl(cabinetMapsQuery(cabinet, orderAddress))}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-2.5 inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors"
+              className="mt-2.5 inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors"
             >
               <Navigation size={14} aria-hidden="true" /> Naviger til skabet
             </a>

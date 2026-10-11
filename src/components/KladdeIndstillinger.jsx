@@ -86,7 +86,7 @@ function KladdeIndstillinger({ storeId }) {
 
       <button
         onClick={gem} disabled={!aendret || busy}
-        className="mt-4 min-h-[44px] px-5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
+        className="mt-4 min-h-[44px] px-5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
       >
         {busy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />} {busy ? "Gemmer..." : "Gem"}
       </button>

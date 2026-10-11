@@ -196,7 +196,7 @@ function ReplanCard({ order, technicians, suggestion, loadingSuggestion, onApply
             {suggestion.montorNavn && ` · ${suggestion.montorNavn}`}
             <span className="text-muted"> — {suggestion.begrundelse}</span>
           </p>
-          <button onClick={() => onApplySuggestion(order, suggestion)} className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors rounded-lg px-3 py-2 flex items-center gap-1"><Check size={11} aria-hidden="true" /> Brug</button>
+          <button onClick={() => onApplySuggestion(order, suggestion)} className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors rounded-lg px-3 py-2 flex items-center gap-1"><Check size={11} aria-hidden="true" /> Brug</button>
         </div>
       ) : (
         <p className="text-[11px] text-muted italic mb-2">{order.senestDato ? "Intet forslag med en dækket bil fundet inden fristen — tildel manuelt nedenfor." : "Intet forslag med en dækket bil fundet inden for de næste 14 dage — tildel manuelt nedenfor."}</p>

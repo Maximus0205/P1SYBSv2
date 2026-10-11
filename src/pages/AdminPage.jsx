@@ -135,7 +135,7 @@ function AdminPage({
             <div className="flex gap-2 flex-wrap">
               <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Navn/tag, fx 'Bil 1'" className="flex-1 min-w-[160px] rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
               <input value={newPlate} onChange={(e) => setNewPlate(e.target.value)} placeholder="Nummerplade, fx 'AB 12 345'" className="flex-1 min-w-[160px] rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-              <button onClick={() => { if (!newName.trim() || !newPlate.trim()) return; onAddVehicle(newName.trim(), newPlate.trim()); setNewName(""); setNewPlate(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors flex items-center gap-1.5">
+              <button onClick={() => { if (!newName.trim() || !newPlate.trim()) return; onAddVehicle(newName.trim(), newPlate.trim()); setNewName(""); setNewPlate(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark transition-colors flex items-center gap-1.5">
                 <Plus size={15} /> Opret
               </button>
             </div>

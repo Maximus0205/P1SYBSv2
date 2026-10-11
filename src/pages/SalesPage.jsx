@@ -103,7 +103,7 @@ function SalesPage({ storeId, orders, technicians, personnel, timeOff, productTy
           <button onClick={() => setPanel(panel === "import" ? null : "import")} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-ink border border-ink hover:border-brand hover:text-brand transition-colors">
             Importér CSV
           </button>
-          <button onClick={() => (panel === "ny" ? setPanel(null) : startNy())} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors">
+          <button onClick={() => (panel === "ny" ? setPanel(null) : startNy())} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark transition-colors">
             + Book sag
           </button>
         </div>

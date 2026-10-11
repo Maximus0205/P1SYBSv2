@@ -17,7 +17,7 @@ const overskrift = "text-sm font-semibold uppercase tracking-wide text-ink mb-1"
 const hjaelp = "text-xs text-muted mb-3";
 const felt = "w-full min-h-[44px] rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand";
 const sekundaer = "min-h-[44px] px-4 rounded-lg text-xs font-semibold uppercase tracking-wide text-ink border border-line hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-50";
-const primaer = "min-h-[44px] px-5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-40";
+const primaer = "min-h-[44px] px-5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-40";
 
 const tilForm = (s) => ({
   enabled: s.enabled,

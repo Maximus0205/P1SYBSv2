@@ -90,7 +90,7 @@ function AccountSettingsModal({ store, onClose }) {
                 <button
                   onClick={enableBiometric}
                   disabled={biometricBusy}
-                  className="w-full px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-ink transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                  className="w-full px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
                 >
                   {biometricBusy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
                   {biometricBusy ? "Venter på telefonen..." : "Slå til på denne enhed"}
@@ -128,7 +128,7 @@ function AccountSettingsModal({ store, onClose }) {
             <button
               onClick={save}
               disabled={saving || pin.length !== PIN_LAENGDE}
-              className="w-full px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {saving && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
               {saving ? "Gemmer..." : "Gem PIN-kode"}

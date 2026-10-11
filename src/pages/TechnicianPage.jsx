@@ -625,7 +625,7 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
               ) : (
                 <div className="flex gap-2 flex-wrap">
                   {(!erIGang || pauset) && onStartOrder && (
-                    <button onClick={onStartOrder} className="flex-1 min-w-[150px] px-4 py-3.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center justify-center gap-2">
+                    <button onClick={onStartOrder} className="flex-1 min-w-[150px] px-4 py-3.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center justify-center gap-2">
                       <PlayCircle size={17} aria-hidden="true" /> {pauset ? "Genoptag opgave" : "Start opgave"}
                     </button>
                   )}

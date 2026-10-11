@@ -51,7 +51,7 @@ function Punkt1MaalTest() {
       <p className="text-xs text-muted mb-3">Indsæt adressen til en produktside på punkt1.dk (eller kun produkt-id). Kun systemadmin kan bruge det, og intet gemmes.</p>
       <div className="flex gap-2 flex-wrap mb-3">
         <input aria-label="Punkt1-adresse eller produkt-id" value={input} onChange={(e) => setInput(e.target.value)} className={`${felt} flex-1 min-w-[16rem]`} />
-        <button onClick={hent} disabled={busy} className="min-h-[44px] px-4 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-60">
+        <button onClick={hent} disabled={busy} className="min-h-[44px] px-4 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-60">
           {busy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Search size={14} aria-hidden="true" />} Hent mål
         </button>
       </div>

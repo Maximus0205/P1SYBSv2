@@ -232,7 +232,7 @@ function ArrivalSmsButton({ phone, customerName, variant }) {
           {!tolket.ok && !tolket.tom && <p role="alert" className="text-xs text-danger">{tolket.fejl}</p>}
           {!tolket.ok && tolket.tom && <p className="text-[11px] text-muted">Skriv kun “Fra” for én tid, eller begge for et interval (højst {MAKS_MINUTTER} min).</p>}
         </div>
-        <button type="button" onClick={sendEgen} disabled={!kanSendeEgen} className="mt-2 w-full min-h-[48px] rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-40">
+        <button type="button" onClick={sendEgen} disabled={!kanSendeEgen} className="mt-2 w-full min-h-[48px] rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-40">
           Send SMS
         </button>
           </>

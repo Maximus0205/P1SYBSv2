@@ -32,7 +32,7 @@ class ErrorBoundary extends React.Component {
             <p className="text-sm text-ink mb-3">Der opstod en uventet fejl. Fejlen er registreret automatisk.</p>
             <button
               onClick={() => window.location.reload()}
-              className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand transition-colors"
+              className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark transition-colors"
             >
               Genindlæs siden
             </button>

@@ -259,7 +259,7 @@ function KapacitetsLab({ stores = [] }) {
         <textarea aria-label="Indstillinger som JSON" value={indTekst} onChange={(e) => setIndTekst(e.target.value)} rows={14} className={`${felt} w-full mt-3`} /></details>
 
       <div className="flex items-center gap-3 flex-wrap mb-4">
-        <button onClick={koer} disabled={busy} className="min-h-[44px] px-5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-60">
+        <button onClick={koer} disabled={busy} className="min-h-[44px] px-5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-60">
           {busy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Play size={14} aria-hidden="true" />} Beregn dagen
         </button>
         <label className="flex items-center gap-2 text-sm text-ink"><input type="checkbox" checked={brugOrs} onChange={(e) => setBrugOrs(e.target.checked)} className="accent-brand" /> Brug rigtig køretid (ORS)</label>

@@ -126,7 +126,7 @@ function KapacitetsIndstillinger({ storeId, butikAdresse }) {
 
       {fejl && <p role="alert" className="text-xs text-danger mb-3 flex items-center gap-1.5"><AlertCircle size={13} className="shrink-0" aria-hidden="true" /> {fejl}</p>}
       {besked && <p role="status" className="text-xs text-success mb-3 flex items-center gap-1.5"><Check size={13} className="shrink-0" aria-hidden="true" /> {besked}</p>}
-      <button onClick={gem} disabled={!aendret || busy} className="min-h-[44px] px-5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none">
+      <button onClick={gem} disabled={!aendret || busy} className="min-h-[44px] px-5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none">
         {busy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />} {busy ? "Gemmer..." : "Gem indstillinger"}
       </button>
     </div>

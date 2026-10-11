@@ -43,7 +43,7 @@ function OrderDrafts({ kladder, onResume, onDiscard, antalTrin = 4, kompakt = fa
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => onResume(k)} className="min-h-[44px] px-4 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors">Fortsæt</button>
+                    <button type="button" onClick={() => onResume(k)} className="min-h-[44px] px-4 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors">Fortsæt</button>
                     <button type="button" onClick={() => setBekraeft(k.id)} aria-label={`Kassér kladden for ${navn}`} className="min-h-[44px] px-3 rounded-lg text-xs font-semibold uppercase tracking-wide text-muted hover:text-danger focus:outline-none focus:ring-2 focus:ring-danger">Kassér</button>
                   </div>
                 )}

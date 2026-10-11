@@ -82,7 +82,7 @@ function AddressNotesPanel({ addressNotes, address, onAdd, canAdd, canDelete, on
             />
             {error && <p className="text-xs text-danger mb-2">{error}</p>}
             <div className="flex gap-2">
-              <button onClick={submit} disabled={saving || !text.trim()} className="px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-50">
+              <button onClick={submit} disabled={saving || !text.trim()} className="px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-50">
                 {saving ? "Gemmer..." : "Gem"}
               </button>
               <button onClick={() => { setAdding(false); setText(""); setError(""); }} className="px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted focus:outline-none focus:ring-2 focus:ring-muted transition-colors">

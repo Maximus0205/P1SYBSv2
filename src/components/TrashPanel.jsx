@@ -105,7 +105,7 @@ function TrashPanel({ storeId, onClose }) {
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">
-                      <button type="button" onClick={() => gendan(row)} disabled={optaget} className="min-h-[44px] px-4 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60 flex items-center gap-1.5">
+                      <button type="button" onClick={() => gendan(row)} disabled={optaget} className="min-h-[44px] px-4 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60 flex items-center gap-1.5">
                         {optaget ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <RotateCcw size={13} aria-hidden="true" />} Gendan
                       </button>
                       <button type="button" onClick={() => setBekraeft(row.id)} disabled={optaget} aria-label={`Slet sag ${o.nr || ""} endeligt`} className="min-h-[44px] px-3 rounded-lg text-xs font-semibold uppercase tracking-wide text-muted hover:text-danger focus:outline-none focus:ring-2 focus:ring-danger disabled:opacity-60">Slet endeligt</button>

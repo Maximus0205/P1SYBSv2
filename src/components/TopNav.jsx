@@ -246,7 +246,7 @@ function TopNav({ page, onChange, user, onLogOut, notifications, onOpenOrder, al
                 onClick={() => onChange(s.key)}
                 aria-current={active ? "page" : undefined}
                 className={`flex items-center gap-1.5 px-3.5 py-2 shrink-0 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors focus:outline-none focus:ring-2 focus:ring-brand ${
-                  active ? "bg-white text-ink" : "bg-transparent text-[#C9C9C9] hover:text-white"
+                  active ? "bg-brand text-white" : "bg-transparent text-[#C9C9C9] hover:text-white"
                 }`}
               >
                 <Icon size={15} strokeWidth={2.5} aria-hidden="true" />

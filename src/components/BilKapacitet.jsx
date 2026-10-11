@@ -45,7 +45,7 @@ function BilRaekke({ bil, onUpdate }) {
       </fieldset>
       {fejl && <p role="alert" className="text-xs text-danger mt-2 flex items-center gap-1.5"><AlertCircle size={13} className="shrink-0" aria-hidden="true" /> {fejl}</p>}
       {besked && !aendret && <p role="status" className="text-xs text-success mt-2 flex items-center gap-1.5"><Check size={13} className="shrink-0" aria-hidden="true" /> {besked}</p>}
-      <button onClick={gem} disabled={!aendret} className="mt-3 min-h-[44px] px-4 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-50 disabled:pointer-events-none">Gem {bil.navn}</button>
+      <button onClick={gem} disabled={!aendret} className="mt-3 min-h-[44px] px-4 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-50 disabled:pointer-events-none">Gem {bil.navn}</button>
     </div>
   );
 }

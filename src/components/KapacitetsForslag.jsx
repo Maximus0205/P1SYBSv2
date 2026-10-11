@@ -39,7 +39,7 @@ function KapacitetsForslag({ sagId, adresse, minutter, tidsrumId, varelinjer, nu
           Fra og med
           <input type="date" value={fra} min={todayISO()} onChange={(e) => setFra(e.target.value)} className={`${felt} block mt-1`} />
         </label>
-        <button type="button" onClick={find} disabled={tilstand.fase === "henter" || !fra} className="min-h-[44px] px-4 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none">
+        <button type="button" onClick={find} disabled={tilstand.fase === "henter" || !fra} className="min-h-[44px] px-4 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none">
           {tilstand.fase === "henter" ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <CalendarClock size={14} aria-hidden="true" />}
           {tilstand.fase === "henter" ? "Søger..." : "Find nærmeste ledige dag"}
         </button>

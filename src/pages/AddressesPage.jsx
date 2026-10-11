@@ -58,7 +58,7 @@ function NewAddressNoteForm({ onAdd, storeFocus, storeKommuneKode, storePostnr }
       <button
         onClick={submit}
         disabled={saving || !address.trim() || !note.trim()}
-        className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
+        className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
       >
         <Plus size={14} aria-hidden="true" /> {saving ? "Gemmer..." : "Gem"}
       </button>
@@ -174,7 +174,7 @@ function NewKeyCabinetForm({ onAdd }) {
       <button
         onClick={submit}
         disabled={saving || !navn.trim() || !skabPlacering.trim() || !omraade.trim()}
-        className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
+        className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
       >
         <Plus size={14} aria-hidden="true" /> {saving ? "Gemmer..." : "Gem"}
       </button>
@@ -228,7 +228,7 @@ function KeyCabinetCard({ cabinet, canManage, onUpdate, onDelete }) {
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ekstra info (valgfri)" aria-label="Ekstra info" className="w-full rounded-lg border border-line bg-panel px-2 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
         </div>
         <div className="flex gap-2">
-          <button onClick={save} disabled={saving} className="px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60">{saving ? "Gemmer..." : "Gem"}</button>
+          <button onClick={save} disabled={saving} className="px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60">{saving ? "Gemmer..." : "Gem"}</button>
           <button onClick={cancel} className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted hover:text-ink">Fortryd</button>
         </div>
       </div>

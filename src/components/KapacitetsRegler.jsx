@@ -19,7 +19,7 @@ function Status({ fejl, besked }) {
     </>
   );
 }
-const knap = "mt-4 min-h-[44px] px-5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none";
+const knap = "mt-4 min-h-[44px] px-5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none";
 
 function KapacitetsRegler({ stores = [] }) {
   const [butik, setButik] = useState(stores[0]?.id || "");

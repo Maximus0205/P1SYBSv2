@@ -143,7 +143,7 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
         <p className="text-[11px] text-muted mb-3 flex items-center gap-1.5"><Lock size={11} className="shrink-0" aria-hidden="true" /> Nogle felter er låst - du mangler rettigheden til at redigere dem.</p>
       )}
       <div className="flex gap-2">
-        <button onClick={save} disabled={itemsInvalid || kapBlokeret} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"><Check size={14} aria-hidden="true" /> Gem ændringer</button>
+        <button onClick={save} disabled={itemsInvalid || kapBlokeret} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"><Check size={14} aria-hidden="true" /> Gem ændringer</button>
         <button onClick={onCancel} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted focus:outline-none focus:ring-2 focus:ring-muted transition-colors flex items-center gap-1.5"><X size={14} aria-hidden="true" /> Annuller</button>
       </div>
     </div>
@@ -372,7 +372,7 @@ function LineItemEditor({ order, catalog, onSave, onCancel, embedded = false, it
       {body}
 
       <div className="flex gap-2">
-        <button onClick={() => onSave(items)} disabled={items.length === 0} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none">
+        <button onClick={() => onSave(items)} disabled={items.length === 0} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none">
           <Check size={14} aria-hidden="true" /> Gem varelinjer
         </button>
         <button onClick={onCancel} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted focus:outline-none focus:ring-2 focus:ring-muted transition-colors flex items-center gap-1.5"><X size={14} aria-hidden="true" /> Annuller</button>
@@ -492,7 +492,7 @@ function DuplicatePanel({ order, onDuplicate, onCancel }) {
       {attempted && selected.size === 0 && <p className="text-xs text-danger mb-3">Vælg mindst én varelinje.</p>}
 
       <div className="flex gap-2">
-        <button onClick={submit} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5">
+        <button onClick={submit} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5">
           <Copy size={14} aria-hidden="true" /> Opret ny sag
         </button>
         <button onClick={onCancel} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted focus:outline-none focus:ring-2 focus:ring-muted transition-colors flex items-center gap-1.5"><X size={14} aria-hidden="true" /> Annuller</button>

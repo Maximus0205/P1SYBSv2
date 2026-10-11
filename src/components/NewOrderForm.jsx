@@ -140,7 +140,7 @@ function PosLookupPanel({ storeId, onApply }) {
           aria-label={queryType === "telefon" ? "Telefonnummer" : "Ordre- eller fakturanummer"}
           className="flex-1 rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand"
         />
-        <button onClick={search} disabled={loading || !query.trim()} className="px-4 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-50 flex items-center gap-1.5 shrink-0">
+        <button onClick={search} disabled={loading || !query.trim()} className="px-4 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-50 flex items-center gap-1.5 shrink-0">
           {loading ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Search size={14} aria-hidden="true" />} Søg
         </button>
       </div>
@@ -657,7 +657,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
         {step < STEPS.length - 1 ? (
           <button
             onClick={goNext}
-            className="px-5 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1"
+            className="px-5 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1"
           >
             Næste <ChevronRight size={15} aria-hidden="true" />
           </button>
@@ -665,7 +665,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
           <button
             onClick={submit}
             disabled={saving || (!udenFastDato && !date) || !!fristFejl || (!udenFastDato && kapStatus.blokeret)}
-            className="px-5 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60 flex items-center gap-1.5"
+            className="px-5 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60 flex items-center gap-1.5"
           >
             <Check size={15} aria-hidden="true" /> {saving ? "Booker..." : udenFastDato ? "Opret tomgang" : erTomgang ? "Book tomgang" : "Book sag"}
           </button>

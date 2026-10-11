@@ -154,7 +154,7 @@ function QuickBookingWidget({ onNavigate, store }) {
       <div className="space-y-2">
         <button
           onClick={() => onNavigate("salg")}
-          className="w-full rounded-lg bg-ink hover:bg-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors py-4 flex flex-col items-center justify-center gap-1.5 text-white"
+          className="w-full rounded-lg bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors py-4 flex flex-col items-center justify-center gap-1.5 text-white"
         >
           <Plus size={20} aria-hidden="true" />
           <span className="text-sm font-semibold uppercase tracking-wide">Opret ny sag</span>
