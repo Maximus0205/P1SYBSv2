@@ -1,0 +1,42 @@
+// Regressionstest til lib/dagsplan.js (bygger motorens input til tidsbadget i Planlægning). Kør med: node tests/dagsplan.test.mjs
+import { bilTilMotor, personerTilMotor, beregnBilDag, badgeFraMotor } from "../src/lib/dagsplan.js";
+
+let pass = 0, fail = 0;
+const eq = (name, got, want) => {
+  const ok = JSON.stringify(got) === JSON.stringify(want);
+  if (ok) pass++; else { fail++; console.log("FAIL:", name, "\n  got: ", JSON.stringify(got), "\n  want:", JSON.stringify(want)); }
+};
+const IND = { koersel: { trafikTillaegPct: 0 } };
+const dato = "2026-11-09"; // mandag
+
+// bil
+eq("bil: felter og tempo", bilTilMotor({ id: "b1", navn: "Bil 1", tempo: "130", nyttelastKg: 1200, lasterum: { laengdeCm: 380, breddeCm: 170, hoejdeCm: 200 } }).tempo, 130);
+eq("bil: uden lasterum giver null, ikke 0", bilTilMotor({ id: "b1", nyttelastKg: 1000 }).lasterum, null);
+
+// personer
+const pers = [{ id: "p1", navn: "Kim", bilId: "b1" }, { id: "p2", navn: "Magnus", bilId: "b1" }, { id: "p3", navn: "Anden bil", bilId: "b2" }];
+const a = personerTilMotor({ dato, bilId: "b1", personnel: pers, timeOff: [], arbejdstider: [], uaendringer: [], indstillinger: IND });
+eq("personer: kun bilens personer, første er montør", a.personer.map((p) => [p.id, p.rolle]), [["p1", "montoer"], ["p2", "medhjaelper"]]);
+const b = personerTilMotor({ dato, bilId: "b1", personnel: pers, timeOff: [{ montorId: "p1", startDato: dato, slutDato: dato, type: "sygdom" }], arbejdstider: [], uaendringer: [], indstillinger: IND });
+eq("personer: syg montør udelades, næste bliver montør", b.personer.map((p) => [p.id, p.rolle]), [["p2", "montoer"]]);
+const c = personerTilMotor({ dato, bilId: "b1", personnel: pers, timeOff: [], arbejdstider: [{ person_id: "p1", weekday: 1, arbejder: false }], uaendringer: [{ person_id: "p2", dato, from_min: 480, to_min: 720 }], indstillinger: IND });
+eq("personer: fridag og ikke-tilgængelig tidsrum respekteres", c.personer.map((p) => [p.id, p.vinduer]), [["p2", [{ fra: 720, til: 960 }]]]);
+
+// dag
+const stop = (id, min, lat, lon) => ({ id, navn: id, minutter: min, lat, lon, varer: [] });
+const bil = bilTilMotor({ id: "b1", navn: "Bil 1" });
+const dag = beregnBilDag({ dato, bil, personer: a.personer, pauseMin: 30, stop: [stop("s1", 60, 55.4, 10.4), stop("s2", 60, 55.41, 10.41)], lager: { lat: 55.4, lon: 10.4 }, indstillinger: IND });
+const bdg = badgeFraMotor(dag);
+eq("dag: motor svarer og badge har minutter", [!!dag.res, bdg.minutter > 120, bdg.fejl], [true, true, null]);
+eq("dag: badge-tid er start til hjemme", bdg.minutter, dag.res.noegletal.slutMin - dag.res.noegletal.startMin);
+
+// overbelastet: 9 timers arbejde på en 8-timers dag
+const fuld = beregnBilDag({ dato, bil, personer: a.personer, pauseMin: 30, stop: [stop("s1", 540, 55.4, 10.4)], lager: { lat: 55.4, lon: 10.4 }, indstillinger: IND });
+eq("dag: for meget arbejde markeres overbelastet", badgeFraMotor(fuld).overbelastet, true);
+
+// fejl bliver synlig, ikke 0
+eq("fejl: motoren kaster -> fejl, ikke 0", typeof badgeFraMotor({ fejl: "x" }).fejl, "string");
+eq("fejl: ugyldigt input giver fejl-objekt eller gyldigt svar, aldrig undefined", (() => { const r = beregnBilDag({ dato, bil, personer: null, pauseMin: 0, stop: null, indstillinger: IND }); return !!(r.res || r.fejl); })(), true);
+
+console.log(`${pass} bestået, ${fail} fejlet`);
+if (fail) process.exit(1);
