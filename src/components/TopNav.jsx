@@ -112,7 +112,7 @@ function NotificationBell({ notifications, onOpenOrder }) {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-label={total > 0 ? `Notifikationer, ${total} nye` : "Notifikationer"}
-        className="relative w-10 h-10 rounded-lg bg-black border border-[#333] flex items-center justify-center text-[#C9C9C9] hover:text-white hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors"
+        className="relative w-10 h-10 rounded-lg bg-black border border-[#333] flex items-center justify-center text-brand hover:text-white hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors"
         title="Notifikationer"
       >
         <Bell size={16} aria-hidden="true" />
@@ -167,7 +167,7 @@ function StoreSwitcher({ store, isSystemAdmin, allStores, onSwitchStore, onExitS
           {(allStores || []).map((s) => <option key={s.id} value={s.id}>{s.navn}</option>)}
         </select>
         {onExitStoreView && (
-          <button onClick={onExitStoreView} aria-label="Tilbage til systemadministration" className="w-10 h-10 rounded-lg bg-black border border-[#333] flex items-center justify-center text-[#C9C9C9] hover:text-white hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors shrink-0" title="Tilbage til systemadministration">
+          <button onClick={onExitStoreView} aria-label="Tilbage til systemadministration" className="w-10 h-10 rounded-lg bg-black border border-[#333] flex items-center justify-center text-brand hover:text-white hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors shrink-0" title="Tilbage til systemadministration">
             <ArrowLeftRight size={15} aria-hidden="true" />
           </button>
         )}
@@ -215,7 +215,7 @@ function TopNav({ page, onChange, user, onLogOut, notifications, onOpenOrder, al
             <button
               onClick={onOpenAccountSettings}
               aria-label="Din konto (PIN-login m.v.)"
-              className="w-10 h-10 rounded-lg bg-black border border-[#333] flex items-center justify-center text-[#C9C9C9] hover:text-white hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors"
+              className="w-10 h-10 rounded-lg bg-black border border-[#333] flex items-center justify-center text-brand hover:text-white hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors"
               title="Din konto"
             >
               <KeyRound size={16} aria-hidden="true" />
