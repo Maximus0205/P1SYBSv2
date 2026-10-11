@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Check, AlertTriangle, Loader2, MapPin } from "lucide-react";
 import { searchAdressevaelger } from "../lib/geocodingAdressevaelger";
+import { hentAdresseKontekst } from "../lib/adresseKontekst";
 
 // ---------------------------------------------------------------------------
 // LIVE FØRSOG (september 2026): dette felt bruger nu Klimadatastyrelsens
@@ -89,23 +90,33 @@ function postalDistance(f, storePostnr) {
   return Math.abs(num - storeNum);
 }
 
-function AddressInput({ value, onChange, placeholder, onValidationChange, focus, kommunekode, storePostnr }) {
+function AddressInput({ value, onChange, placeholder, onValidationChange, focus, kommunekode: kommunekodeProp, storePostnr: storePostnrProp }) {
+  // Butikkens kommune/postnummer: eksplicitte props vinder; ellers butikkens egne (se lib/adresseKontekst.js), så relevans-sorteringen også
+  // virker i "Rediger booking". Læses ved hver søgning, så et butiksskifte straks slår igennem.
+  const kontekst = hentAdresseKontekst();
+  const kommunekode = kommunekodeProp ?? kontekst.kommunekode;
+  const storePostnr = storePostnrProp ?? kontekst.postnr;
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [status, setStatus] = useState("tom"); // tom | tjekker | gyldig | usikker
-  const selectedRef = useRef(false);
+  // Den tekst, feltet selv netop har sat ved et valg af forslag. Effekten springer KUN netop den tekst over (så et valg ikke straks udløser en ny
+  // søgning). RETTET (oktober 2026): før var det et flag, der blev sat ved valg og først ryddet, når teksten ændrede sig. Valgte man et forslag,
+  // der var identisk med den nuværende tekst (fx ved redigering af en eksisterende adresse), eller var teksten under 4 tegn, forblev flaget
+  // sat og SLUGTE den næste søgning - autoudfyld "holdt op med at virke", efter man havde brugt et forslag én gang.
+  const skipTekstRef = useRef(null);
   const blurTimerRef = useRef(null);
 
   useEffect(() => {
     if (!value || value.trim().length < 4) {
+      skipTekstRef.current = null;
       setStatus("tom");
       setSuggestions([]);
       onValidationChange?.("tom");
       return;
     }
-    if (selectedRef.current) {
-      selectedRef.current = false;
-      return;
+    if (skipTekstRef.current !== null) {
+      if (skipTekstRef.current === value) return;
+      skipTekstRef.current = null;
     }
 
     let cancelled = false;
@@ -178,15 +189,14 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus,
     // er valgt, så status forbliver "usikker" indtil da.
     if (f.type === "navngivenvejpostnummer" && f.vejnavn && f.postnr) {
       const vejTekst = `${f.vejnavn} ${f.postnr}`;
-      // Kun hvis teksten reelt ændrer sig, udløser onChange en effekt, der
-      // forbruger flaget - ellers ville næste tastetryk blive sprunget over.
-      selectedRef.current = vejTekst !== value;
+      skipTekstRef.current = vejTekst;
       onChange(vejTekst);
       setStatus("tjekker");
       const result = await searchAdressevaelger(`${f.vejnavn} ${f.postnr}`, undefined, ENDPOINT, undefined, HUSNUMRE_MAKSIMUM);
       const husnumre = (result.fund || []).filter((x) => x.type === "husnummer").sort(compareHusnumre);
       if (husnumre.length === 0) {
         // Ingen husnumre at vise - lad brugeren taste husnummeret selv.
+        skipTekstRef.current = f.titel;
         onChange(f.titel);
         setSuggestions([]);
         setShowSuggestions(false);
@@ -202,7 +212,7 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus,
     }
 
     if (f.type !== "husnummer" || !f.vejnavn || !f.husnummer) {
-      selectedRef.current = true;
+      skipTekstRef.current = f.titel;
       onChange(f.titel);
       setSuggestions([]);
       setShowSuggestions(false);
@@ -211,7 +221,7 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus,
       return;
     }
 
-    selectedRef.current = true;
+    skipTekstRef.current = f.titel;
     onChange(f.titel);
     setStatus("tjekker");
 
@@ -227,7 +237,7 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus,
       return;
     }
     if (specific.length === 1) {
-      selectedRef.current = true;
+      skipTekstRef.current = specific[0].titel;
       onChange(specific[0].titel);
       setSuggestions([]);
       setShowSuggestions(false);
