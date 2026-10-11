@@ -12,6 +12,7 @@ import { useAddressNotes } from "./hooks/useAddressNotes";
 import { useKeyCabinets } from "./hooks/useKeyCabinets";
 import { getAllStores, getStore, updateDashboardWidgets, saveStoreKommuneKode } from "./lib/dataStore";
 import { resolveStoreKommuneKode } from "./lib/geocodingAdressevaelger";
+import { saetAdresseKontekst } from "./lib/adresseKontekst";
 
 import { TopNav } from "./components/TopNav";
 import { LoginPage } from "./components/LoginPage";
@@ -305,6 +306,10 @@ export default function App() {
   // samme mønster) - ingen separat kolonne nødvendig, det er allerede
   // der.
   const storePostnr = effectiveStore?.adresse?.match(/\b(\d{4})\b/)?.[1] || null;
+
+  // Giver ALLE adressefelter (også "Rediger booking", der ikke får props) butikkens kommune/postnummer til relevans-sorteringen.
+  // Se lib/adresseKontekst.js.
+  useEffect(() => { saetAdresseKontekst({ kommunekode: storeKommuneKode, postnr: storePostnr }); }, [storeKommuneKode, storePostnr]);
 
   const switchStore = (storeId) => { setSickLeaveWindowOverride(null); setPasswordPolicyOverride(null); setLoginPolicyOverride(null); setActiveStoreId(storeId); };
   const exitStoreView = () => { setSickLeaveWindowOverride(null); setPasswordPolicyOverride(null); setLoginPolicyOverride(null); setActiveStoreId(null); };
