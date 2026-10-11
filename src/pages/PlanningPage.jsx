@@ -1,8 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertCircle, ArrowLeftRight, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, RefreshCw, KeyRound, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid, MapPin, Phone, Route, Stethoscope, CalendarX2, AlertTriangle } from "lucide-react";
-import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, dailyOrderCompare, needsPlanning, vehicleAbsences, vehicleHasCoverage, vehiclePaceFactor, buildingKey, timeSlotById } from "../data/domain";
-import { geocodeAddress, geocodeAddresses, drivingDistances, routeDrivingTime, optimalVisitOrder } from "../lib/geocoding";
-import { suggestPlan, planningWindow, WORKDAY_MINUTES } from "../lib/scheduling";
+import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, dailyOrderCompare, needsPlanning, vehicleAbsences, vehicleHasCoverage, buildingKey, timeSlotById } from "../data/domain";
+import { geocodeAddress, geocodeAddresses, drivingDistances, optimalVisitOrder } from "../lib/geocoding";
+import { suggestPlan, planningWindow } from "../lib/scheduling";
+import { ors } from "../adapters";
+import { hentKapacitetsIndstillinger, hentArbejdstider, hentUaendringer } from "../lib/kapacitetStore";
+import { tilMin } from "../engine/kapacitet";
+import { bilTilMotor, personerTilMotor, beregnBilDag, badgeFraMotor } from "../lib/dagsplan";
 import { DateSelector } from "../components/common";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 import { forslagsDatoer, fristStatus, urgensNoegle } from "../lib/frist";
@@ -394,10 +398,8 @@ function CollapsibleSection({ title, icon: Icon, colorClass, items, technicians,
   );
 }
 
-// WORKDAY_MINUTES importeres nu fra lib/scheduling.js (rettet august
-// 2026). Den var defineret HER OGSÅ, med samme værdi - så en ændring af
-// arbejdsdagens længde ét sted ville give en app, hvor forslagsmotoren og
-// overbelastnings-markeringen var uenige om, hvornår en dag er fuld.
+// Dagens tid i badget kommer fra kapacitetsmotoren (lib/dagsplan.js), ikke fra en fast arbejdsdag her. (WORKDAY_MINUTES bruges stadig af
+// forslagsmotoren i lib/scheduling.js.)
 function hoursLabel(minutes) {
   if (minutes === 0) return "–";
   const h = Math.floor(minutes / 60);
@@ -493,11 +495,27 @@ function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnician
   );
 }
 
-function DayTimeBadge({ minutes, overloaded, loading }) {
+function DayTimeBadge({ info, loading }) {
+  if (loading) {
+    return (
+      <span className="text-[11px] font-bold rounded-md px-2 py-0.5 flex items-center gap-1 shrink-0 bg-panel text-ink">
+        <Loader2 size={11} className="animate-spin shrink-0" aria-hidden="true" /> beregner...
+      </span>
+    );
+  }
+  if (!info) return null;
+  if (info.fejl) {
+    return (
+      <span title={info.titel} className="text-[11px] font-bold rounded-md px-2 py-0.5 flex items-center gap-1 shrink-0 bg-panel text-danger border border-danger">
+        <AlertTriangle size={11} className="shrink-0" aria-hidden="true" /> kan ikke beregnes
+      </span>
+    );
+  }
   return (
-    <span className={`text-[11px] font-bold rounded-md px-2 py-0.5 flex items-center gap-1 shrink-0 ${overloaded ? "bg-danger text-white" : "bg-panel text-ink"}`}>
-      {loading ? <Loader2 size={11} className="animate-spin shrink-0" aria-hidden="true" /> : null}
-      {loading ? "beregner..." : hoursLabel(minutes)}
+    <span title={info.titel} className={`text-[11px] font-bold rounded-md px-2 py-0.5 flex items-center gap-1 shrink-0 ${info.overbelastet ? "bg-danger text-white" : "bg-panel text-ink"}`}>
+      {info.overbelastet ? <AlertTriangle size={11} className="shrink-0" aria-hidden="true" /> : null}
+      {info.skoen ? "~" : ""}{hoursLabel(info.minutter)}
+      <span className="sr-only">{info.overbelastet ? " - dagen bryder et krav" : ""}{info.skoen ? " - køretiden er et skøn" : ""}</span>
     </span>
   );
 }
@@ -524,7 +542,7 @@ function TechnicianDaySection({ row, day, dayOrders, technicians, onOpen, onAssi
               {optimizing[optKey] ? <Loader2 size={11} className="animate-spin" aria-hidden="true" /> : <Route size={11} aria-hidden="true" />}
             </button>
           )}
-          {row.id && timeInfo.loadMinutes > 0 && <DayTimeBadge minutes={timeInfo.total} overloaded={timeInfo.overloaded} loading={timeInfo.stillLoading} />}
+          {row.id && timeInfo.antal > 0 && <DayTimeBadge info={timeInfo.badge} loading={timeInfo.stillLoading} />}
         </div>
       </div>
       {isOnLeave && <p className="text-[10px] font-semibold uppercase tracking-wide text-danger mb-1 flex items-center gap-0.5"><AlertCircle size={9} aria-hidden="true" /> Ingen montør til rådighed</p>}
@@ -559,14 +577,16 @@ function TechnicianDaySection({ row, day, dayOrders, technicians, onOpen, onAssi
 // MOBIL har sin egen udgave: dag-faner øverst + bil-sektionerne stablet
 // under hinanden. Fem kolonner ved siden af hinanden på en telefonskærm
 // ville give kort på under 70 px bredde - ulæselige og umulige at ramme.
-function WeekOverview({ orders, technicians, personnel, timeOff, store, onAssign, onReorder, onSetVisitOrder, onOpen }) {
+function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store, onAssign, onReorder, onSetVisitOrder, onOpen }) {
   const [open, setOpen] = useState(true);
   // Fra lørdag (og søndag) vises den KOMMENDE uge: de forløbne arbejdsdage er uden interesse (oktober 2026).
   const startUge = foersteArbejdsdagFra(todayISO());
   const [weekAnchor, setWeekAnchor] = useState(startUge);
   const [selectedDay, setSelectedDay] = useState(startUge);
-  const [driveMinutes, setDriveMinutes] = useState({});
-  const [driveLoading, setDriveLoading] = useState(false);
+  // dagsResultat: { "bilId|dato": badge-info fra kapacitetsmotoren }. Se lib/dagsplan.js.
+  const [dagsResultat, setDagsResultat] = useState({});
+  const [dagsLoading, setDagsLoading] = useState(false);
+  const [kapGrundlag, setKapGrundlag] = useState(null); // { indstillinger, arbejdstider, uaendringer } | { fejl }
   const [optimizing, setOptimizing] = useState({});
 
   const weekdays5 = weekDays(weekAnchor).slice(0, 5); // mandag-fredag
@@ -590,7 +610,6 @@ function WeekOverview({ orders, technicians, personnel, timeOff, store, onAssign
   const manglerDaekning = (vehicleId, day) => !!vehicleId && !vehicleHasCoverage(vehicleId, day, personnel, timeOff);
 
   const storeCoord = store?.lat != null && store?.lon != null ? { lat: store.lat, lon: store.lon } : null;
-  const minStopsForEstimate = storeCoord ? 1 : 2;
 
   const dayGroups = useMemo(() => {
     const map = {};
@@ -603,55 +622,89 @@ function WeekOverview({ orders, technicians, personnel, timeOff, store, onAssign
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders, technicians, weekAnchor]);
 
-  const signature = Object.entries(dayGroups)
-    .map(([key, list]) => `${key}:${list.map((o) => `${o.id}|${o.kunde?.adresse || ""}`).join(",")}`)
-    .join(";") + `|firma:${storeCoord ? `${storeCoord.lat},${storeCoord.lon}` : "ukendt"}`;
+  // KAPACITETSGRUNDLAG: butikkens indstillinger + personernes arbejdstider og "ikke tilgængelig"-tidsrum. Hentes når butikken skifter.
+  useEffect(() => {
+    let cancelled = false;
+    if (!store?.id) { setKapGrundlag({ fejl: "Butikken er ikke indlæst." }); return undefined; }
+    (async () => {
+      try {
+        const [indstillinger, arbejdstider, uaendringer] = await Promise.all([hentKapacitetsIndstillinger(store.id), hentArbejdstider(store.id), hentUaendringer(store.id, todayISO())]);
+        if (cancelled) return;
+        setKapGrundlag(indstillinger ? { indstillinger, arbejdstider, uaendringer } : { fejl: "Butikkens kapacitetsindstillinger kunne ikke hentes." });
+      } catch (e) {
+        if (!cancelled) setKapGrundlag({ fejl: `Kapacitetsindstillinger kunne ikke hentes: ${e?.message || e}` });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [store?.id]);
 
+  // Alt der kan ændre en bils dag, så beregningen kun køres igen når noget reelt er ændret.
+  const signature = Object.entries(dayGroups)
+    .map(([key, list]) => `${key}:${list.map((o) => `${o.id}|${o.kunde?.adresse || ""}|${o.tidsrumId || ""}|${o.start || ""}|${o.slut || ""}|${orderExpectedMinutes(o)}`).join(",")}`)
+    .join(";")
+    + `|firma:${storeCoord ? `${storeCoord.lat},${storeCoord.lon}` : "ukendt"}`
+    + `|pers:${(personnel || []).map((p) => `${p.id}>${p.bilId}`).join(",")}|fravaer:${(timeOff || []).map((f) => `${f.montorId}:${f.startDato}-${f.slutDato || ""}:${f.type || ""}`).join(",")}`
+    + `|bil:${technicians.map((t) => `${t.id}:${t.tempo ?? ""}`).join(",")}|vehicles:${(vehicles || []).map((v) => `${v.id}:${v.tempo ?? ""}:${v.nyttelastKg ?? ""}`).join(",")}`
+    + `|grundlag:${kapGrundlag ? (kapGrundlag.fejl ? "fejl" : "ok") : "henter"}`;
+
+  // BADGET = KAPACITETSMOTOREN (oktober 2026). Før regnede badget med en egen, ældre formel; nu køres motoren (planlaegDag) pr. bil og dag
+  // med bilens rigtige personer/arbejdstider og en rigtig køretidsmatrix (ORS). Svigter ruteopslaget, skønner motoren og badget får "~";
+  // svigter motoren eller grundlaget, vises "kan ikke beregnes" - aldrig et stille 0.
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      const relevantKeys = Object.keys(dayGroups).filter((k) => dayGroups[k].length >= minStopsForEstimate);
-      if (relevantKeys.length === 0) { setDriveMinutes({}); return; }
-      setDriveLoading(true);
+      if (!kapGrundlag) return;
+      const relevantKeys = Object.keys(dayGroups).filter((k) => dayGroups[k].length > 0);
+      if (relevantKeys.length === 0) { setDagsResultat({}); setDagsLoading(false); return; }
+      if (kapGrundlag.fejl) {
+        setDagsResultat(Object.fromEntries(relevantKeys.map((k) => [k, { minutter: null, overbelastet: false, fejl: kapGrundlag.fejl, titel: kapGrundlag.fejl }])));
+        setDagsLoading(false);
+        return;
+      }
+      setDagsLoading(true);
       const entries = await Promise.all(relevantKeys.map(async (key) => {
-        const list = dayGroups[key];
-        const addresses = list.map((o) => o.kunde?.adresse).filter(Boolean);
-        if (addresses.length === 0) return [key, null];
-        const coordMap = await geocodeAddresses(addresses);
-        const stopPoints = addresses.map((a) => coordMap.get(a.trim().toLowerCase())).filter(Boolean);
-        // RETTET (september 2026): firmaets adresse sættes nu i BEGGE
-        // ender af punktlisten, ikke kun først. routeDrivingTime lægger
-        // blot benene mellem på hinanden følgende punkter sammen - uden
-        // butikken gentaget til sidst manglede turen HJEM (sidste kunde
-        // -> butik), og en bils dag blev dermed systematisk undervurderet
-        // med præcis dét sidste stræk.
-        const points = storeCoord ? [storeCoord, ...stopPoints, storeCoord] : stopPoints;
-        const minutes = points.length >= 2 ? await routeDrivingTime(points) : null;
-        return [key, minutes];
+        try {
+          const [bilId, dato] = key.split("|");
+          const list = dayGroups[key];
+          const coordMap = await geocodeAddresses(list.map((o) => o.kunde?.adresse).filter(Boolean));
+          const stop = list.map((o) => {
+            const k = o.kunde?.adresse ? coordMap.get(o.kunde.adresse.trim().toLowerCase()) : null;
+            const slot = timeSlotById(o.tidsrumId || "heldag");
+            const fra = tilMin(o.start || slot.start); const til = tilMin(o.slut || slot.slut);
+            const heldag = (o.tidsrumId || "heldag") === "heldag";
+            return {
+              id: String(o.id), navn: o.kunde?.navn || buildTitle(o.varelinjer) || "Sag", adresse: o.kunde?.adresse || "", lat: k?.lat ?? null, lon: k?.lon ?? null,
+              minutter: orderExpectedMinutes(o), tidsrum: !heldag && fra !== null && til !== null ? { fra, til } : null,
+              // Sagerne har endnu hverken vægt eller mål pr. vare: motoren regner derfor kun TID her (ikke last/plads) og siger det i sine advarsler.
+              varer: (o.varelinjer || []).map((l) => ({ id: String(l.id), navn: l.varetypeNavn || "Vare", type: l.varetypeNavn || "", antal: 1, vaegtKg: null, maal: null })),
+            };
+          });
+          const vRow = (vehicles || []).find((v) => v.id === bilId);
+          const tRow = technicians.find((t) => t.id === bilId);
+          const bil = bilTilMotor(vRow, tRow);
+          const { personer, pauseMin } = personerTilMotor({ dato, bilId, personnel, timeOff, arbejdstider: kapGrundlag.arbejdstider, uaendringer: kapGrundlag.uaendringer, indstillinger: kapGrundlag.indstillinger });
+          const lager = storeCoord ? { id: "lager", lat: storeCoord.lat, lon: storeCoord.lon } : undefined;
+          let matrix;
+          const punkter = [...(lager ? [lager] : []), ...stop.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lon)).map((s) => ({ id: s.id, lat: s.lat, lon: s.lon }))];
+          if (punkter.length >= 2) { try { matrix = await ors.koerselsmatrix(punkter); } catch (_) { matrix = null; } }
+          return [key, badgeFraMotor(beregnBilDag({ dato, bil, personer, pauseMin, stop, matrix, lager, indstillinger: kapGrundlag.indstillinger }))];
+        } catch (e) {
+          const fejl = `Beregningen fejlede: ${e?.message || e}`;
+          return [key, { minutter: null, overbelastet: false, fejl, titel: fejl }];
+        }
       }));
-      if (!cancelled) { setDriveMinutes(Object.fromEntries(entries)); setDriveLoading(false); }
+      if (!cancelled) { setDagsResultat(Object.fromEntries(entries)); setDagsLoading(false); }
     };
     run();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature]);
 
-  // TEMPO PR. BIL (september 2026, rettet): vehiclePaceFactor (domain.js)
-  // slår op i "technicians" (BIL-rækkerne, hver med sit eget tempo-felt),
-  // IKKE i personnel - se noten ved funktionen for hvorfor. En bil sat til
-  // fx 130% gør dens dag se 30% mere fyldt ud her, UDEN at nogen har rørt
-  // sagens egne tal. Rundes til hele minutter, så tallet ikke ser
-  // kunstigt præcist ud.
+  // timeFor leverer nu KUN motorens resultat til badget (se effekten ovenfor) - ingen egen formel mere.
   const timeFor = (vehicleId, day, dayOrdersForCell) => {
-    const key = `${vehicleId}|${day}`;
-    const rawLoadMinutes = dayOrdersForCell.reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
-    const pace = vehicleId ? vehiclePaceFactor(vehicleId, technicians) : 1;
-    const loadMinutes = Math.round(rawLoadMinutes * pace);
-    const drive = vehicleId ? driveMinutes[key] : undefined;
-    const total = loadMinutes + (drive || 0);
-    const overloaded = total > WORKDAY_MINUTES;
-    const stillLoading = !!vehicleId && driveLoading && dayOrdersForCell.length >= minStopsForEstimate && drive === undefined;
-    return { loadMinutes, total, overloaded, stillLoading };
+    const badge = vehicleId ? dagsResultat[`${vehicleId}|${day}`] : undefined;
+    const stillLoading = !!vehicleId && dayOrdersForCell.length > 0 && badge === undefined && (dagsLoading || !kapGrundlag);
+    return { antal: dayOrdersForCell.length, badge, stillLoading };
   };
 
   // FORESLÅ BEDSTE BESØGSRÆKKEFØLGE - RETTET (september 2026)
@@ -681,7 +734,7 @@ function WeekOverview({ orders, technicians, personnel, timeOff, store, onAssign
   // startpunkt, den aldrig vender tilbage til som et "stop" undervejs. At
   // gentage butikken her ville forvirre algoritmen (den ville forsøge at
   // indsætte "butikken" et sted midt i ruten som et stop, der skal
-  // besøges). Det er en anden beregning end driveMinutes ovenfor, som blot
+  // besøges). Det er en anden beregning end badgets (kapacitetsmotoren, se dagsResultat ovenfor), som blot
   // lægger strækninger sammen og derfor trygt kan have butikken i begge
   // ender.
   const optimizeDay = async (vehicleId, day, dayOrders) => {
@@ -776,10 +829,10 @@ function WeekOverview({ orders, technicians, personnel, timeOff, store, onAssign
             {storeCoord ? <Building2 size={11} className="shrink-0" aria-hidden="true" /> : <Car size={11} className="shrink-0" aria-hidden="true" />}
             <span className="hidden sm:inline">
               {storeCoord
-                ? "Tidstal inkluderer kørsel tur/retur fra firmaets adresse og mellem dagens stop, bilens eget tempo (Admin -> Biler), samt arbejdstid. Rute-ikonet foreslår bedste besøgsrækkefølge inden for hver sags tidsramme."
-                : "Tidstal inkluderer kørsel mellem dagens stop, bilens eget tempo og arbejdstid (sæt butikkens adresse op under Admin for turen ud fra og hjem til firmaet)."}
+                ? "Tidstal = dagens forløb fra start til bilen er hjemme, beregnet af kapacitetsmotoren: lagerlæsning, kørsel tur/retur fra firmaets adresse og mellem stop, bilens tempo, pause og personernes arbejdstid. Rød = dagen bryder et krav; ~ = køretiden er et skøn. Hold musen over tallet for detaljer."
+                : "Tidstal = dagens forløb beregnet af kapacitetsmotoren (kørsel mellem stop, bilens tempo, pause og arbejdstid). Sæt butikkens adresse op under Admin for lagerlæsning og turen ud fra og hjem til firmaet."}
             </span>
-            <span className="sm:hidden">Tal = arbejde (justeret for bilens tempo) + estimeret kørsel tur/retur.</span>
+            <span className="sm:hidden">Tal = dagens forløb fra start til hjemme (kapacitetsmotoren). Rød = bryder et krav.</span>
           </p>
 
           {/* ------- MOBIL: dag-faner (man-fre) + stak af bil-sektioner ------- */}
@@ -919,7 +972,7 @@ function PlanningPage({ orders, technicians, personnel, vehicles, timeOff, store
         </div>
       ) : (
         <>
-          <WeekOverview orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} store={store} onAssign={onAssign} onReorder={onReorder} onSetVisitOrder={onSetVisitOrder} onOpen={onOpen} />
+          <WeekOverview orders={orders} technicians={technicians} personnel={personnel} vehicles={vehicles} timeOff={timeOff} store={store} onAssign={onAssign} onReorder={onReorder} onSetVisitOrder={onSetVisitOrder} onOpen={onOpen} />
 
           <div className="mb-4">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-ink mb-2 flex items-center gap-1.5"><AlertCircle size={15} className="text-danger" aria-hidden="true" /> Kræver handling</h2>
