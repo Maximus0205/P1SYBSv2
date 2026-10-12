@@ -9,6 +9,7 @@ import { tilMin } from "../engine/kapacitet";
 import { bilTilMotor, personerTilMotor, beregnBilDag, badgeFraMotor } from "../lib/dagsplan";
 import { DateSelector } from "../components/common";
 import { OrderCardCompact } from "../components/OrderCardCompact";
+import { DagensHold } from "../components/DagensHold";
 import { forslagsDatoer, fristStatus, urgensNoegle } from "../lib/frist";
 import { foersteArbejdsdagFra } from "../lib/arbejdsuge";
 import { samlFravaer } from "../lib/fravaer";
@@ -577,7 +578,7 @@ function TechnicianDaySection({ row, day, dayOrders, technicians, onOpen, onAssi
 // MOBIL har sin egen udgave: dag-faner øverst + bil-sektionerne stablet
 // under hinanden. Fem kolonner ved siden af hinanden på en telefonskærm
 // ville give kort på under 70 px bredde - ulæselige og umulige at ramme.
-function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store, onAssign, onReorder, onSetVisitOrder, onOpen }) {
+function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store, crew, onSaveDayCrew, onAssign, onReorder, onSetVisitOrder, onOpen }) {
   const [open, setOpen] = useState(true);
   // Fra lørdag (og søndag) vises den KOMMENDE uge: de forløbne arbejdsdage er uden interesse (oktober 2026).
   const startUge = foersteArbejdsdagFra(todayISO());
@@ -645,6 +646,7 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
     + `|firma:${storeCoord ? `${storeCoord.lat},${storeCoord.lon}` : "ukendt"}`
     + `|pers:${(personnel || []).map((p) => `${p.id}>${p.bilId}`).join(",")}|fravaer:${(timeOff || []).map((f) => `${f.montorId}:${f.startDato}-${f.slutDato || ""}:${f.type || ""}`).join(",")}`
     + `|bil:${technicians.map((t) => `${t.id}:${t.tempo ?? ""}`).join(",")}|vehicles:${(vehicles || []).map((v) => `${v.id}:${v.tempo ?? ""}:${v.nyttelastKg ?? ""}`).join(",")}`
+    + `|hold:${(crew?.helpers || []).map((h) => `${h.dato}:${h.personId}>${h.vehicleId}`).join(",")}`
     + `|grundlag:${kapGrundlag ? (kapGrundlag.fejl ? "fejl" : "ok") : "henter"}`;
 
   // BADGET = KAPACITETSMOTOREN (oktober 2026). Før regnede badget med en egen, ældre formel; nu køres motoren (planlaegDag) pr. bil og dag
@@ -674,6 +676,7 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
             const heldag = (o.tidsrumId || "heldag") === "heldag";
             return {
               id: String(o.id), navn: o.kunde?.navn || buildTitle(o.varelinjer) || "Sag", adresse: o.kunde?.adresse || "", lat: k?.lat ?? null, lon: k?.lon ?? null,
+              kraever2Mand: !!o.toMand,
               minutter: orderExpectedMinutes(o), tidsrum: !heldag && fra !== null && til !== null ? { fra, til } : null,
               // Sagerne har endnu hverken vægt eller mål pr. vare: motoren regner derfor kun TID her (ikke last/plads) og siger det i sine advarsler.
               varer: (o.varelinjer || []).map((l) => ({ id: String(l.id), navn: l.varetypeNavn || "Vare", type: l.varetypeNavn || "", antal: 1, vaegtKg: null, maal: null })),
@@ -682,7 +685,8 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
           const vRow = (vehicles || []).find((v) => v.id === bilId);
           const tRow = technicians.find((t) => t.id === bilId);
           const bil = bilTilMotor(vRow, tRow);
-          const { personer, pauseMin } = personerTilMotor({ dato, bilId, personnel, timeOff, arbejdstider: kapGrundlag.arbejdstider, uaendringer: kapGrundlag.uaendringer, indstillinger: kapGrundlag.indstillinger });
+          const hjaelperIds = (crew?.helpers || []).filter((h) => h.dato === dato && h.vehicleId === bilId).map((h) => h.personId);
+          const { personer, pauseMin } = personerTilMotor({ dato, bilId, personnel, timeOff, arbejdstider: kapGrundlag.arbejdstider, uaendringer: kapGrundlag.uaendringer, indstillinger: kapGrundlag.indstillinger, hjaelperIds });
           const lager = storeCoord ? { id: "lager", lat: storeCoord.lat, lon: storeCoord.lon } : undefined;
           let matrix;
           const punkter = [...(lager ? [lager] : []), ...stop.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lon)).map((s) => ({ id: s.id, lat: s.lat, lon: s.lon }))];
@@ -835,6 +839,18 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
             <span className="sm:hidden">Tal = dagens forløb fra start til hjemme (kapacitetsmotoren). Rød = bryder et krav.</span>
           </p>
 
+          {/* Dagens medhjælpere pr. bil (oktober 2026) - for den valgte dag. Vises kun, hvis butikken har medhjælpere. */}
+          {crew && onSaveDayCrew && (
+            <>
+              <div className="flex gap-1.5 overflow-x-auto px-3 pt-2" role="group" aria-label="Vælg dag for medhjælpere">
+                {weekdays5.map((d) => (
+                  <button key={d} onClick={() => setSelectedDay(d)} aria-pressed={d === selectedDay} className={`shrink-0 px-3 h-9 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-brand ${d === selectedDay ? "bg-brand text-white" : "text-muted border border-line hover:bg-panel"}`}>{shortDayLabel(d)} {new Date(d + "T00:00:00").getDate()}.</button>
+                ))}
+              </div>
+              <DagensHold dato={selectedDay} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} kapGrundlag={kapGrundlag} crew={crew} onSave={onSaveDayCrew} />
+            </>
+          )}
+
           {/* ------- MOBIL: dag-faner (man-fre) + stak af bil-sektioner ------- */}
           <div className="md:hidden">
             <div className="flex gap-1.5 overflow-x-auto px-3 py-2 border-b border-divider" role="tablist" aria-label="Vælg ugedag">
@@ -914,7 +930,7 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
   );
 }
 
-function PlanningPage({ orders, technicians, personnel, vehicles, timeOff, store, selectedDate, onDateChange, onOpen, onAssign, onReorder, onSetVisitOrder, onUpdateBooking, onClearProblem, onUpdateTechnician, onRefresh, refreshing }) {
+function PlanningPage({ orders, technicians, personnel, vehicles, timeOff, store, crew, onSaveDayCrew, selectedDate, onDateChange, onOpen, onAssign, onReorder, onSetVisitOrder, onUpdateBooking, onClearProblem, onUpdateTechnician, onRefresh, refreshing }) {
   const [search, setSearch] = useState("");
   const [openTile, setOpenTile] = useState(null);
   const { fravaer, needsPlan, unresolved, inProgressToday, upcoming, done } = useMemo(
@@ -972,7 +988,7 @@ function PlanningPage({ orders, technicians, personnel, vehicles, timeOff, store
         </div>
       ) : (
         <>
-          <WeekOverview orders={orders} technicians={technicians} personnel={personnel} vehicles={vehicles} timeOff={timeOff} store={store} onAssign={onAssign} onReorder={onReorder} onSetVisitOrder={onSetVisitOrder} onOpen={onOpen} />
+          <WeekOverview orders={orders} technicians={technicians} personnel={personnel} vehicles={vehicles} timeOff={timeOff} store={store} crew={crew} onSaveDayCrew={onSaveDayCrew} onAssign={onAssign} onReorder={onReorder} onSetVisitOrder={onSetVisitOrder} onOpen={onOpen} />
 
           <div className="mb-4">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-ink mb-2 flex items-center gap-1.5"><AlertCircle size={15} className="text-danger" aria-hidden="true" /> Kræver handling</h2>

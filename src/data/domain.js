@@ -491,6 +491,7 @@ const DEFAULT_DASHBOARD_WIDGETS = {
   saelger: ["quick_booking", "needs_action", "upcoming_today", "notifications"],
   montor: ["today_route", "notifications"],
   lager: ["pick_list"],
+  medhjaelper: ["today_route", "notifications"],
 };
 
 export {

@@ -809,6 +809,70 @@ export async function endSickLeave(timeOffId) {
   return true;
 }
 
+// ---------- Hold: makkerpar, "kører alene" og dagens medhjælpere (oktober 2026) ----------
+// crew_pairs (fast makker), crew_solo (kører alene), day_helpers (hvilken medhjælper kører med hvilken bil en given dag).
+// RLS: alle i butikken læser; skrivning kræver planlægning/montør-administration (se databasen).
+// day_helpers hentes fra 90 dage tilbage og frem: historikken bruges til at fordele retfærdigt (lib/holdForslag.js).
+
+export async function getCrew(storeId) {
+  const tom = { pairs: [], solo: [], helpers: [] };
+  if (!storeId) return tom;
+  const fra = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+  const [p, a, h] = await Promise.all([
+    supabase.from("crew_pairs").select("montor_id, helper_id").eq("store_id", storeId),
+    supabase.from("crew_solo").select("person_id").eq("store_id", storeId),
+    supabase.from("day_helpers").select("dato, person_id, vehicle_id").eq("store_id", storeId).gte("dato", fra),
+  ]);
+  const fejl = p.error || a.error || h.error;
+  if (fejl) {
+    logDbError("dataStore:getCrew", "Could not load crew", fejl);
+    return tom;
+  }
+  return {
+    pairs: (p.data || []).map((r) => ({ montorId: r.montor_id, helperId: r.helper_id })),
+    solo: (a.data || []).map((r) => r.person_id),
+    helpers: (h.data || []).map((r) => ({ dato: r.dato, personId: r.person_id, vehicleId: r.vehicle_id })),
+  };
+}
+
+// Sætter (eller fjerner, hvis helperId er null) montørens faste makker. En medhjælper har højst én fast montør, så en evt.
+// eksisterende kobling for medhjælperen fjernes først.
+export async function setCrewPair(storeId, montorId, helperId) {
+  if (helperId) {
+    const r = await supabase.from("crew_pairs").delete().eq("store_id", storeId).eq("helper_id", helperId).neq("montor_id", montorId);
+    if (r.error) { logWriteError("dataStore:setCrewPair", "Could not clear helper pair", r.error, "Makkerparret blev ikke gemt:"); return false; }
+    const u = await supabase.from("crew_pairs").upsert({ store_id: storeId, montor_id: montorId, helper_id: helperId }, { onConflict: "store_id,montor_id" });
+    if (u.error) { logWriteError("dataStore:setCrewPair", "Could not save pair", u.error, "Makkerparret blev ikke gemt:"); return false; }
+    return true;
+  }
+  const d = await supabase.from("crew_pairs").delete().eq("store_id", storeId).eq("montor_id", montorId);
+  if (d.error) { logWriteError("dataStore:setCrewPair", "Could not remove pair", d.error, "Makkerparret blev ikke fjernet:"); return false; }
+  return true;
+}
+
+export async function setCrewSolo(storeId, personId, alene) {
+  const q = alene
+    ? await supabase.from("crew_solo").upsert({ store_id: storeId, person_id: personId }, { onConflict: "store_id,person_id" })
+    : await supabase.from("crew_solo").delete().eq("store_id", storeId).eq("person_id", personId);
+  if (q.error) { logWriteError("dataStore:setCrewSolo", "Could not save solo flag", q.error, "Indstillingen blev ikke gemt:"); return false; }
+  return true;
+}
+
+// Gemmer HELE dagens medhjælper-hold: nye/ændrede rækker først, derefter fjernes de, der ikke længere er med - så der aldrig er et
+// øjeblik uden hold, og en fejl midtvejs ikke sletter noget.
+export async function saveDayHelpers(storeId, dato, tildelinger, createdBy) {
+  const rows = tildelinger.map((t) => ({ store_id: storeId, dato, person_id: t.personId, vehicle_id: t.vehicleId, created_by: createdBy || null }));
+  if (rows.length > 0) {
+    const u = await supabase.from("day_helpers").upsert(rows, { onConflict: "store_id,dato,person_id" });
+    if (u.error) { logWriteError("dataStore:saveDayHelpers", "Could not save day helpers", u.error, "Dagens hold blev ikke gemt:"); return false; }
+  }
+  let del = supabase.from("day_helpers").delete().eq("store_id", storeId).eq("dato", dato);
+  if (rows.length > 0) del = del.not("person_id", "in", `(${rows.map((r) => r.person_id).join(",")})`);
+  const d = await del;
+  if (d.error) { logWriteError("dataStore:saveDayHelpers", "Could not prune day helpers", d.error, "Dagens hold blev kun delvist gemt:"); return false; }
+  return true;
+}
+
 // Admin (eller systemadmin) retter navn/rolle/bil/butik på en bruger.
 //
 // BUTIKSSKIFT: butik_id er den vej, en medarbejder flyttes til en anden

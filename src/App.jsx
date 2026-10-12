@@ -6,6 +6,7 @@ import { useSession } from "./hooks/useSession";
 import { useCatalog } from "./hooks/useCatalog";
 import { useVehicles } from "./hooks/useVehicles";
 import { useTimeOff } from "./hooks/useTimeOff";
+import { useCrew } from "./hooks/useCrew";
 import { useUsers } from "./hooks/useUsers";
 import { useOrders } from "./hooks/useOrders";
 import { useAddressNotes } from "./hooks/useAddressNotes";
@@ -15,6 +16,7 @@ import { resolveStoreKommuneKode } from "./lib/geocodingAdressevaelger";
 import { saetAdresseKontekst } from "./lib/adresseKontekst";
 
 import { TopNav } from "./components/TopNav";
+import { DateSelector } from "./components/common";
 import { LoginPage } from "./components/LoginPage";
 import { OrderView } from "./components/OrderView";
 import { AccountSettingsModal } from "./components/AccountSettingsModal";
@@ -44,14 +46,17 @@ import { SystemAdminPage } from "./pages/SystemAdminPage";
 // eller admin, der tager en rute en gang imellem, skal ikke have en ekstra
 // brugerkonto. To konti for samme menneske spreder sagerne over to navne
 // og sender notifikationer til den forkerte af dem.
-const koererSelv = (bruger) => bruger?.rolle === "montor" || bruger?.kanKoere === true;
+//
+// MEDHJÆLPER (oktober 2026): ekstra bemanding uden montørevner. Ser dagens tur ligesom en montør, men bilen kommer fra dagens
+// hold (day_helpers), ikke fra en fast bil - se MontorRoute.
+const koererSelv = (bruger) => bruger?.rolle === "montor" || bruger?.rolle === "medhjaelper" || bruger?.kanKoere === true;
 
 function Gate({ allowed, page, children }) {
   if (!allowed.includes(page)) return <Navigate to={`/${allowed[0] || "dashboard"}`} replace />;
   return children;
 }
 
-function OrderRoute({ profile, storeId, orders, technicians, personnel, ordersStore, duplicateOrder, permissions, catalog, addressNotes, keyCabinets }) {
+function OrderRoute({ profile, storeId, orders, technicians, personnel, crew, ordersStore, duplicateOrder, permissions, catalog, addressNotes, keyCabinets }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const order = orders.find((o) => o.id === id);
@@ -116,7 +121,11 @@ function OrderRoute({ profile, storeId, orders, technicians, personnel, ordersSt
         udfoerteLinjeIds, note,
         af: { id: profile.id, navn: profile.navn },
         bilNavn: bil ? bil.navn.replace(/\s*\([^)]*\)\s*$/, "") : null,
-        montoerer: (personnel || []).filter((p) => order.bilId && p.bilId === order.bilId).map((p) => ({ id: p.id, navn: p.navn })),
+        // Fast tilknyttede montører + dagens medhjælpere på bilen (dagens hold), så også de forbliver synlige på sagen.
+        montoerer: [
+          ...(personnel || []).filter((p) => order.bilId && p.bilId === order.bilId && p.rolle !== "medhjaelper"),
+          ...(crew?.helpers || []).filter((h) => order.bilId && order.dato && h.vehicleId === order.bilId && h.dato === order.dato).map((h) => (personnel || []).find((p) => p.id === h.personId)).filter(Boolean),
+        ].map((p) => ({ id: p.id, navn: p.navn })),
       });
     },
     onOpenOrder: (targetId) => navigate(`/sag/${targetId}`),
@@ -190,8 +199,19 @@ function OrderRoute({ profile, storeId, orders, technicians, personnel, ordersSt
 // er tildelt bilen. Vejen dertil går via den RÅ vehicles-liste, ikke via
 // "technicians" (som nu er assignment-rækker til dropdowns, se App() -
 // mere direkte og uafhængigt af, hvordan de rækker er sat sammen).
-function MontorRoute({ profile, vehicles, orders, ordersStore, keyCabinets, refresh, refreshing, selectedDate, onDateChange, onOpen }) {
-  const ownVehicle = vehicles.find((v) => v.id === profile.bilId);
+function MontorRoute({ profile, vehicles, orders, ordersStore, keyCabinets, crew, refresh, refreshing, selectedDate, onDateChange, onOpen }) {
+  // En medhjælper har ingen fast bil: bilen er den, vedkommende er sat på den valgte dag (Planlægning -> medhjælpere denne dag).
+  const erMedhjaelper = profile.rolle === "medhjaelper";
+  const dagensBilId = erMedhjaelper ? crew?.helpers?.find((h) => h.personId === profile.id && h.dato === selectedDate)?.vehicleId : profile.bilId;
+  const ownVehicle = vehicles.find((v) => v.id === dagensBilId);
+  if (!ownVehicle && erMedhjaelper) {
+    return (
+      <div>
+        <DateSelector value={selectedDate} onChange={onDateChange} />
+        <p className="text-sm text-muted mt-3">Du er ikke sat på en bil denne dag endnu. Planlæggeren sætter dagens hold i Planlægning — prøv en anden dag, eller tjek igen senere.</p>
+      </div>
+    );
+  }
   if (!ownVehicle) {
     return (
       <p className="text-sm text-muted">
@@ -273,6 +293,7 @@ export default function App() {
   const catalog = useCatalog(activeStoreId || null);
   const vehiclesStore = useVehicles(activeStoreId || null);
   const timeOffStore = useTimeOff(activeStoreId || null);
+  const crewStore = useCrew(activeStoreId || null);
   const usersStore = useUsers(activeStoreId || null);
   const ordersStore = useOrders(activeStoreId || null);
   const addressNotesStore = useAddressNotes(activeStoreId || null);
@@ -402,10 +423,10 @@ export default function App() {
   // (det var netop fejlen), og et fravær kan ikke registreres på en bil.
   const personnel = users
     .filter(koererSelv)
-    .map((b) => ({ id: b.id, navn: b.navn, bilId: b.bilId || null }));
+    .map((b) => ({ id: b.id, navn: b.navn, bilId: b.bilId || null, rolle: b.rolle }));
 
   const technicians = vehicles.map((v) => {
-    const drivere = personnel.filter((p) => p.bilId === v.id);
+    const drivere = personnel.filter((p) => p.bilId === v.id && p.rolle !== "medhjaelper");
     const navn = drivere.length > 0 ? `${v.navn} (${drivere.map((d) => d.navn).join(", ")})` : `${v.navn} (ingen montør)`;
     return { id: v.id, navn, bil: v.nummerplade, lukket: v.lukket, tempo: v.tempo ?? 100 };
   });
@@ -579,7 +600,7 @@ export default function App() {
         <Routes>
           <Route path="/dashboard" element={
             <DashboardPage
-              profile={profile} permissions={effectivePermissions}
+              profile={profile} permissions={effectivePermissions} crew={crewStore.crew}
               orders={orders} technicians={technicians} personnel={personnel} vehicles={vehicles} primaryServices={catalog.primaryServices} timeOff={timeOff} store={effectiveStore}
               notifications={notifications} onOpen={onOpen}
               onNavigate={(key) => navigate(`/${key}`)}
@@ -587,7 +608,7 @@ export default function App() {
             />
           } />
 
-          <Route path="/sag/:id" element={<OrderRoute profile={profile} storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} ordersStore={ordersStore} duplicateOrder={duplicateOrder} permissions={effectivePermissions} catalog={catalog} addressNotes={addressNotesStore.addressNotes} keyCabinets={keyCabinetsStore.keyCabinets} />} />
+          <Route path="/sag/:id" element={<OrderRoute profile={profile} storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} crew={crewStore.crew} ordersStore={ordersStore} duplicateOrder={duplicateOrder} permissions={effectivePermissions} catalog={catalog} addressNotes={addressNotesStore.addressNotes} keyCabinets={keyCabinetsStore.keyCabinets} />} />
 
           <Route path="/salg" element={
             <Gate allowed={allowedPages} page="salg">
@@ -599,7 +620,7 @@ export default function App() {
             <Gate allowed={allowedPages} page="planlaegning">
               <PlanningPage
                 orders={orders} technicians={technicians} personnel={personnel} vehicles={vehicles} timeOff={timeOff}
-                store={effectiveStore}
+                store={effectiveStore} crew={crewStore.crew} onSaveDayCrew={(dato, tildelinger) => crewStore.saveDay(dato, tildelinger, profile.id)}
                 selectedDate={selectedDate} onDateChange={setSelectedDate}
                 onOpen={onOpen} onAssign={ordersStore.assignVehicle} onReorder={ordersStore.reorderOrder} onSetVisitOrder={ordersStore.setVisitOrder}
                 onUpdateBooking={ordersStore.updateBooking} onClearProblem={ordersStore.clearProblem}
@@ -614,7 +635,7 @@ export default function App() {
               noten ved MontorRoute. */}
           <Route path="/montor" element={
             <Gate allowed={allowedPages} page="montor">
-              <MontorRoute profile={profile} vehicles={vehicles} orders={orders} ordersStore={ordersStore} keyCabinets={keyCabinetsStore.keyCabinets} refresh={refresh} refreshing={refreshing} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} />
+              <MontorRoute profile={profile} vehicles={vehicles} orders={orders} ordersStore={ordersStore} crew={crewStore.crew} keyCabinets={keyCabinetsStore.keyCabinets} refresh={refresh} refreshing={refreshing} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} />
             </Gate>
           } />
 
@@ -667,7 +688,7 @@ export default function App() {
           <Route path="/admin" element={
             <Gate allowed={allowedPages} page="admin">
               <AdminPage
-                technicians={personnel} vehicles={vehicles} users={users} timeOff={timeOff} currentUserId={profile.id} store={effectiveStore}
+                technicians={personnel} vehicles={vehicles} users={users} timeOff={timeOff} currentUserId={profile.id} store={effectiveStore} crew={crewStore.crew} onSetCrewPair={crewStore.setPair} onSetCrewSolo={crewStore.setSolo}
                 productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} defaultTimeEstimates={catalog.defaultTimeEstimates}
                 permissions={effectivePermissions}
                 onUpdateTechnicianVehicle={updateTechnicianVehicle} onAddVehicle={vehiclesStore.addVehicle} onUpdateVehicle={vehiclesStore.updateVehicle} onDeleteVehicle={deleteVehicleWithConfirm} onToggleVehicleClosed={vehiclesStore.toggleVehicleClosed}

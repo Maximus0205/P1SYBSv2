@@ -38,5 +38,16 @@ eq("dag: for meget arbejde markeres overbelastet", badgeFraMotor(fuld).overbelas
 eq("fejl: motoren kaster -> fejl, ikke 0", typeof badgeFraMotor({ fejl: "x" }).fejl, "string");
 eq("fejl: ugyldigt input giver fejl-objekt eller gyldigt svar, aldrig undefined", (() => { const r = beregnBilDag({ dato, bil, personer: null, pauseMin: 0, stop: null, indstillinger: IND }); return !!(r.res || r.fejl); })(), true);
 
+// medhjælpere (dagens hold)
+{
+  const pers = [{ id: "m1", navn: "Montør", bilId: "b1", rolle: "montor" }, { id: "h1", navn: "Hjælper", bilId: null, rolle: "medhjaelper" }];
+  const med = personerTilMotor({ dato, bilId: "b1", personnel: pers, timeOff: [], arbejdstider: [], uaendringer: [], indstillinger: IND, hjaelperIds: ["h1"] });
+  eq("hold: montør først, medhjælper som medhjælper", med.personer.map((p) => `${p.id}:${p.rolle}`), ["m1:montoer", "h1:medhjaelper"]);
+  const syg = personerTilMotor({ dato, bilId: "b1", personnel: pers, timeOff: [{ montorId: "m1", startDato: dato, slutDato: dato, type: "sygdom" }], arbejdstider: [], uaendringer: [], indstillinger: IND, hjaelperIds: ["h1"] });
+  eq("hold: montør syg -> medhjælperen bliver ikke montør", syg.personer, []);
+  const uden = personerTilMotor({ dato, bilId: "b1", personnel: pers, timeOff: [], arbejdstider: [], uaendringer: [], indstillinger: IND });
+  eq("hold: uden hjaelperIds kun montør", uden.personer.map((p) => p.id), ["m1"]);
+}
+
 console.log(`${pass} bestået, ${fail} fejlet`);
 if (fail) process.exit(1);

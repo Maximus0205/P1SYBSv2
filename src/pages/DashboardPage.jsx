@@ -75,13 +75,15 @@ function NeedsActionWidget({ orders, technicians, personnel, vehicles, timeOff, 
 // App.jsx, som løser præcis samme opgave samme måde. "technicians" her er
 // BIL-rækker og bruges kun til at style sagskortene, ikke til selve
 // opslaget på "hvad er min rute".
-function TodayRouteWidget({ orders, technicians, vehicles, profile, onOpen, onNavigate }) {
+function TodayRouteWidget({ orders, technicians, vehicles, profile, crew, onOpen, onNavigate }) {
   const catalogEntry = DASHBOARD_WIDGET_CATALOG.find((w) => w.key === "today_route");
-  const ownVehicle = (vehicles || []).find((v) => v.id === profile.bilId);
+  // En medhjælper har ingen fast bil: bilen er den, vedkommende er sat på i dag (dagens hold).
+  const bilId = profile.rolle === "medhjaelper" ? crew?.helpers?.find((h) => h.personId === profile.id && h.dato === todayISO())?.vehicleId : profile.bilId;
+  const ownVehicle = (vehicles || []).find((v) => v.id === bilId);
   if (!ownVehicle) {
     return (
       <WidgetCard title={catalogEntry.label} icon={catalogEntry.icon}>
-        <p className="text-sm text-muted italic">Din bruger er ikke koblet til en bil endnu.</p>
+        <p className="text-sm text-muted italic">{profile.rolle === "medhjaelper" ? "Du er ikke sat på en bil i dag endnu." : "Din bruger er ikke koblet til en bil endnu."}</p>
       </WidgetCard>
     );
   }
@@ -338,7 +340,7 @@ function CustomizePanel({ activeKeys, availableCatalog, onSave }) {
   );
 }
 
-function DashboardPage({ profile, permissions, orders, technicians, personnel, vehicles, primaryServices, timeOff, store, notifications, onOpen, onNavigate, dashboardWidgets, onUpdateWidgets }) {
+function DashboardPage({ profile, permissions, crew, orders, technicians, personnel, vehicles, primaryServices, timeOff, store, notifications, onOpen, onNavigate, dashboardWidgets, onUpdateWidgets }) {
   const [customizing, setCustomizing] = useState(false);
   // PAPIRKURV (oktober 2026): en knap, ikke en widget - papirkurven vises først, når
   // man trykker, og kun for dem der må slette/gendanne sager (sag_slet).
@@ -353,7 +355,7 @@ function DashboardPage({ profile, permissions, orders, technicians, personnel, v
   const availableCatalog = DASHBOARD_WIDGET_CATALOG.filter((w) => canDo(permissions, w.requires));
   const activeKeys = dashboardWidgets.filter((k) => availableCatalog.some((w) => w.key === k));
 
-  const widgetProps = { orders, technicians, personnel, vehicles, primaryServices, timeOff, store, profile, notifications, onOpen, onNavigate };
+  const widgetProps = { orders, technicians, personnel, vehicles, primaryServices, timeOff, store, profile, crew, notifications, onOpen, onNavigate };
 
   return (
     <div>

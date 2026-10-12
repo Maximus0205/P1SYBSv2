@@ -97,7 +97,7 @@ const opfylderBlandingskrav = (adgangskode) => /[a-zA-ZæøåÆØÅ]/.test(adgan
 // bil-centreret (sager tildeles en BIL, ikke en person), og deler flere
 // personer en bil, var det uklart hvis tempo der reelt gjaldt. Tempo sidder
 // nu i stedet på selve bilen, se VehicleRow nedenfor.
-function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTimeOff, onDeleteTimeOff, onSygemeld, onRaskmeld }) {
+function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTimeOff, onDeleteTimeOff, onSygemeld, onRaskmeld, utenBil = false }) {
   const [showTimeOff, setShowTimeOff] = useState(false);
   const [start, setStart] = useState(todayISO());
   const [end, setEnd] = useState(todayISO());
@@ -126,21 +126,23 @@ function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTi
         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: technicianColor(technician.id, [technician]) }} />
         <div className="min-w-0 flex-1">
           <p className="font-semibold text-sm text-ink truncate">{technician.navn}</p>
-          <p className="text-xs text-muted truncate">{linkedVehicle ? vehicleLabel(linkedVehicle) : "Ingen bil tilknyttet"}</p>
+          <p className="text-xs text-muted truncate">{utenBil ? "Medhjælper — bil sættes pr. dag i Planlægning" : linkedVehicle ? vehicleLabel(linkedVehicle) : "Ingen bil tilknyttet"}</p>
         </div>
-        <select
-          value={technician.bilId || ""}
-          onChange={(e) => onUpdateVehicle(technician.id, e.target.value || null)}
-          aria-label={`Bil for ${technician.navn}`}
-          className="rounded-lg border border-line bg-panel px-2 py-2 text-xs text-ink focus:outline-none focus:border-brand"
-        >
-          <option value="">Ingen bil</option>
-          {vehicles.map((b) => (
-            <option key={b.id} value={b.id} disabled={b.lukket && b.id !== technician.bilId}>
-              {vehicleLabel(b)}{b.lukket ? " (lukket)" : ""}
-            </option>
-          ))}
-        </select>
+        {!utenBil && (
+          <select
+            value={technician.bilId || ""}
+            onChange={(e) => onUpdateVehicle(technician.id, e.target.value || null)}
+            aria-label={`Bil for ${technician.navn}`}
+            className="rounded-lg border border-line bg-panel px-2 py-2 text-xs text-ink focus:outline-none focus:border-brand"
+          >
+            <option value="">Ingen bil</option>
+            {vehicles.map((b) => (
+              <option key={b.id} value={b.id} disabled={b.lukket && b.id !== technician.bilId}>
+                {vehicleLabel(b)}{b.lukket ? " (lukket)" : ""}
+              </option>
+            ))}
+          </select>
+        )}
         <button onClick={() => setShowTimeOff((v) => !v)} aria-expanded={showTimeOff} className="p-2 text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded-lg flex items-center gap-1 text-xs font-semibold uppercase tracking-wide" title="Ferie">
           <PalmtreeIcon size={15} aria-hidden="true" /> Ferie{myTimeOff.filter((f) => f.type !== "sygdom").length > 0 ? ` (${myTimeOff.filter((f) => f.type !== "sygdom").length})` : ""}
         </button>
@@ -519,7 +521,10 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
   // imellem, skal ikke have en ekstra brugerkonto. To konti for samme
   // menneske spreder sagerne over to navne og sender notifikationer til
   // den forkerte af dem.
-  const erFastMontor = user.rolle === "montor";
+  // MEDHJÆLPER (oktober 2026): ekstra bemanding. Kører altid med (ser dagens tur), men har ingen fast bil - den sættes pr. dag i
+  // Planlægning. Derfor ingen "Kører rute"-knap og ingen "mangler bil"-advarsel.
+  const erMedhjaelper = user.rolle === "medhjaelper";
+  const erFastMontor = user.rolle === "montor" || erMedhjaelper;
   const koerer = erFastMontor || user.kanKoere === true;
 
   return (
@@ -538,7 +543,7 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
           <p className="text-xs text-muted truncate">
             {ROLE_LABEL[user.rolle] || user.rolle}
             {user.brugernavn && <span> · logger ind som "{user.brugernavn}"</span>}
-            {koerer && <span> · {vehicle ? vehicleLabel(vehicle) : "kører rute, ingen bil endnu"}</span>}
+            {erMedhjaelper ? <span> · bil sættes pr. dag i Planlægning</span> : koerer && <span> · {vehicle ? vehicleLabel(vehicle) : "kører rute, ingen bil endnu"}</span>}
             {(user.extraPermissions?.length > 0 || user.revokedPermissions?.length > 0) && <span> · rettigheder tilpasset</span>}
           </p>
         </div>
@@ -655,12 +660,14 @@ function NewUserForm({ onAdd, passwordPolicy }) {
         <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Rolle" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
           <option value="saelger">Sælger (opret sager, Planlægning, Lager, Arkiv)</option>
           <option value="montor">Montør (kun sin egen rute)</option>
+          <option value="medhjaelper">Medhjælper (løfter og pakker ud, ser dagens tur)</option>
           <option value="lager">Lager (kun Lager-siden)</option>
           <option value="admin">Administrator (alt, inkl. Opsætning)</option>
         </select>
       </div>
       {role === "montor" && <p className="text-[11px] text-muted mt-2">Bil tilknyttes bagefter under fanen "Montører".</p>}
-      {role !== "montor" && (
+      {role === "medhjaelper" && <p className="text-[11px] text-muted mt-2">En medhjælper har ingen fast bil — hvem der kører med hvilken bil, sættes pr. dag i Planlægning (systemet kan foreslå det).</p>}
+      {role !== "montor" && role !== "medhjaelper" && (
         <p className="text-[11px] text-muted mt-2">
           Skal personen også kunne køre en rute en gang imellem, slås "Kører rute" til på brugeren i listen nedenfor — det kræver ikke en ekstra konto.
         </p>
@@ -673,7 +680,7 @@ function NewUserForm({ onAdd, passwordPolicy }) {
   );
 }
 
-const ROLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montør", lager: "Lager" };
+const ROLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montør", lager: "Lager", medhjaelper: "Medhjælper" };
 
 // ---------- Varekategorier ----------
 

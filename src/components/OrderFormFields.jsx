@@ -1093,4 +1093,15 @@ function SuggestedDates({ orders, technicians, personnel, timeOff, date, address
   );
 }
 
-export { ModelNumberLookup, LineItemEditor, KeyAccessFields, CustomerHistory, CustomerHistoryLookup, SuggestedDates, InteractiveWeekPicker, ClusterEstimateNote };
+// KRÆVER TO MAND (oktober 2026): en sag, hvor montøren ikke kan klare løftet alene. Bruges af kapacitetsmotoren (to-mands-krav)
+// og af forslaget til dagens hold (lib/holdForslag.js), som finder en medhjælper til bilen.
+function ToMandFelt({ checked, onChange, disabled = false }) {
+  return (
+    <label className={`flex items-center gap-3 rounded-lg border border-line bg-panel px-3 min-h-[44px] ${disabled ? "opacity-60" : "cursor-pointer"} has-[:checked]:border-brand has-[:checked]:bg-brand/10`}>
+      <input type="checkbox" checked={!!checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} className="w-5 h-5 accent-[#C8232E] shrink-0" />
+      <span className="text-sm text-ink">Kræver to mand <span className="text-xs text-muted">(tung eller besværlig opgave — der skal en medhjælper med)</span></span>
+    </label>
+  );
+}
+
+export { ToMandFelt, ModelNumberLookup, LineItemEditor, KeyAccessFields, CustomerHistory, CustomerHistoryLookup, SuggestedDates, InteractiveWeekPicker, ClusterEstimateNote };

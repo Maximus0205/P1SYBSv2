@@ -5,7 +5,7 @@ import { manualKeyAccessText } from "../data/keyCabinets";
 import { FOLLOWUP_TYPES, followUpTypeLabel } from "../data/caseTypes";
 import { StatusBadge, MinutesInput } from "../components/common";
 import { LineItemDetails, Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
-import { CustomerHistoryLookup, ModelNumberLookup } from "../components/OrderFormFields";
+import { CustomerHistoryLookup, ModelNumberLookup, ToMandFelt } from "../components/OrderFormFields";
 import { KapacitetsTjek } from "../components/KapacitetsTjek";
 import { KapacitetsForslag } from "../components/KapacitetsForslag";
 import { AddressInput } from "../components/AddressInput";
@@ -49,6 +49,7 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
   const [date, setDate] = useState(order.dato);
   const [timeSlotId, setTimeSlotId] = useState(order.tidsrumId);
   const [vehicleId, setVehicleId] = useState(order.bilId || "");
+  const [toMand, setToMand] = useState(!!order.toMand);
   const [address, setAddress] = useState(order.kunde.adresse);
   const [items, setItems] = useState(() => cloneLineItems(order.varelinjer));
   const [itemsTouched, setItemsTouched] = useState(false);
@@ -81,6 +82,7 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
       const t = timeSlotById(timeSlotId);
       Object.assign(fields, { dato: date, tidsrumId: timeSlotId, start: t.start, slut: t.slut, bilId: vehicleId || null });
     }
+    if (canPlan && toMand !== !!order.toMand) fields.toMand = toMand;
     if (canEditCustomer) {
       fields.kunde = { ...order.kunde, adresse: address.trim() };
     }
@@ -111,6 +113,7 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
             {TIME_SLOTS.map((t) => <option key={t.id} value={t.id}>{timeSlotText(t.id)}</option>)}
           </select>
         </label>
+        <div className="sm:col-span-2"><ToMandFelt checked={toMand} onChange={setToMand} disabled={!canPlan} /></div>
         <label className="text-xs text-muted sm:col-span-2">
           Bil
           <select value={vehicleId} disabled={!canPlan} onChange={(e) => setVehicleId(e.target.value)} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand disabled:opacity-60 disabled:cursor-not-allowed">

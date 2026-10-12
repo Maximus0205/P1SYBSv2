@@ -8,6 +8,7 @@ import { KladdeIndstillinger } from "../components/KladdeIndstillinger";
 import { KapacitetsIndstillinger } from "../components/KapacitetsIndstillinger";
 import { BilKapacitet } from "../components/BilKapacitet";
 import { MontoerKalender } from "../components/MontoerKalender";
+import { HoldIndstillinger } from "../components/HoldIndstillinger";
 import { YdelsesIndstillinger } from "../components/YdelsesIndstillinger";
 import { getPermissionsCatalog, getRoleDefaultPermissions } from "../lib/dataStore";
 
@@ -19,7 +20,7 @@ import { getPermissionsCatalog, getRoleDefaultPermissions } from "../lib/dataSto
 const hasPerm = (permissions, key) => permissions === null || permissions.includes(key);
 
 function AdminPage({
-  technicians, vehicles, users, timeOff, currentUserId, store,
+  technicians, vehicles, users, timeOff, currentUserId, store, crew, onSetCrewPair, onSetCrewSolo,
   productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates,
   permissions,
   onUpdateTechnicianVehicle, onAddVehicle, onUpdateVehicle, onDeleteVehicle, onToggleVehicleClosed,
@@ -104,7 +105,10 @@ function AdminPage({
             En montør er ikke noget man opretter her — det er en bruger med rollen "Montør" (se fanen "Brugere"). Her styrer du hvilken bil hver montør kører i lige nu, registrerer ferieperioder, og kan sygemelde/raskmelde en montør akut. Den bil en montør er tilknyttet, vises automatisk som blokeret i kørselsoverblikket i de perioder montøren er fraværende (ferie eller sygdom). Bilens eget tempo (bruges kun til kapacitetsberegningen i Planlægning) sættes under fanen "Biler".
           </p>
           {hasPerm(permissions, "admin_butik") && <SickLeaveWindowSetting store={store} onUpdated={onSickLeaveWindowUpdated} />}
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Alle montører ({technicians.length})</h3>
+          {hasPerm(permissions, "admin_montorer") && crew && (
+            <HoldIndstillinger montoerer={technicians.filter((t) => t.rolle !== "medhjaelper")} medhjaelpere={technicians.filter((t) => t.rolle === "medhjaelper")} crew={crew} onSetPair={onSetCrewPair} onSetSolo={onSetCrewSolo} />
+          )}
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Alle montører og medhjælpere ({technicians.length})</h3>
           {technicians.length === 0 ? (
             <p className="text-sm text-muted italic">Ingen brugere med rollen "Montør" endnu — opret en under fanen "Brugere".</p>
           ) : (
@@ -113,6 +117,7 @@ function AdminPage({
                 <TechnicianRow
                   key={m.id}
                   technician={m}
+                  utenBil={m.rolle === "medhjaelper"}
                   vehicles={vehicles}
                   timeOff={timeOff}
                   onUpdateVehicle={onUpdateTechnicianVehicle}

@@ -11,7 +11,7 @@ import { StorageIntegrationAdmin } from "../components/StorageIntegrationAdmin";
 import { KapacitetsLab } from "../components/KapacitetsLab";
 import { KapacitetsRegler } from "../components/KapacitetsRegler";
 
-const ROLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montør" };
+const ROLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montør", lager: "Lager", medhjaelper: "Medhjælper" };
 
 // Kun synlig for brugere med profiles.is_system_admin = true. Fire faner:
 // "Butikker" (opret/redigér/slet butikker, opret/koble brugere), "Fejl-log"

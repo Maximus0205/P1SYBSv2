@@ -509,7 +509,7 @@ export function useOrders(storeId) {
   //
   // senestDato (oktober 2026): en TOMGANG kan have en frist - den seneste dag, hvor den skal
   // være udført - i stedet for (eller ud over) en fast dato. Se lib/frist.js.
-  const addOrder = async ({ sagstype, kunde, koeber, noegle, dato, tidsrumId, start, slut, bilId, senestDato, varelinjer, ordrenummer, createdBy, kapacitetOverrulet }) => {
+  const addOrder = async ({ sagstype, kunde, koeber, noegle, dato, tidsrumId, start, slut, bilId, senestDato, varelinjer, ordrenummer, createdBy, kapacitetOverrulet, toMand }) => {
     if (!storeId) return;
     const newOrder = {
       id: uid(), nr: "...", ordrenummer: ordrenummer?.trim() || "",
@@ -519,6 +519,7 @@ export function useOrders(storeId) {
       bilId: bilId || null,
       senestDato: senestDato || null,
       ...(kapacitetOverrulet ? { kapacitetOverrulet } : {}),
+      ...(toMand ? { toMand: true } : {}),
       status: "planlagt", plukket: false, varelinjer, noter: [], billeder: [], rapporter: [], materialer: [], stemplerInd: null, logs: [],
       oprettetAf: createdBy || null,
     };

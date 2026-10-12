@@ -12,7 +12,7 @@ import { linjerUdenModel, manglerModel } from "../lib/varelinje";
 import { useOrderDraft } from "../hooks/useOrderDraft";
 import { klokkeslaet } from "../lib/orderDrafts";
 import { ReceiptUpload } from "../components/ReceiptUpload";
-import { LineItemEditor, KeyAccessFields, CustomerHistory, SuggestedDates, InteractiveWeekPicker, ClusterEstimateNote } from "../components/OrderFormFields";
+import { ToMandFelt, LineItemEditor, KeyAccessFields, CustomerHistory, SuggestedDates, InteractiveWeekPicker, ClusterEstimateNote } from "../components/OrderFormFields";
 import { AddressInput } from "../components/AddressInput";
 import { AddressNotesPanel } from "../components/AddressNotes";
 import { KeyCabinetBookingHint } from "../components/KeyCabinetAlert";
@@ -168,6 +168,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
   const [address, setAddress] = useState(d.address || "");
   const [addressStatus, setAddressStatus] = useState("tom");
   const [deliveryNote, setDeliveryNote] = useState(d.deliveryNote || "");
+  const [toMand, setToMand] = useState(!!d.toMand);
   const [keyAccess, setKeyAccess] = useState(() => ({ ...emptyKeyAccess(), ...(d.keyAccess || {}) }));
   // En gemt dato i fortiden giver ingen mening at genoptage - så bruges dagens valgte dato.
   // Er datoen en lørdag eller søndag, starter bookingen mandag i den kommende uge (se
@@ -205,8 +206,8 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const blank = useMemo(() => ({ lineItem: createLineItem(productTypes, primaryServices, undefined, "", defaultTimeEstimates), keyAccess: emptyKeyAccess() }), []);
   const snapshot = useMemo(
-    () => ({ caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, deliveryNote, keyAccess, date, timeSlotId, vehicleId, lineItems, fleksibel, senestDato }),
-    [caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, deliveryNote, keyAccess, date, timeSlotId, vehicleId, lineItems, fleksibel, senestDato]
+    () => ({ caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, deliveryNote, toMand, keyAccess, date, timeSlotId, vehicleId, lineItems, fleksibel, senestDato }),
+    [caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, deliveryNote, toMand, keyAccess, date, timeSlotId, vehicleId, lineItems, fleksibel, senestDato]
   );
   const kladde = useOrderDraft({ draftId, storeId, userId, state: snapshot, step, blank });
 
@@ -370,6 +371,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
       bilId: udenFastDato ? null : (vehicleId || null),
       senestDato: erTomgang && senestDato ? senestDato : null,
       varelinjer: lineItems,
+      toMand,
       // Revisionsspor: kun regelnavne, ingen mål/tal.
       kapacitetOverrulet: !udenFastDato && kapStatus.overrulet ? { regler: kapStatus.regler, tidspunkt: new Date().toISOString() } : null,
       ordrenummer: externalReference.trim(),
@@ -583,6 +585,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
       {step === 3 && (
         <div>
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Tidspunkt & bil</h4>
+          <div className="mb-4"><ToMandFelt checked={toMand} onChange={setToMand} /></div>
           {erTomgang && (
             <div className="mb-4 rounded-xl border border-line bg-panel p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-ink mb-2">Hvornår skal tomgangen udføres?</p>
