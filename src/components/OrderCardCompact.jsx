@@ -3,6 +3,8 @@ import { Clock, CalendarCheck2, AlertTriangle, DoorOpen } from "lucide-react";
 import { TIME_SLOTS, buildTitle, formatDuration, orderExpectedMinutes, formatShortDate, isToday, missingLineItems } from "../data/domain";
 import { isTomgang, TOMGANG_COLOR } from "../data/caseTypes";
 import { StatusBadge, LineItemPills } from "../components/common";
+import { DelvisBadge } from "../components/DelvisAfsluttet";
+import { harDelvis } from "../lib/delvisAfsluttet";
 
 // accent: valgfri venstre-kantfarve (fx rød ved "kræver handling"), så
 // alvor kan vises SOM EN DEL af kortet i stedet for en løsrevet boks
@@ -73,6 +75,7 @@ function OrderCardCompact({ order, technicians, onOpen, onAssign, onUpdateTimeSl
             <span className="font-mono text-sm text-ink">{order.start}–{order.slut}</span>
             <span className={`font-mono text-[11px] font-semibold ${isToday(order.dato) ? "text-brand" : "text-muted"}`}>{formatShortDate(order.dato)}</span>
             <span className="font-mono text-[10px] text-faint">#{order.nr}</span>
+            {harDelvis(order) && order.status !== "afsluttet" && <DelvisBadge />}
             {tomgang && (
               <span
                 className="inline-flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md border"

@@ -51,7 +51,7 @@ function Gate({ allowed, page, children }) {
   return children;
 }
 
-function OrderRoute({ profile, storeId, orders, technicians, ordersStore, duplicateOrder, permissions, catalog, addressNotes, keyCabinets }) {
+function OrderRoute({ profile, storeId, orders, technicians, personnel, ordersStore, duplicateOrder, permissions, catalog, addressNotes, keyCabinets }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const order = orders.find((o) => o.id === id);
@@ -62,6 +62,7 @@ function OrderRoute({ profile, storeId, orders, technicians, ordersStore, duplic
     if ((order.materialer || []).length > 0 && !order.notifikationSet?.materialer) kinds.push("materialer");
     if (order.problem && !order.notifikationSet?.problem) kinds.push("problem");
     if (order.harOpfoelgning && !order.notifikationSet?.opfoelgning) kinds.push("opfoelgning");
+    if (order.delvisAfsluttet?.length > 0 && !order.notifikationSet?.delvist) kinds.push("delvist");
     if (kinds.length > 0) ordersStore.dismissNotifications(order.id, kinds);
     // BEMÆRK: "manglendeVarer" står bevidst IKKE på listen. Den er ikke en
     // besked, der er set, men en uafklaret tilstand - at åbne sagen løser
@@ -69,7 +70,7 @@ function OrderRoute({ profile, storeId, orders, technicians, ordersStore, duplic
     // dato, varen ændres, eller lageret fjerner markeringen (se
     // isMissingActive i domain.js).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [order?.id, order?.materialer?.length, order?.problem, order?.harOpfoelgning, order?.notifikationSet]);
+  }, [order?.id, order?.materialer?.length, order?.problem, order?.harOpfoelgning, order?.delvisAfsluttet?.length, order?.notifikationSet]);
 
   if (!order) {
     return (
@@ -106,6 +107,18 @@ function OrderRoute({ profile, storeId, orders, technicians, ordersStore, duplic
     onRemoveMaterial: (materialId) => ordersStore.removeMaterial(order.id, materialId),
     onMarkProblem: (note) => ordersStore.markProblem(order.id, note),
     onClearProblem: () => ordersStore.clearProblem(order.id),
+    // Delvist afsluttet (oktober 2026): bil og montører slås op HER og gemmes i hændelsen, så de
+    // forbliver synlige på sagen, selv hvis resten tildeles en anden bil. technicians.navn er
+    // "Bil 2 (Mette, Jens)" - selve bilnavnet hentes uden parentesen.
+    onPartialFinish: ({ udfoerteLinjeIds, note }) => {
+      const bil = technicians.find((t) => t.id === order.bilId);
+      return ordersStore.partialFinish(order.id, {
+        udfoerteLinjeIds, note,
+        af: { id: profile.id, navn: profile.navn },
+        bilNavn: bil ? bil.navn.replace(/\s*\([^)]*\)\s*$/, "") : null,
+        montoerer: (personnel || []).filter((p) => order.bilId && p.bilId === order.bilId).map((p) => ({ id: p.id, navn: p.navn })),
+      });
+    },
     onOpenOrder: (targetId) => navigate(`/sag/${targetId}`),
     followUpOrder, originalOrder,
 
@@ -574,7 +587,7 @@ export default function App() {
             />
           } />
 
-          <Route path="/sag/:id" element={<OrderRoute profile={profile} storeId={activeStoreId} orders={orders} technicians={technicians} ordersStore={ordersStore} duplicateOrder={duplicateOrder} permissions={effectivePermissions} catalog={catalog} addressNotes={addressNotesStore.addressNotes} keyCabinets={keyCabinetsStore.keyCabinets} />} />
+          <Route path="/sag/:id" element={<OrderRoute profile={profile} storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} ordersStore={ordersStore} duplicateOrder={duplicateOrder} permissions={effectivePermissions} catalog={catalog} addressNotes={addressNotesStore.addressNotes} keyCabinets={keyCabinetsStore.keyCabinets} />} />
 
           <Route path="/salg" element={
             <Gate allowed={allowedPages} page="salg">

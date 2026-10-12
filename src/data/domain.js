@@ -515,13 +515,15 @@ export {
 // varelinjernes tilstand og forsvinder først, når varen er håndteret. Se
 // noten ved isMissingActive ovenfor.
 function computeNotifications(orders, profileId) {
-  if (!profileId) return { materialer: [], problemer: [], opfoelgninger: [], manglendeVarer: [] };
+  if (!profileId) return { materialer: [], problemer: [], opfoelgninger: [], manglendeVarer: [], delvise: [] };
   const mine = (orders || []).filter((o) => o.oprettetAf?.id === profileId);
   return {
     materialer: mine.filter((o) => (o.materialer || []).length > 0 && !o.notifikationSet?.materialer),
     problemer: mine.filter((o) => o.problem && !o.notifikationSet?.problem),
     opfoelgninger: mine.filter((o) => o.harOpfoelgning && !o.notifikationSet?.opfoelgning),
     manglendeVarer: mine.filter((o) => o.status !== "afsluttet" && orderHasMissingItems(o)),
+    // Delvist afsluttet (oktober 2026): sagen venter på ny dato. Markeres læst, når opretteren åbner den.
+    delvise: mine.filter((o) => Array.isArray(o.delvisAfsluttet) && o.delvisAfsluttet.length > 0 && !o.notifikationSet?.delvist),
   };
 }
 

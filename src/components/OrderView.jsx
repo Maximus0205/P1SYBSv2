@@ -12,6 +12,8 @@ import { AddressInput } from "../components/AddressInput";
 import { AddressNotesPanel } from "../components/AddressNotes";
 import { kraeverBeskrivelse } from "../lib/ydelser";
 import { linjerUdenModel, manglerModel } from "../lib/varelinje";
+import { DelvisBanner } from "../components/DelvisAfsluttet";
+import { needsPlanning } from "../data/domain";
 
 const cloneLineItems = (list) => (list || []).map((v) => ({ ...v, tillaeg: (v.tillaeg || []).map((y) => ({ ...y })) }));
 
@@ -684,6 +686,7 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
                 <p key={v.id} className="text-sm text-ink mt-2 rounded-lg bg-panel border border-line px-3 py-2"><span className="font-semibold">{lineItemLabel(v)}:</span> {v.opgavebeskrivelse}</p>
               ))}
 
+              <DelvisBanner order={order} ventendePaaDato={needsPlanning(order)} />
               {order.problem && (
                 <div className="mt-2.5 rounded-lg bg-danger/10 border border-danger px-3 py-2">
                   <p className="text-sm font-semibold text-danger flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" aria-hidden="true" /> Sagen blev ikke afsluttet</p>

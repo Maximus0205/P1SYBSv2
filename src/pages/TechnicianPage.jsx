@@ -11,6 +11,8 @@ import { KeyCabinetAlert, KeyCabinetLines, useCabinetMatches } from "../componen
 import { ArrivalSmsButton } from "../components/ArrivalSmsButton";
 import { OpgaveTimer } from "../components/OpgaveTimer";
 import { erPauset } from "../lib/opgaveTid";
+import { DelvisPanel, DelvisBanner } from "../components/DelvisAfsluttet";
+import { kanMeldesDelvist } from "../lib/delvisAfsluttet";
 
 // Universelt Google Maps-link: åbner Google Maps-appen hvis den er
 // installeret (iOS og Android), ellers i browseren. Vi bruger søge-linket
@@ -335,7 +337,7 @@ function TechnicianLineItems({ order }) {
       <div className="space-y-3">
         {order.varelinjer.map((v, i) => (
           <div key={v.id} className={i < order.varelinjer.length - 1 ? "pb-3 border-b border-divider" : ""}>
-            <p className="text-sm font-semibold text-ink">{lineItemLabel(v)}</p>
+            <p className="text-sm font-semibold text-ink">{lineItemLabel(v)}{v.udfoert && <span className="ml-2 text-[11px] font-semibold uppercase tracking-wide text-success">Udført</span>}</p>
             {v.primaerYdelse?.navn && <p className="text-xs text-ink">{v.primaerYdelse.navn}</p>}
             {(v.opgavebeskrivelse || "").trim() && (
               <p className="text-xs text-ink mt-1 rounded-lg bg-brand/5 border border-brand/20 px-2 py-1.5"><span className="font-semibold text-brand">Opgave:</span> {v.opgavebeskrivelse}</p>
@@ -518,9 +520,9 @@ function FinishPanel({ order, onConfirm, onCancel, onGoToTab }) {
 // REDIGÉR BOOKING (september 2026): kan nu også ændre, tilføje og fjerne
 // varelinjer og ydelser (catalog sendes med fra App.jsx) - se BookingEditor
 // i OrderView.jsx. Varesektionen kræver sag_feltarbejde, resten som før.
-function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBack, addNote, addPhoto, addReport, onStartOrder, onFinishOrder, onReopenOrder, onUpdateBooking, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem, onRetryPosSync, permissions, addressNotes }) {
+function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBack, addNote, addPhoto, addReport, onStartOrder, onFinishOrder, onReopenOrder, onUpdateBooking, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem, onPartialFinish, onRetryPosSync, permissions, addressNotes }) {
   const [tab, setTab] = React.useState("noter");
-  const [panel, setPanel] = React.useState(null); // "booking" | "dupliker" | "problem" | "faerdig"
+  const [panel, setPanel] = React.useState(null); // "booking" | "dupliker" | "problem" | "delvis" | "faerdig"
   const canFieldwork = canDo(permissions, "sag_feltarbejde");
   const canPlan = canDo(permissions, "sag_planlaegning");
   const canEditCustomer = canDo(permissions, "sag_kunde");
@@ -556,6 +558,8 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
         <DuplicatePanel order={order} onCancel={() => setPanel(null)} onDuplicate={(items, followUpType) => { onDuplicate?.(items, followUpType); setPanel(null); }} />
       ) : panel === "problem" ? (
         <ProblemPanel order={order} onCancel={() => setPanel(null)} onSubmit={(note) => { onMarkProblem?.(note); setPanel(null); }} />
+      ) : panel === "delvis" ? (
+        <DelvisPanel order={order} onCancel={() => setPanel(null)} onSubmit={(v) => { const ok = onPartialFinish?.(v); if (ok !== false) setPanel(null); return ok; }} />
       ) : panel === "faerdig" ? (
         <FinishPanel
           order={order}
@@ -599,6 +603,8 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
           {noegleTekst && (
             <p className="text-sm text-brand font-semibold mt-1.5 flex items-center gap-1.5"><KeyRound size={14} className="shrink-0" aria-hidden="true" /> {noegleTekst}</p>
           )}
+
+          <DelvisBanner order={order} ventendePaaDato={!order.dato || !order.bilId} />
 
           {order.problem && (
             <div className="mt-2.5 rounded-lg bg-danger/10 border border-danger px-3 py-2">
@@ -665,6 +671,9 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
             )}
             {onDuplicate && canCreate && (
               <button onClick={() => setPanel("dupliker")} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-1 py-1.5 flex items-center gap-1"><Copy size={13} aria-hidden="true" /> Dupliker / opfølgning</button>
+            )}
+            {onPartialFinish && canFieldwork && kanMeldesDelvist(order) && (
+              <button onClick={() => setPanel("delvis")} className="text-xs font-semibold uppercase tracking-wide text-brand hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-brand rounded px-1 py-1.5 flex items-center gap-1"><CalendarCheck2 size={13} aria-hidden="true" /> Delvist afsluttet</button>
             )}
             {onMarkProblem && canFieldwork && !order.problem && (
               <button onClick={() => setPanel("problem")} className="text-xs font-semibold uppercase tracking-wide text-danger hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-danger rounded px-1 py-1.5 flex items-center gap-1"><AlertTriangle size={13} aria-hidden="true" /> Marker: kom ikke i mål</button>

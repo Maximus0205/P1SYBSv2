@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Settings2, Plus, ChevronUp, ChevronDown, Upload, AlertTriangle, Truck, Trash2, ClipboardList } from "lucide-react";
+import { Settings2, Plus, ChevronUp, ChevronDown, Upload, AlertTriangle, Truck, Trash2, ClipboardList, CalendarCheck2 } from "lucide-react";
 import { todayISO, dailyOrderCompare, canDo, DASHBOARD_WIDGET_CATALOG, missingLineItems, lineItemLabel } from "../data/domain";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 import { classify } from "./PlanningPage";
@@ -191,7 +191,7 @@ function QuickBookingWidget({ onNavigate, store }) {
 // eksplicit, at de er der, så man ikke tror, forsiden viser alt.
 function NotificationsWidget({ notifications, onOpen }) {
   const catalogEntry = DASHBOARD_WIDGET_CATALOG.find((w) => w.key === "notifications");
-  const { materialer = [], problemer = [], opfoelgninger = [], manglendeVarer = [] } = notifications || {};
+  const { materialer = [], problemer = [], opfoelgninger = [], manglendeVarer = [], delvise = [] } = notifications || {};
   const kunIKlokken = materialer.length + opfoelgninger.length;
 
   const handlingskraevende = [
@@ -203,6 +203,7 @@ function NotificationsWidget({ notifications, onOpen }) {
       icon: Truck,
     })),
     ...problemer.map((o) => ({ o, label: "kom ikke i mål", prefix: "", color: "#8B5E3C", icon: AlertTriangle })),
+    ...delvise.map((o) => ({ o, label: "delvist afsluttet — skal have ny dato", prefix: "", color: "#C8232E", icon: CalendarCheck2 })),
   ];
 
   return (

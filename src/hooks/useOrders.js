@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { pos } from "../adapters";
 import { pausePatch } from "../lib/opgaveTid";
+import { delvisPatch } from "../lib/delvisAfsluttet";
 import { fetchAllOrders, fetchOrderVersions, fetchOrdersByIds, saveOrderVersioned, trashOrder, ORDERS_CHANGED_EVENT, MAKS_RAEKKER } from "../lib/orderStore";
 import { uid, dailyOrderCompare, lineItemFingerprint } from "../data/domain";
 import { SAGSTYPE_KUNDE } from "../data/caseTypes";
@@ -885,6 +886,22 @@ export function useOrders(storeId) {
       notifikationSet: { ...(s.notifikationSet || {}), problem: false },
     });
   };
+
+  // DELVIST AFSLUTTET (oktober 2026): en del af varerne er udført, resten skal ud en anden dag. Sagen
+  // bliver SAMME sag (ingen ny oprettes), mister dato/bil og lander i Planlægning under "Skal
+  // planlægges"; sælgeren får besked. Hvem der kørte (bil + montører) gemmes i hændelsen, så de ikke
+  // forsvinder fra sagen. Se lib/delvisAfsluttet.js. Tiden sættes på pause som ved markProblem, så
+  // pausen ikke forurener estimaterne. Returnerer true/false, så UI'et kan blive i panelet ved afvisning.
+  const partialFinish = (orderId, { udfoerteLinjeIds, note, af, bilNavn, montoerer }) => {
+    const s = findOrder(orders, orderId);
+    if (!s) return false;
+    const nu = new Date().toISOString();
+    const patch = delvisPatch(s, { udfoerteLinjeIds, note, nuIso: nu, id: uid(), af, bilNavn, montoerer });
+    if (!patch) return false;
+    saveOneOrder({ ...s, ...pausePatch(s, nu, uid()), ...patch });
+    return true;
+  };
+
   const clearProblem = (orderId) => {
     const s = findOrder(orders, orderId);
     if (s) saveOneOrder({ ...s, problem: null });
@@ -915,7 +932,7 @@ export function useOrders(storeId) {
     addNote, addPhoto, addReport,
     toggleAddOn, addAddOn, removeAddOn,
     addMaterial, removeMaterial,
-    markProblem, clearProblem, dismissNotifications,
+    markProblem, clearProblem, partialFinish, dismissNotifications,
     queuedCount,
     reload: () => load(storeId),
     refresh,

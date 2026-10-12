@@ -48,6 +48,9 @@ function bookedeVarer(orders, { fra, til, saelgerId } = {}) {
     if (saelgerId && o.oprettetAf?.id !== saelgerId) continue;
     const linjer = Array.isArray(o.varelinjer) ? o.varelinjer : [];
     for (const v of linjer) {
+      // Delvist afsluttet: en udført linje er leveret og skal ikke tælles som booket igen, når sagen
+      // flyttes til en ny dato (lib/delvisAfsluttet.js).
+      if (v?.udfoert) continue;
       rows.push({
         key: `${o.id}:${v.id ?? rows.length}`,
         orderId: o.id,

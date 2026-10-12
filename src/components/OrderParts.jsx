@@ -48,6 +48,7 @@ function LineItemDetails({ order, onToggleAddOn, onAddAddOn, onRemoveAddOn }) {
               <div className="flex items-center justify-between mb-1.5">
                 <div>
                   <p className="text-sm font-semibold text-ink">{lineItemLabel(v)}</p>
+                  {v.udfoert && <p className="text-[11px] font-semibold text-success">Udført (delvist afsluttet)</p>}
                   {v.primaerYdelse && <p className="text-[11px] text-muted">{v.primaerYdelse.navn}</p>}
                 </div>
                 {missing > 0 && <span className="font-mono text-[11px] text-brand">{missing} mangler</span>}

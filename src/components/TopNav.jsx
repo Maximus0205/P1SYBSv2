@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { LogOut, Bell, Package, AlertTriangle, Copy, Building2, ArrowLeftRight, Truck, KeyRound } from "lucide-react";
+import { LogOut, Bell, Package, AlertTriangle, Copy, Building2, ArrowLeftRight, Truck, KeyRound, CalendarCheck2 } from "lucide-react";
 import { PAGES, missingLineItems, lineItemLabel } from "../data/domain";
 import { PUNKT1_LOGO_NEGATIV } from "../assets/logo";
 
@@ -101,8 +101,8 @@ function NotificationBell({ notifications, onOpenOrder }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  const { materialer = [], problemer = [], opfoelgninger = [], manglendeVarer = [] } = notifications || {};
-  const total = materialer.length + problemer.length + opfoelgninger.length + manglendeVarer.length;
+  const { materialer = [], problemer = [], opfoelgninger = [], manglendeVarer = [], delvise = [] } = notifications || {};
+  const total = materialer.length + problemer.length + opfoelgninger.length + manglendeVarer.length + delvise.length;
 
   const openAndClose = (id) => { setOpen(false); onOpenOrder(id); };
 
@@ -133,6 +133,7 @@ function NotificationBell({ notifications, onOpenOrder }) {
                   ingen når at reagere i tide. */}
               <MissingGroup items={manglendeVarer} onOpen={openAndClose} />
               <NotifGroup title={`${problemer.length} ${problemer.length === 1 ? "sag" : "sager"} kom ikke i mål`} icon={AlertTriangle} color="#B3261E" items={problemer} onOpen={openAndClose} />
+              <NotifGroup title={`${delvise.length} ${delvise.length === 1 ? "sag er" : "sager er"} delvist afsluttet — skal have ny dato`} icon={CalendarCheck2} color="#C8232E" items={delvise} onOpen={openAndClose} />
               <NotifGroup title={`${materialer.length} ${materialer.length === 1 ? "sag har" : "sager har"} nyt materialeforbrug`} icon={Package} color="#C8232E" items={materialer} onOpen={openAndClose} />
               <NotifGroup title={`${opfoelgninger.length} ${opfoelgninger.length === 1 ? "sag har" : "sager har"} fået en opfølgning`} icon={Copy} color="#52697E" items={opfoelgninger} onOpen={openAndClose} />
             </div>
