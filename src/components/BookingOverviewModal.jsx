@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Calendar, User, Truck, Search, X, Package } from "lucide-react";
+import { Calendar, User, Truck, Search, X, Package, ChevronDown, ChevronRight } from "lucide-react";
 import { todayISO, addDays, formatLongDate, lineItemLabel } from "../data/domain";
 import { StatusBadge } from "./common";
 import {
@@ -11,15 +11,21 @@ import {
 // vare (søg på varenummer) kører i perioden - så der er styr på lager og bestilling.
 //
 // To visninger af SAMME vindue:
-//   - DISPONENT (canSeeAll): alle sælgeres bookinger, filter på sælger, ser hvem
-//     der har booket.
-//   - SÆLGER: kun de varer, de selv har booket (sagens oprettetAf = dem selv).
-//     Afgrænsningen er en VISNINGSAFGRÆNSNING - se noten i lib/bookingOversigt.js.
+//   - DISPONENT (canSeeAll): alle sælgeres bookinger, filter på sælger. Standard er
+//     en SAMLET optælling pr. vare ("30 x PODW5620W, 10 x POWM58MKA") - til at
+//     disponere og bestille hjem. Hver vare kan foldes ud og vise sagerne bag
+//     tallet, og et skift viser i stedet de enkelte sagskort.
+//   - SÆLGER: kun de varer, de selv har booket (sagens oprettetAf = dem selv), som
+//     sagskort. Afgrænsningen er en VISNINGSAFGRÆNSNING - se noten i
+//     lib/bookingOversigt.js.
 function BookingOverviewModal({ orders, technicians, profile, canSeeAll, onOpen, onClose }) {
   const [fra, setFra] = useState(todayISO());
   const [til, setTil] = useState(addDays(todayISO(), 6));
   const [saelgerId, setSaelgerId] = useState("");
   const [soeg, setSoeg] = useState("");
+  // Disponenten starter i den samlede optælling; sælgeren har kun sagskort.
+  const [visning, setVisning] = useState("samlet");
+  const [foldetUd, setFoldetUd] = useState(() => new Set());
   const dialogRef = useRef(null);
 
   // Tastatur og fokus: Escape lukker, fokus flyttes ind i vinduet, og siden bagved
@@ -50,6 +56,8 @@ function BookingOverviewModal({ orders, technicians, profile, canSeeAll, onOpen,
   );
   const rows = useMemo(() => filtrerPaaVare(iPerioden, soeg), [iPerioden, soeg]);
   const harSoegning = soeg.trim().length > 0;
+  const samlet = canSeeAll && visning === "samlet";
+  const skiftUd = (noegle) => setFoldetUd((prev) => { const n = new Set(prev); if (n.has(noegle)) n.delete(noegle); else n.add(noegle); return n; });
 
   const grupper = useMemo(() => grupperPrDato(rows), [rows]);
   const varetyper = useMemo(() => opsummerVaretyper(rows), [rows]);
@@ -111,10 +119,10 @@ function BookingOverviewModal({ orders, technicians, profile, canSeeAll, onOpen,
               )}
             </div>
             <label className="text-xs text-muted block mt-3">
-              Søg på varenummer (eller mærke/model)
+              Søg på varenummer (model, fx PODW5620W)
               <div className="relative mt-1">
                 <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" aria-hidden="true" />
-                <input type="search" inputMode="search" value={soeg} onChange={(e) => setSoeg(e.target.value)} placeholder="Fx 4003281" className={`${inputCls} font-mono`} />
+                <input type="search" inputMode="search" value={soeg} onChange={(e) => setSoeg(e.target.value)} placeholder="Fx PODW5620W" className={`${inputCls} font-mono`} />
               </div>
             </label>
             {interval.byttet && (
@@ -122,13 +130,67 @@ function BookingOverviewModal({ orders, technicians, profile, canSeeAll, onOpen,
             )}
           </div>
 
-          <p className="text-xs text-muted mb-3" aria-live="polite">
-            {rows.length === 0
-              ? (harSoegning ? "Ingen varer matcher søgningen i det valgte tidsrum." : "Ingen varer booket i det valgte tidsrum.")
-              : `${rows.length} ${rows.length === 1 ? "vare" : "varer"} på ${antalSager} ${antalSager === 1 ? "sag" : "sager"}`}
-          </p>
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+            <p className="text-xs text-muted" aria-live="polite">
+              {rows.length === 0
+                ? (harSoegning ? "Ingen varer matcher søgningen i det valgte tidsrum." : "Ingen varer booket i det valgte tidsrum.")
+                : samlet
+                  ? `${rows.length} ${rows.length === 1 ? "vare" : "varer"} fordelt på ${prVare.length} ${prVare.length === 1 ? "model" : "modeller"} (${antalSager} ${antalSager === 1 ? "sag" : "sager"})`
+                  : `${rows.length} ${rows.length === 1 ? "vare" : "varer"} på ${antalSager} ${antalSager === 1 ? "sag" : "sager"}`}
+            </p>
+            {canSeeAll && (
+              <div role="group" aria-label="Visning" className="inline-flex rounded-lg border border-line bg-white p-0.5">
+                {[["samlet", "Samlet pr. vare"], ["sager", "Sagskort"]].map(([k, t]) => (
+                  <button key={k} type="button" onClick={() => setVisning(k)} aria-pressed={visning === k} className={`px-3 py-2 rounded-md text-xs font-semibold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-brand transition-colors ${visning === k ? "bg-brand text-white" : "text-muted hover:text-brand"}`}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
-          {harSoegning && prVare.length > 0 && (
+          {samlet && prVare.length > 0 && (
+            <ul className="rounded-xl border border-line bg-white shadow-sm divide-y divide-divider mb-5" aria-label="Samlet antal pr. vare">
+              {prVare.map((v) => {
+                const aaben = foldetUd.has(v.noegle);
+                return (
+                  <li key={v.noegle}>
+                    <button type="button" onClick={() => skiftUd(v.noegle)} aria-expanded={aaben} className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-panel focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand">
+                      {aaben ? <ChevronDown size={16} className="shrink-0 text-muted" aria-hidden="true" /> : <ChevronRight size={16} className="shrink-0 text-muted" aria-hidden="true" />}
+                      <div className="min-w-0 flex-1">
+                        <p className="font-mono text-sm font-semibold text-ink break-words">{v.model || v.varenr || v.navn}</p>
+                        <p className="text-[11px] text-muted break-words">
+                          {[v.maerke, v.varetype, v.model && v.varenr ? `Varenr. ${v.varenr}` : null].filter(Boolean).join(" · ")}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="font-display text-3xl text-ink leading-none"><span className="sr-only">Antal: </span>{v.antal}<span className="text-base text-muted"> stk.</span></p>
+                        <p className="text-[10px] text-muted mt-1">{v.kommende} til levering · {v.leveret} leveret</p>
+                      </div>
+                    </button>
+                    {aaben && (
+                      <ul className="bg-panel px-4 py-2 border-t border-divider">
+                        {v.sager.map((r) => (
+                          <li key={r.key}>
+                            <button type="button" onClick={() => aabn(r.orderId)} className="w-full text-left py-2 flex items-center justify-between gap-3 text-xs focus:outline-none focus:ring-2 focus:ring-brand rounded">
+                              <span className="min-w-0">
+                                <span className="font-mono text-ink">{r.dato.slice(8, 10)}.{r.dato.slice(5, 7)}</span>
+                                <span className="font-mono text-faint"> #{r.nr}</span>
+                                <span className="text-muted"> · {r.kundeNavn || "Ukendt kunde"}</span>
+                              </span>
+                              <span className="text-muted shrink-0">{r.oprettetAf?.navn || "ukendt"}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {!canSeeAll && harSoegning && prVare.length > 0 && (
             <div className="rounded-xl border border-line bg-white p-4 mb-5 shadow-sm">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-2 flex items-center gap-1.5">
                 <Package size={13} aria-hidden="true" /> Antal i tidsrummet
@@ -137,8 +199,8 @@ function BookingOverviewModal({ orders, technicians, profile, canSeeAll, onOpen,
                 {prVare.map((v) => (
                   <li key={v.noegle} className="py-2 flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-ink break-words">{v.navn}</p>
-                      <p className="font-mono text-[11px] text-muted">{v.varenr ? `Varenr. ${v.varenr}` : "Uden varenummer"}</p>
+                      <p className="font-mono text-sm font-semibold text-ink break-words">{v.model || v.varenr || v.navn}</p>
+                      <p className="text-[11px] text-muted break-words">{[v.maerke, v.varetype].filter(Boolean).join(" · ")}</p>
                     </div>
                     <div className="text-right shrink-0">
                       <p className="font-display text-2xl text-ink leading-none">{v.antal}</p>
@@ -150,7 +212,7 @@ function BookingOverviewModal({ orders, technicians, profile, canSeeAll, onOpen,
             </div>
           )}
 
-          {!harSoegning && varetyper.length > 0 && (
+          {!samlet && !harSoegning && varetyper.length > 0 && (
             <div className="rounded-xl border border-line bg-white p-4 mb-5 shadow-sm">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-2">Fordelt på varetype</p>
               <ul className="flex flex-wrap gap-2">
@@ -164,7 +226,7 @@ function BookingOverviewModal({ orders, technicians, profile, canSeeAll, onOpen,
           )}
 
           <div className="space-y-5">
-            {grupper.map((g) => (
+            {!samlet && grupper.map((g) => (
               <section key={g.dato} aria-label={formatLongDate(g.dato)}>
                 <h3 className="font-mono text-[11px] tracking-widest uppercase text-brand mb-2">{formatLongDate(g.dato)}</h3>
                 <ul className="grid gap-2 sm:grid-cols-2">

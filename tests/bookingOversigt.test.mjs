@@ -63,11 +63,25 @@ eq("søg på model, uanset store/små bogstaver og mellemrum", filtrerPaaVare(la
 eq("søg på mærke+model", filtrerPaaVare(lagerRows, "point powm").map((r) => r.linje.id), ["a2"]);
 eq("tom søgning giver alle", filtrerPaaVare(lagerRows, "  ").length, lagerRows.length);
 eq("ingen match", filtrerPaaVare(lagerRows, "999"), []);
-eq("antal pr. vare i perioden (a5 ligger uden for perioden)", antalPrVare(filtrerPaaVare(lagerRows, "4003281")), [{ noegle: "4003281", varenr: "4003281", navn: "Miele WWG888", antal: 3, kommende: 2, leveret: 1 }]);
+const felter = (v) => ({ model: v.model, antal: v.antal, kommende: v.kommende, leveret: v.leveret, varenr: v.varenr });
+eq("antal pr. vare i perioden (a5 ligger uden for perioden)", antalPrVare(filtrerPaaVare(lagerRows, "4003281")).map(felter), [{ model: "WWG888", antal: 3, kommende: 2, leveret: 1, varenr: "4003281" }]);
 eq("perioden afgrænser antallet", antalPrVare(filtrerPaaVare(bookedeVarer(lager, { fra: "2026-10-12", til: "2026-10-31" }), "4003281"))[0].antal, 4);
 eq("sælger ser kun eget antal", antalPrVare(filtrerPaaVare(bookedeVarer(lager, { fra: "2026-10-12", til: "2026-10-31", saelgerId: "a" }), "4003281"))[0].antal, 1);
-eq("samme vare samles, forskellige varenumre holdes adskilt", antalPrVare(lagerRows).map((v) => [v.varenr, v.antal]), [["4003281", 3], ["3827083", 1], [null, 1]]);
-eq("vare uden varenummer samles på mærke+model", antalPrVare(filtrerPaaVare(lagerRows, "samsung")).map((v) => [v.navn, v.antal]), [["Samsung QE55", 1]]);
+eq("samles pr. model, største først", antalPrVare(lagerRows).map((v) => [v.model, v.antal]), [["WWG888", 3], ["POWM58MKA", 1], ["QE55", 1]]);
+eq("vare uden varenummer samles på modellen", antalPrVare(filtrerPaaVare(lagerRows, "samsung")).map((v) => [v.navn, v.antal, v.varenr]), [["Samsung QE55", 1, null]]);
+eq("sager følger med til udfoldning", antalPrVare(filtrerPaaVare(lagerRows, "4003281"))[0].sager.map((r) => r.nr), ["26-10", "26-11", "26-12"]);
+
+// --- eksemplet fra butikken: modelkoden ER varenummeret, og punkt1Id mangler ofte
+const stor = [];
+for (let i = 0; i < 30; i++) stor.push(sag(`s${i}`, `26-${100 + i}`, "2026-11-10", "08:00", i % 2 ? A : B, [{ id: `x${i}`, model: i < 5 ? " podw5620w" : "PODW5620W", maerke: "Point", varetypeNavn: "Opvaskemaskine", punkt1Id: i % 3 === 0 ? "4230288" : undefined }]));
+for (let i = 0; i < 10; i++) stor.push(sag(`t${i}`, `26-${200 + i}`, "2026-11-20", "08:00", A, [{ id: `y${i}`, model: "POWM58MKA", maerke: "Point", varetypeNavn: "Vaskemaskine" }]));
+stor.push(sag("u1", "26-300", "2026-12-02", "08:00", A, [{ id: "z1", model: "PODW5620W", maerke: "Point", varetypeNavn: "Opvaskemaskine" }]));
+const samlet = antalPrVare(bookedeVarer(stor, { fra: "2026-11-01", til: "2026-12-01" }));
+eq("30 x PODW5620W og 10 x POWM58MKA i perioden 1.11-1.12", samlet.map((v) => [v.model, v.antal]), [["PODW5620W", 30], ["POWM58MKA", 10]]);
+eq("samme model med og uden punkt1Id og med/uden mellemrum og store bogstaver er ÉN vare", samlet.length, 2);
+eq("punkt1Id vises, når mindst én linje har det", samlet[0].varenr, "4230288");
+eq("varen uden for perioden tælles ikke med", antalPrVare(bookedeVarer(stor, { fra: "2026-11-01", til: "2026-12-31" }))[0].antal, 31);
+eq("uden model samles på punkt1Id", antalPrVare([{ linje: { punkt1Id: "111", varetypeNavn: "TV" } }, { linje: { punkt1Id: "111" } }, { linje: { punkt1Id: "222" } }]).map((v) => [v.varenr, v.antal]), [["111", 2], ["222", 1]]);
 eq("varenavn falder tilbage på varetype", varenavn({ varetypeNavn: "Ovn" }), "Ovn");
 eq("tomme/ugyldige rækker", [antalPrVare(null), filtrerPaaVare(null, "x")], [[], []]);
 

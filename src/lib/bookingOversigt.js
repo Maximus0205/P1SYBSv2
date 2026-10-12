@@ -123,19 +123,44 @@ function filtrerPaaVare(rows, soeg) {
   return norm(soeg) ? (rows || []).filter((r) => raekkeMatcher(r, soeg)) : rows || [];
 }
 
-// Antal pr. VARE (samme varenummer samlet; varer uden varenummer samles på
-// mærke+model). "kommende" = sagen er ikke afsluttet endnu (varen skal stadig
-// ud, så den er stadig behov for lageret); "leveret" = sagen er afsluttet.
+// Antal pr. VARE - til disponering: "30 x PODW5620W, 10 x POWM58MKA" i stedet for
+// 40 sagskort. Én varelinje = én vare (varelinjer har intet antal-felt).
+//
+// VARENUMMER = MODELKODEN (fx PODW5620W), som det bruges i butikken. Punkt1-id'et
+// (punkt1Id) mangler ofte, og samme model optræder både med og uden - derfor
+// samles på modellen (store/små bogstaver og mellemrum ignoreres), og punkt1Id
+// vises blot som ekstra oplysning, når mindst én af varelinjerne har det. Uden
+// model samles på punkt1Id, og uden begge på mærke+varetype.
+//
+// "kommende" = sagen er ikke afsluttet endnu (varen skal stadig ud, så den er
+// stadig behov for lageret); "leveret" = sagen er afsluttet.
+// "sager" = de rækker, optællingen bygger på (til at folde ud og se, hvad den hører til).
 function antalPrVare(rows) {
   const m = new Map();
   for (const r of rows || []) {
     const l = r.linje || {};
+    const model = (l.model ?? "").toString().trim();
     const nr = (l.punkt1Id ?? "").toString().trim();
-    const noegle = nr || `uden-nr:${norm(l.maerke)}|${norm(l.model)}|${norm(l.varetypeNavn)}`;
+    const noegle = model ? `model:${norm(model).replace(/\s+/g, " ")}` : nr ? `nr:${nr}` : `uden:${norm(l.maerke)}|${norm(l.varetypeNavn)}`;
     let e = m.get(noegle);
-    if (!e) { e = { noegle, varenr: nr || null, navn: varenavn(l), antal: 0, kommende: 0, leveret: 0 }; m.set(noegle, e); }
+    if (!e) {
+      e = { noegle, model: model || null, maerke: (l.maerke ?? "").toString().trim() || null, varetype: l.varetypeNavn || null, navn: varenavn(l), varenr: null, antal: 0, kommende: 0, leveret: 0, sager: [], stavemaader: new Map() };
+      m.set(noegle, e);
+    }
+    if (!e.varenr && nr) e.varenr = nr;
+    if (model) e.stavemaader.set(model, (e.stavemaader.get(model) || 0) + 1);
     e.antal += 1;
     if (r.status === "afsluttet") e.leveret += 1; else e.kommende += 1;
+    e.sager.push(r);
+  }
+  // Skrives samme model på flere måder (" podw5620w" / "PODW5620W"), vises den hyppigste.
+  for (const e of m.values()) {
+    if (e.stavemaader.size > 0) {
+      const [bedste] = [...e.stavemaader.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+      e.model = bedste;
+      e.navn = [e.maerke, bedste].filter(Boolean).join(" ");
+    }
+    delete e.stavemaader;
   }
   return [...m.values()].sort((a, b) => b.antal - a.antal || a.navn.localeCompare(b.navn, "da"));
 }
