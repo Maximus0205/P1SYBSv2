@@ -25,6 +25,7 @@ import { PlanningPage } from "./pages/PlanningPage";
 import { TechnicianRouteView, TechnicianOrderDetail } from "./pages/TechnicianPage";
 import { WarehousePage } from "./pages/WarehousePage";
 import { ArchivePage } from "./pages/ArchivePage";
+import { BookingOverviewPage } from "./pages/BookingOverviewPage";
 import { AddressesPage } from "./pages/AddressesPage";
 import { AdminPage } from "./pages/AdminPage";
 import { SystemAdminPage } from "./pages/SystemAdminPage";
@@ -519,12 +520,20 @@ export default function App() {
   // tabellen håndhæver. Ingen enkelt admin_*-rettighed dækker den
   // kombination, så den kan ikke stå i PAGE_PERMISSION_KEYS.
   const kanKoereRute = koererSelv(profile);
+  // BOOKINGOVERSIGT (oktober 2026): faneadgang = 'disponent' (ser alle
+  // bookinger) ELLER 'salg' (ser kun egne). Ingen enkelt side-rettighed
+  // dækker begge, så den står bevidst ikke i PAGE_PERMISSION_KEYS - samme
+  // særtilfælde-mønster som "montor" og "adresser". Hvor MEGET man ser
+  // afgøres af kanSeAlleBookinger nedenfor.
+  const kanSeBookinger = profile.erSystemadmin || permissions.includes("disponent") || permissions.includes("salg");
+  const kanSeAlleBookinger = profile.erSystemadmin || permissions.includes("disponent");
   const kanSeAdresser = profile.erSystemadmin || permissions.includes("sag_feltarbejde") || permissions.includes("sag_opret");
   const allowedPages = profile.erSystemadmin
-    ? ["dashboard", ...PAGE_PERMISSION_KEYS, ...(kanKoereRute ? ["montor"] : []), "adresser", "admin"]
+    ? ["dashboard", ...PAGE_PERMISSION_KEYS, "bookinger", ...(kanKoereRute ? ["montor"] : []), "adresser", "admin"]
     : [
         "dashboard",
         ...PAGE_PERMISSION_KEYS.filter((k) => permissions.includes(k)),
+        ...(kanSeBookinger ? ["bookinger"] : []),
         ...(kanKoereRute ? ["montor"] : []),
         ...(kanSeAdresser ? ["adresser"] : []),
         ...(permissions.some((p) => p.startsWith("admin_")) ? ["admin"] : []),
@@ -621,6 +630,14 @@ export default function App() {
           <Route path="/arkiv" element={
             <Gate allowed={allowedPages} page="arkiv">
               <ArchivePage orders={orders} technicians={technicians} onOpen={onOpen} />
+            </Gate>
+          } />
+
+          {/* BOOKINGER (oktober 2026): hvilke varer er booket i et tidsrum -
+              alle (disponent) eller kun egne (sælger). Se pages/BookingOverviewPage.jsx. */}
+          <Route path="/bookinger" element={
+            <Gate allowed={allowedPages} page="bookinger">
+              <BookingOverviewPage orders={orders} technicians={technicians} profile={profile} canSeeAll={kanSeAlleBookinger} onOpen={onOpen} />
             </Gate>
           } />
 
