@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from "react";
-import { Settings2, Plus, ChevronUp, ChevronDown, Upload, AlertTriangle, Truck, Trash2 } from "lucide-react";
+import { Settings2, Plus, ChevronUp, ChevronDown, Upload, AlertTriangle, Truck, Trash2, ClipboardList } from "lucide-react";
 import { todayISO, dailyOrderCompare, canDo, DASHBOARD_WIDGET_CATALOG, missingLineItems, lineItemLabel } from "../data/domain";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 import { classify } from "./PlanningPage";
 import { isOrderPickable } from "./WarehousePage";
 import { TrashPanel } from "../components/TrashPanel";
+import { BookingOverviewModal } from "../components/BookingOverviewModal";
 import { ParkeredeSager } from "../components/ParkeredeSager";
 import { linjeSkalPlukkes } from "../lib/ydelser";
 
@@ -342,6 +343,11 @@ function DashboardPage({ profile, permissions, orders, technicians, personnel, v
   // man trykker, og kun for dem der må slette/gendanne sager (sag_slet).
   const [visPapirkurv, setVisPapirkurv] = useState(false);
   const maaSePapirkurv = canDo(permissions, "sag_slet");
+  // BOOKEDE VARER (oktober 2026): en knap, ikke en fane - åbner et vindue. 'disponent'
+  // ser alle sælgeres bookinger, 'salg' kun egne. permissions === null (systemadmin) = alt.
+  const [visBookinger, setVisBookinger] = useState(false);
+  const maaSeBookinger = canDo(permissions, "disponent") || canDo(permissions, "salg");
+  const maaSeAlleBookinger = canDo(permissions, "disponent");
 
   const availableCatalog = DASHBOARD_WIDGET_CATALOG.filter((w) => canDo(permissions, w.requires));
   const activeKeys = dashboardWidgets.filter((k) => availableCatalog.some((w) => w.key === k));
@@ -356,6 +362,11 @@ function DashboardPage({ profile, permissions, orders, technicians, personnel, v
           <h1 className="font-display text-4xl uppercase tracking-tight text-ink">Hej, {profile.navn?.split(" ")[0] || "der"}</h1>
         </div>
         <div className="flex gap-2 flex-wrap">
+          {maaSeBookinger && (
+            <button onClick={() => setVisBookinger(true)} aria-haspopup="dialog" className="px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5">
+              <ClipboardList size={15} aria-hidden="true" /> Bookede varer
+            </button>
+          )}
           {maaSePapirkurv && (
             <button onClick={() => setVisPapirkurv((v) => !v)} aria-expanded={visPapirkurv} className="px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5">
               <Trash2 size={15} aria-hidden="true" /> Papirkurv
@@ -369,6 +380,10 @@ function DashboardPage({ profile, permissions, orders, technicians, personnel, v
 
       {customizing && (
         <CustomizePanel activeKeys={activeKeys} availableCatalog={availableCatalog} onSave={onUpdateWidgets} />
+      )}
+
+      {visBookinger && maaSeBookinger && (
+        <BookingOverviewModal orders={orders} technicians={technicians} profile={profile} canSeeAll={maaSeAlleBookinger} onOpen={onOpen} onClose={() => setVisBookinger(false)} />
       )}
 
       {visPapirkurv && maaSePapirkurv && <TrashPanel storeId={store?.id} onClose={() => setVisPapirkurv(false)} />}

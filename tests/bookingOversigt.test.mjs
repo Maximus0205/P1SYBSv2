@@ -1,6 +1,6 @@
 // Regressionstest til bookingoversigten (src/lib/bookingOversigt.js).
 // Kør med:  node tests/bookingOversigt.test.mjs
-import { bookedeVarer, grupperPrDato, normaliserInterval, opsummerVaretyper, saelgereIOrdrer } from "../src/lib/bookingOversigt.js";
+import { bookedeVarer, grupperPrDato, normaliserInterval, opsummerVaretyper, saelgereIOrdrer, filtrerPaaVare, antalPrVare, varenavn } from "../src/lib/bookingOversigt.js";
 
 let pass = 0, fail = 0;
 const eq = (name, got, want) => {
@@ -46,6 +46,30 @@ eq("gruppering pr. dato", grupperPrDato(rows).map((g) => [g.dato, g.rows.length]
 eq("opsummering pr. varetype, største først", opsummerVaretyper(rows).slice(0, 2), [{ navn: "Vaskemaskine", antal: 2 }, { navn: "Køleskab", antal: 1 }]);
 eq("andet-varer tælles under deres fritekst", opsummerVaretyper([{ linje: { varetypeId: "andet", varetypeNavn: "Andet (skriv selv)", varetypeTekst: "Soundbar" } }]), [{ navn: "Soundbar", antal: 1 }]);
 eq("sælgerliste til filter", saelgereIOrdrer(orders), [{ id: "a", navn: "Anna" }, { id: "b", navn: "Bo" }]);
+
+// --- søgning på varenummer / antal pr. vare
+const vl = (id, nr, maerke, model, typeNavn) => ({ id, punkt1Id: nr, maerke, model, varetypeId: "vt7", varetypeNavn: typeNavn });
+const lager = [
+  { ...sag("p1", "26-10", "2026-10-12", "08:00", A, [vl("a1", "4003281", "Miele", "WWG888", "Vaskemaskine"), vl("a2", "3827083", "Point", "POWM58MKA", "Vaskemaskine")]) },
+  { ...sag("p2", "26-11", "2026-10-13", "08:00", B, [vl("a3", "4003281", "Miele", "WWG888", "Vaskemaskine")]), status: "afsluttet" },
+  { ...sag("p3", "26-12", "2026-10-14", "08:00", B, [vl("a4", "4003281", "Miele", "WWG888", "Vaskemaskine")]) },
+  { ...sag("p4", "26-13", "2026-10-30", "08:00", B, [vl("a5", "4003281", "Miele", "WWG888", "Vaskemaskine")]) },
+  { ...sag("p5", "26-14", "2026-10-14", "08:00", A, [vl("a6", undefined, "Samsung", "QE55", "TV")]) },
+];
+const lagerRows = bookedeVarer(lager, { fra: "2026-10-12", til: "2026-10-20" });
+eq("søg på fuldt varenummer", filtrerPaaVare(lagerRows, "4003281").map((r) => r.linje.id), ["a1", "a3", "a4"]);
+eq("søg på del af varenummer", filtrerPaaVare(lagerRows, "40032").length, 3);
+eq("søg på model, uanset store/små bogstaver og mellemrum", filtrerPaaVare(lagerRows, "  wwg888 ").length, 3);
+eq("søg på mærke+model", filtrerPaaVare(lagerRows, "point powm").map((r) => r.linje.id), ["a2"]);
+eq("tom søgning giver alle", filtrerPaaVare(lagerRows, "  ").length, lagerRows.length);
+eq("ingen match", filtrerPaaVare(lagerRows, "999"), []);
+eq("antal pr. vare i perioden (a5 ligger uden for perioden)", antalPrVare(filtrerPaaVare(lagerRows, "4003281")), [{ noegle: "4003281", varenr: "4003281", navn: "Miele WWG888", antal: 3, kommende: 2, leveret: 1 }]);
+eq("perioden afgrænser antallet", antalPrVare(filtrerPaaVare(bookedeVarer(lager, { fra: "2026-10-12", til: "2026-10-31" }), "4003281"))[0].antal, 4);
+eq("sælger ser kun eget antal", antalPrVare(filtrerPaaVare(bookedeVarer(lager, { fra: "2026-10-12", til: "2026-10-31", saelgerId: "a" }), "4003281"))[0].antal, 1);
+eq("samme vare samles, forskellige varenumre holdes adskilt", antalPrVare(lagerRows).map((v) => [v.varenr, v.antal]), [["4003281", 3], ["3827083", 1], [null, 1]]);
+eq("vare uden varenummer samles på mærke+model", antalPrVare(filtrerPaaVare(lagerRows, "samsung")).map((v) => [v.navn, v.antal]), [["Samsung QE55", 1]]);
+eq("varenavn falder tilbage på varetype", varenavn({ varetypeNavn: "Ovn" }), "Ovn");
+eq("tomme/ugyldige rækker", [antalPrVare(null), filtrerPaaVare(null, "x")], [[], []]);
 
 console.log(`${pass} bestået, ${fail} fejlet`);
 if (fail > 0) process.exit(1);

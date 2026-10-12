@@ -1,4 +1,4 @@
-import { RotateCw, Trash2, Cable, Wifi, Wrench, Tag, ShoppingCart, Route, Truck, Package, Settings2, Building2, Archive, Home, Bell, AlertCircle, CalendarClock, MapPin, ClipboardList } from "lucide-react";
+import { RotateCw, Trash2, Cable, Wifi, Wrench, Tag, ShoppingCart, Route, Truck, Package, Settings2, Building2, Archive, Home, Bell, AlertCircle, CalendarClock, MapPin } from "lucide-react";
 import { standardYdelse } from "../lib/ydelser";
 
 // Core domain helpers and default data for the app. Function/constant names
@@ -559,7 +559,6 @@ const PAGES = [
   { key: "montor", label: "Montør", icon: Truck },
   { key: "lager", label: "Lager", icon: Package },
   { key: "arkiv", label: "Arkiv", icon: Archive },
-  { key: "bookinger", label: "Bookinger", icon: ClipboardList },
   { key: "adresser", label: "Adresser", icon: MapPin },
   { key: "admin", label: "Admin", icon: Settings2 },
   { key: "systemadmin", label: "System", icon: Building2 },

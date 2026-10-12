@@ -101,4 +101,43 @@ function saelgereIOrdrer(orders) {
   return [...m.entries()].map(([id, navn]) => ({ id, navn })).sort((a, b) => a.navn.localeCompare(b.navn, "da"));
 }
 
-export { erGyldigDato, normaliserInterval, bookedeVarer, grupperPrDato, opsummerVaretyper, saelgereIOrdrer };
+// ---------------- Søgning på varenummer (oktober 2026) ----------------
+// Formål: holde styr på lager og bestilling - "hvor mange af denne vare kører i
+// perioden?". Én varelinje = én vare (varelinjer har intet antal-felt).
+//
+// Varenummeret er varelinjens punkt1Id (Punkt1-produkt-id). Søgningen matcher
+// som "indeholder" på varenummer, og desuden på mærke, model og varetype, så
+// "4003281", "4003" og "Miele WWG" alle virker. Store/små bogstaver ignoreres.
+const norm = (s) => (s ?? "").toString().toLowerCase().trim();
+
+const varenavn = (l) => [l?.maerke, l?.model].filter(Boolean).join(" ").trim() || l?.varetypeNavn || "Ukendt vare";
+
+function raekkeMatcher(r, soeg) {
+  const q = norm(soeg);
+  if (!q) return true;
+  const l = r.linje || {};
+  return [l.punkt1Id, l.maerke, l.model, l.varetypeNavn, l.varetypeTekst, `${l.maerke || ""} ${l.model || ""}`].some((f) => norm(f).includes(q));
+}
+
+function filtrerPaaVare(rows, soeg) {
+  return norm(soeg) ? (rows || []).filter((r) => raekkeMatcher(r, soeg)) : rows || [];
+}
+
+// Antal pr. VARE (samme varenummer samlet; varer uden varenummer samles på
+// mærke+model). "kommende" = sagen er ikke afsluttet endnu (varen skal stadig
+// ud, så den er stadig behov for lageret); "leveret" = sagen er afsluttet.
+function antalPrVare(rows) {
+  const m = new Map();
+  for (const r of rows || []) {
+    const l = r.linje || {};
+    const nr = (l.punkt1Id ?? "").toString().trim();
+    const noegle = nr || `uden-nr:${norm(l.maerke)}|${norm(l.model)}|${norm(l.varetypeNavn)}`;
+    let e = m.get(noegle);
+    if (!e) { e = { noegle, varenr: nr || null, navn: varenavn(l), antal: 0, kommende: 0, leveret: 0 }; m.set(noegle, e); }
+    e.antal += 1;
+    if (r.status === "afsluttet") e.leveret += 1; else e.kommende += 1;
+  }
+  return [...m.values()].sort((a, b) => b.antal - a.antal || a.navn.localeCompare(b.navn, "da"));
+}
+
+export { erGyldigDato, normaliserInterval, bookedeVarer, grupperPrDato, opsummerVaretyper, saelgereIOrdrer, varenavn, filtrerPaaVare, antalPrVare };
