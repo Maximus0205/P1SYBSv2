@@ -11,6 +11,7 @@ import { KapacitetsForslag } from "../components/KapacitetsForslag";
 import { AddressInput } from "../components/AddressInput";
 import { AddressNotesPanel } from "../components/AddressNotes";
 import { kraeverBeskrivelse } from "../lib/ydelser";
+import { linjerUdenModel, manglerModel } from "../lib/varelinje";
 
 const cloneLineItems = (list) => (list || []).map((v) => ({ ...v, tillaeg: (v.tillaeg || []).map((y) => ({ ...y })) }));
 
@@ -64,7 +65,12 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
   const forventetMinutter = items.reduce((sum, l) => sum + lineItemMinutes(l), 0);
 
   // En sag uden varelinjer er ikke en sag - samme krav som den gamle editor.
-  const itemsInvalid = canEditItems && itemsTouched && items.length === 0;
+  //
+  // MODELNUMMER ER PÅKRÆVET (oktober 2026), når varerne ændres: en varelinje må ikke gemmes
+  // uden modelnummer. Kravet gælder kun, når varerne er rørt - en ældre sag uden model på en
+  // linje kan stadig flyttes til en ny dato eller bil uden at skulle rettes først.
+  const itemsUdenModel = canEditItems && itemsTouched ? linjerUdenModel(items) : [];
+  const itemsInvalid = canEditItems && itemsTouched && (items.length === 0 || itemsUdenModel.length > 0);
 
   const save = () => {
     if (itemsInvalid || kapBlokeret) return;
@@ -134,8 +140,9 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
       {canEditItems && (
         <div className="mt-4 pt-4 border-t border-divider">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Varer &amp; ydelser</h4>
-          <LineItemEditor embedded order={order} catalog={catalog} items={items} onItemsChange={updateItems} />
-          {itemsInvalid && <p className="text-xs text-danger mb-3">Sagen skal have mindst én varelinje, før du kan gemme.</p>}
+          <LineItemEditor embedded kraevModel={itemsTouched} order={order} catalog={catalog} items={items} onItemsChange={updateItems} />
+          {canEditItems && itemsTouched && items.length === 0 && <p role="alert" className="text-xs text-danger mb-3">Sagen skal have mindst én varelinje, før du kan gemme.</p>}
+          {itemsUdenModel.length > 0 && <p role="alert" className="text-xs text-danger mb-3">{itemsUdenModel.length === 1 ? "En varelinje mangler" : `${itemsUdenModel.length} varelinjer mangler`} modelnummer. Alle varer skal have et modelnummer, før du kan gemme.</p>}
         </div>
       )}
 
@@ -180,7 +187,7 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
 // Kræver sag_feltarbejde. Lageret har den bevidst ikke: de må melde en
 // vare manglende, ikke omskrive hvad kunden har købt (håndhævet af
 // orders_guard_field_groups i databasen - UI'et er ikke sikkerhedsgrænsen).
-function LineItemEditor({ order, catalog, onSave, onCancel, embedded = false, items: controlledItems, onItemsChange }) {
+function LineItemEditor({ order, catalog, onSave, onCancel, embedded = false, items: controlledItems, onItemsChange, kraevModel = false }) {
   const productTypes = catalog?.productTypes || [];
   const primaryServices = catalog?.primaryServices || [];
   const addOnServices = catalog?.addOnServices || [];
@@ -286,7 +293,7 @@ function LineItemEditor({ order, catalog, onSave, onCancel, embedded = false, it
                   </label>
                   <label className="text-xs text-muted">
                     Model
-                    <input value={v.model || ""} onChange={(e) => patch(v.id, { model: e.target.value, punkt1Id: undefined })} className="w-full mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+                    <input value={v.model || ""} onChange={(e) => patch(v.id, { model: e.target.value, punkt1Id: undefined })} aria-required="true" aria-invalid={kraevModel && manglerModel(v) ? "true" : undefined} className={`w-full mt-1 rounded-lg border bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand ${kraevModel && manglerModel(v) ? "border-danger" : "border-line"}`} />
                   </label>
                   {/* Samme punkt1-opslag som ved ny booking: bekræfter modelnummeret og husker den skjulte produktreference (ingen mål på klienten).
                       Et ændret modelnummer nulstiller referencen, så en gammel reference aldrig hører til en ny vare. */}

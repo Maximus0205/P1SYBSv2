@@ -383,7 +383,7 @@ function ProductTypeInput({ lineItem, productTypes, onSelectType, onFreeText }) 
 //     kombination af varetype og ydelse - præcis den fejl, der blev
 //     rapporteret (varetype+ydelse valgt korrekt, tid endte alligevel på
 //     0). Slår nu korrekt op i standardtider-matrixen i stedet.
-function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices, defaultTimeEstimates, estimateIndex, onChange, onRemove, canRemove }) {
+function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices, defaultTimeEstimates, estimateIndex, onChange, onRemove, canRemove, modelFejl }) {
   const available = availableAddOns(lineItem.varetypeId, lineItem.primaerYdelse?.id, addOnServices);
 
   // OPGAVEBESKRIVELSE (oktober 2026): nogle ydelser, typisk en servicetur, kan ikke
@@ -495,8 +495,13 @@ function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices
             value={lineItem.model}
             onChange={(e) => onChange({ ...lineItem, model: e.target.value })}
             placeholder="Modelnummer"
-            className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand"
+            aria-label="Modelnummer"
+            aria-required="true"
+            aria-invalid={modelFejl ? "true" : undefined}
+            aria-describedby={modelFejl ? `model-fejl-${lineItem.id}` : undefined}
+            className={`w-full rounded-lg border bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand ${modelFejl ? "border-danger" : "border-line"}`}
           />
+          {modelFejl && <p id={`model-fejl-${lineItem.id}`} role="alert" className="text-xs text-danger mt-1">Modelnummer skal udfyldes.</p>}
           <ModelNumberLookup model={lineItem.model} onSelectProduct={applyProductLookup} />
         </div>
         {canRemove && <button onClick={onRemove} className="p-1.5 text-muted hover:text-danger shrink-0" title="Fjern varelinje"><Trash2 size={15} /></button>}

@@ -81,7 +81,23 @@ eq("30 x PODW5620W og 10 x POWM58MKA i perioden 1.11-1.12", samlet.map((v) => [v
 eq("samme model med og uden punkt1Id og med/uden mellemrum og store bogstaver er ÉN vare", samlet.length, 2);
 eq("punkt1Id vises, når mindst én linje har det", samlet[0].varenr, "4230288");
 eq("varen uden for perioden tælles ikke med", antalPrVare(bookedeVarer(stor, { fra: "2026-11-01", til: "2026-12-31" }))[0].antal, 31);
-eq("uden model samles på punkt1Id", antalPrVare([{ linje: { punkt1Id: "111", varetypeNavn: "TV" } }, { linje: { punkt1Id: "111" } }, { linje: { punkt1Id: "222" } }]).map((v) => [v.varenr, v.antal]), [["111", 2], ["222", 1]]);
+// --- fritekst og linjer uden model skal IKKE med i optællingen (men stadig på sagskortene)
+const blandet = [
+  sag("m1", "26-400", "2026-11-05", "08:00", A, [{ id: "b1", model: "PODW5620W", maerke: "Point", varetypeNavn: "Opvaskemaskine" }]),
+  sag("m2", "26-401", "2026-11-05", "09:00", A, [{ id: "b2", model: "Mål op til vinkøleskab og emhætte, husk at tjekke tilslutning og aftræk", varetypeId: "andet", varetypeNavn: "Andet (skriv selv)", varetypeTekst: "Diverse" }]),
+  sag("m3", "26-402", "2026-11-05", "10:00", B, [{ id: "b3", model: "", varetypeId: "vt1", varetypeNavn: "Køleskab" }]),
+  sag("m4", "26-403", "2026-11-05", "11:00", B, [{ id: "b4", model: "Diverse", varetypeNavn: "Andet" }]),
+  sag("m5", "26-404", "2026-11-06", "08:00", B, [{ id: "b5", model: "MW123X", maerke: "Ukendt", varetypeId: "andet", varetypeTekst: "Mikroovn", varetypeNavn: "Andet (skriv selv)" }]),
+  sag("m6", "26-405", "2026-11-06", "09:00", A, [{ id: "b6", model: "podw5620w", maerke: "Point", varetypeNavn: "Opvaskemaskine", punkt1Id: "4230288" }]),
+];
+const blandetRows = bookedeVarer(blandet, { fra: "2026-11-01", til: "2026-11-30" });
+eq("alle 6 linjer findes som sagskort", blandetRows.length, 6);
+eq("kun rigtige modelnumre i optællingen", antalPrVare(blandetRows).map((v) => [v.model, v.antal]), [["PODW5620W", 2], ["MW123X", 1]]);
+eq("fritekst, tom model og 'Diverse' er med på sagskortene men ikke i optællingen", antalPrVare(blandetRows).reduce((n, v) => n + v.antal, 0), 3);
+eq("model uden Punkt1-id samles med samme model MED Punkt1-id", antalPrVare(blandetRows)[0].varenr, "4230288");
+eq("vare uden for sortimentet (model, men ingen Punkt1-id) tælles", antalPrVare(blandetRows).some((v) => v.model === "MW123X" && v.varenr === null), true);
+eq("sælgerens egne sagskort viser stadig fritekst-linjen", bookedeVarer(blandet, { fra: "2026-11-01", til: "2026-11-30", saelgerId: "a" }).map((r) => r.linje.id), ["b1", "b2", "b6"]);
+eq("ingen modeller overhovedet giver tom optælling", antalPrVare([{ linje: { model: "" } }, { linje: { model: "Diverse" } }]), []);
 eq("varenavn falder tilbage på varetype", varenavn({ varetypeNavn: "Ovn" }), "Ovn");
 eq("tomme/ugyldige rækker", [antalPrVare(null), filtrerPaaVare(null, "x")], [[], []]);
 

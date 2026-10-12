@@ -61,7 +61,11 @@ function BookingOverviewModal({ orders, technicians, profile, canSeeAll, onOpen,
 
   const grupper = useMemo(() => grupperPrDato(rows), [rows]);
   const varetyper = useMemo(() => opsummerVaretyper(rows), [rows]);
+  // Optællingen tæller KUN linjer med et rigtigt modelnummer - fritekst og linjer uden
+  // model er ikke varer til lager og bestilling (men står stadig på sagskortene).
   const prVare = useMemo(() => antalPrVare(rows), [rows]);
+  const optalt = useMemo(() => prVare.reduce((n, v) => n + v.antal, 0), [prVare]);
+  const optaltSager = useMemo(() => new Set(prVare.flatMap((v) => v.sager.map((r) => r.orderId))).size, [prVare]);
   const saelgere = useMemo(() => (canSeeAll ? saelgereIOrdrer(orders) : []), [orders, canSeeAll]);
   const bilNavn = (id) => technicians.find((t) => t.id === id)?.navn || null;
   const antalSager = useMemo(() => new Set(rows.map((r) => r.orderId)).size, [rows]);
@@ -132,11 +136,13 @@ function BookingOverviewModal({ orders, technicians, profile, canSeeAll, onOpen,
 
           <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
             <p className="text-xs text-muted" aria-live="polite">
-              {rows.length === 0
-                ? (harSoegning ? "Ingen varer matcher søgningen i det valgte tidsrum." : "Ingen varer booket i det valgte tidsrum.")
-                : samlet
-                  ? `${rows.length} ${rows.length === 1 ? "vare" : "varer"} fordelt på ${prVare.length} ${prVare.length === 1 ? "model" : "modeller"} (${antalSager} ${antalSager === 1 ? "sag" : "sager"})`
-                  : `${rows.length} ${rows.length === 1 ? "vare" : "varer"} på ${antalSager} ${antalSager === 1 ? "sag" : "sager"}`}
+              {samlet
+                ? (prVare.length === 0
+                  ? (harSoegning ? "Ingen varer matcher søgningen i det valgte tidsrum." : "Ingen varer med modelnummer booket i det valgte tidsrum.")
+                  : `${optalt} ${optalt === 1 ? "vare" : "varer"} fordelt på ${prVare.length} ${prVare.length === 1 ? "model" : "modeller"} (${optaltSager} ${optaltSager === 1 ? "sag" : "sager"})`)
+                : (rows.length === 0
+                  ? (harSoegning ? "Ingen varer matcher søgningen i det valgte tidsrum." : "Ingen varer booket i det valgte tidsrum.")
+                  : `${rows.length} ${rows.length === 1 ? "vare" : "varer"} på ${antalSager} ${antalSager === 1 ? "sag" : "sager"}`)}
             </p>
             {canSeeAll && (
               <div role="group" aria-label="Visning" className="inline-flex rounded-lg border border-line bg-white p-0.5">
@@ -158,9 +164,9 @@ function BookingOverviewModal({ orders, technicians, profile, canSeeAll, onOpen,
                     <button type="button" onClick={() => skiftUd(v.noegle)} aria-expanded={aaben} className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-panel focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand">
                       {aaben ? <ChevronDown size={16} className="shrink-0 text-muted" aria-hidden="true" /> : <ChevronRight size={16} className="shrink-0 text-muted" aria-hidden="true" />}
                       <div className="min-w-0 flex-1">
-                        <p className="font-mono text-sm font-semibold text-ink break-words">{v.model || v.varenr || v.navn}</p>
+                        <p className="font-mono text-sm font-semibold text-ink break-words">{v.model}</p>
                         <p className="text-[11px] text-muted break-words">
-                          {[v.maerke, v.varetype, v.model && v.varenr ? `Varenr. ${v.varenr}` : null].filter(Boolean).join(" · ")}
+                          {[v.maerke, v.varetype, v.varenr ? `Punkt1-id ${v.varenr}` : null].filter(Boolean).join(" · ")}
                         </p>
                       </div>
                       <div className="text-right shrink-0">
@@ -199,7 +205,7 @@ function BookingOverviewModal({ orders, technicians, profile, canSeeAll, onOpen,
                 {prVare.map((v) => (
                   <li key={v.noegle} className="py-2 flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="font-mono text-sm font-semibold text-ink break-words">{v.model || v.varenr || v.navn}</p>
+                      <p className="font-mono text-sm font-semibold text-ink break-words">{v.model}</p>
                       <p className="text-[11px] text-muted break-words">{[v.maerke, v.varetype].filter(Boolean).join(" · ")}</p>
                     </div>
                     <div className="text-right shrink-0">

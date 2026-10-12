@@ -8,6 +8,7 @@ import { lookupPosOrder } from "../lib/dataStore";
 import { erPosAktiv } from "../lib/posStatus";
 import { foersteArbejdsdagFra } from "../lib/arbejdsuge";
 import { fristFejl as beregnFristFejl } from "../lib/frist";
+import { linjerUdenModel, manglerModel } from "../lib/varelinje";
 import { useOrderDraft } from "../hooks/useOrderDraft";
 import { klokkeslaet } from "../lib/orderDrafts";
 import { ReceiptUpload } from "../components/ReceiptUpload";
@@ -312,7 +313,12 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
   // Ved tomgang er "navnet" rekvirenten (udlejer/administrator), og det er
   // stadig påkrævet: nogen har bestilt arbejdet, og den nogen skal kunne
   // kontaktes, hvis noget går galt i et tomt lejemål.
-  const stepValid = [!!customerName.trim(), true, true, true];
+  //
+  // MODELNUMMER ER PÅKRÆVET (oktober 2026): modelnummeret er varenummeret, og
+  // disponenten tæller på det til lager og bestilling. En sag kan derfor ikke bookes
+  // med en varelinje uden modelnummer - kravet gælder alle varelinjer.
+  const udenModel = linjerUdenModel(lineItems);
+  const stepValid = [!!customerName.trim(), true, udenModel.length === 0, true];
   const canProceed = stepValid[step];
 
   const goNext = () => {
@@ -348,7 +354,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
   // Fejler oprettelsen, bliver formularen stående med alt det tastede, og
   // kladden består - tidligere lukkede formularen uanset udfaldet, og alt var tabt.
   const submit = async () => {
-    if (!customerName.trim() || (!udenFastDato && !date) || fristFejl || (!udenFastDato && kapStatus.blokeret)) return;
+    if (!customerName.trim() || udenModel.length > 0 || (!udenFastDato && !date) || fristFejl || (!udenFastDato && kapStatus.blokeret)) return;
     const t = timeSlotById(timeSlotId);
     setSaving(true);
     const nyId = await onAdd({
@@ -561,9 +567,16 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
                 onChange={(next) => updateLineItem(idx, next)}
                 onRemove={() => removeLineItem(idx)}
                 canRemove={lineItems.length > 1}
+                modelFejl={attemptedNext && manglerModel(l)}
               />
             ))}
           </div>
+          {attemptedNext && udenModel.length > 0 && (
+            <p role="alert" className="text-xs text-danger flex items-start gap-1.5 mt-3">
+              <AlertTriangle size={12} className="shrink-0 mt-0.5" aria-hidden="true" />
+              {udenModel.length === 1 ? "En varelinje mangler" : `${udenModel.length} varelinjer mangler`} modelnummer. Alle varer skal have et modelnummer, før sagen kan bookes.
+            </p>
+          )}
         </div>
       )}
 
@@ -645,6 +658,16 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
         </div>
       )}
 
+      {step === STEPS.length - 1 && udenModel.length > 0 && (
+        <p role="alert" className="text-xs text-danger flex items-start gap-1.5 mt-4">
+          <AlertTriangle size={12} className="shrink-0 mt-0.5" aria-hidden="true" />
+          <span>
+            {udenModel.length === 1 ? "En varelinje mangler" : `${udenModel.length} varelinjer mangler`} modelnummer, så sagen kan ikke bookes endnu.{" "}
+            <button type="button" onClick={() => { setAttemptedNext(true); setStep(2); }} className="underline font-semibold focus:outline-none focus:ring-2 focus:ring-brand rounded">Gå til varerne</button>
+          </span>
+        </p>
+      )}
+
       <div className="flex items-center justify-between gap-2 mt-5 pt-4 border-t border-divider">
         <button
           onClick={goBack}
@@ -664,7 +687,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
         ) : (
           <button
             onClick={submit}
-            disabled={saving || (!udenFastDato && !date) || !!fristFejl || (!udenFastDato && kapStatus.blokeret)}
+            disabled={saving || udenModel.length > 0 || (!udenFastDato && !date) || !!fristFejl || (!udenFastDato && kapStatus.blokeret)}
             className="px-5 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60 flex items-center gap-1.5"
           >
             <Check size={15} aria-hidden="true" /> {saving ? "Booker..." : udenFastDato ? "Opret tomgang" : erTomgang ? "Book tomgang" : "Book sag"}

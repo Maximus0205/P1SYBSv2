@@ -15,6 +15,8 @@
 // nødvendigt for fx Planlægning og Lager). Adgangen til selve fanen styres af
 // rettighederne 'disponent' (se alt) og 'salg' (se egne).
 
+import { erVarenummer, modelkode, modelNoegle } from "./varelinje.js";
+
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 const erGyldigDato = (s) => typeof s === "string" && ISO.test(s);
@@ -109,6 +111,7 @@ function saelgereIOrdrer(orders) {
 // som "indeholder" på varenummer, og desuden på mærke, model og varetype, så
 // "4003281", "4003" og "Miele WWG" alle virker. Store/små bogstaver ignoreres.
 const norm = (s) => (s ?? "").toString().toLowerCase().trim();
+const tekstTrim = (s) => (s ?? "").toString().trim();
 
 const varenavn = (l) => [l?.maerke, l?.model].filter(Boolean).join(" ").trim() || l?.varetypeNavn || "Ukendt vare";
 
@@ -126,11 +129,15 @@ function filtrerPaaVare(rows, soeg) {
 // Antal pr. VARE - til disponering: "30 x PODW5620W, 10 x POWM58MKA" i stedet for
 // 40 sagskort. Én varelinje = én vare (varelinjer har intet antal-felt).
 //
-// VARENUMMER = MODELKODEN (fx PODW5620W), som det bruges i butikken. Punkt1-id'et
-// (punkt1Id) mangler ofte, og samme model optræder både med og uden - derfor
-// samles på modellen (store/små bogstaver og mellemrum ignoreres), og punkt1Id
-// vises blot som ekstra oplysning, når mindst én af varelinjerne har det. Uden
-// model samles på punkt1Id, og uden begge på mærke+varetype.
+// KUN LINJER MED ET RIGTIGT MODELNUMMER TÆLLES MED (se lib/varelinje.js). Linjer uden
+// model, og linjer hvor modelfeltet er brugt til fritekst, står slet ikke i
+// optællingen - den er til lager og bestilling, og fritekst er ikke en vare. De
+// optræder stadig på de enkelte sagskort (fx hos sælgeren).
+//
+// Samles på modellen alene (store/små bogstaver og mellemrum ignoreres): Punkt1-id'et
+// mangler ofte, og vi får af og til varer udefra, der ikke er en fast del af
+// sortimentet - samme model med og uden Punkt1-id er derfor ÉN vare. Punkt1-id'et
+// vises blot som ekstra oplysning, når mindst én af linjerne har det.
 //
 // "kommende" = sagen er ikke afsluttet endnu (varen skal stadig ud, så den er
 // stadig behov for lageret); "leveret" = sagen er afsluttet.
@@ -139,27 +146,28 @@ function antalPrVare(rows) {
   const m = new Map();
   for (const r of rows || []) {
     const l = r.linje || {};
-    const model = (l.model ?? "").toString().trim();
+    if (!erVarenummer(l)) continue;
     const nr = (l.punkt1Id ?? "").toString().trim();
-    const noegle = model ? `model:${norm(model).replace(/\s+/g, " ")}` : nr ? `nr:${nr}` : `uden:${norm(l.maerke)}|${norm(l.varetypeNavn)}`;
+    const noegle = modelNoegle(l);
     let e = m.get(noegle);
     if (!e) {
-      e = { noegle, model: model || null, maerke: (l.maerke ?? "").toString().trim() || null, varetype: l.varetypeNavn || null, navn: varenavn(l), varenr: null, antal: 0, kommende: 0, leveret: 0, sager: [], stavemaader: new Map() };
+      e = { noegle, model: modelkode(l), maerke: tekstTrim(l.maerke) || null, varetype: l.varetypeNavn || null, navn: varenavn(l), varenr: null, antal: 0, kommende: 0, leveret: 0, sager: [], stavemaader: new Map() };
       m.set(noegle, e);
     }
     if (!e.varenr && nr) e.varenr = nr;
-    if (model) e.stavemaader.set(model, (e.stavemaader.get(model) || 0) + 1);
+    if (!e.maerke && tekstTrim(l.maerke)) e.maerke = tekstTrim(l.maerke);
+    e.stavemaader.set(modelkode(l), (e.stavemaader.get(modelkode(l)) || 0) + 1);
     e.antal += 1;
     if (r.status === "afsluttet") e.leveret += 1; else e.kommende += 1;
     e.sager.push(r);
   }
   // Skrives samme model på flere måder (" podw5620w" / "PODW5620W"), vises den hyppigste.
   for (const e of m.values()) {
-    if (e.stavemaader.size > 0) {
-      const [bedste] = [...e.stavemaader.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
-      e.model = bedste;
-      e.navn = [e.maerke, bedste].filter(Boolean).join(" ");
-    }
+    // Ved lige mange: den med flest store bogstaver (modelkoder skrives normalt med store).
+    const store = (t) => (t.match(/[A-ZÆØÅ]/g) || []).length;
+    const [bedste] = [...e.stavemaader.entries()].sort((a, b) => b[1] - a[1] || store(b[0]) - store(a[0]) || a[0].localeCompare(b[0]))[0];
+    e.model = bedste;
+    e.navn = [e.maerke, bedste].filter(Boolean).join(" ");
     delete e.stavemaader;
   }
   return [...m.values()].sort((a, b) => b.antal - a.antal || a.navn.localeCompare(b.navn, "da"));
