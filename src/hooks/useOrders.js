@@ -605,6 +605,7 @@ export function useOrders(storeId) {
       kunde: { ...sourceOrder.kunde },
       koeber: sourceOrder.koeber ? { ...sourceOrder.koeber } : null,
       noegle: sourceOrder.noegle ? { ...sourceOrder.noegle } : {},
+      ...(sourceOrder.toMand ? { toMand: true } : {}),
       dato: null, tidsrumId: null, start: null, slut: null, bilId: null,
       status: "planlagt", plukket: false, varelinjer: clonedLineItems,
       noter: [], billeder: [], rapporter: [], materialer: [], stemplerInd: null, logs: [],

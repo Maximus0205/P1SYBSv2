@@ -48,6 +48,9 @@ export function useUsers(storeId) {
     const dbFields = {};
     if ("rolle" in fields) dbFields.rolle = fields.rolle;
     if ("bilId" in fields) dbFields.bilId = fields.bilId;
+    // En medhjælper har ingen fast bil (sættes pr. dag). Skifter en montør til medhjælper, ryddes den faste bil, så vedkommende
+    // ikke både står som fast chauffør og som dagens medhjælper.
+    if (fields.rolle === "medhjaelper" && !("bilId" in fields)) dbFields.bilId = null;
     if ("navn" in fields) dbFields.navn = fields.navn;
     if ("kanKoere" in fields) dbFields.kanKoere = fields.kanKoere;
     const ok = await updateProfile(id, dbFields);
