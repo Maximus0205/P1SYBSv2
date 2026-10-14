@@ -3,6 +3,9 @@ import Papa from "papaparse";
 import { Download } from "lucide-react";
 import { OTHER_PRODUCT_TYPE_ID, createLineItem, createAddOn, timeSlotById, todayISO, uid } from "../data/domain";
 import { ALIAS, TIDSRUM_VAERDIER, erEksempelraekke, matchBil, norm, pick, skabelonCsv } from "../lib/csvSager";
+import { slaaKoordinaterOp } from "../lib/adresseOpslag";
+import { searchAdressevaelger, lookupAdressevaelgerCoordinates } from "../lib/geocodingAdressevaelger";
+import { parseQuery } from "../adapters/adressevaelger";
 
 // BIL, IKKE MONTØR (september 2026): "technicians" er BIL-rækker (se
 // App.jsx) - CSV'ens "Montør"-kolonne matches derfor mod en bils navn
@@ -51,7 +54,7 @@ function CsvImport({ technicians, productTypes, primaryServices, onImport, onClo
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      complete: (results) => {
+      complete: async (results) => {
         try {
           const alle = results.data;
           const rows = alle.filter((row) => !erEksempelraekke(pick(row, ALIAS.kunde)));
@@ -90,8 +93,19 @@ function CsvImport({ technicians, productTypes, primaryServices, onImport, onClo
               };
             })
             .filter((s) => s.kunde.navn !== "Uden navn" || s.kunde.adresse);
+          // SKJULTE KOORDINATER (oktober 2026): hver sags adresse slås op hos Adressevælgeren, så planlægningen og kapacitetsmotoren kan regne køretid. Kun et
+          // sikkert match gemmes; ellers får sagen ingen koordinater og vises som "kan ikke beregnes", til adressen vælges i systemet. Aldrig vist i UI.
+          setStatus({ count: 0, sprunget, error: null, slaarOp: true });
+          const deps = { parse: parseQuery, soeg: (raa) => searchAdressevaelger(raa, undefined, "soeg-husnumre"), opslag: lookupAdressevaelgerCoordinates };
+          let medKoord = 0;
+          for (let i = 0; i < newOrders.length; i += 4) {
+            await Promise.all(newOrders.slice(i, i + 4).map(async (o) => {
+              const k = o.kunde.adresse ? await slaaKoordinaterOp(o.kunde.adresse, deps) : null;
+              if (k) { o.kunde.adresseKoordinater = k; medKoord += 1; }
+            }));
+          }
           onImport(newOrders);
-          setStatus({ count: newOrders.length, sprunget, error: null });
+          setStatus({ count: newOrders.length, sprunget, error: null, uden: newOrders.length - medKoord });
         } catch (e) {
           setStatus({ count: 0, sprunget: 0, error: "Kunne ikke læse filen." });
         }
@@ -122,7 +136,7 @@ function CsvImport({ technicians, productTypes, primaryServices, onImport, onClo
       </div>
       {status && (
         <p className={`text-sm mt-3 ${status.error ? "text-danger" : "text-success"}`} role={status.error ? "alert" : "status"}>
-          {status.error ? status.error : `${status.count} sager importeret.${status.sprunget > 0 ? ` Eksempelrækken blev sprunget over.` : ""}`}
+          {status.error ? status.error : status.slaarOp ? "Slår adresserne op..." : `${status.count} sager importeret.${status.sprunget > 0 ? ` Eksempelrækken blev sprunget over.` : ""}${status.uden > 0 ? ` ${status.uden} ${status.uden === 1 ? "sag" : "sager"} fik ikke en sikker adresse og kan ikke tidsberegnes i Planlægning, før adressen er valgt i sagen.` : ""}`}
         </p>
       )}
       <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted transition-colors mt-4">

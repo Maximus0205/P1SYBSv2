@@ -152,7 +152,7 @@ function PosLookupPanel({ storeId, onApply }) {
   );
 }
 
-function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, addressNotes, keyCabinets, orders, selectedDate, onAdd, onClose, onOpen, storeFocus, storeKommuneKode, storePostnr, draftId, draft, userId }) {
+function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew, store, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, addressNotes, keyCabinets, orders, selectedDate, onAdd, onClose, onOpen, storeFocus, storeKommuneKode, storePostnr, draftId, draft, userId }) {
   // Startværdier: en tom formular, eller den gemte kladde ved genoptagelse.
   const d = draft?.state || {};
   const [step, setStep] = useState(Math.min(Math.max(Number(draft?.step) || 0, 0), STEPS.length - 1));
@@ -622,13 +622,19 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
             technicians={technicians}
             personnel={personnel}
             timeOff={timeOff}
+            vehicles={vehicles}
+            crew={crew}
+            store={store}
+            koordinater={koordinaterTilSag(adresseKoord, address)}
+            minutter={expectedMinutes}
+            toMand={toMand}
             date={date}
             address={address}
             jobSummary={jobSummary}
             onSelectDate={applySuggestion}
           />
 
-          <InteractiveWeekPicker orders={orders} technicians={technicians} date={date} onSelectDate={applySuggestion} />
+          <InteractiveWeekPicker orders={orders} technicians={technicians} date={date} onSelectDate={applySuggestion} vehicles={vehicles} personnel={personnel} timeOff={timeOff} crew={crew} store={store} />
 
           <div className="grid gap-3 sm:grid-cols-3 mb-2">
             <label className="text-xs text-muted">
@@ -650,7 +656,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
             </label>
           </div>
           {vehicleId && date && (
-            <KapacitetsTjek dato={date} bilId={vehicleId} adresse={address} minutter={expectedMinutes} tidsrumId={timeSlotId} varelinjer={lineItems} onStatus={setKapStatus} />
+            <KapacitetsTjek dato={date} bilId={vehicleId} adresse={address} koordinater={koordinaterTilSag(adresseKoord, address)} minutter={expectedMinutes} tidsrumId={timeSlotId} varelinjer={lineItems} onStatus={setKapStatus} />
           )}
           </>
           )}

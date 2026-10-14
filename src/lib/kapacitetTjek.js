@@ -4,11 +4,13 @@
 import { supabase } from "./supabaseClient";
 
 // Bygger det minimale, rensede request-body ud fra bookingens felter. Varelinjens skjulte punkt1Id er kun en reference.
-export function byggTjekBody({ dato, bilId, sagId, adresse, minutter, tidsrumId, varelinjer }) {
+export function byggTjekBody({ dato, bilId, sagId, adresse, koordinater, minutter, tidsrumId, varelinjer }) {
   return {
     dato, bilId, sagId: sagId || undefined,
     kandidat: {
       adresse: adresse || "", minutter: Number(minutter) || 0, tidsrumId: tidsrumId || "heldag",
+      // Skjulte koordinater fra Adressevælgeren (kun til beregningen; vises aldrig) - så tjekket regner på de samme koordinater som Planlægning.
+      ...(Number.isFinite(koordinater?.lat) && Number.isFinite(koordinater?.lon) ? { lat: koordinater.lat, lon: koordinater.lon } : {}),
       varer: (varelinjer || []).map((l) => ({
         id: l.id,
         navn: [l.maerke, l.model].filter(Boolean).join(" ") || l.varetypeTekst || l.varetypeNavn || "Vare",
@@ -34,8 +36,8 @@ export async function koerKapacitetTjek(body) {
 
 // ---- Forslag til ny dato/bil (ombooking) ----
 // Samme rensede kandidat som tjekket. fraDato er valgfri (serveren bruger i morgen); ekskluder = sagens nuværende tid, så den ikke foreslås igen.
-export function byggForslagBody({ fraDato, sagId, adresse, minutter, tidsrumId, varelinjer, nuvaerende }) {
-  const { kandidat } = byggTjekBody({ dato: "2000-01-01", bilId: "x", adresse, minutter, tidsrumId, varelinjer });
+export function byggForslagBody({ fraDato, sagId, adresse, koordinater, minutter, tidsrumId, varelinjer, nuvaerende }) {
+  const { kandidat } = byggTjekBody({ dato: "2000-01-01", bilId: "x", adresse, koordinater, minutter, tidsrumId, varelinjer });
   return {
     handling: "forslag", sagId: sagId || undefined, fraDato: fraDato || undefined,
     ekskluder: nuvaerende?.dato && nuvaerende?.bilId ? { dato: nuvaerende.dato, bilId: nuvaerende.bilId } : undefined,

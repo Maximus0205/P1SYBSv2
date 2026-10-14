@@ -65,7 +65,7 @@ function matchesSearch(order, search) {
 //
 // PAPIRKURV (oktober 2026): slettede sager kan hentes tilbage fra knappen "Papirkurv"
 // på Forsiden (pages/DashboardPage.jsx) - se components/TrashPanel.jsx.
-function SalesPage({ storeId, orders, technicians, personnel, timeOff, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, addressNotes, keyCabinets, selectedDate, onDateChange, onOpen, onAdd, onImport, storeFocus, storeKommuneKode, storePostnr }) {
+function SalesPage({ storeId, orders, technicians, personnel, timeOff, vehicles, crew, store, productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates, addressNotes, keyCabinets, selectedDate, onDateChange, onOpen, onAdd, onImport, storeFocus, storeKommuneKode, storePostnr }) {
   const [panel, setPanel] = useState("ny");
   const [search, setSearch] = useState("");
   const { userId, kladder, klar } = useKladder(storeId);
@@ -109,7 +109,7 @@ function SalesPage({ storeId, orders, technicians, personnel, timeOff, productTy
         </div>
       </div>
 
-      {panel === "ny" && <div className="mb-6"><NewOrderForm key={seed.id} draftId={seed.id} draft={seed.draft} userId={userId} storeId={storeId} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} defaultTimeEstimates={defaultTimeEstimates} addressNotes={addressNotes} keyCabinets={keyCabinets} orders={orders} selectedDate={selectedDate} onAdd={onAdd} onClose={() => setPanel(null)} onOpen={onOpen} storeFocus={storeFocus} storeKommuneKode={storeKommuneKode} storePostnr={storePostnr} /></div>}
+      {panel === "ny" && <div className="mb-6"><NewOrderForm key={seed.id} draftId={seed.id} draft={seed.draft} userId={userId} storeId={storeId} technicians={technicians} personnel={personnel} timeOff={timeOff} vehicles={vehicles} crew={crew} store={store} productTypes={productTypes} productCategories={productCategories} primaryServices={primaryServices} addOnServices={addOnServices} defaultTimeEstimates={defaultTimeEstimates} addressNotes={addressNotes} keyCabinets={keyCabinets} orders={orders} selectedDate={selectedDate} onAdd={onAdd} onClose={() => setPanel(null)} onOpen={onOpen} storeFocus={storeFocus} storeKommuneKode={storeKommuneKode} storePostnr={storePostnr} /></div>}
       {panel === "import" && <div className="mb-6"><CsvImport technicians={technicians} productTypes={productTypes} primaryServices={primaryServices} onImport={onImport} onClose={() => setPanel(null)} /></div>}
 
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">

@@ -3,8 +3,9 @@ import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin, 
 import { OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID, KEY_ACCESS_TYPES, buildingKey, formatLongDate, formatDuration, lineItemMinutes, availableAddOns, serviceIcon, todayISO, addDays, weekDays, orderExpectedMinutes, buildTitle, getDefaultEstimateMinutes } from "../data/domain";
 import { estimateForLineItem, estimateForCluster } from "../data/estimates";
 import { lookupPunkt1Product } from "../lib/dataStore";
-import { geocodeAddress, geocodeAddresses, drivingDistances } from "../lib/geocoding";
-import { suggestBookingDates } from "../lib/scheduling";
+import { motorForslag } from "../lib/forslagMotor";
+import { useMotorDage } from "../lib/useMotorDage";
+import { ordreTilStop, hentKapGrundlag, hentMotorMatrix } from "../lib/motorStop";
 import { MinutesInput } from "../components/common";
 import { forslagsVindue, foersteArbejdsdagFra } from "../lib/arbejdsuge";
 import { kraeverBeskrivelse } from "../lib/ydelser";
@@ -785,7 +786,19 @@ function CustomerHistoryLookup({ orders, currentOrderId, phone, address, name, o
   );
 }
 
-const WORKDAY_MINUTES = 450; // ~7,5 time
+// Tidsbadget i booking-ugevisningerne = KAPACITETSMOTOREN (oktober 2026, se lib/useMotorDage.js): før en simpel sum af sagernes minutter mod en fast arbejdsdag
+// på 7,5 t, nu dagens tid fra start til bilen er hjemme (køretid, lager, arbejdstid) - samme tal som badgen i Planlægning.
+// Sager uden bil ("Ikke tildelt") kan motoren ikke regne på: de vises kun som antal.
+function cellFra(badges, r, d, orders) {
+  const dayOrders = (orders || []).filter((o) => o.bilId === r.id && o.dato === d && o.status !== "afsluttet");
+  const count = dayOrders.length;
+  if (!r.id) return { count, kind: count > 0 ? "antal" : "tom" };
+  if (count === 0) return { count, kind: "tom" };
+  const b = badges[`${r.id}|${d}`];
+  if (!b) return { count, kind: "henter" };
+  if (b.fejl) return { count, kind: "fejl", titel: b.fejl };
+  return { count, kind: b.overbelastet ? "fuld" : "ok", minutes: b.minutter, titel: b.titel };
+}
 function hoursLabel(minutes) {
   if (minutes === 0) return "–";
   const h = Math.floor(minutes / 60);
@@ -798,17 +811,12 @@ function hoursLabel(minutes) {
 // "technicians" er BIL-rækker (se App.jsx) - kapaciteten vises altså pr.
 // BIL, og cellFor filtrerer på order.bilId (september 2026, erstatter
 // montorId - se rebind_orders_to_vehicle_instead_of_person).
-function WeeklyScheduleOverview({ orders, technicians, date }) {
+function WeeklyScheduleOverview({ orders, technicians, date, vehicles, personnel, timeOff, crew, store }) {
   const anchor = date || todayISO();
   const week = weekDays(anchor);
   const today = todayISO();
   const rows = [...technicians, { id: null, navn: "Ikke tildelt" }];
-
-  const cellFor = (vehicleId, day) => {
-    const dayOrders = (orders || []).filter((o) => o.bilId === vehicleId && o.dato === day && o.status !== "afsluttet");
-    const minutes = dayOrders.reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
-    return { count: dayOrders.length, minutes };
-  };
+  const { badges } = useMotorDage({ orders, dage: week, vehicles, technicians, personnel, timeOff, crew, store });
 
   return (
     <div className="overflow-x-auto">
@@ -828,19 +836,24 @@ function WeeklyScheduleOverview({ orders, technicians, date }) {
             <tr key={r.id || "utildelt"} className="border-b border-divider last:border-b-0">
               <td className="p-1.5 text-ink font-medium whitespace-nowrap">{r.navn}</td>
               {week.map((d) => {
-                const { count, minutes } = cellFor(r.id, d);
-                const overloaded = minutes > WORKDAY_MINUTES;
+                const c = cellFra(badges, r, d, orders);
                 return (
                   <td key={d} className={`p-1.5 text-center ${d === date ? "bg-brand/10" : ""}`}>
-                    {count === 0 ? (
+                    {c.kind === "tom" ? (
                       <span className="text-line">–</span>
+                    ) : c.kind === "antal" ? (
+                      <span className="inline-flex flex-col items-center px-1.5 py-0.5 rounded-lg bg-panel text-ink" title="Uden bil kan tiden ikke beregnes"><span className="font-semibold">{c.count}</span><span className="text-[9px] opacity-80">{c.count === 1 ? "sag" : "sager"}</span></span>
+                    ) : c.kind === "henter" ? (
+                      <span className="text-muted" aria-label="Beregner">…</span>
+                    ) : c.kind === "fejl" ? (
+                      <span className="inline-flex flex-col items-center px-1.5 py-0.5 rounded-lg border border-danger text-danger" title={`Kan ikke beregnes: ${c.titel}`}><span className="font-semibold">?</span><span className="text-[9px]">kan ikke beregnes</span></span>
                     ) : (
                       <span
-                        className={`inline-flex flex-col items-center px-1.5 py-0.5 rounded-lg ${overloaded ? "bg-danger text-white" : "bg-panel text-ink"}`}
-                        title={`${count} ${count === 1 ? "sag" : "sager"} · ${hoursLabel(minutes)}`}
+                        className={`inline-flex flex-col items-center px-1.5 py-0.5 rounded-lg ${c.kind === "fuld" ? "bg-danger text-white" : "bg-panel text-ink"}`}
+                        title={c.titel || `${c.count} ${c.count === 1 ? "sag" : "sager"} · ${hoursLabel(c.minutes)}`}
                       >
-                        <span className="font-semibold">{hoursLabel(minutes)}</span>
-                        <span className="text-[9px] opacity-80">{count} {count === 1 ? "sag" : "sager"}</span>
+                        <span className="font-semibold">{hoursLabel(c.minutes)}</span>
+                        <span className="text-[9px] opacity-80">{c.count} {c.count === 1 ? "sag" : "sager"}</span>
                       </span>
                     )}
                   </td>
@@ -850,7 +863,7 @@ function WeeklyScheduleOverview({ orders, technicians, date }) {
           ))}
         </tbody>
       </table>
-      <p className="text-[10px] text-muted mt-2">Rødt = allerede booket mere end en arbejdsdag ({hoursLabel(WORKDAY_MINUTES)}).</p>
+      <p className="text-[10px] text-muted mt-2">Tiden er beregnet af kapacitetsmotoren (som i Planlægning). Rødt = motoren melder brud, fx arbejdstiden overskredet. "?" = kan ikke beregnes, fx fordi en sag mangler koordinater.</p>
     </div>
   );
 }
@@ -870,7 +883,7 @@ function shortDateLabel(iso) {
   return new Date(iso + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "short" });
 }
 
-function InteractiveWeekPicker({ orders, technicians, date, onSelectDate }) {
+function InteractiveWeekPicker({ orders, technicians, date, onSelectDate, vehicles, personnel, timeOff, crew, store }) {
   // Lørdag/søndag viser ugevisningen den KOMMENDE uge (se lib/arbejdsuge.js): den uge, der
   // næsten er slut, kan man ikke booke i.
   const startUge = foersteArbejdsdagFra(todayISO());
@@ -878,12 +891,7 @@ function InteractiveWeekPicker({ orders, technicians, date, onSelectDate }) {
   const week = weekDays(weekAnchor);
   const today = todayISO();
   const rows = [...technicians, { id: null, navn: "Ikke tildelt" }];
-
-  const cellFor = (vehicleId, day) => {
-    const dayOrders = (orders || []).filter((o) => o.bilId === vehicleId && o.dato === day && o.status !== "afsluttet");
-    const minutes = dayOrders.reduce((sum, o) => sum + orderExpectedMinutes(o), 0);
-    return { count: dayOrders.length, minutes };
-  };
+  const { badges } = useMotorDage({ orders, dage: week, vehicles, technicians, personnel, timeOff, crew, store });
 
   return (
     <div className="rounded-xl border border-line bg-white p-3 mb-4">
@@ -925,20 +933,25 @@ function InteractiveWeekPicker({ orders, technicians, date, onSelectDate }) {
               <tr key={r.id || "utildelt"}>
                 <td className="p-1 text-ink font-medium whitespace-nowrap">{r.navn}</td>
                 {week.map((d) => {
-                  const { count, minutes } = cellFor(r.id, d);
-                  const overloaded = minutes > WORKDAY_MINUTES;
+                  const c = cellFra(badges, r, d, orders);
                   const selected = d === date;
                   return (
                     <td key={d} className="p-0.5">
                       <button
                         onClick={() => onSelectDate(d, r.id)}
-                        title={`${r.navn} · ${shortDateLabel(d)}${count > 0 ? ` · ${count} ${count === 1 ? "sag" : "sager"}, ${hoursLabel(minutes)}` : ", ledig"}`}
-                        className={`w-full flex items-center justify-center py-1.5 rounded-lg border transition-colors ${selected ? "border-brand bg-brand/10" : "border-transparent hover:border-line"}`}
+                        title={`${r.navn} · ${shortDateLabel(d)}${c.count > 0 ? ` · ${c.count} ${c.count === 1 ? "sag" : "sager"}${c.kind === "ok" || c.kind === "fuld" ? `, ${hoursLabel(c.minutes)}` : c.kind === "fejl" ? ", kan ikke beregnes" : ""}` : ", ledig"}`}
+                        className={`w-full flex items-center justify-center py-2 min-h-[40px] rounded-lg border transition-colors ${selected ? "border-brand bg-brand/10" : "border-transparent hover:border-line"}`}
                       >
-                        {count === 0 ? (
+                        {c.kind === "tom" ? (
                           <span className="text-line">–</span>
+                        ) : c.kind === "antal" ? (
+                          <span className="px-1.5 py-0.5 rounded-md font-semibold bg-panel text-ink">{c.count}</span>
+                        ) : c.kind === "henter" ? (
+                          <span className="text-muted" aria-label="Beregner">…</span>
+                        ) : c.kind === "fejl" ? (
+                          <span className="px-1.5 py-0.5 rounded-md font-semibold border border-danger text-danger" aria-label="Kan ikke beregnes">?</span>
                         ) : (
-                          <span className={`px-1.5 py-0.5 rounded-md font-semibold ${overloaded ? "bg-danger text-white" : "bg-panel text-ink"}`}>{hoursLabel(minutes)}</span>
+                          <span className={`px-1.5 py-0.5 rounded-md font-semibold ${c.kind === "fuld" ? "bg-danger text-white" : "bg-panel text-ink"}`}>{hoursLabel(c.minutes)}</span>
                         )}
                       </button>
                     </td>
@@ -949,7 +962,7 @@ function InteractiveWeekPicker({ orders, technicians, date, onSelectDate }) {
           </tbody>
         </table>
       </div>
-      <p className="text-[10px] text-muted mt-2">Klik på en dag for kun at vælge dato — klik under en bils egen række for at vælge dato og bil samtidig. Rødt tal = mere end en arbejdsdag booket ({hoursLabel(WORKDAY_MINUTES)}).</p>
+      <p className="text-[10px] text-muted mt-2">Klik på en dag for kun at vælge dato — klik under en bils egen række for at vælge dato og bil samtidig. Tiderne er beregnet af kapacitetsmotoren (som i Planlægning): rødt = motoren melder brud, "?" = kan ikke beregnes.</p>
     </div>
   );
 }
@@ -961,11 +974,12 @@ function InteractiveWeekPicker({ orders, technicians, date, onSelectDate }) {
 // dato der og da: ÉT sæt klikbare forslag, ikke fire ting at læse og selv
 // sammenligne.
 //
-// INGEN AI (rettet august 2026): "samme opgang" og "køreafstand" beregnes
-// stadig via rigtige adresseopslag/ORS, men RANGERINGEN og valget af
-// endeligt forslag sker nu med en ren, forklarlig scoring-algoritme (se
-// lib/scheduling.js) i stedet for et Gemini-kald - hurtigere, gratis, og
-// fejler aldrig fordi en sprogmodel er overbelastet.
+// INGEN AI. FORSLAGENE BEREGNES AF KAPACITETSMOTOREN (oktober 2026, se
+// lib/forslagMotor.js): samme motor og samme input som tidsbadgen i
+// Planlægning, så et forslag aldrig peger på en dag, som planlægningen
+// bagefter viser som overfyldt. Adressens koordinater er de skjulte, gemte
+// fra Adressevælgeren (lib/adresseKoordinater.js) - ORS bruges kun til
+// køretidsmatricen.
 //
 // BIL-DÆKNING (september 2026): personnel/timeOff sendes med til
 // suggestBookingDates, så et forslag aldrig peger på en bil, der reelt
@@ -978,15 +992,20 @@ function InteractiveWeekPicker({ orders, technicians, date, onSelectDate }) {
 // Forslagene er RÅDGIVENDE, ikke en automatisk booking - sælgeren skal
 // stadig trykke "Book sag" til sidst, og kan altid vælge en helt anden
 // dato manuelt nedenfor (se InteractiveWeekPicker ovenfor).
-function SuggestedDates({ orders, technicians, personnel, timeOff, date, address, jobSummary, onSelectDate }) {
+function SuggestedDates({ orders, technicians, personnel, timeOff, vehicles, crew, store, koordinater, minutter, toMand, date, address, jobSummary, onSelectDate }) {
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState(null);
+  const [noter, setNoter] = useState([]);
   const [error, setError] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
-  const ranRef = useRef(false);
+  const koerselRef = useRef(0);
 
+  // FORSLAG = KAPACITETSMOTOREN (oktober 2026): samme motor og samme input som badget i Planlægning (lib/forslagMotor.js) - ikke længere en egen
+  // pointmodel. Mangler adressen koordinater (den er ikke valgt fra Adressevælgeren), kan der ikke beregnes forslag, og det siges ligeud.
   const run = useCallback(async () => {
+    const dennes = ++koerselRef.current;
     if (!address || address.trim().length < 5) {
+      setSuggestions(null); setNoter([]);
       setError("Udfyld leveringsadressen på leveringstrinnet først, så kan der beregnes forslag.");
       return;
     }
@@ -997,98 +1016,71 @@ function SuggestedDates({ orders, technicians, personnel, timeOff, date, address
     // uge, når denne er fuld. Se lib/arbejdsuge.js: forslagsVindue.
     const anchor = date || todayISO();
     const week = forslagsVindue({ idag: todayISO(), valgtDato: anchor });
-    const weekOrders = (orders || []).filter((o) => week.includes(o.dato) && o.kunde?.adresse);
-
-    // Samme opgang/bygning - ingen netværkskald nødvendigt.
-    const key = buildingKey(address);
-    const sameBuildingDates = key
-      ? [...new Set(weekOrders.filter((o) => o.dato !== anchor && buildingKey(o.kunde.adresse) === key).map((o) => o.dato))]
-      : [];
-
-    // Nærliggende sager (køreafstand) - kræver geokodning. Fejler den
-    // stille (fx ORS-tjenesten midlertidigt utilgængelig), fortsætter vi
-    // bare uden det signal - resten af forslaget bygger stadig på
-    // kapacitet+samme opgang.
-    let nearbyDates = [];
-    try {
-      const source = await geocodeAddress(address);
-      if (source) {
-        // Køreafstand slås kun op for de første 14 dage (hvert opslag er et netværkskald);
-        // "samme opgang" kræver intet opslag og gælder hele vinduet.
-        const naerDage = new Set(week.slice(0, 14));
-        const others = weekOrders.filter((o) => o.dato !== anchor && naerDage.has(o.dato));
-        const coordMap = await geocodeAddresses(others.map((o) => o.kunde.adresse));
-        const withCoords = others
-          .map((o) => ({ order: o, coord: coordMap.get(o.kunde.adresse.trim().toLowerCase()) }))
-          .filter((x) => x.coord);
-        if (withCoords.length > 0) {
-          const distances = await drivingDistances(source, withCoords.map((x) => x.coord));
-          nearbyDates = withCoords
-            .map((x, i) => ({ dato: x.order.dato, km: distances[i] != null ? distances[i] / 1000 : null }))
-            .filter((x) => x.km != null && x.km <= 5)
-            .map((x) => ({ dato: x.dato, km: Math.round(x.km * 10) / 10 }));
-        }
-      }
-    } catch (_) {
-      // Stille - se kommentar ovenfor.
-    }
-
-    const result = suggestBookingDates({ week, orders: orders || [], technicians: technicians || [], personnel, timeOff, sameBuildingDates, nearbyDates });
+    const grundlag = await hentKapGrundlag(store?.id);
+    const lager = store?.lat != null && store?.lon != null ? { lat: store.lat, lon: store.lon } : null;
+    const r = await motorForslag({
+      kandidat: { id: "kandidat", navn: jobSummary || "Ny sag", adresse: address, lat: koordinater?.lat, lon: koordinater?.lon, minutter: Math.max(0, Number(minutter) || 0), kraever2Mand: !!toMand, varer: [] },
+      dates: week, orders: orders || [], biler: technicians || [], vehicles, personnel, timeOff, crew, grundlag, lager,
+      hentMatrix: hentMotorMatrix, ordreTilStop, idag: todayISO(),
+    });
+    if (dennes !== koerselRef.current) return; // et nyere kald har overtaget
     setLoading(false);
-    setSuggestions(result);
+    setNoter(r.noter || []);
+    if (r.fejl) { setSuggestions(null); setError(r.fejl); return; }
+    setSuggestions(r.forslag);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address]);
+  }, [address, koordinater?.lat, koordinater?.lon, minutter, toMand, date, store?.id, store?.lat, store?.lon, orders, vehicles, crew, personnel, timeOff, technicians]);
 
+  // Kører når trinnet vises og igen, når adresse/koordinater/varighed/to-mand ændres (kort forsinkelse, så der ikke beregnes ved hvert tastetryk).
   useEffect(() => {
-    if (ranRef.current) return;
-    ranRef.current = true;
-    run();
+    const t = setTimeout(run, 400);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [address, koordinater?.lat, koordinater?.lon, minutter, toMand]);
 
   return (
     <div className="rounded-xl border border-ink bg-panel p-3 mb-4">
       <div className="flex items-center justify-between gap-2 mb-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-ink flex items-center gap-1.5"><Sparkles size={13} /> Foreslåede datoer</p>
-        <button onClick={run} disabled={loading} className="text-muted hover:text-brand disabled:opacity-50" title="Opdater forslag">
+        <button onClick={run} disabled={loading} className="text-muted hover:text-brand disabled:opacity-50 p-2 -m-2" title="Opdater forslag" aria-label="Opdater forslag">
           <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
         </button>
       </div>
 
-      {loading && <p className="text-xs text-muted">Beregner ud fra opgang, afstand og kapacitet de kommende uger...</p>}
-      {error && <p className="text-xs text-danger">{error}</p>}
+      {loading && <p className="text-xs text-muted">Beregner med kapacitetsmotoren ud fra køretid, arbejdstid og de sager, der ligger i forvejen...</p>}
+      {error && <p role="alert" className="text-xs text-danger">Forslag kan ikke beregnes: {error}</p>}
 
       {!loading && !error && suggestions?.length > 0 && (
         <div className="space-y-1.5 mt-1">
-          {suggestions.map((s, i) => {
-            const technician = technicians.find((m) => m.navn === s.montorNavn);
-            return (
-              <button
-                key={i}
-                onClick={() => onSelectDate(s.dato, technician ? technician.id : null)}
-                className="w-full text-left rounded-lg bg-white border border-line hover:border-brand transition-colors px-3 py-2"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-ink">{formatLongDate(s.dato)}</span>
-                  {technician && <span className="text-[10px] font-mono text-muted shrink-0">{technician.navn}</span>}
-                </div>
-                {s.begrundelse && <p className="text-[11px] text-muted mt-0.5">{s.begrundelse}</p>}
-              </button>
-            );
-          })}
+          {suggestions.map((s) => (
+            <button
+              key={`${s.dato}|${s.bilId}`}
+              onClick={() => onSelectDate(s.dato, s.bilId)}
+              className="w-full text-left rounded-lg bg-white border border-line hover:border-brand transition-colors px-3 py-2 min-h-[44px]"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold text-ink">{formatLongDate(s.dato)}</span>
+                <span className="text-[10px] font-mono text-muted shrink-0">{s.bilNavn}</span>
+              </div>
+              {s.begrundelse && <p className="text-[11px] text-muted mt-0.5">{s.begrundelse}</p>}
+            </button>
+          ))}
         </div>
       )}
       {!loading && !error && suggestions?.length === 0 && (
-        <p className="text-xs text-muted">Intet specifikt forslag ud fra ugens data — vælg selv nedenfor.</p>
+        <p className="text-xs text-muted">Ingen dag de næste tre uger har plads til sagen ud fra kapacitetsmotoren — vælg selv nedenfor.</p>
+      )}
+      {!loading && noter.length > 0 && (
+        <p className="text-[11px] text-muted mt-1.5">{noter.length === 1 ? noter[0] : `${noter.length} dage kunne ikke vurderes, fordi koordinater mangler på sager (fx ${noter[0]})`}</p>
       )}
 
-      <button onClick={() => setShowDetails((v) => !v)} className="w-full flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-muted hover:text-ink mt-3 pt-2 border-t border-divider">
+      <button onClick={() => setShowDetails((v) => !v)} className="w-full flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-muted hover:text-ink mt-3 pt-2 border-t border-divider min-h-[44px]">
         Se ugens kapacitet i detaljer
         <ChevronDown size={14} className={`transition-transform ${showDetails ? "rotate-180" : ""}`} />
       </button>
-      {showDetails && <div className="mt-2"><WeeklyScheduleOverview orders={orders} technicians={technicians} date={date} /></div>}
+      {showDetails && <div className="mt-2"><WeeklyScheduleOverview orders={orders} technicians={technicians} date={date} vehicles={vehicles} personnel={personnel} timeOff={timeOff} crew={crew} store={store} /></div>}
 
-      <p className="text-[10px] text-muted mt-2">Forslag ud fra samme opgang, køreafstand og kapacitet de næste tre uger — et forslag, ikke en automatisk booking. Tryk på et forslag for at bruge det.</p>
+      <p className="text-[10px] text-muted mt-2">Forslag beregnet af kapacitetsmotoren (samme beregning som tidsbadgen i Planlægning) for de næste tre uger — et forslag, ikke en automatisk booking. Tryk på et forslag for at bruge det.</p>
     </div>
   );
 }

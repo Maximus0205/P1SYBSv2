@@ -137,11 +137,11 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
       </div>
 
       {date && vehicleId && (
-        <KapacitetsTjek dato={date} bilId={vehicleId} adresse={address} minutter={forventetMinutter} tidsrumId={timeSlotId || "heldag"} varelinjer={items} sagId={order.id} onStatus={setKapStatus} />
+        <KapacitetsTjek dato={date} bilId={vehicleId} adresse={address} koordinater={koordinaterTilSag(adresseKoord, address)} minutter={forventetMinutter} tidsrumId={timeSlotId || "heldag"} varelinjer={items} sagId={order.id} onStatus={setKapStatus} />
       )}
       {canPlan && (
         <KapacitetsForslag
-          sagId={order.id} adresse={address} minutter={forventetMinutter} tidsrumId={timeSlotId || "heldag"} varelinjer={items}
+          sagId={order.id} adresse={address} koordinater={koordinaterTilSag(adresseKoord, address)} minutter={forventetMinutter} tidsrumId={timeSlotId || "heldag"} varelinjer={items}
           nuvaerende={{ dato: order.dato, bilId: order.bilId }}
           onVaelg={({ dato, bilId }) => { setDate(dato); setVehicleId(bilId); }}
         />

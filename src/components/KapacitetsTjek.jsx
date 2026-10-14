@@ -8,12 +8,12 @@ import { byggTjekBody, koerKapacitetTjek } from "../lib/kapacitetTjek";
 // onStatus({ blokeret, overrulet, regler }) bruges af formularen til at slå "Book" fra og logge en overrulning.
 const FORSINKELSE_MS = 700;
 
-function KapacitetsTjek({ dato, bilId, adresse, minutter, tidsrumId, varelinjer, sagId, onStatus }) {
+function KapacitetsTjek({ dato, bilId, adresse, koordinater, minutter, tidsrumId, varelinjer, sagId, onStatus }) {
   const [tilstand, setTilstand] = useState({ fase: "ingen" });
   const [overrulet, setOverrulet] = useState(false);
   const loebeNr = useRef(0);
 
-  const noegle = JSON.stringify([dato, bilId, adresse, minutter, tidsrumId, sagId, (varelinjer || []).map((l) => [l.id, l.punkt1Id, l.maerke, l.model, l.varetypeNavn])]);
+  const noegle = JSON.stringify([dato, bilId, adresse, koordinater?.lat ?? null, koordinater?.lon ?? null, minutter, tidsrumId, sagId, (varelinjer || []).map((l) => [l.id, l.punkt1Id, l.maerke, l.model, l.varetypeNavn])]);
 
   useEffect(() => {
     if (!dato || !bilId) { setTilstand({ fase: "ingen" }); return undefined; }
@@ -21,7 +21,7 @@ function KapacitetsTjek({ dato, bilId, adresse, minutter, tidsrumId, varelinjer,
     setTilstand((t) => ({ fase: "henter", forrige: t.svar || t.forrige }));
     setOverrulet(false);
     const timer = setTimeout(async () => {
-      const r = await koerKapacitetTjek(byggTjekBody({ dato, bilId, sagId, adresse, minutter, tidsrumId, varelinjer }));
+      const r = await koerKapacitetTjek(byggTjekBody({ dato, bilId, sagId, adresse, koordinater, minutter, tidsrumId, varelinjer }));
       if (nr !== loebeNr.current) return; // forældet svar
       setTilstand(r.ok ? { fase: "klar", svar: r.svar } : { fase: "fejl", fejl: r.fejl });
     }, FORSINKELSE_MS);

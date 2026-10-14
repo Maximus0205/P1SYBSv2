@@ -10,20 +10,20 @@ import { addDays, todayISO, formatLongDate } from "../data/domain";
 // onVaelg({ dato, bilId }) udfylder formularen. nuvaerende = sagens nuværende { dato, bilId } (foreslås ikke igen).
 const felt = "min-h-[44px] rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand";
 
-function KapacitetsForslag({ sagId, adresse, minutter, tidsrumId, varelinjer, nuvaerende, onVaelg }) {
+function KapacitetsForslag({ sagId, adresse, koordinater, minutter, tidsrumId, varelinjer, nuvaerende, onVaelg }) {
   const [fra, setFra] = useState(() => addDays(todayISO(), 1));
   const [tilstand, setTilstand] = useState({ fase: "hvile" });
   const [valgt, setValgt] = useState(null);
   const loebeNr = useRef(0);
 
   // Et gammelt resultat må ikke stå, når sagens varer, adresse eller tidsrum er ændret bagefter.
-  const noegle = JSON.stringify([sagId, adresse, minutter, tidsrumId, (varelinjer || []).map((l) => [l.id, l.punkt1Id, l.varetypeNavn])]);
+  const noegle = JSON.stringify([sagId, adresse, koordinater?.lat ?? null, koordinater?.lon ?? null, minutter, tidsrumId, (varelinjer || []).map((l) => [l.id, l.punkt1Id, l.varetypeNavn])]);
   useEffect(() => { setTilstand({ fase: "hvile" }); setValgt(null); }, [noegle]);
 
   const find = async () => {
     const nr = ++loebeNr.current;
     setTilstand({ fase: "henter" }); setValgt(null);
-    const r = await hentOmbookingsForslag(byggForslagBody({ fraDato: fra, sagId, adresse, minutter, tidsrumId, varelinjer, nuvaerende }));
+    const r = await hentOmbookingsForslag(byggForslagBody({ fraDato: fra, sagId, adresse, koordinater, minutter, tidsrumId, varelinjer, nuvaerende }));
     if (nr !== loebeNr.current) return; // forældet svar
     setTilstand(r.ok ? { fase: "klar", forslag: r.forslag, noter: r.noter } : { fase: "fejl", fejl: r.fejl });
   };

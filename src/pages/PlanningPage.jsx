@@ -1,13 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertCircle, ArrowLeftRight, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, RefreshCw, KeyRound, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid, MapPin, Phone, Route, Stethoscope, CalendarX2, AlertTriangle } from "lucide-react";
-import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, dailyOrderCompare, needsPlanning, vehicleAbsences, vehicleHasCoverage, buildingKey, timeSlotById } from "../data/domain";
-import { drivingDistances, optimalVisitOrder } from "../lib/geocoding";
+import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, dailyOrderCompare, needsPlanning, vehicleAbsences, vehicleHasCoverage, timeSlotById } from "../data/domain";
 import { koordinaterForKunde } from "../lib/adresseKoordinater";
-import { suggestPlan, planningWindow } from "../lib/scheduling";
-import { ors } from "../adapters";
+import { ordreTilStop, hentKapGrundlag, hentMotorMatrix, beregnDagMotor } from "../lib/motorStop";
+import { motorForslag } from "../lib/forslagMotor";
 import { hentKapacitetsIndstillinger, hentArbejdstider, hentUaendringer } from "../lib/kapacitetStore";
 import { tilMin } from "../engine/kapacitet";
-import { bilTilMotor, personerTilMotor, beregnBilDag, badgeFraMotor } from "../lib/dagsplan";
+import { badgeFraMotor } from "../lib/dagsplan";
 import { DateSelector } from "../components/common";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 import { DagensHold } from "../components/DagensHold";
@@ -52,7 +51,7 @@ import { samlFravaer } from "../lib/fravaer";
 //                        sagen gennemført, se needsPlanning i domain.js)
 //   4. Uafsluttet/fejl - sagen er markeret med et PROBLEM af montøren,
 //                        uafhængigt af selve status-tagget
-// Tile 1-3 bruger ALLE samme forslagsmotor (suggestPlan, lib/scheduling.js)
+// Tile 1-3 bruger ALLE samme forslagsmotor (kapacitetsmotoren via lib/forslagMotor.js)
 // - INGEN AI. Tile 4 har bevidst intet forslag - det kræver en menneskelig
 // opfølgning.
 //
@@ -191,6 +190,8 @@ function ReplanCard({ order, technicians, suggestion, loadingSuggestion, onApply
 
       {loadingSuggestion ? (
         <p className="text-[11px] text-muted flex items-center gap-1.5 mb-2"><Loader2 size={11} className="animate-spin shrink-0" aria-hidden="true" /> Beregner forslag...</p>
+      ) : suggestion?.fejl ? (
+        <p className="text-[11px] text-danger flex items-start gap-1 mb-2"><AlertCircle size={11} className="shrink-0 mt-0.5" aria-hidden="true" /> Forslag kan ikke beregnes: {suggestion.fejl}</p>
       ) : suggestion ? (
         <div className="flex items-center justify-between gap-2 rounded-lg bg-panel px-2.5 py-1.5 mb-2">
           <p className="text-xs text-ink min-w-0 truncate">
@@ -228,64 +229,40 @@ function ReplanCard({ order, technicians, suggestion, loadingSuggestion, onApply
 }
 
 // ---------------- Fliens indhold: liste + automatisk beregnede forslag ----------------
-function ReplanTile({ items, orders, technicians, personnel, timeOff, onUpdateBooking, onOpen }) {
+function ReplanTile({ items, orders, technicians, personnel, timeOff, vehicles, crew, store, onUpdateBooking, onOpen }) {
   const [suggestions, setSuggestions] = useState({});
   const [loading, setLoading] = useState(false);
   const key = items.map((o) => o.id).join(",");
 
+  // FORSLAG = KAPACITETSMOTOREN (oktober 2026): samme motor og samme input som badget i ugevisningen (lib/forslagMotor.js) - ikke længere en egen
+  // pointmodel. Mangler sagen koordinater (adressen er ikke valgt fra Adressevælgeren), kan der ikke beregnes forslag, og det siges ligeud.
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
       if (items.length === 0) { setSuggestions({}); return; }
       setLoading(true);
+      const grundlag = await hentKapGrundlag(store?.id);
+      const lager = store?.lat != null && store?.lon != null ? { lat: store.lat, lon: store.lon } : null;
       const results = {};
       for (const order of items) {
-        if (!order.kunde?.adresse) continue;
+        if (cancelled) return;
         // FRIST (oktober 2026): en tomgang med frist foreslås kun dage til og med fristen (højst
         // seks uger frem); uden frist som før de næste 14 dage. Se lib/frist.js.
         const dates = forslagsDatoer(order, todayISO());
-
-        const windowOrders = orders.filter((o) => o.id !== order.id && dates.includes(o.dato) && o.kunde?.adresse);
-        const bkey = buildingKey(order.kunde.adresse);
-        const sameBuildingDates = bkey ? [...new Set(windowOrders.filter((o) => buildingKey(o.kunde.adresse) === bkey).map((o) => o.dato))] : [];
-        let nearbyDates = [];
-        try {
-          // Koordinaterne er de GEMTE fra Adressevælgeren (skjult på sagen) - ORS slår ikke længere adresser op. Sager uden koordinater springes
-          // over (forslaget bygger så på kapacitet/samme opgang alene).
-          const source = koordinaterForKunde(order.kunde);
-          if (source && windowOrders.length > 0) {
-            const withCoords = windowOrders
-              .map((o) => ({ o, coord: koordinaterForKunde(o.kunde) }))
-              .filter((x) => x.coord);
-            if (withCoords.length > 0) {
-              const distances = await drivingDistances(source, withCoords.map((x) => x.coord));
-              nearbyDates = withCoords
-                .map((x, i) => ({ dato: x.o.dato, km: distances[i] != null ? distances[i] / 1000 : null }))
-                .filter((x) => x.km != null && x.km <= 5)
-                .map((x) => ({ dato: x.dato, km: Math.round(x.km * 10) / 10 }));
-            }
-          }
-        } catch (_) { /* stille - resten af forslaget bygger stadig på kapacitet/samme opgang */ }
-
-        // requireTechnician: true - se scheduling.js. Et forslag der ikke
-        // rent faktisk tildeler en bil er ikke en løsning her.
-        //
-        // personnel sendes med, så motoren kan tjekke DÆKNING pr. bil pr.
-        // dato (vehicleHasCoverage) i stedet for at antage alle biler
-        // altid er i spil.
-        //
-        // orderMinutes: sagens EGEN forventede varighed, så en dag der
-        // allerede har 7 timer booket ikke foreslås til en 5-timers
-        // opgave.
-        const plan = suggestPlan({ dates, orders, technicians, personnel, timeOff, sameBuildingDates, nearbyDates, originalDate: order.dato || null, requireTechnician: true, orderMinutes: orderExpectedMinutes(order) });
-        if (plan[0] && !cancelled) results[order.id] = plan[0];
+        const kandidat = ordreTilStop(order);
+        const r = await motorForslag({
+          kandidat: { ...kandidat, id: "kandidat" }, dates, orders, biler: technicians, vehicles, personnel, timeOff, crew, grundlag, lager,
+          hentMatrix: hentMotorMatrix, ordreTilStop, idag: todayISO(), originalDate: order.dato || null, ekskluderSagId: order.id,
+        });
+        if (r.fejl) results[order.id] = { fejl: r.fejl };
+        else if (r.forslag[0]) results[order.id] = r.forslag[0];
       }
       if (!cancelled) { setSuggestions(results); setLoading(false); }
     };
     run();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, store?.id]);
 
   const applySuggestion = (order, s) => {
     const t = timeSlotById("heldag");
@@ -401,8 +378,6 @@ function CollapsibleSection({ title, icon: Icon, colorClass, items, technicians,
   );
 }
 
-// Dagens tid i badget kommer fra kapacitetsmotoren (lib/dagsplan.js), ikke fra en fast arbejdsdag her. (WORKDAY_MINUTES bruges stadig af
-// forslagsmotoren i lib/scheduling.js.)
 function hoursLabel(minutes) {
   if (minutes === 0) return "–";
   const h = Math.floor(minutes / 60);
@@ -591,6 +566,7 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
   const [dagsLoading, setDagsLoading] = useState(false);
   const [kapGrundlag, setKapGrundlag] = useState(null); // { indstillinger, arbejdstider, uaendringer } | { fejl }
   const [optimizing, setOptimizing] = useState({});
+  const [optimeringsFejl, setOptimeringsFejl] = useState(null);
 
   const weekdays5 = weekDays(weekAnchor).slice(0, 5); // mandag-fredag
   const today = todayISO();
@@ -631,7 +607,7 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
     if (!store?.id) { setKapGrundlag({ fejl: "Butikken er ikke indlæst." }); return undefined; }
     (async () => {
       try {
-        const [indstillinger, arbejdstider, uaendringer] = await Promise.all([hentKapacitetsIndstillinger(store.id), hentArbejdstider(store.id), hentUaendringer(store.id, todayISO())]);
+        const [indstillinger, arbejdstider, uaendringer] = await Promise.all([hentKapacitetsIndstillinger(store.id), hentArbejdstider(store.id), hentUaendringer(store.id, todayISO())]); // (samme opslag som hentKapGrundlag i lib/motorStop.js)
         if (cancelled) return;
         setKapGrundlag(indstillinger ? { indstillinger, arbejdstider, uaendringer } : { fejl: "Butikkens kapacitetsindstillinger kunne ikke hentes." });
       } catch (e) {
@@ -654,6 +630,10 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
   // BADGET = KAPACITETSMOTOREN (oktober 2026). Før regnede badget med en egen, ældre formel; nu køres motoren (planlaegDag) pr. bil og dag
   // med bilens rigtige personer/arbejdstider og en rigtig køretidsmatrix (ORS). Svigter ruteopslaget, skønner motoren og badget får "~";
   // svigter motoren eller grundlaget, vises "kan ikke beregnes" - aldrig et stille 0.
+  // Én bils dag gennem kapacitetsmotoren (lib/motorStop.js beregnDagMotor) - bruges af både badget og "foreslå rækkefølge" og af booking-ugevisningerne,
+  // så de aldrig kan være uenige. Returnerer { res } eller { fejl } (se lib/dagsplan.js).
+  const beregnDag = (bilId, dato, list) => beregnDagMotor({ bilId, dato, list, vehicles, technicians, personnel, timeOff, crew, grundlag: kapGrundlag, lager: storeCoord });
+
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
@@ -669,31 +649,7 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
       const entries = await Promise.all(relevantKeys.map(async (key) => {
         try {
           const [bilId, dato] = key.split("|");
-          const list = dayGroups[key];
-          // Koordinater: de gemte fra Adressevælgeren. Mangler de, får stoppet ingen lat/lon, og motoren melder "kan ikke beregnes" (aldrig 0 min).
-          const stop = list.map((o) => {
-            const k = koordinaterForKunde(o.kunde);
-            const slot = timeSlotById(o.tidsrumId || "heldag");
-            const fra = tilMin(o.start || slot.start); const til = tilMin(o.slut || slot.slut);
-            const heldag = (o.tidsrumId || "heldag") === "heldag";
-            return {
-              id: String(o.id), navn: o.kunde?.navn || buildTitle(o.varelinjer) || "Sag", adresse: o.kunde?.adresse || "", lat: k?.lat ?? null, lon: k?.lon ?? null,
-              kraever2Mand: !!o.toMand,
-              minutter: orderExpectedMinutes(o), tidsrum: !heldag && fra !== null && til !== null ? { fra, til } : null,
-              // Sagerne har endnu hverken vægt eller mål pr. vare: motoren regner derfor kun TID her (ikke last/plads) og siger det i sine advarsler.
-              varer: (o.varelinjer || []).map((l) => ({ id: String(l.id), navn: l.varetypeNavn || "Vare", type: l.varetypeNavn || "", antal: 1, vaegtKg: null, maal: null })),
-            };
-          });
-          const vRow = (vehicles || []).find((v) => v.id === bilId);
-          const tRow = technicians.find((t) => t.id === bilId);
-          const bil = bilTilMotor(vRow, tRow);
-          const hjaelperIds = (crew?.helpers || []).filter((h) => h.dato === dato && h.vehicleId === bilId).map((h) => h.personId);
-          const { personer, pauseMin } = personerTilMotor({ dato, bilId, personnel, timeOff, arbejdstider: kapGrundlag.arbejdstider, uaendringer: kapGrundlag.uaendringer, indstillinger: kapGrundlag.indstillinger, hjaelperIds });
-          const lager = storeCoord ? { id: "lager", lat: storeCoord.lat, lon: storeCoord.lon } : undefined;
-          let matrix;
-          const punkter = [...(lager ? [lager] : []), ...stop.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lon)).map((s) => ({ id: s.id, lat: s.lat, lon: s.lon }))];
-          if (punkter.length >= 2) { try { matrix = await ors.koerselsmatrix(punkter); } catch (_) { matrix = null; } }
-          return [key, badgeFraMotor(beregnBilDag({ dato, bil, personer, pauseMin, stop, matrix, lager, indstillinger: kapGrundlag.indstillinger }))];
+          return [key, badgeFraMotor(await beregnDag(bilId, dato, dayGroups[key]))];
         } catch (e) {
           const fejl = `Beregningen fejlede: ${e?.message || e}`;
           return [key, { minutter: null, overbelastet: false, fejl, titel: fejl }];
@@ -713,94 +669,31 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
     return { antal: dayOrdersForCell.length, badge, stillLoading };
   };
 
-  // FORESLÅ BEDSTE BESØGSRÆKKEFØLGE - RETTET (september 2026)
-  //
-  // Tog tidligere IKKE højde for den bookede tidsramme (heldag/formiddag/
-  // eftermiddag) på den enkelte sag - den beregnede simpelthen den
-  // køremæssigt korteste rute over ALLE dagens stop under ét. Resultatet
-  // kunne foreslå at besøge en "eftermiddag"-sag (12-16) først på dagen,
-  // eller en "formiddag"-sag (skal være færdig kl. 12) sidst - begge dele
-  // ville betyde et besøg uden for det tidsrum, kunden faktisk har fået
-  // stillet i udsigt.
-  //
-  // Løsning: sagerne deles op i tre puljer efter tidsrum (formiddag,
-  // eftermiddag, heldag - "heldag" er fleksibel og kan lægges hvor som
-  // helst), og ruteoptimering køres SEPARAT for formiddags- og
-  // eftermiddags-puljen (som hver har en reel deadline), mens
-  // heldag-sagerne fordeles ind imellem efter, hvilken nærmeste nabo i den
-  // allerede fastlagte rute de ligger tættest på. Endeligt resultat:
-  // [formiddag i optimeret rækkefølge] + [heldag-sager, indsat hvor de
-  // passer bedst ind] + [eftermiddag i optimeret rækkefølge] - som
-  // GARANTERER at ingen formiddags-sag lander efter en eftermiddags-sag,
-  // og omvendt.
-  //
-  // BEMÆRK: points her sætter (bevidst, uændret) KUN butikken som
-  // FASTSAT STARTPUNKT (points[0]), ikke også til sidst - optimalVisitOrder
-  // bruger en "nærmeste ubesøgte nabo"-algoritme, der forudsætter ÉT fast
-  // startpunkt, den aldrig vender tilbage til som et "stop" undervejs. At
-  // gentage butikken her ville forvirre algoritmen (den ville forsøge at
-  // indsætte "butikken" et sted midt i ruten som et stop, der skal
-  // besøges). Det er en anden beregning end badgets (kapacitetsmotoren, se dagsResultat ovenfor), som blot
-  // lægger strækninger sammen og derfor trygt kan have butikken i begge
-  // ender.
+  // FORESLÅ BEDSTE BESØGSRÆKKEFØLGE = KAPACITETSMOTOREN (oktober 2026).
+  // Før havde knappen en egen ruteoptimering (nærmeste-nabo over ORS-afstande, formiddag/eftermiddag/heldag delt op i puljer), som ikke kendte
+  // lagerlæsning, omlastning, arbejdstid eller ventetid. Nu er rækkefølgen den, motoren selv vælger, når den planlægger dagen (planlaegDag.rutefolge:
+  // kortest samlet tid, derefter distance - med tidsrum, to-mands-stop og lager-ture medregnet), så rækkefølgen og badget altid passer sammen.
+  // Kan dagen ikke beregnes (fx manglende koordinater), ændres rækkefølgen IKKE, og årsagen vises.
   const optimizeDay = async (vehicleId, day, dayOrders) => {
     if (!onSetVisitOrder || dayOrders.length < 2) return;
     const key = `${vehicleId}|${day}`;
     setOptimizing((prev) => ({ ...prev, [key]: true }));
-
-    const withCoord = (o) => koordinaterForKunde(o.kunde);
-
-    // Del op efter tidsramme. "eftermiddag" afgøres af starttidspunktet
-    // (>= 12:00) - dækker både det faste tidsrum og en sag, der manuelt
-    // er sat til at starte om eftermiddagen. Alt andet (heldag/formiddag)
-    // behandles som fleksibelt frem til middag.
-    const formiddag = dayOrders.filter((o) => (o.start || "00:00") < "12:00" && (o.slut || "23:59") <= "12:00");
-    const eftermiddag = dayOrders.filter((o) => (o.start || "00:00") >= "12:00");
-    const heldag = dayOrders.filter((o) => !formiddag.includes(o) && !eftermiddag.includes(o));
-
-    // Optimerer ÉN pulje for sig, ud fra firmaets adresse som startpunkt
-    // (hvis kendt) - returnerer sagerne i den rækkefølge, ruten foreslår.
-    const optimizePool = async (pool) => {
-      const withCoords = pool.map((o) => ({ o, coord: withCoord(o) })).filter((x) => x.coord);
-      if (withCoords.length < 2) return pool;
-      const points = storeCoord ? [storeCoord, ...withCoords.map((x) => x.coord)] : withCoords.map((x) => x.coord);
-      const visitOrder = await optimalVisitOrder(points);
-      if (!visitOrder || visitOrder.length < 2) return pool;
-      const offset = storeCoord ? 1 : 0;
-      const orderedWithCoords = visitOrder.filter((idx) => idx >= offset).map((idx) => withCoords[idx - offset].o);
-      const withoutCoords = pool.filter((o) => !withCoords.some((x) => x.o.id === o.id));
-      return [...orderedWithCoords, ...withoutCoords];
-    };
-
-    // Indsætter hver heldag-sag, hvor den ligger geografisk tættest på i
-    // den allerede fastlagte rute - en simpel "nærmeste nabo i sekvensen"-
-    // indsættelse, ikke en fuld reoptimering, så formiddags-/eftermiddags-
-    // rækkefølgen ikke selv rykkes rundt af det.
-    const insertFlexible = (sequence, flexible) => {
-      const result = [...sequence];
-      for (const o of flexible) {
-        const coord = withCoord(o);
-        if (!coord || result.length === 0) { result.push(o); continue; }
-        let bestIndex = result.length;
-        let bestDist = Infinity;
-        for (let i = 0; i <= result.length; i++) {
-          const neighbour = result[i] || result[i - 1];
-          const neighbourCoord = neighbour ? withCoord(neighbour) : null;
-          if (!neighbourCoord) continue;
-          const dist = Math.hypot(coord.lat - neighbourCoord.lat, coord.lon - neighbourCoord.lon);
-          if (dist < bestDist) { bestDist = dist; bestIndex = i; }
-        }
-        result.splice(bestIndex, 0, o);
-      }
-      return result;
-    };
-
-    const optimizedFormiddag = await optimizePool(formiddag);
-    const optimizedEftermiddag = await optimizePool(eftermiddag);
-    const finalOrder = insertFlexible([...optimizedFormiddag, ...optimizedEftermiddag], heldag);
-
-    onSetVisitOrder(vehicleId, day, finalOrder.map((o) => o.id));
-    setOptimizing((prev) => ({ ...prev, [key]: false }));
+    setOptimeringsFejl(null);
+    try {
+      if (!kapGrundlag || kapGrundlag.fejl) throw new Error(kapGrundlag?.fejl || "Kapacitetsindstillingerne er ikke indlæst endnu.");
+      const r = await beregnDag(vehicleId, day, dayOrders);
+      if (r.fejl) throw new Error(r.fejl);
+      if (r.res.kanIkkeBeregnes) throw new Error(r.res.brud.find((b) => b.regel === "koersel")?.besked || "Køretiden kan ikke beregnes.");
+      const byId = new Map(dayOrders.map((o) => [String(o.id), o]));
+      const ordnet = r.res.rutefolge.map((id) => byId.get(String(id))).filter(Boolean);
+      // Sikkerhed: ingen sag må forsvinde eller dubleres af en rækkefølge.
+      if (ordnet.length !== dayOrders.length || new Set(ordnet.map((o) => o.id)).size !== dayOrders.length) throw new Error("Motorens rækkefølge matchede ikke dagens sager - rækkefølgen er ikke ændret.");
+      onSetVisitOrder(vehicleId, day, ordnet.map((o) => o.id));
+    } catch (e) {
+      setOptimeringsFejl(`Rækkefølgen kunne ikke foreslås: ${e?.message || e}`);
+    } finally {
+      setOptimizing((prev) => ({ ...prev, [key]: false }));
+    }
   };
 
   return (
@@ -816,6 +709,7 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
 
       {open && (
         <div className="border-t border-line">
+          {optimeringsFejl && <p role="alert" className="text-xs text-danger flex items-start gap-1.5 px-3 py-2 border-b border-divider"><AlertCircle size={13} className="shrink-0 mt-0.5" aria-hidden="true" /> {optimeringsFejl}</p>}
           <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-divider">
             <button onClick={() => setWeekAnchor((w) => addDays(w, -7))} aria-label="Forrige uge" className="p-2.5 rounded-lg border border-line text-muted hover:text-brand hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors" title="Forrige uge">
               <ChevronLeft size={15} aria-hidden="true" />
@@ -1003,7 +897,7 @@ function PlanningPage({ orders, technicians, personnel, vehicles, timeOff, store
                 {openTile === "fravaer" && (
                   fravaer.length === 0 ? <p className="text-sm text-muted italic">Ingen sager berørt af sygemelding eller feriefridag lige nu.</p> : (
                     <ReplanTile
-                      items={fravaer} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff}
+                      items={fravaer} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} vehicles={vehicles} crew={crew} store={store}
                       onUpdateBooking={onUpdateBooking} onOpen={onOpen}
                     />
                   )
@@ -1011,7 +905,7 @@ function PlanningPage({ orders, technicians, personnel, vehicles, timeOff, store
                 {openTile === "planlaeg" && (
                   needsPlan.length === 0 ? <p className="text-sm text-success italic flex items-center gap-1.5"><Sparkles size={14} aria-hidden="true" /> Alle sager er planlagt.</p> : (
                     <ReplanTile
-                      items={needsPlan} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff}
+                      items={needsPlan} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} vehicles={vehicles} crew={crew} store={store}
                       onUpdateBooking={onUpdateBooking} onOpen={onOpen}
                     />
                   )

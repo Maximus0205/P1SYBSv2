@@ -612,7 +612,7 @@ export default function App() {
 
           <Route path="/salg" element={
             <Gate allowed={allowedPages} page="salg">
-              <SalesPage storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} defaultTimeEstimates={catalog.defaultTimeEstimates} addressNotes={addressNotesStore.addressNotes} keyCabinets={keyCabinetsStore.keyCabinets} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={storeFocus} storeKommuneKode={storeKommuneKode} storePostnr={storePostnr} />
+              <SalesPage storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} vehicles={vehicles} crew={crewStore.crew} store={effectiveStore} productTypes={catalog.productTypes} productCategories={catalog.productCategories} primaryServices={catalog.primaryServices} addOnServices={catalog.addOnServices} defaultTimeEstimates={catalog.defaultTimeEstimates} addressNotes={addressNotesStore.addressNotes} keyCabinets={keyCabinetsStore.keyCabinets} selectedDate={selectedDate} onDateChange={setSelectedDate} onOpen={onOpen} onAdd={addOrder} onImport={ordersStore.importOrders} storeFocus={storeFocus} storeKommuneKode={storeKommuneKode} storePostnr={storePostnr} />
             </Gate>
           } />
 
