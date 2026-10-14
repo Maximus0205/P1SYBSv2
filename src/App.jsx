@@ -603,6 +603,7 @@ export default function App() {
           store={effectiveStore} allStores={allStores} onSwitchStore={switchStore}
           onExitStoreView={profile.erSystemadmin ? exitStoreView : undefined}
           onOpenAccountSettings={() => setShowAccountSettings(true)}
+          onOpenPlatform={PLATFORM_ENABLED ? () => navigate("/platform") : undefined}
         />
       )}
 
@@ -726,7 +727,9 @@ export default function App() {
             profile.erSystemadmin ? <SystemAdminPage currentUserId={profile.id} onOwnStoreLinked={linkOwnProfileToStore} /> : <Navigate to={`/${allowedPages[0]}`} replace />
           } />
 
-          <Route path="*" element={<Navigate to={`/${allowedPages[0]}`} replace />} />
+          {/* Med platformen slået til er dens forside startsiden efter login
+              (og for ukendte stier). Slået fra: uændret. */}
+          <Route path="*" element={<Navigate to={`/${PLATFORM_ENABLED ? "platform" : allowedPages[0]}`} replace />} />
         </Routes>
       </div>
     </div>
