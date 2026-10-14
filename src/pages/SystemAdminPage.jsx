@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus, X, Bug, RefreshCw, Plug, HardDrive, ChevronLeft, Calculator } from "lucide-react";
+import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus, X, Bug, RefreshCw, Plug, HardDrive, ChevronLeft, Calculator, Receipt } from "lucide-react";
 import { getAllStores, createStoreAsSystemAdmin, updateStoreAsSystemAdmin, deleteStoreAsSystemAdmin, getAllUsersAsSystemAdmin, updateProfile, resetPasswordAsAdmin, createUserAsAdmin, deleteUserAsAdmin, getErrorLogs, deleteErrorLog, clearErrorLogs, getAllPosIntegrationsAsSystemAdmin, getAllStorageIntegrationsAsSystemAdmin } from "../lib/dataStore";
 import { sletBruger } from "../lib/sletBruger";
 import { getStorageUsage, formatBytes } from "../lib/attachments";
@@ -10,6 +10,7 @@ import { PosIntegrationAdmin } from "../components/PosIntegrationAdmin";
 import { StorageIntegrationAdmin } from "../components/StorageIntegrationAdmin";
 import { KapacitetsLab } from "../components/KapacitetsLab";
 import { KapacitetsRegler } from "../components/KapacitetsRegler";
+import { BillingAdmin } from "../components/BillingAdmin";
 
 const ROLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montør", lager: "Lager", medhjaelper: "Medhjælper" };
 
@@ -47,6 +48,9 @@ function SystemAdminPage({ currentUserId, onOwnStoreLinked }) {
         <button onClick={() => setTab("kapacitet")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "kapacitet" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
           <Calculator size={15} /> Kapacitetsmotor
         </button>
+        <button onClick={() => setTab("fakturering")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "fakturering" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
+          <Receipt size={15} /> Fakturering
+        </button>
         <button onClick={() => setTab("fejl")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "fejl" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
           <Bug size={15} /> Fejl-log
         </button>
@@ -56,6 +60,7 @@ function SystemAdminPage({ currentUserId, onOwnStoreLinked }) {
       {tab === "integrationer" && <PosIntegrationsTab stores={stores} />}
       {tab === "lager" && <StorageIntegrationsTab stores={stores} />}
       {tab === "kapacitet" && <><KapacitetsRegler stores={stores} /><KapacitetsLab stores={stores} /></>}
+      {tab === "fakturering" && <BillingAdmin stores={stores} />}
       {tab === "fejl" && <ErrorLogTab stores={stores} />}
     </div>
   );

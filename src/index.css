@@ -1,3 +1,11 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Fakturaudskrift (Fakturering i systemadmin): kun fakturaen vises, når der udskrives / gemmes som PDF */
+@media print {
+  body * { visibility: hidden; }
+  .faktura-print, .faktura-print * { visibility: visible; }
+  .faktura-print { position: absolute; left: 0; top: 0; width: 100%; max-width: none; border: 0; box-shadow: none; padding: 0; }
+  .no-print { display: none !important; }
+}
