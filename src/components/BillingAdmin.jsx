@@ -107,7 +107,7 @@ function OverblikTab({ onVaelgButik }) {
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-ink break-words">{r.navn}{r.butiksnummer ? <span className="text-muted font-normal"> · {r.butiksnummer}</span> : null}</p>
                       <p className="text-xs text-muted mt-0.5 flex items-center gap-2 flex-wrap">
-                        {r.har_abonnement ? <><Chip id={r.status} tekst={KONTO_STATUS[r.status] || r.status} /> {r.beregning?.plan ? <span>{r.beregning.plan}</span> : <span className="text-danger">Ingen prisplan</span>}{r.beregning?.brugere !== undefined ? <span>· {r.beregning.brugere} brugere</span> : null}</> : <span className="text-danger">Intet abonnement</span>}
+                        {r.har_abonnement ? <><Chip id={r.status} tekst={KONTO_STATUS[r.status] || r.status} /> {r.beregning?.plan ? <span>{r.beregning.plan}</span> : <span className="text-danger">Ingen prisplan</span>}{r.beregning?.biler !== undefined ? <span className={r.beregning.biler > r.beregning.biler_koebt ? "text-danger font-semibold" : ""}>· {r.beregning.biler} af {r.beregning.biler_koebt} biler</span> : null}{r.beregning?.brugere !== undefined ? <span>· {r.beregning.brugere} brugere</span> : null}</> : <span className="text-danger">Intet abonnement</span>}
                         {r.spaerret && <span className="text-danger font-semibold">· Spærret</span>}
                       </p>
                     </div>
@@ -141,12 +141,12 @@ function OverblikTab({ onVaelgButik }) {
 }
 
 // ---- Kunder (abonnement + grænser pr. butik) -----------------------------------------------------------------------------------------
-const TOM_KONTO = { plan_id: "", status: "proeve", start_dato: "", pris_override: "", rabat_pct: "0", firma_navn: "", cvr: "", adresse: "", postnr_by: "", att: "", faktura_email: "", ean: "", betalingsfrist_dage: "", spaerret: false, spaerret_aarsag: "", noter: "" };
+const TOM_KONTO = { plan_id: "", status: "proeve", start_dato: "", pris_override: "", ekstra_biler: "0", rabat_pct: "0", firma_navn: "", cvr: "", adresse: "", postnr_by: "", att: "", faktura_email: "", ean: "", betalingsfrist_dage: "", spaerret: false, spaerret_aarsag: "", noter: "" };
 
 function kontoTilFelter(k) {
   if (!k) return { ...TOM_KONTO };
   return {
-    plan_id: k.plan_id || "", status: k.status, start_dato: k.start_dato || "", pris_override: krTilFelt(k.pris_override_ore), rabat_pct: String(k.rabat_pct ?? 0).replace(".", ","),
+    plan_id: k.plan_id || "", status: k.status, start_dato: k.start_dato || "", pris_override: krTilFelt(k.pris_override_ore), ekstra_biler: String(k.ekstra_biler ?? 0), rabat_pct: String(k.rabat_pct ?? 0).replace(".", ","),
     firma_navn: k.firma_navn, cvr: k.cvr, adresse: k.adresse, postnr_by: k.postnr_by, att: k.att, faktura_email: k.faktura_email, ean: k.ean,
     betalingsfrist_dage: k.betalingsfrist_dage === null || k.betalingsfrist_dage === undefined ? "" : String(k.betalingsfrist_dage), spaerret: !!k.spaerret, spaerret_aarsag: k.spaerret_aarsag || "", noter: k.noter || "",
   };
@@ -190,9 +190,11 @@ function KunderTab({ stores }) {
     if (rabat === null || rabat > 100) return setFejl("Rabat skal være et tal mellem 0 og 100.");
     const frist = f.betalingsfrist_dage.trim() === "" ? null : Number(f.betalingsfrist_dage);
     if (frist !== null && (!Number.isInteger(frist) || frist < 0 || frist > 180)) return setFejl("Betalingsfrist skal være et helt antal dage (0-180) eller tom.");
+    const ekstraBiler = Number(f.ekstra_biler === "" ? "0" : f.ekstra_biler);
+    if (!Number.isInteger(ekstraBiler) || ekstraBiler < 0 || ekstraBiler > 999) return setFejl("Ekstra biler skal være et helt antal (0 eller flere).");
     setBusy(true);
     const r = await gemKonto({
-      store_id: butik, plan_id: f.plan_id || null, status: f.status, start_dato: f.start_dato || null, pris_override_ore: override, rabat_pct: rabat,
+      store_id: butik, ekstra_biler: ekstraBiler, plan_id: f.plan_id || null, status: f.status, start_dato: f.start_dato || null, pris_override_ore: override, rabat_pct: rabat,
       firma_navn: f.firma_navn.trim(), cvr: f.cvr.trim(), adresse: f.adresse.trim(), postnr_by: f.postnr_by.trim(), att: f.att.trim(), faktura_email: f.faktura_email.trim(), ean: f.ean.trim(),
       betalingsfrist_dage: frist, spaerret: f.spaerret, spaerret_aarsag: f.spaerret_aarsag.trim(), noter: f.noter,
     });
@@ -234,6 +236,7 @@ function KunderTab({ stores }) {
               <Felt id="k-status" titel="Status"><select id="k-status" value={f.status} onChange={(e) => saet("status", e.target.value)} className={felt}>{Object.entries(KONTO_STATUS).map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select></Felt>
               <Felt id="k-start" titel="Startdato"><input id="k-start" type="date" value={f.start_dato} onChange={(e) => saet("start_dato", e.target.value)} className={felt} /></Felt>
               <Felt id="k-frist" titel="Betalingsfrist (dage)" hjaelp="Tom = standard fra Indstillinger."><input id="k-frist" inputMode="numeric" value={f.betalingsfrist_dage} onChange={(e) => saet("betalingsfrist_dage", e.target.value.replace(/\D/g, ""))} className={felt} /></Felt>
+              <Felt id="k-biler" titel="Ekstra biler (købt ud over pakken)" hjaelp={(() => { const p = planer.find((x) => x.id === f.plan_id); return p ? `Pakken indeholder ${p.inkl_biler} bil(er); ekstra bil koster ${kr(p.pris_ekstra_bil_ore)} pr. md. Har butikken flere biler oprettet, end den har købt, afregnes de alligevel.` : "Vælg en prisplan for at se pakkens biler."; })()}><input id="k-biler" inputMode="numeric" value={f.ekstra_biler} onChange={(e) => saet("ekstra_biler", e.target.value.replace(/\D/g, ""))} className={felt} /></Felt>
               <Felt id="k-override" titel="Aftalt månedspris (kr., før moms)" hjaelp="Tom = prisplanens pris."><input id="k-override" inputMode="decimal" value={f.pris_override} onChange={(e) => saet("pris_override", e.target.value)} className={felt} /></Felt>
               <Felt id="k-rabat" titel="Rabat på abonnement (%)"><input id="k-rabat" inputMode="decimal" value={f.rabat_pct} onChange={(e) => saet("rabat_pct", e.target.value)} className={felt} /></Felt>
             </div>
@@ -299,7 +302,7 @@ function planTilFelter(p) {
     const x = (p?.priser || []).find((q) => q.metric === m);
     priser[m] = { inkluderet: x ? String(Number(x.inkluderet)).replace(".", ",") : "", pris: x ? krTilFelt(x.enhedspris_ore) : "" };
   }
-  return { id: p?.id || null, navn: p?.navn || "", beskrivelse: p?.beskrivelse || "", maanedspris: krTilFelt(p?.maanedspris_ore ?? 0), inkl_brugere: String(p?.inkl_brugere ?? 0), ekstra_bruger: krTilFelt(p?.pris_ekstra_bruger_ore ?? 0), aktiv: p ? p.aktiv : true, priser };
+  return { id: p?.id || null, navn: p?.navn || "", beskrivelse: p?.beskrivelse || "", maanedspris: krTilFelt(p?.maanedspris_ore ?? 0), inkl_brugere: String(p?.inkl_brugere ?? 0), inkl_biler: String(p?.inkl_biler ?? 1), ekstra_bil: krTilFelt(p?.pris_ekstra_bil_ore ?? 0), ekstra_bruger: krTilFelt(p?.pris_ekstra_bruger_ore ?? 0), aktiv: p ? p.aktiv : true, priser };
 }
 
 function PlanerTab() {
@@ -319,8 +322,10 @@ function PlanerTab() {
     const mdr = oreFraKr(valgt.maanedspris === "" ? "0" : valgt.maanedspris);
     const ekstra = oreFraKr(valgt.ekstra_bruger === "" ? "0" : valgt.ekstra_bruger);
     const inkl = Number(valgt.inkl_brugere === "" ? "0" : valgt.inkl_brugere);
-    if (mdr === null || ekstra === null) return setFejl("Priser skal være beløb i kr.");
-    if (!Number.isInteger(inkl) || inkl < 0) return setFejl("Inkluderede brugere skal være et helt tal.");
+    const inklBiler = Number(valgt.inkl_biler === "" ? "0" : valgt.inkl_biler);
+    const ekstraBil = oreFraKr(valgt.ekstra_bil === "" ? "0" : valgt.ekstra_bil);
+    if (mdr === null || ekstra === null || ekstraBil === null) return setFejl("Priser skal være beløb i kr.");
+    if (!Number.isInteger(inkl) || inkl < 0 || !Number.isInteger(inklBiler) || inklBiler < 0) return setFejl("Inkluderede brugere og biler skal være hele tal.");
     const priser = [];
     for (const m of PRIS_METRICS) {
       const x = valgt.priser[m];
@@ -330,7 +335,7 @@ function PlanerTab() {
       priser.push({ metric: m, inkluderet: ink, enhedspris_ore: pris });
     }
     setBusy(true);
-    const r = await gemPlan({ id: valgt.id, navn, beskrivelse: valgt.beskrivelse, maanedspris_ore: mdr, inkl_brugere: inkl, pris_ekstra_bruger_ore: ekstra, aktiv: valgt.aktiv }, priser);
+    const r = await gemPlan({ id: valgt.id, navn, beskrivelse: valgt.beskrivelse, maanedspris_ore: mdr, inkl_brugere: inkl, inkl_biler: inklBiler, pris_ekstra_bil_ore: ekstraBil, pris_ekstra_bruger_ore: ekstra, aktiv: valgt.aktiv }, priser);
     setBusy(false);
     if (!r.ok) return setFejl(r.fejl);
     setBesked("Prisplanen er gemt. Nye priser gælder kommende fakturaer og forventede beløb - udstedte fakturaer ændres aldrig.");
@@ -349,6 +354,8 @@ function PlanerTab() {
           <div className="grid gap-3 sm:grid-cols-2">
             <Felt id="p-navn" titel="Navn"><input id="p-navn" value={valgt.navn} onChange={(e) => setP("navn", e.target.value)} className={felt} /></Felt>
             <Felt id="p-mdr" titel="Månedspris (kr., før moms)"><input id="p-mdr" inputMode="decimal" value={valgt.maanedspris} onChange={(e) => setP("maanedspris", e.target.value)} className={felt} /></Felt>
+            <Felt id="p-bil" titel="Biler i pakken" hjaelp="Butikkens kapacitet - det er den, prisen primært følger."><input id="p-bil" inputMode="numeric" value={valgt.inkl_biler} onChange={(e) => setP("inkl_biler", e.target.value.replace(/\D/g, ""))} className={felt} /></Felt>
+            <Felt id="p-ekstrabil" titel="Pris pr. ekstra bil pr. md. (kr.)"><input id="p-ekstrabil" inputMode="decimal" value={valgt.ekstra_bil} onChange={(e) => setP("ekstra_bil", e.target.value)} className={felt} /></Felt>
             <Felt id="p-inkl" titel="Inkluderede brugere"><input id="p-inkl" inputMode="numeric" value={valgt.inkl_brugere} onChange={(e) => setP("inkl_brugere", e.target.value.replace(/\D/g, ""))} className={felt} /></Felt>
             <Felt id="p-ekstra" titel="Pris pr. ekstra bruger pr. md. (kr.)"><input id="p-ekstra" inputMode="decimal" value={valgt.ekstra_bruger} onChange={(e) => setP("ekstra_bruger", e.target.value)} className={felt} /></Felt>
           </div>
@@ -356,8 +363,8 @@ function PlanerTab() {
           <label className="flex items-center gap-2 text-sm text-ink min-h-[44px] mt-2"><input type="checkbox" checked={valgt.aktiv} onChange={(e) => setP("aktiv", e.target.checked)} className="h-4 w-4" /> Kan vælges på nye abonnementer</label>
         </div>
         <div className={kort}>
-          <h3 className={overskrift}>Forbrug ud over det inkluderede</h3>
-          <p className="text-xs text-muted mb-3">Inkluderet pr. måned, og pris pr. enhed derudover (kr., fx 0,35 for en SMS). Tomme felter = gratis / ikke afregnet.</p>
+          <h3 className={overskrift}>Forbrug og lager ud over det inkluderede</h3>
+          <p className="text-xs text-muted mb-3">Inkluderet pr. måned, og pris pr. enhed derudover (kr., fx 0,35 for en SMS). Tomme felter = gratis / ikke afregnet. Fillager: skriv de GB, der er med i prisen, og prisen pr. ekstra GB.</p>
           <div className="space-y-3">
             {PRIS_METRICS.map((m) => (
               <div key={m} className="grid grid-cols-2 sm:grid-cols-3 gap-2 items-end">
@@ -383,7 +390,7 @@ function PlanerTab() {
           <button key={p.id} onClick={() => { setValgt(planTilFelter(p)); setFejl(""); setBesked(""); }} className="w-full text-left rounded-xl border border-line bg-white p-4 shadow-sm hover:border-brand transition-colors min-h-[44px]">
             <span className="flex items-start justify-between gap-3 flex-wrap">
               <span className="text-sm font-semibold text-ink">{p.navn}{!p.aktiv && <span className="ml-2 text-[11px] text-muted font-normal">(ikke aktiv)</span>}</span>
-              <span className="text-sm text-ink">{kr(p.maanedspris_ore)} / md.</span>
+              <span className="text-sm text-ink">{kr(p.maanedspris_ore)} / md. · {p.inkl_biler} bil(er)</span>
             </span>
             {p.beskrivelse && <span className="block text-xs text-muted mt-0.5">{p.beskrivelse}</span>}
           </button>
