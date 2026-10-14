@@ -31,6 +31,9 @@ import { AddressesPage } from "./pages/AddressesPage";
 import { AdminPage } from "./pages/AdminPage";
 import { SystemAdminPage } from "./pages/SystemAdminPage";
 
+import { PLATFORM_ENABLED } from "./platform/flag";
+import { PlatformShell } from "./platform/PlatformShell";
+
 // ---------------------------------------------------------------------------
 // App.jsx's ansvar er: kalde hooks, definere rute-opsætningen, og komponere
 // sider. Al domænelogik ligger i hooks/-mappen (useSession, useCatalog,
@@ -575,6 +578,13 @@ export default function App() {
   // ikke kun rollen 'montor'.
   const hideTopNav = currentPage === "sag" && kanKoereRute;
 
+  // Punkt1 Platform (oktober 2026): forsiden på #/platform, kun bag
+  // flaget (se platform/flag.ts). Er flaget fra, falder ruten igennem til
+  // "*" nedenfor som enhver ukendt sti - booking er uændret.
+  if (PLATFORM_ENABLED && currentPage === "platform") {
+    return <PlatformShell profile={profile} storeNavn={effectiveStore?.navn} tilladteSider={allowedPages} onNavigate={(rute) => navigate(rute)} onLogOut={logOut} />;
+  }
+
   return (
     <div className="min-h-screen w-full bg-paper" style={{ fontFamily: "Inter, sans-serif" }}>
       <style>{`
@@ -593,6 +603,7 @@ export default function App() {
           store={effectiveStore} allStores={allStores} onSwitchStore={switchStore}
           onExitStoreView={profile.erSystemadmin ? exitStoreView : undefined}
           onOpenAccountSettings={() => setShowAccountSettings(true)}
+          onOpenPlatform={PLATFORM_ENABLED ? () => navigate("/platform") : undefined}
         />
       )}
 
@@ -716,7 +727,9 @@ export default function App() {
             profile.erSystemadmin ? <SystemAdminPage currentUserId={profile.id} onOwnStoreLinked={linkOwnProfileToStore} /> : <Navigate to={`/${allowedPages[0]}`} replace />
           } />
 
-          <Route path="*" element={<Navigate to={`/${allowedPages[0]}`} replace />} />
+          {/* Med platformen slået til er dens forside startsiden efter login
+              (og for ukendte stier). Slået fra: uændret. */}
+          <Route path="*" element={<Navigate to={`/${PLATFORM_ENABLED ? "platform" : allowedPages[0]}`} replace />} />
         </Routes>
       </div>
     </div>

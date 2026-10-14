@@ -197,13 +197,29 @@ function StoreSwitcher({ store, isSystemAdmin, allStores, onSwitchStore, onExitS
 // én række, hvor der er plads. Løst med flex-wrap + order, så knapperne
 // kun findes ÉT sted i DOM'en - ikke to udgaver med hidden/visible, som
 // ville gentage hele navigationen for en skærmlæser.
-function TopNav({ page, onChange, user, onLogOut, notifications, onOpenOrder, allowedPages, store, allStores, onSwitchStore, onExitStoreView, onOpenAccountSettings }) {
+function TopNav({ page, onChange, user, onLogOut, notifications, onOpenOrder, allowedPages, store, allStores, onSwitchStore, onExitStoreView, onOpenAccountSettings, onOpenPlatform }) {
   const allowed = PAGES.filter((s) => allowedPages.includes(s.key) || (s.key === "systemadmin" && user.erSystemadmin));
   return (
     <div className="sticky top-0 z-20 bg-ink mb-6">
       <nav aria-label="Hovedmenu" className="max-w-6xl mx-auto flex flex-wrap items-center gap-2 px-3 py-2.5">
         <div className="shrink-0 flex items-center pr-1 order-1">
-          <img src={PUNKT1_LOGO_NEGATIV} alt="Punkt1" className="h-7 w-auto" />
+          {/* Punkt1 Platform (oktober 2026): logoet er vejen tilbage til
+              app-forsiden. onOpenPlatform sendes kun med, når platformen er
+              slået til (se platform/flag.ts) - ellers er logoet uændret. Et
+              klikbart logo frem for en ekstra knap, så kontrollerne ikke
+              tvinges ned på en ny linje på mobil. */}
+          {onOpenPlatform ? (
+            <button
+              onClick={onOpenPlatform}
+              aria-label="Alle apps"
+              title="Alle apps"
+              className="flex items-center min-h-[40px] rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
+            >
+              <img src={PUNKT1_LOGO_NEGATIV} alt="" className="h-7 w-auto" />
+            </button>
+          ) : (
+            <img src={PUNKT1_LOGO_NEGATIV} alt="Punkt1" className="h-7 w-auto" />
+          )}
         </div>
 
         {/* Kontroller: order-2 på mobil (samme række som logoet, skubbet
