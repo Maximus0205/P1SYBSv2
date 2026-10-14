@@ -8,7 +8,7 @@
 //
 // Fremgangsmåde (holder antallet af ORS-kald nede):
 //  1. Alle (dato, bil)-kombinationer vurderes med motoren og en SKØNNET matrix (luftlinje, ingen netværkskald).
-//  2. De bedste kombinationer (bedste bil pr. dato) vurderes igen med den RIGTIGE køretidsmatrix (ORS) og rangeres til sidst.
+//  2. Bedste bil pr. dato vurderes igen med den RIGTIGE køretidsmatrix (ORS) for de tidligste datoer; forslagene vises tidligste dato først.
 //     Svigter ORS, bruges skønnet, og forslaget markeres med "~".
 // Mangler en sag på dagen koordinater, kan dagen ikke vurderes og udelades (og det meldes i noter) - der gættes aldrig.
 // Ren logik: netværk (hentMatrix) og sagsomsætning (ordreTilStop) sendes ind, så den kan testes i Node (tests/forslagMotor.test.mjs).
@@ -19,12 +19,11 @@ const erWeekend = (iso) => { const d = new Date(`${iso}T12:00:00`).getDay(); ret
 const dageMellem = (a, b) => Math.round((new Date(`${b}T12:00:00`) - new Date(`${a}T12:00:00`)) / 86400000);
 const afrund1 = (x) => Math.round(x * 10) / 10;
 
-// Rangering: færrest ekstra minutter, så km. Mild forkærlighed for tidlige datoer og (ved omplanlægning) for at blive nær den oprindelige dato.
-function score(v, dato, idag, originalDate) {
+// Valg af BIL pr. dato: færrest ekstra minutter, så færrest ekstra km. Forslagene vises derefter med TIDLIGSTE DATO FØRST (kortest ventetid for kunden) -
+// samme princip som serverens ombookingsforslag (kapacitet-tjek: rangerForslag), så booking og ombooking følger samme regel.
+function score(v) {
   const e = v.ekstra || { min: 0, km: 0 };
-  let s = e.min + e.km * 0.2 + Math.max(0, dageMellem(idag, dato)) * 2;
-  if (originalDate) s += Math.abs(dageMellem(originalDate, dato)) * 5;
-  return s;
+  return e.min + e.km * 0.2;
 }
 
 function begrund(v, bilNavn, dato, originalDate) {
@@ -93,14 +92,15 @@ export async function motorForslag({
   const vurderet = [];
   for (const k of kombinationer) {
     const v = vurderTilfoejelse(input(k, skoenMatrix(punkterFor(k))), kandStop);
-    if (v.mulig) vurderet.push({ k, v, s: score(v, k.dato, idag, originalDate) });
+    if (v.mulig) vurderet.push({ k, v, s: score(v) });
   }
   vurderet.sort((a, b) => a.s - b.s);
 
-  // Bedste bil pr. dato.
+  // Bedste bil pr. dato; datoerne i kronologisk rækkefølge (tidligste først).
   const set = new Set();
   const bedstePrDato = [];
   for (const x of vurderet) { if (set.has(x.k.dato)) continue; set.add(x.k.dato); bedstePrDato.push(x); }
+  bedstePrDato.sort((a, b) => (a.k.dato < b.k.dato ? -1 : a.k.dato > b.k.dato ? 1 : 0));
 
   // 2. De bedste vurderes igen med rigtig køretid.
   const raffineret = [];
@@ -108,10 +108,10 @@ export async function motorForslag({
     const m = await matrixFor(hentMatrix, punkterFor(x.k));
     if (!m) { raffineret.push(x); continue; }
     const v = vurderTilfoejelse(input(x.k, m), kandStop);
-    if (v.mulig) raffineret.push({ k: x.k, v, s: score(v, x.k.dato, idag, originalDate) });
+    if (v.mulig) raffineret.push({ k: x.k, v, s: score(v) });
     // Er den ikke mulig med de rigtige tider, udgår kombinationen (skønnet var for optimistisk).
   }
-  raffineret.sort((a, b) => a.s - b.s);
+  raffineret.sort((a, b) => (a.k.dato < b.k.dato ? -1 : a.k.dato > b.k.dato ? 1 : 0));
 
   const forslag = raffineret.slice(0, max).map(({ k, v }) => ({
     dato: k.dato, bilId: k.bil.id, bilNavn: k.bil.navn, montorId: k.bil.id, montorNavn: k.bil.navn,

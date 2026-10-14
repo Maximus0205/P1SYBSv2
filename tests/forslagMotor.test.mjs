@@ -41,9 +41,13 @@ const fyldt = Array.from({ length: 6 }, (_, i) => ordre(`f${i}`, "2026-11-09", "
 r = await motorForslag({ ...base, dates: ["2026-11-09"], orders: fyldt, biler: [biler[0]] });
 eq("fyldt dag: intet forslag", r.forslag.length, 0);
 
-// Tæt på en anden sag slår en helt tom dag (færre ekstra minutter)
-r = await motorForslag({ ...base, dates: ["2026-11-10", "2026-11-11"], biler: [biler[0]], orders: [ordre("n1", "2026-11-11", "b1", 55.412, 10.412, 60)] });
-eq("rangering: dag med nabo-sag før tom dag", r.forslag.map((f) => f.dato), ["2026-11-11", "2026-11-10"]);
+// Forslag vises med tidligste dato først
+r = await motorForslag({ ...base, dates: ["2026-11-12", "2026-11-10", "2026-11-11"], biler: [biler[0]], orders: [ordre("n1", "2026-11-11", "b1", 55.412, 10.412, 60)] });
+eq("rangering: tidligste dato først", r.forslag.map((f) => f.dato), ["2026-11-10", "2026-11-11", "2026-11-12"]);
+
+// Pr. dato vælges den bil, der giver færrest ekstra minutter (her: bilen med en nabo-sag lige ved)
+r = await motorForslag({ ...base, dates: ["2026-11-10"], orders: [ordre("n1", "2026-11-10", "b2", 55.412, 10.412, 60)] });
+eq("bilvalg: bilen med nabo-sag giver mindst ekstra tid", r.forslag.map((f) => f.bilId), ["b2"]);
 
 // Rigtig matrix bruges til de bedste; skøn-flaget forsvinder
 let kald = 0;
