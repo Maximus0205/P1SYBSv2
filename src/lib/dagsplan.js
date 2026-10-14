@@ -73,6 +73,11 @@ export function badgeFraMotor(r) {
   if (!r) return null;
   if (r.fejl) return { minutter: null, overbelastet: false, fejl: r.fejl, titel: r.fejl };
   const res = r.res; const n = res.noegletal;
+  // Mangler koordinater, kan køretiden ikke beregnes - vis fejl i stedet for et tal baseret på 0 min kørsel.
+  if (res.kanIkkeBeregnes) {
+    const besked = res.brud.find((b) => b.regel === "koersel")?.besked || "Køretiden kan ikke beregnes: koordinater mangler.";
+    return { minutter: null, overbelastet: false, fejl: besked, titel: besked };
+  }
   const minutter = n.startMin != null && n.slutMin != null ? Math.max(0, n.slutMin - n.startMin) : 0;
   const linjer = [];
   if (n.hjemmeKl) linjer.push(`Hjemme kl. ${n.hjemmeKl} · kørsel ${n.km} km / ${n.koerselMin} min · arbejde ${n.arbejdeMin} min`);

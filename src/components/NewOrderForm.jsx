@@ -14,6 +14,7 @@ import { klokkeslaet } from "../lib/orderDrafts";
 import { ReceiptUpload } from "../components/ReceiptUpload";
 import { ToMandFelt, LineItemEditor, KeyAccessFields, CustomerHistory, SuggestedDates, InteractiveWeekPicker, ClusterEstimateNote } from "../components/OrderFormFields";
 import { AddressInput } from "../components/AddressInput";
+import { koordinaterTilSag } from "../lib/adresseKoordinater";
 import { AddressNotesPanel } from "../components/AddressNotes";
 import { KeyCabinetBookingHint } from "../components/KeyCabinetAlert";
 import { KapacitetsTjek } from "../components/KapacitetsTjek";
@@ -167,6 +168,8 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
   const [buyerAddress, setBuyerAddress] = useState(d.buyerAddress || "");
   const [address, setAddress] = useState(d.address || "");
   const [addressStatus, setAddressStatus] = useState("tom");
+  // Skjulte koordinater fra Adressevælgeren (aldrig vist). Gælder kun så længe `address` stadig er den valgte tekst - se lib/adresseKoordinater.js.
+  const [adresseKoord, setAdresseKoord] = useState(d.adresseKoord || null);
   const [deliveryNote, setDeliveryNote] = useState(d.deliveryNote || "");
   const [toMand, setToMand] = useState(!!d.toMand);
   const [keyAccess, setKeyAccess] = useState(() => ({ ...emptyKeyAccess(), ...(d.keyAccess || {}) }));
@@ -206,8 +209,8 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const blank = useMemo(() => ({ lineItem: createLineItem(productTypes, primaryServices, undefined, "", defaultTimeEstimates), keyAccess: emptyKeyAccess() }), []);
   const snapshot = useMemo(
-    () => ({ caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, deliveryNote, toMand, keyAccess, date, timeSlotId, vehicleId, lineItems, fleksibel, senestDato }),
-    [caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, deliveryNote, toMand, keyAccess, date, timeSlotId, vehicleId, lineItems, fleksibel, senestDato]
+    () => ({ caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, adresseKoord, deliveryNote, toMand, keyAccess, date, timeSlotId, vehicleId, lineItems, fleksibel, senestDato }),
+    [caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, adresseKoord, deliveryNote, toMand, keyAccess, date, timeSlotId, vehicleId, lineItems, fleksibel, senestDato]
   );
   const kladde = useOrderDraft({ draftId, storeId, userId, state: snapshot, step, blank });
 
@@ -360,7 +363,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
     setSaving(true);
     const nyId = await onAdd({
       sagstype: caseTypeId,
-      kunde: { navn: customerName.trim(), telefon: phone.trim(), email: email.trim(), adresse: address.trim(), leveringsnote: deliveryNote.trim() },
+      kunde: { navn: customerName.trim(), telefon: phone.trim(), email: email.trim(), adresse: address.trim(), leveringsnote: deliveryNote.trim(), ...(koordinaterTilSag(adresseKoord, address) ? { adresseKoordinater: koordinaterTilSag(adresseKoord, address) } : {}) },
       koeber: hasBuyer ? { navn: buyerName.trim(), telefon: buyerPhone.trim(), email: buyerEmail.trim(), adresse: buyerAddress.trim() } : null,
       // Dækker et nøgleskab adressen, gemmes ingen nøgleoplysning - se
       // skabDaekkerAdressen ovenfor.
@@ -470,7 +473,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, productTypes, 
             {erTomgang ? "Lejemålets adresse" : "Leveringsadresse"}
           </h4>
           <div className="grid gap-3 mb-4">
-            <AddressInput value={address} onChange={setAddress} placeholder={erTomgang ? "Lejemålets adresse" : "Leveringsadresse"} onValidationChange={setAddressStatus} focus={storeFocus} kommunekode={storeKommuneKode} storePostnr={storePostnr} />
+            <AddressInput value={address} onChange={setAddress} placeholder={erTomgang ? "Lejemålets adresse" : "Leveringsadresse"} onValidationChange={setAddressStatus} onKoordinater={setAdresseKoord} focus={storeFocus} kommunekode={storeKommuneKode} storePostnr={storePostnr} />
             <input value={deliveryNote} onChange={(e) => setDeliveryNote(e.target.value)} placeholder={erTomgang ? "Note, fx 'Opgang B, 3. sal th'" : "Leveringsnote, fx 'Ring før ankomst'"} aria-label="Note" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
           </div>
           {addressStatus === "usikker" && (

@@ -9,6 +9,7 @@ import { CustomerHistoryLookup, ModelNumberLookup, ToMandFelt } from "../compone
 import { KapacitetsTjek } from "../components/KapacitetsTjek";
 import { KapacitetsForslag } from "../components/KapacitetsForslag";
 import { AddressInput } from "../components/AddressInput";
+import { koordinaterTilSag } from "../lib/adresseKoordinater";
 import { AddressNotesPanel } from "../components/AddressNotes";
 import { kraeverBeskrivelse } from "../lib/ydelser";
 import { linjerUdenModel, manglerModel } from "../lib/varelinje";
@@ -51,6 +52,8 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
   const [vehicleId, setVehicleId] = useState(order.bilId || "");
   const [toMand, setToMand] = useState(!!order.toMand);
   const [address, setAddress] = useState(order.kunde.adresse);
+  // Skjulte koordinater (aldrig vist): de gemte følger med, så længe adressen er uændret; vælges en ny adresse, erstattes de.
+  const [adresseKoord, setAdresseKoord] = useState(order.kunde.adresseKoordinater || null);
   const [items, setItems] = useState(() => cloneLineItems(order.varelinjer));
   const [itemsTouched, setItemsTouched] = useState(false);
   // punkt1-opslaget kan "stille" finde den skjulte produktreference (punkt1Id) på en eksisterende varelinje. Den bruges med det samme
@@ -84,7 +87,9 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
     }
     if (canPlan && toMand !== !!order.toMand) fields.toMand = toMand;
     if (canEditCustomer) {
-      fields.kunde = { ...order.kunde, adresse: address.trim() };
+      const { adresseKoordinater: _gamle, ...kundeUdenKoord } = order.kunde;
+      const nyeKoord = koordinaterTilSag(adresseKoord, address);
+      fields.kunde = { ...kundeUdenKoord, adresse: address.trim(), ...(nyeKoord ? { adresseKoordinater: nyeKoord } : {}) };
     }
     if (canPlan && planAendret && kapStatus.overrulet) {
       // Kun reglernes NAVNE noteres (aldrig mål eller vægt), samme som ved ny booking.
@@ -124,7 +129,7 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
         <label className="text-xs text-muted sm:col-span-2">
           Leveringsadresse
           {canEditCustomer ? (
-            <div className="mt-1"><AddressInput value={address} onChange={setAddress} placeholder="Leveringsadresse" /></div>
+            <div className="mt-1"><AddressInput value={address} onChange={setAddress} onKoordinater={setAdresseKoord} placeholder="Leveringsadresse" /></div>
           ) : (
             <div className="mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-muted flex items-center gap-1.5"><Lock size={12} className="shrink-0" aria-hidden="true" /> {address || "Ingen adresse"}</div>
           )}

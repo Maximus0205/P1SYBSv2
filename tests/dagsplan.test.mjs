@@ -49,5 +49,12 @@ eq("fejl: ugyldigt input giver fejl-objekt eller gyldigt svar, aldrig undefined"
   eq("hold: uden hjaelperIds kun montør", uden.personer.map((p) => p.id), ["m1"]);
 }
 
+// manglende koordinater = fejlkode i badgen, aldrig et stille 0 / et tal
+{
+  const uden = beregnBilDag({ dato, bil, personer: a.personer, pauseMin: 0, stop: [stop("s1", 60, 55.4, 10.4), stop("s2", 60)], lager: { lat: 55.4, lon: 10.4 }, indstillinger: IND });
+  const bg = badgeFraMotor(uden);
+  eq("manglende koordinater: badge giver fejl og ingen minutter", [bg.minutter, typeof bg.fejl, bg.fejl.includes("koordinater")], [null, "string", true]);
+}
+
 console.log(`${pass} bestået, ${fail} fejlet`);
 if (fail) process.exit(1);

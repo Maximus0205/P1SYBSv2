@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertCircle, ArrowLeftRight, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, RefreshCw, KeyRound, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid, MapPin, Phone, Route, Stethoscope, CalendarX2, AlertTriangle } from "lucide-react";
 import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, dailyOrderCompare, needsPlanning, vehicleAbsences, vehicleHasCoverage, buildingKey, timeSlotById } from "../data/domain";
-import { geocodeAddress, geocodeAddresses, drivingDistances, optimalVisitOrder } from "../lib/geocoding";
+import { drivingDistances, optimalVisitOrder } from "../lib/geocoding";
+import { koordinaterForKunde } from "../lib/adresseKoordinater";
 import { suggestPlan, planningWindow } from "../lib/scheduling";
 import { ors } from "../adapters";
 import { hentKapacitetsIndstillinger, hentArbejdstider, hentUaendringer } from "../lib/kapacitetStore";
@@ -249,11 +250,12 @@ function ReplanTile({ items, orders, technicians, personnel, timeOff, onUpdateBo
         const sameBuildingDates = bkey ? [...new Set(windowOrders.filter((o) => buildingKey(o.kunde.adresse) === bkey).map((o) => o.dato))] : [];
         let nearbyDates = [];
         try {
-          const source = await geocodeAddress(order.kunde.adresse);
+          // Koordinaterne er de GEMTE fra Adressevælgeren (skjult på sagen) - ORS slår ikke længere adresser op. Sager uden koordinater springes
+          // over (forslaget bygger så på kapacitet/samme opgang alene).
+          const source = koordinaterForKunde(order.kunde);
           if (source && windowOrders.length > 0) {
-            const coordMap = await geocodeAddresses(windowOrders.map((o) => o.kunde.adresse));
             const withCoords = windowOrders
-              .map((o) => ({ o, coord: coordMap.get(o.kunde.adresse.trim().toLowerCase()) }))
+              .map((o) => ({ o, coord: koordinaterForKunde(o.kunde) }))
               .filter((x) => x.coord);
             if (withCoords.length > 0) {
               const distances = await drivingDistances(source, withCoords.map((x) => x.coord));
@@ -641,7 +643,7 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
 
   // Alt der kan ændre en bils dag, så beregningen kun køres igen når noget reelt er ændret.
   const signature = Object.entries(dayGroups)
-    .map(([key, list]) => `${key}:${list.map((o) => `${o.id}|${o.kunde?.adresse || ""}|${o.tidsrumId || ""}|${o.start || ""}|${o.slut || ""}|${orderExpectedMinutes(o)}`).join(",")}`)
+    .map(([key, list]) => `${key}:${list.map((o) => `${o.id}|${o.kunde?.adresse || ""}|${(() => { const c = koordinaterForKunde(o.kunde); return c ? `${c.lat},${c.lon}` : "-"; })()}|${o.tidsrumId || ""}|${o.start || ""}|${o.slut || ""}|${orderExpectedMinutes(o)}`).join(",")}`)
     .join(";")
     + `|firma:${storeCoord ? `${storeCoord.lat},${storeCoord.lon}` : "ukendt"}`
     + `|pers:${(personnel || []).map((p) => `${p.id}>${p.bilId}`).join(",")}|fravaer:${(timeOff || []).map((f) => `${f.montorId}:${f.startDato}-${f.slutDato || ""}:${f.type || ""}`).join(",")}`
@@ -668,9 +670,9 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
         try {
           const [bilId, dato] = key.split("|");
           const list = dayGroups[key];
-          const coordMap = await geocodeAddresses(list.map((o) => o.kunde?.adresse).filter(Boolean));
+          // Koordinater: de gemte fra Adressevælgeren. Mangler de, får stoppet ingen lat/lon, og motoren melder "kan ikke beregnes" (aldrig 0 min).
           const stop = list.map((o) => {
-            const k = o.kunde?.adresse ? coordMap.get(o.kunde.adresse.trim().toLowerCase()) : null;
+            const k = koordinaterForKunde(o.kunde);
             const slot = timeSlotById(o.tidsrumId || "heldag");
             const fra = tilMin(o.start || slot.start); const til = tilMin(o.slut || slot.slut);
             const heldag = (o.tidsrumId || "heldag") === "heldag";
@@ -746,9 +748,7 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
     const key = `${vehicleId}|${day}`;
     setOptimizing((prev) => ({ ...prev, [key]: true }));
 
-    const addresses = dayOrders.map((o) => o.kunde?.adresse).filter(Boolean);
-    const coordMap = await geocodeAddresses(addresses);
-    const withCoord = (o) => (o.kunde?.adresse ? coordMap.get(o.kunde.adresse.trim().toLowerCase()) : null);
+    const withCoord = (o) => koordinaterForKunde(o.kunde);
 
     // Del op efter tidsramme. "eftermiddag" afgøres af starttidspunktet
     // (>= 12:00) - dækker både det faste tidsrum og en sag, der manuelt

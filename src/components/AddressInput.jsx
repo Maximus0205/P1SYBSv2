@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Check, AlertTriangle, Loader2, MapPin } from "lucide-react";
-import { searchAdressevaelger } from "../lib/geocodingAdressevaelger";
+import { searchAdressevaelger, lookupAdressevaelgerCoordinates } from "../lib/geocodingAdressevaelger";
 import { hentAdresseKontekst } from "../lib/adresseKontekst";
 
 // ---------------------------------------------------------------------------
@@ -90,7 +90,7 @@ function postalDistance(f, storePostnr) {
   return Math.abs(num - storeNum);
 }
 
-function AddressInput({ value, onChange, placeholder, onValidationChange, focus, kommunekode: kommunekodeProp, storePostnr: storePostnrProp }) {
+function AddressInput({ value, onChange, placeholder, onValidationChange, onKoordinater, focus, kommunekode: kommunekodeProp, storePostnr: storePostnrProp }) {
   // Butikkens kommune/postnummer: eksplicitte props vinder; ellers butikkens egne (se lib/adresseKontekst.js), så relevans-sorteringen også
   // virker i "Rediger booking". Læses ved hver søgning, så et butiksskifte straks slår igennem.
   const kontekst = hentAdresseKontekst();
@@ -182,6 +182,20 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus,
   //   - Findes der PRÆCIS ÉN, vælges den automatisk.
   //   - Findes der INGEN (fx et enfamiliehus), er husnummeret selv den
   //     endelige adresse.
+  // Slår koordinaterne op for den endeligt valgte adresse og melder dem skjult til forælderen (gemmes på sagen, vises aldrig). Forælderen
+  // sammenligner `tekst` med sin aktuelle adressetekst, så et forsinket svar for en tidligere valgt adresse ignoreres. Fejl -> null (der
+  // gættes ikke; planlægningen viser så "kan ikke beregnes" indtil adressen vælges igen).
+  const meldKoordinater = async (id, type, tekst) => {
+    if (!onKoordinater) return;
+    if (!id) { onKoordinater(null); return; }
+    try {
+      const k = await lookupAdressevaelgerCoordinates(id, type);
+      onKoordinater(k && Number.isFinite(k.lat) && Number.isFinite(k.lon) ? { lat: k.lat, lon: k.lon, adresseId: id, type, tekst } : null);
+    } catch {
+      onKoordinater(null);
+    }
+  };
+
   const selectSuggestion = async (f) => {
     // VEJ + POSTNUMMER valgt (fx "Kløvervej 5750 Ringe, 15 husnumre"): vis en
     // ny liste med vejens husnumre, så man kan vælge det rigtige i stedet for
@@ -218,6 +232,7 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus,
       setShowSuggestions(false);
       setStatus("gyldig");
       onValidationChange?.("gyldig");
+      meldKoordinater(f.id, f.type === "husnummer" ? "husnummer" : "adresse", f.titel);
       return;
     }
 
@@ -234,6 +249,7 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus,
       setShowSuggestions(false);
       setStatus("gyldig");
       onValidationChange?.("gyldig");
+      meldKoordinater(f.id, "husnummer", f.titel);
       return;
     }
     if (specific.length === 1) {
@@ -243,6 +259,7 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, focus,
       setShowSuggestions(false);
       setStatus("gyldig");
       onValidationChange?.("gyldig");
+      meldKoordinater(specific[0].id, "adresse", specific[0].titel);
       return;
     }
     setSuggestions(specific);

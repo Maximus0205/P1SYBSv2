@@ -403,6 +403,16 @@ function optimer(stop, ctx) {
 // ---------------------------------------------------------------------------------------------------------------------
 // OFFENTLIG API
 // ---------------------------------------------------------------------------------------------------------------------
+// Navne på de punkter (stop og evt. lager), der hverken har koordinater eller står i matricen - dem køretiden ikke kan beregnes for.
+function stopUdenKoordinater(stop, matrix, lagerInput, ind) {
+  const iMatrix = new Set(matrix?.ids || []);
+  const harKoord = (p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lon);
+  const navne = stop.filter((s) => !iMatrix.has(s.id) && !harKoord(s)).map((s) => s.navn || s.adresse || s.id);
+  const lager = { lat: lagerInput?.lat ?? ind.lager.lat, lon: lagerInput?.lon ?? ind.lager.lon };
+  if (!iMatrix.has("lager") && !harKoord(lager)) navne.push("lageret");
+  return navne;
+}
+
 // input: { dato, indstillinger, lager?:{lat,lon}, bil:{id,navn,tempo,nyttelastKg,vaerktoejKg,lasterum:{laengdeCm,breddeCm,hoejdeCm}},
 //          personer:[{id,navn,rolle:'montoer'|'medhjaelper',vinduer:[{fra,til}]}], pauseMin?, stop:[...], matrix? }
 // stop:    { id, navn, adresse?, lat?, lon?, minutter, tidsrum?:{fra,til}, kraever2Mand?, varer:[{id,navn,type,antal,vaegtKg,maal:{l,b,h}}] }
@@ -435,7 +445,12 @@ export function planlaegDag(input) {
   forudsaetninger.skoenKoersel = ctx.skoen;
   const advarsler = [...bedst.advarsler];
   if (ctx.skoen) advarsler.push({ regel: "koersel", niveau: "raadgivende", besked: "Køretiden er et skøn (luftlinje), fordi en rigtig køretidsmatrix ikke var tilgængelig.", vaegt: 0 });
-  if (ctx.mangler) advarsler.push({ regel: "koersel", niveau: "raadgivende", besked: "Der mangler koordinater på mindst ét stop - køretid til/fra det indgår som 0.", vaegt: 0 });
+  // MANGLENDE KOORDINATER = FEJL (oktober 2026): før indgik køretiden som 0 min med blot en rådgivende advarsel, så en dag så kortere ud, end den var.
+  // Nu kan køretiden ikke beregnes: planen er ikke ok, og kanIkkeBeregnes sættes, så kalderen viser "kan ikke beregnes" i stedet for et tal.
+  const manglerKoordinater = ctx.mangler ? stopUdenKoordinater(stop, input.matrix, input.lager, ind) : [];
+  const koerselBrud = ctx.mangler
+    ? [{ regel: "koersel", niveau: "krav", besked: `Køretiden kan ikke beregnes: koordinater mangler for ${manglerKoordinater.join(", ") || "mindst ét stop"}.`, vaegt: 5 }]
+    : [];
 
   const n = bedst.noegletal;
   const forklaring = [];
@@ -450,9 +465,10 @@ export function planlaegDag(input) {
   if (tilladtLinje) forklaring.push(tilladtLinje);
 
   return {
-    ok: bedst.brud.length === 0 && bedst.ufoerbare.length === 0, dato: input.dato, bil: { id: ctx.bil.id, navn: ctx.bil.navn },
+    ok: bedst.brud.length === 0 && bedst.ufoerbare.length === 0 && !ctx.mangler, dato: input.dato, bil: { id: ctx.bil.id, navn: ctx.bil.navn },
     haendelser: bedst.haendelser, rutefolge: bedst.raekkefoelge.map((s) => s.id), ture: bedst.ture.map(({ varer, pakning, ...tu }) => ({ ...tu, pakning: pakning ? { ok: pakning.ok, aarsag: pakning.aarsag || null, besked: pakning.besked || null, placeringer: pakning.placeringer } : null })),
-    brud: bedst.brud, advarsler, noegletal: n, forklaring, forudsaetninger,
+    brud: [...bedst.brud, ...koerselBrud], advarsler, noegletal: n, forklaring, forudsaetninger,
+    kanIkkeBeregnes: ctx.mangler, manglerKoordinater,
   };
 }
 

@@ -261,7 +261,11 @@ const koord = (id, lat, lon, min) => stop(id, min, { lat, lon });
 r = planlaegDag({ dato: "2026-11-09", indstillinger: IND, bil: { id: "b" }, personer: [montoer()], lager: { lat: 55.4, lon: 10.4 }, stop: [koord("A", 55.45, 10.45, 60)] });
 eq("uden matrix: skøn fra koordinater, og det meldes", [r.ok, r.forudsaetninger.skoenKoersel, r.advarsler.some((a) => a.regel === "koersel" && a.besked.includes("skøn")), r.noegletal.km > 0], [true, true, true, true]);
 r = planlaegDag({ dato: "2026-11-09", indstillinger: IND, bil: { id: "b" }, personer: [montoer()], stop: [stop("A", 60)] });
-eq("uden matrix og uden koordinater: køretid 0, men det meldes", [r.noegletal.koerselMin, r.advarsler.some((a) => a.besked.includes("koordinater"))], [0, true]);
+eq("uden matrix og uden koordinater: fejl (kan ikke beregnes), ikke et stille 0", [r.ok, r.kanIkkeBeregnes, r.brud.some((b) => b.regel === "koersel" && b.niveau === "krav" && b.besked.includes("koordinater")), r.manglerKoordinater.length], [false, true, true, 2]);
+r = planlaegDag({ dato: "2026-11-09", indstillinger: IND, bil: { id: "b" }, personer: [montoer()], lager: { lat: 55.4, lon: 10.4 }, stop: [koord("A", 55.45, 10.45, 60), stop("B", 30)] });
+eq("ét stop uden koordinater blandt flere: fejl og stoppet navngives", [r.ok, r.kanIkkeBeregnes, r.manglerKoordinater.length], [false, true, 1]);
+r = planlaegDag({ dato: "2026-11-09", indstillinger: IND, bil: { id: "b" }, personer: [montoer()], matrix: linje({ lager: 0, A: 10 }), stop: [stop("A", 60)] });
+eq("stop uden koordinater men MED i matricen: ingen fejl", [r.ok, r.kanIkkeBeregnes], [true, false]);
 eq("skoenMatrix: symmetrisk, 0 til sig selv, km = luftlinje × 1,3", (() => { const m = skoenMatrix([{ id: "a", lat: 55, lon: 10 }, { id: "b", lat: 56, lon: 10 }]); return [m.km[0][0], m.km[0][1] === m.km[1][0], Math.round(m.km[0][1])]; })(), [0, true, 145]);
 
 // =====================================================================================================
