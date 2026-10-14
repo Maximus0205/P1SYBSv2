@@ -183,7 +183,7 @@ export function Dashboard({ naviger }) {
         {d.mangler_faktura?.length > 0 && (
           <div>
             <p className="text-sm font-semibold text-ink mb-1">Ikke faktureret for {maanedLang(d.forrige_maaned)}</p>
-            <ul className="text-sm text-ink list-disc pl-5">{d.mangler_faktura.map((k) => <li key={k.store_id}>{k.navn}</li>)}</ul>
+            <ul className="text-sm text-ink list-disc pl-5">{d.mangler_faktura.map((k) => <li key={k.store_id || k.organisation_id}>{k.navn}</li>)}</ul>
             <button onClick={() => naviger("fakturaer")} className={knapSek + " mt-2"}>Opret kladde under fakturaer</button>
           </div>
         )}

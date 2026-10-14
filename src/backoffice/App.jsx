@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Loader2, LogOut, AlertCircle, LayoutDashboard, Gauge, Building2, Tags, Receipt, Wallet, Settings, ArrowLeft, History } from "lucide-react";
+import { Loader2, LogOut, AlertCircle, LayoutDashboard, Gauge, Building2, Tags, Receipt, Wallet, Settings, ArrowLeft, History, Network } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { Dashboard } from "./Dashboard";
 import { UdgifterSektion } from "./Udgifter";
 import { AktivitetSektion } from "./Aktivitet";
-import { ForbrugSektion, KunderSektion, PlanerSektion, FakturaerSektion, IndstillingerSektion } from "./BillingAdmin";
+import { ForbrugSektion, KunderSektion, PlanerSektion, FakturaerSektion, IndstillingerSektion, OrganisationerSektion } from "./BillingAdmin";
 
 // BACKOFFICE: eget panel til at drive og sælge SaaS-løsninger - kunder, forbrug, prisplaner, fakturaer, udgifter og overblik.
 // Adgang: login (samme Supabase-login som systemet) + skal være systemadministrator. Det er databasen, der afviser alle andre - ikke denne side.
@@ -15,6 +15,7 @@ const SEKTIONER = [
   { id: "dashboard", navn: "Overblik", Ikon: LayoutDashboard },
   { id: "forbrug", navn: "Forbrug", Ikon: Gauge },
   { id: "kunder", navn: "Kunder", Ikon: Building2 },
+  { id: "organisationer", navn: "Organisationer", Ikon: Network },
   { id: "planer", navn: "Prisplaner", Ikon: Tags },
   { id: "fakturaer", navn: "Fakturaer", Ikon: Receipt },
   { id: "udgifter", navn: "Udgifter", Ikon: Wallet },
@@ -108,6 +109,7 @@ export default function App() {
         {sektion === "dashboard" && <Dashboard naviger={gaaTil} />}
         {sektion === "forbrug" && <ForbrugSektion onVaelgButik={() => gaaTil("kunder")} />}
         {sektion === "kunder" && <KunderSektion stores={stores} />}
+        {sektion === "organisationer" && <OrganisationerSektion stores={stores} />}
         {sektion === "planer" && <PlanerSektion />}
         {sektion === "fakturaer" && <FakturaerSektion stores={stores} />}
         {sektion === "udgifter" && <UdgifterSektion />}

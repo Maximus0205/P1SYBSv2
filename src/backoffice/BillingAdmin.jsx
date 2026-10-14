@@ -5,6 +5,7 @@ import {
   kr, krEnhed, oreFraKr, enhedsOreFraKr, krTilFelt, taalFraTekst, datoTekst, maanedPeriode, forrigeMaaned, indevaerendeMaaned, graenseStatus,
   hentOverblik, hentAlleGraenser, hentIndstillinger, gemIndstillinger, hentPlaner, gemPlan, hentKonto, gemKonto, hentGraenser, gemGraense,
   hentFakturaer, hentFaktura, opretKladde, udstedFaktura, saetFakturaStatus, hentKreditnotaer, hentKreditnota, opretKreditnota,
+  opretOrgKladde, hentOrganisationer, gemOrganisation, hentMedlemmer,
 } from "../lib/billing";
 
 // BACKOFFICE (kun systemadmin, oktober 2026): overblik over kunder (butikker) og forbrug, abonnement og grænser pr. butik, prisplaner, fakturaer
@@ -60,6 +61,7 @@ export function ForbrugSektion({ onVaelgButik }) {
     setRaekker(o.data || []); setGraenser(g.ok ? g.data || [] : []);
   }, [maaned]);
   useEffect(() => { hent(); }, [hent]);
+  useEffect(() => { hentOrganisationer().then((r) => { if (r.ok) { setOrganisationer(r.data || []); setNyOrg((v) => v || r.data?.[0]?.id || ""); } }); }, []);
 
   const iDag = maaned === indevaerendeMaaned();
   const sum = useMemo(() => (raekker || []).reduce((s, r) => s + (Number(r.beregning?.netto_ore) || 0), 0), [raekker]);
@@ -119,12 +121,12 @@ export function ForbrugSektion({ onVaelgButik }) {
 }
 
 // ---- Kunder (abonnement + grænser pr. butik) -----------------------------------------------------------------------------------------
-const TOM_KONTO = { plan_id: "", status: "proeve", start_dato: "", pris_override: "", ekstra_biler: "0", rabat_pct: "0", firma_navn: "", cvr: "", adresse: "", postnr_by: "", att: "", faktura_email: "", ean: "", betalingsfrist_dage: "", spaerret: false, spaerret_aarsag: "", noter: "" };
+const TOM_KONTO = { plan_id: "", status: "proeve", start_dato: "", pris_override: "", ekstra_biler: "0", rabat_pct: "0", organisation_id: "", kaedepris: false, firma_navn: "", cvr: "", adresse: "", postnr_by: "", att: "", faktura_email: "", ean: "", betalingsfrist_dage: "", spaerret: false, spaerret_aarsag: "", noter: "" };
 
 function kontoTilFelter(k) {
   if (!k) return { ...TOM_KONTO };
   return {
-    plan_id: k.plan_id || "", status: k.status, start_dato: k.start_dato || "", pris_override: krTilFelt(k.pris_override_ore), ekstra_biler: String(k.ekstra_biler ?? 0), rabat_pct: String(k.rabat_pct ?? 0).replace(".", ","),
+    plan_id: k.plan_id || "", status: k.status, start_dato: k.start_dato || "", pris_override: krTilFelt(k.pris_override_ore), ekstra_biler: String(k.ekstra_biler ?? 0), rabat_pct: String(k.rabat_pct ?? 0).replace(".", ","), organisation_id: k.organisation_id || "", kaedepris: !!k.kaedepris,
     firma_navn: k.firma_navn, cvr: k.cvr, adresse: k.adresse, postnr_by: k.postnr_by, att: k.att, faktura_email: k.faktura_email, ean: k.ean,
     betalingsfrist_dage: k.betalingsfrist_dage === null || k.betalingsfrist_dage === undefined ? "" : String(k.betalingsfrist_dage), spaerret: !!k.spaerret, spaerret_aarsag: k.spaerret_aarsag || "", noter: k.noter || "",
   };
@@ -133,6 +135,7 @@ function kontoTilFelter(k) {
 export function KunderSektion({ stores }) {
   const [butik, setButik] = useState(stores[0]?.id || "");
   const [planer, setPlaner] = useState([]);
+  const [organisationer, setOrganisationer] = useState([]);
   const [f, setF] = useState(null);
   const [harKonto, setHarKonto] = useState(false);
   const [graenser, setGraenser] = useState({});
@@ -141,7 +144,7 @@ export function KunderSektion({ stores }) {
   const [besked, setBesked] = useState("");
 
   useEffect(() => { if (!butik && stores[0]?.id) setButik(stores[0].id); }, [stores]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { hentPlaner().then((r) => r.ok && setPlaner(r.data)); }, []);
+  useEffect(() => { hentPlaner().then((r) => r.ok && setPlaner(r.data)); hentOrganisationer().then((r) => r.ok && setOrganisationer(r.data || [])); }, []);
 
   useEffect(() => {
     if (!butik) return undefined;
@@ -172,7 +175,7 @@ export function KunderSektion({ stores }) {
     if (!Number.isInteger(ekstraBiler) || ekstraBiler < 0 || ekstraBiler > 999) return setFejl("Ekstra biler skal være et helt antal (0 eller flere).");
     setBusy(true);
     const r = await gemKonto({
-      store_id: butik, ekstra_biler: ekstraBiler, plan_id: f.plan_id || null, status: f.status, start_dato: f.start_dato || null, pris_override_ore: override, rabat_pct: rabat,
+      store_id: butik, ekstra_biler: ekstraBiler, organisation_id: f.organisation_id || null, kaedepris: !!f.organisation_id && f.kaedepris, plan_id: f.plan_id || null, status: f.status, start_dato: f.start_dato || null, pris_override_ore: override, rabat_pct: rabat,
       firma_navn: f.firma_navn.trim(), cvr: f.cvr.trim(), adresse: f.adresse.trim(), postnr_by: f.postnr_by.trim(), att: f.att.trim(), faktura_email: f.faktura_email.trim(), ean: f.ean.trim(),
       betalingsfrist_dage: frist, spaerret: f.spaerret, spaerret_aarsag: f.spaerret_aarsag.trim(), noter: f.noter,
     });
@@ -218,6 +221,19 @@ export function KunderSektion({ stores }) {
               <Felt id="k-override" titel="Aftalt månedspris (kr., før moms)" hjaelp="Tom = prisplanens pris."><input id="k-override" inputMode="decimal" value={f.pris_override} onChange={(e) => saet("pris_override", e.target.value)} className={felt} /></Felt>
               <Felt id="k-rabat" titel="Rabat på abonnement (%)"><input id="k-rabat" inputMode="decimal" value={f.rabat_pct} onChange={(e) => saet("rabat_pct", e.target.value)} className={felt} /></Felt>
             </div>
+          </div>
+
+          <div className={kort}>
+            <h3 className={overskrift}>Kæde / organisation</h3>
+            <Felt id="k-org" titel="Tilhører organisation (valgfri)" hjaelp="Butikken betaler stadig selv. Organisationen bruges til kædeaftaler.">
+              <select id="k-org" value={f.organisation_id} onChange={(e) => { saet("organisation_id", e.target.value); if (!e.target.value) saet("kaedepris", false); }} className={felt}><option value="">Ingen</option>{organisationer.map((o) => <option key={o.id} value={o.id}>{o.navn}</option>)}</select>
+            </Felt>
+            {f.organisation_id && (
+              <label className="flex items-start gap-2 text-sm text-ink min-h-[44px] mt-2">
+                <input type="checkbox" checked={f.kaedepris} onChange={(e) => saet("kaedepris", e.target.checked)} className="mt-1 h-4 w-4" />
+                <span>Brug organisationens prisplan (kædepris) til denne butik. Butikkens egen aftalte pris og rabat gælder stadig, hvis de er udfyldt.</span>
+              </label>
+            )}
           </div>
 
           <div className={kort}>
@@ -268,6 +284,121 @@ export function KunderSektion({ stores }) {
             </div>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+// ---- Organisationer (kæder med egen aftale) ------------------------------------------------------------------------------------------
+const ORG_STATUS = { proeve: "Prøve", aktiv: "Aktiv", pause: "Pause", opsagt: "Opsagt" };
+const TOM_ORG = { id: null, navn: "", plan_id: "", status: "proeve", start_dato: "", pris_override: "", rabat_pct: "0", firma_navn: "", cvr: "", adresse: "", postnr_by: "", att: "", faktura_email: "", ean: "", betalingsfrist_dage: "", noter: "" };
+function orgTilFelter(o) {
+  return { id: o.id, navn: o.navn, plan_id: o.plan_id || "", status: o.status, start_dato: o.start_dato || "", pris_override: krTilFelt(o.pris_override_ore), rabat_pct: String(o.rabat_pct ?? 0).replace(".", ","),
+    firma_navn: o.firma_navn || "", cvr: o.cvr || "", adresse: o.adresse || "", postnr_by: o.postnr_by || "", att: o.att || "", faktura_email: o.faktura_email || "", ean: o.ean || "",
+    betalingsfrist_dage: o.betalingsfrist_dage === null || o.betalingsfrist_dage === undefined ? "" : String(o.betalingsfrist_dage), noter: o.noter || "" };
+}
+
+export function OrganisationerSektion({ stores }) {
+  const [liste, setListe] = useState(null);
+  const [planer, setPlaner] = useState([]);
+  const [f, setF] = useState(null);
+  const [medlemmer, setMedlemmer] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [fejl, setFejl] = useState("");
+  const [besked, setBesked] = useState("");
+
+  const hent = useCallback(async () => { const r = await hentOrganisationer(); if (!r.ok) { setFejl(r.fejl); setListe([]); return; } setListe(r.data || []); }, []);
+  useEffect(() => { hent(); hentPlaner().then((r) => r.ok && setPlaner(r.data)); }, [hent]);
+  useEffect(() => {
+    setMedlemmer([]);
+    if (!f?.id) return undefined;
+    let levende = true;
+    hentMedlemmer(f.id).then((r) => { if (levende && r.ok) setMedlemmer(r.data || []); });
+    return () => { levende = false; };
+  }, [f?.id]);
+
+  const saet = (k, v) => { setF((p) => ({ ...p, [k]: v })); setBesked(""); };
+  const gem = async () => {
+    setFejl(""); setBesked("");
+    if (!f.navn.trim()) return setFejl("Skriv organisationens navn.");
+    const override = f.pris_override.trim() === "" ? null : oreFraKr(f.pris_override);
+    if (f.pris_override.trim() !== "" && override === null) return setFejl("Aftalt månedspris skal være et beløb i kr. (eller tom).");
+    const rabat = taalFraTekst(f.rabat_pct === "" ? "0" : f.rabat_pct);
+    if (rabat === null || rabat > 100) return setFejl("Rabat skal være et tal mellem 0 og 100.");
+    const frist = f.betalingsfrist_dage.trim() === "" ? null : Number(f.betalingsfrist_dage);
+    if (frist !== null && (!Number.isInteger(frist) || frist < 0 || frist > 180)) return setFejl("Betalingsfrist skal være et helt antal dage (0-180) eller tom.");
+    setBusy(true);
+    const r = await gemOrganisation({
+      id: f.id, navn: f.navn.trim(), plan_id: f.plan_id || null, status: f.status, start_dato: f.start_dato || null, pris_override_ore: override, rabat_pct: rabat,
+      firma_navn: f.firma_navn.trim(), cvr: f.cvr.trim(), adresse: f.adresse.trim(), postnr_by: f.postnr_by.trim(), att: f.att.trim(), faktura_email: f.faktura_email.trim(), ean: f.ean.trim(),
+      betalingsfrist_dage: frist, noter: f.noter,
+    });
+    setBusy(false);
+    if (!r.ok) return setFejl(r.fejl);
+    setBesked("Organisationen er gemt.");
+    if (!f.id && r.data?.id) setF((p) => ({ ...p, id: r.data.id }));
+    hent();
+  };
+
+  if (f) {
+    const butikNavn = (id) => stores.find((b) => b.id === id)?.navn || "Ukendt butik";
+    return (
+      <div className="max-w-3xl">
+        <button onClick={() => { setF(null); setFejl(""); setBesked(""); }} className={knapSek + " mb-4"}><ChevronLeft size={15} aria-hidden="true" /> Alle organisationer</button>
+        <Meddelelse fejl={fejl} besked={besked} />
+        <div className={kort}>
+          <h3 className={overskrift}>Aftale</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Felt id="o-navn" titel="Navn"><input id="o-navn" value={f.navn} onChange={(e) => saet("navn", e.target.value)} className={felt} /></Felt>
+            <Felt id="o-status" titel="Status"><select id="o-status" value={f.status} onChange={(e) => saet("status", e.target.value)} className={felt}>{Object.entries(ORG_STATUS).map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select></Felt>
+            <Felt id="o-plan" titel="Prisplan (kædeaftale)" hjaelp="Bruges til organisationens eget abonnement og som kædepris for de butikker, der er sat til det."><select id="o-plan" value={f.plan_id} onChange={(e) => saet("plan_id", e.target.value)} className={felt}><option value="">Vælg prisplan...</option>{planer.filter((p) => p.aktiv || p.id === f.plan_id).map((p) => <option key={p.id} value={p.id}>{p.navn}</option>)}</select></Felt>
+            <Felt id="o-start" titel="Startdato"><input id="o-start" type="date" value={f.start_dato} onChange={(e) => saet("start_dato", e.target.value)} className={felt} /></Felt>
+            <Felt id="o-override" titel="Aftalt månedspris for organisationen (kr., før moms)" hjaelp="Tom = prisplanens pris. 0 kr. er tilladt, hvis kæden kun skal give butikkerne kædepris."><input id="o-override" inputMode="decimal" value={f.pris_override} onChange={(e) => saet("pris_override", e.target.value)} className={felt} /></Felt>
+            <Felt id="o-rabat" titel="Rabat (%)"><input id="o-rabat" inputMode="decimal" value={f.rabat_pct} onChange={(e) => saet("rabat_pct", e.target.value)} className={felt} /></Felt>
+            <Felt id="o-frist" titel="Betalingsfrist (dage)" hjaelp="Tom = standard fra Indstillinger."><input id="o-frist" inputMode="numeric" value={f.betalingsfrist_dage} onChange={(e) => saet("betalingsfrist_dage", e.target.value.replace(/\D/g, ""))} className={felt} /></Felt>
+          </div>
+        </div>
+        <div className={kort}>
+          <h3 className={overskrift}>Fakturaoplysninger</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Felt id="o-firma" titel="Firmanavn"><input id="o-firma" value={f.firma_navn} onChange={(e) => saet("firma_navn", e.target.value)} className={felt} /></Felt>
+            <Felt id="o-cvr" titel="CVR"><input id="o-cvr" inputMode="numeric" value={f.cvr} onChange={(e) => saet("cvr", e.target.value)} className={felt} /></Felt>
+            <Felt id="o-adr" titel="Adresse"><input id="o-adr" value={f.adresse} onChange={(e) => saet("adresse", e.target.value)} className={felt} /></Felt>
+            <Felt id="o-post" titel="Postnr. og by"><input id="o-post" value={f.postnr_by} onChange={(e) => saet("postnr_by", e.target.value)} className={felt} /></Felt>
+            <Felt id="o-att" titel="Att."><input id="o-att" value={f.att} onChange={(e) => saet("att", e.target.value)} className={felt} /></Felt>
+            <Felt id="o-mail" titel="Faktura-e-mail"><input id="o-mail" type="email" value={f.faktura_email} onChange={(e) => saet("faktura_email", e.target.value)} className={felt} /></Felt>
+            <Felt id="o-ean" titel="EAN (valgfri)"><input id="o-ean" inputMode="numeric" value={f.ean} onChange={(e) => saet("ean", e.target.value)} className={felt} /></Felt>
+          </div>
+        </div>
+        <div className={kort}>
+          <h3 className={overskrift}>Noter (kun intern)</h3>
+          <textarea aria-label="Interne noter" rows={3} value={f.noter} onChange={(e) => saet("noter", e.target.value)} className={felt + " min-h-[88px]"} />
+        </div>
+        <button onClick={gem} disabled={busy} className={knapPrim}>{busy ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Check size={15} aria-hidden="true" />} Gem organisation</button>
+        <div className={kort + " mt-6"}>
+          <h3 className={overskrift}>Butikker i organisationen</h3>
+          {!f.id && <p className="text-xs text-muted">Gem organisationen først. Derefter knytter du butikker til den under Kunder.</p>}
+          {f.id && medlemmer.length === 0 && <p className="text-xs text-muted">Ingen butikker endnu. Vælg organisationen på butikkens side under Kunder.</p>}
+          {medlemmer.length > 0 && <ul className="text-sm text-ink space-y-1">{medlemmer.map((m) => <li key={m.store_id}>{butikNavn(m.store_id)} <span className="text-xs text-muted">· {m.kaedepris ? "kædepris" : "egen pris"}</span></li>)}</ul>}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="max-w-3xl">
+      <p className="text-xs text-muted mb-3">En organisation er fx et kædekontor. Butikkerne betaler stadig selv, men kæden kan have sin egen prisplan (kædepris) og eventuelt et eget abonnement.</p>
+      <button onClick={() => { setF({ ...TOM_ORG }); setFejl(""); setBesked(""); }} className={knapPrim + " mb-4"}><FilePlus size={15} aria-hidden="true" /> Ny organisation</button>
+      <Meddelelse fejl={fejl} besked={besked} />
+      {liste === null && <Indlaeser />}
+      {liste && liste.length === 0 && <p className="text-sm text-muted">Ingen organisationer endnu.</p>}
+      {liste && liste.length > 0 && (
+        <div className="space-y-2">
+          {liste.map((o) => (
+            <button key={o.id} onClick={() => { setF(orgTilFelter(o)); setFejl(""); setBesked(""); }} className="w-full text-left rounded-xl border border-line bg-white p-4 shadow-sm hover:border-bo transition-colors">
+              <span className="flex items-center justify-between gap-3 flex-wrap"><span className="text-sm font-semibold text-ink">{o.navn}</span><span className="text-xs text-muted">{ORG_STATUS[o.status] || o.status}{planer.find((p) => p.id === o.plan_id) ? ` · ${planer.find((p) => p.id === o.plan_id).navn}` : ""}</span></span>
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -386,6 +517,9 @@ export function FakturaerSektion({ stores }) {
   const [besked, setBesked] = useState("");
   const [kreditnotaer, setKreditnotaer] = useState([]);
   const [valgt, setValgt] = useState(null); // { id, kredit }
+  const [nyType, setNyType] = useState("butik");
+  const [organisationer, setOrganisationer] = useState([]);
+  const [nyOrg, setNyOrg] = useState("");
   const [nyButik, setNyButik] = useState(stores[0]?.id || "");
   const [nyMaaned, setNyMaaned] = useState(forrigeMaaned());
   const [busy, setBusy] = useState(false);
@@ -402,9 +536,10 @@ export function FakturaerSektion({ stores }) {
   const opret = async () => {
     setFejl(""); setBesked("");
     const p = maanedPeriode(nyMaaned);
-    if (!p || !nyButik) return setFejl("Vælg butik og måned.");
+    const kundeId = nyType === "butik" ? nyButik : nyOrg;
+    if (!p || !kundeId) return setFejl("Vælg kunde og måned.");
     setBusy(true);
-    const r = await opretKladde(nyButik, p.fra, p.til);
+    const r = nyType === "butik" ? await opretKladde(kundeId, p.fra, p.til) : await opretOrgKladde(kundeId, p.fra, p.til);
     setBusy(false);
     if (!r.ok) return setFejl(r.fejl);
     await hent();
@@ -422,9 +557,12 @@ export function FakturaerSektion({ stores }) {
     <div>
       <div className={kort + " max-w-3xl"}>
         <h3 className={overskrift}>Opret faktura-kladde</h3>
-        <p className="text-xs text-muted mb-3">Beregner abonnement og forbrug for en afsluttet måned ud fra butikkens prisplan. Kladden kan gennemses, før den udstedes og får fakturanummer.</p>
+        <p className="text-xs text-muted mb-3">Beregner abonnement og forbrug for en afsluttet måned ud fra kundens prisplan (en organisation faktureres kun for sin kædeaftale; butikkerne faktureres hver for sig). Kladden kan gennemses, før den udstedes og får fakturanummer.</p>
         <div className="flex items-end gap-3 flex-wrap">
-          <Felt id="f-butik" titel="Butik"><select id="f-butik" value={nyButik} onChange={(e) => setNyButik(e.target.value)} className={felt}>{stores.map((b) => <option key={b.id} value={b.id}>{b.navn}</option>)}</select></Felt>
+          <Felt id="f-type" titel="Kundetype"><select id="f-type" value={nyType} onChange={(e) => setNyType(e.target.value)} className={felt}><option value="butik">Butik</option><option value="org">Organisation</option></select></Felt>
+          {nyType === "butik"
+            ? <Felt id="f-butik" titel="Butik"><select id="f-butik" value={nyButik} onChange={(e) => setNyButik(e.target.value)} className={felt}>{stores.map((b) => <option key={b.id} value={b.id}>{b.navn}</option>)}</select></Felt>
+            : <Felt id="f-org" titel="Organisation"><select id="f-org" value={nyOrg} onChange={(e) => setNyOrg(e.target.value)} className={felt}>{organisationer.length === 0 && <option value="">Ingen organisationer</option>}{organisationer.map((o) => <option key={o.id} value={o.id}>{o.navn}</option>)}</select></Felt>}
           <Felt id="f-maaned" titel="Måned"><input id="f-maaned" type="month" max={forrigeMaaned()} value={nyMaaned} onChange={(e) => e.target.value && setNyMaaned(e.target.value)} className={felt} /></Felt>
           <button onClick={opret} disabled={busy} className={knapPrim}>{busy ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <FilePlus size={15} aria-hidden="true" />} Opret kladde</button>
         </div>

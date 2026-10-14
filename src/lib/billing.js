@@ -56,7 +56,7 @@ export async function gemGraense(storeId, metric, advarsel, spaerr) {
   return koer(() => supabase.from("billing_limits").upsert({ store_id: storeId, metric, advarsel_ved: advarsel, spaerr_ved: spaerr }, { onConflict: "store_id,metric" }));
 }
 
-export const hentFakturaer = () => koer(() => supabase.from("billing_invoices").select("id, fakturanr, store_id, periode_fra, periode_til, status, udstedt_dato, forfaldsdato, betalt_dato, kunde, total_ore, netto_ore, moms_ore, created_at").order("created_at", { ascending: false }));
+export const hentFakturaer = () => koer(() => supabase.from("billing_invoices").select("id, fakturanr, store_id, organisation_id, periode_fra, periode_til, status, udstedt_dato, forfaldsdato, betalt_dato, kunde, total_ore, netto_ore, moms_ore, created_at").order("created_at", { ascending: false }));
 export async function hentFaktura(id) {
   const [f, l] = await Promise.all([
     koer(() => supabase.from("billing_invoices").select("*").eq("id", id).single()),
@@ -67,6 +67,14 @@ export async function hentFaktura(id) {
   return { ok: true, data: { ...f.data, linjer: l.data || [] } };
 }
 export const opretKladde = (storeId, fra, til) => koer(() => supabase.rpc("billing_opret_kladde", { p_store: storeId, p_fra: fra, p_til: til }));
+export const opretOrgKladde = (orgId, fra, til) => koer(() => supabase.rpc("billing_opret_org_kladde", { p_org: orgId, p_fra: fra, p_til: til }));
+export const hentOrganisationer = () => koer(() => supabase.from("billing_organisations").select("*").order("navn"));
+export const gemOrganisation = (o) => {
+  const { id, ...felter } = o;
+  const række = { ...felter, updated_at: new Date().toISOString() };
+  return id ? koer(() => supabase.from("billing_organisations").update(række).eq("id", id).select("id").single()) : koer(() => supabase.from("billing_organisations").insert(række).select("id").single());
+};
+export const hentMedlemmer = (orgId) => koer(() => supabase.from("billing_accounts").select("store_id, kaedepris, status").eq("organisation_id", orgId));
 export const udstedFaktura = (id) => koer(() => supabase.rpc("billing_udsted", { p_id: id }));
 export const saetFakturaStatus = (id, status, dato = null) => koer(() => supabase.rpc("billing_saet_status", { p_id: id, p_status: status, p_dato: dato }));
 
@@ -80,7 +88,7 @@ export const gemUdgift = (u) => {
 export const sletUdgift = (id) => koer(() => supabase.from("billing_costs").delete().eq("id", id));
 
 // ---- Kreditnotaer og aktivitetslog ---------------------------------------------------------------------------------------------
-export const hentKreditnotaer = () => koer(() => supabase.from("billing_credit_notes").select("id, kreditnr, invoice_id, store_id, udstedt_dato, kunde, total_ore, aarsag, created_at").order("created_at", { ascending: false }));
+export const hentKreditnotaer = () => koer(() => supabase.from("billing_credit_notes").select("id, kreditnr, invoice_id, store_id, organisation_id, udstedt_dato, kunde, total_ore, aarsag, created_at").order("created_at", { ascending: false }));
 export async function hentKreditnota(id) {
   const [c, l] = await Promise.all([
     koer(() => supabase.from("billing_credit_notes").select("*").eq("id", id).single()),

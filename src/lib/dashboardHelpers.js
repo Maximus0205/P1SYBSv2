@@ -56,7 +56,7 @@ export function soejleSti(x, y, bredde, base, r = 4) {
 // ---- Aktivitetslog: gør rå ændringer (felter med fra/til) læsbare på dansk ---------------------------------------------------------
 export const LOG_TABELLER = {
   billing_accounts: "Abonnement", billing_plans: "Prisplan", billing_plan_prices: "Prislinje", billing_limits: "Loft",
-  billing_settings: "Indstillinger", billing_costs: "Udgift", billing_invoices: "Faktura", billing_credit_notes: "Kreditnota",
+  billing_settings: "Indstillinger", billing_costs: "Udgift", billing_invoices: "Faktura", billing_credit_notes: "Kreditnota", billing_organisations: "Organisation",
 };
 const FELT_NAVN = {
   status: "Status", navn: "Navn", beskrivelse: "Beskrivelse", aktiv: "Aktiv", maanedspris_ore: "Månedspris", pris_override_ore: "Aftalt månedspris", rabat_pct: "Rabat (%)",
@@ -64,7 +64,7 @@ const FELT_NAVN = {
   spaerret: "Betalte tjenester stoppet", spaerret_aarsag: "Besked ved stop", spaerr_ved: "Loft", advarsel_ved: "Advarsel ved", metric: "Tjeneste", inkluderet: "Inkluderet pr. md.", enhedspris_ore: "Pris pr. enhed",
   sms_indkoeb_ore: "SMS: indkøbspris", sms_paaslag_ore: "SMS: påslag", moms_pct: "Moms (%)", betalingsfrist_dage: "Betalingsfrist (dage)", faktura_prefix: "Fakturapræfiks",
   firma_navn: "Firmanavn", cvr: "CVR", adresse: "Adresse", postnr_by: "Postnr. og by", email: "E-mail", telefon: "Telefon", bank_reg: "Bank reg.nr.", bank_konto: "Bank kontonr.", iban: "IBAN",
-  faktura_email: "Faktura-e-mail", ean: "EAN", att: "Att.", noter: "Noter", plan_id: "Prisplan (id)", store_id: "Butik (id)", start_dato: "Startdato",
+  faktura_email: "Faktura-e-mail", ean: "EAN", att: "Att.", noter: "Noter", plan_id: "Prisplan (id)", organisation_id: "Organisation (id)", kaedepris: "Kædepris", store_id: "Butik (id)", start_dato: "Startdato",
   fakturanr: "Fakturanr.", kreditnr: "Kreditnota nr.", aarsag: "Årsag", udstedt_dato: "Udstedt", forfaldsdato: "Forfald", betalt_dato: "Betalt", periode_fra: "Periode fra", periode_til: "Periode til",
   netto_ore: "Beløb ekskl. moms", moms_ore: "Moms", total_ore: "I alt", beloeb_ore: "Beløb", dato: "Dato", tekst: "Tekst", kategori: "Kategori", gentag: "Gentages hver måned", slut_dato: "Stopper", invoice_id: "Faktura (id)",
   faktura_fodtekst: "Fodtekst",
