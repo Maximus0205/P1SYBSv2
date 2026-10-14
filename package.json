@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node tests/keyCabinets.test.mjs && node tests/orderMerge.test.mjs && node tests/offlineQueue.test.mjs && node tests/orderDrafts.test.mjs && node tests/draftSync.test.mjs && node tests/kladdeIndstillinger.test.mjs && node tests/arrivalTime.test.mjs && node tests/csvSager.test.mjs && node tests/ydelser.test.mjs && node tests/arbejdsuge.test.mjs && node tests/frist.test.mjs && node tests/opgaveTid.test.mjs && node tests/fravaer.test.mjs && node tests/sletBruger.test.mjs && node tests/adapters.test.mjs && node tests/adapters.eksterne.test.mjs && node tests/ors.matrix.test.mjs && node tests/engine.kapacitet.test.mjs && node tests/dagsplan.test.mjs && node tests/sms-automatik.test.mjs && node tests/varelinje.test.mjs && node tests/bookingOversigt.test.mjs && node tests/delvisAfsluttet.test.mjs && node tests/holdForslag.test.mjs"
+    "test": "node tests/keyCabinets.test.mjs && node tests/orderMerge.test.mjs && node tests/offlineQueue.test.mjs && node tests/orderDrafts.test.mjs && node tests/draftSync.test.mjs && node tests/kladdeIndstillinger.test.mjs && node tests/arrivalTime.test.mjs && node tests/csvSager.test.mjs && node tests/ydelser.test.mjs && node tests/arbejdsuge.test.mjs && node tests/frist.test.mjs && node tests/opgaveTid.test.mjs && node tests/fravaer.test.mjs && node tests/sletBruger.test.mjs && node tests/adapters.test.mjs && node tests/adapters.eksterne.test.mjs && node tests/ors.matrix.test.mjs && node tests/engine.kapacitet.test.mjs && node tests/dagsplan.test.mjs && node tests/sms-automatik.test.mjs && node tests/varelinje.test.mjs && node tests/bookingOversigt.test.mjs && node tests/delvisAfsluttet.test.mjs && node tests/holdForslag.test.mjs && node tests/platform.appRegister.test.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
@@ -18,10 +19,13 @@
     "react-router-dom": "^6.26.2"
   },
   "devDependencies": {
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.3",
+    "typescript": "^5.9.3",
     "vite": "^5.2.0"
   }
 }
