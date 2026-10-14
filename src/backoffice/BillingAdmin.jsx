@@ -4,7 +4,7 @@ import {
   METRICS, FORBRUG_METRICS, PRIS_METRICS, SPAERRE_METRICS, KONTO_STATUS, FAKTURA_STATUS,
   kr, krEnhed, oreFraKr, enhedsOreFraKr, krTilFelt, taalFraTekst, datoTekst, maanedPeriode, forrigeMaaned, indevaerendeMaaned, graenseStatus,
   hentOverblik, hentAlleGraenser, hentIndstillinger, gemIndstillinger, hentPlaner, gemPlan, hentKonto, gemKonto, hentGraenser, gemGraense,
-  hentFakturaer, hentFaktura, opretKladde, udstedFaktura, saetFakturaStatus,
+  hentFakturaer, hentFaktura, opretKladde, udstedFaktura, saetFakturaStatus, hentKreditnotaer, hentKreditnota, opretKreditnota,
 } from "../lib/billing";
 
 // BACKOFFICE (kun systemadmin, oktober 2026): overblik over kunder (butikker) og forbrug, abonnement og grænser pr. butik, prisplaner, fakturaer
@@ -384,12 +384,18 @@ export function FakturaerSektion({ stores }) {
   const [liste, setListe] = useState(null);
   const [fejl, setFejl] = useState("");
   const [besked, setBesked] = useState("");
-  const [valgtId, setValgtId] = useState(null);
+  const [kreditnotaer, setKreditnotaer] = useState([]);
+  const [valgt, setValgt] = useState(null); // { id, kredit }
   const [nyButik, setNyButik] = useState(stores[0]?.id || "");
   const [nyMaaned, setNyMaaned] = useState(forrigeMaaned());
   const [busy, setBusy] = useState(false);
 
-  const hent = useCallback(async () => { const r = await hentFakturaer(); if (!r.ok) { setFejl(r.fejl); setListe([]); return; } setListe(r.data || []); }, []);
+  const hent = useCallback(async () => {
+    const [r, k] = await Promise.all([hentFakturaer(), hentKreditnotaer()]);
+    if (!r.ok) { setFejl(r.fejl); setListe([]); return; }
+    if (!k.ok) setFejl(k.fejl);
+    setListe(r.data || []); setKreditnotaer(k.ok ? k.data || [] : []);
+  }, []);
   useEffect(() => { hent(); }, [hent]);
   useEffect(() => { if (!nyButik && stores[0]?.id) setNyButik(stores[0].id); }, [stores]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -402,10 +408,16 @@ export function FakturaerSektion({ stores }) {
     setBusy(false);
     if (!r.ok) return setFejl(r.fejl);
     await hent();
-    setValgtId(r.data);
+    setValgt({ id: r.data, kredit: false });
   };
 
-  if (valgtId) return <FakturaVisning id={valgtId} onTilbage={() => { setValgtId(null); hent(); }} />;
+  if (valgt) return <FakturaVisning key={valgt.id} id={valgt.id} kredit={valgt.kredit} onTilbage={() => { setValgt(null); hent(); }} onKrediteret={(nr) => { setValgt(null); setBesked(`Kreditnota ${nr} er oprettet. Fakturaen er krediteret, og perioden kan faktureres på ny.`); hent(); }} />;
+  const kreditAf = new Map(kreditnotaer.map((c) => [c.invoice_id, c.kreditnr]));
+  const nrPaaFaktura = new Map((liste || []).map((i) => [i.id, i.fakturanr]));
+  const raekker = [
+    ...(liste || []).map((i) => ({ type: "faktura", id: i.id, tid: i.created_at, i })),
+    ...kreditnotaer.map((c) => ({ type: "kredit", id: c.id, tid: c.created_at, c })),
+  ].sort((x, y) => String(y.tid).localeCompare(String(x.tid)));
   return (
     <div>
       <div className={kort + " max-w-3xl"}>
@@ -420,20 +432,30 @@ export function FakturaerSektion({ stores }) {
       </div>
 
       {liste === null && <Indlaeser />}
-      {liste && liste.length === 0 && <p className="text-sm text-muted">Ingen fakturaer endnu.</p>}
-      {liste && liste.length > 0 && (
+      {liste && raekker.length === 0 && <p className="text-sm text-muted">Ingen fakturaer endnu.</p>}
+      {liste && raekker.length > 0 && (
         <div className="space-y-2 max-w-3xl">
-          {liste.map((i) => (
-            <button key={i.id} onClick={() => setValgtId(i.id)} className="w-full text-left rounded-xl border border-line bg-white p-4 shadow-sm hover:border-bo transition-colors">
+          {raekker.map((x) => x.type === "faktura" ? (
+            <button key={x.id} onClick={() => setValgt({ id: x.id, kredit: false })} className="w-full text-left rounded-xl border border-line bg-white p-4 shadow-sm hover:border-bo transition-colors">
               <span className="flex items-start justify-between gap-3 flex-wrap">
                 <span className="min-w-0">
-                  <span className="block text-sm font-semibold text-ink">{i.fakturanr || "Kladde"} <Chip id={i.status} tekst={FAKTURA_STATUS[i.status]} /></span>
-                  <span className="block text-xs text-muted mt-0.5 break-words">{i.kunde?.firma_navn || i.kunde?.butik || "–"} · {datoTekst(i.periode_fra)} – {datoTekst(i.periode_til)}</span>
+                  <span className="block text-sm font-semibold text-ink">{x.i.fakturanr || "Kladde"} {kreditAf.has(x.id) ? <Chip id="annulleret" tekst={`Krediteret (${kreditAf.get(x.id)})`} /> : <Chip id={x.i.status} tekst={FAKTURA_STATUS[x.i.status]} />}</span>
+                  <span className="block text-xs text-muted mt-0.5 break-words">{x.i.kunde?.firma_navn || x.i.kunde?.butik || "–"} · {datoTekst(x.i.periode_fra)} – {datoTekst(x.i.periode_til)}</span>
                 </span>
                 <span className="text-right">
-                  <span className="block text-sm font-semibold text-ink">{kr(i.total_ore)}</span>
-                  {i.forfaldsdato && i.status === "udstedt" && <span className="block text-[11px] text-muted">forfald {datoTekst(i.forfaldsdato)}</span>}
+                  <span className="block text-sm font-semibold text-ink">{kr(x.i.total_ore)}</span>
+                  {x.i.forfaldsdato && x.i.status === "udstedt" && <span className="block text-[11px] text-muted">forfald {datoTekst(x.i.forfaldsdato)}</span>}
                 </span>
+              </span>
+            </button>
+          ) : (
+            <button key={x.id} onClick={() => setValgt({ id: x.id, kredit: true })} className="w-full text-left rounded-xl border border-line bg-white p-4 shadow-sm hover:border-bo transition-colors">
+              <span className="flex items-start justify-between gap-3 flex-wrap">
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-ink">{x.c.kreditnr} <Chip id="udstedt" tekst="Kreditnota" /></span>
+                  <span className="block text-xs text-muted mt-0.5 break-words">{x.c.kunde?.firma_navn || x.c.kunde?.butik || "–"} · krediterer {nrPaaFaktura.get(x.c.invoice_id) || "faktura"} · {datoTekst(x.c.udstedt_dato)}</span>
+                </span>
+                <span className="block text-sm font-semibold text-ink">{kr(x.c.total_ore)}</span>
               </span>
             </button>
           ))}
@@ -443,13 +465,13 @@ export function FakturaerSektion({ stores }) {
   );
 }
 
-function FakturaVisning({ id, onTilbage }) {
+function FakturaVisning({ id, kredit = false, onTilbage, onKrediteret }) {
   const [fak, setFak] = useState(null);
   const [fejl, setFejl] = useState("");
   const [besked, setBesked] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const hent = useCallback(async () => { const r = await hentFaktura(id); if (!r.ok) { setFejl(r.fejl); return; } setFak(r.data); }, [id]);
+  const hent = useCallback(async () => { const r = kredit ? await hentKreditnota(id) : await hentFaktura(id); if (!r.ok) { setFejl(r.fejl); return; } setFak(r.data); }, [id, kredit]);
   useEffect(() => { hent(); }, [hent]);
 
   const handl = async (fn, ok, bekraeft) => {
@@ -460,6 +482,19 @@ function FakturaVisning({ id, onTilbage }) {
     if (!r.ok) return setFejl(r.fejl);
     setBesked(ok(r));
     hent();
+  };
+
+  const krediter = async () => {
+    const aarsag = window.prompt("Hvorfor krediteres fakturaen? Årsagen står på kreditnotaen.");
+    if (aarsag === null) return;
+    if (!aarsag.trim()) return setFejl("Skriv en årsag til kreditnotaen.");
+    const advarsel = fak.status === "betalt" ? " Fakturaen er markeret betalt - husk at tilbagebetale beløbet." : "";
+    if (!window.confirm(`Opret en kreditnota på hele fakturaen (${kr(fak.total_ore)})? Fakturaen annulleres, og det kan ikke fortrydes.${advarsel}`)) return;
+    setBusy(true); setFejl(""); setBesked("");
+    const r = await opretKreditnota(id, aarsag.trim());
+    setBusy(false);
+    if (!r.ok) return setFejl(r.fejl);
+    onKrediteret(r.data);
   };
 
   if (!fak) return <div><button onClick={onTilbage} className="text-xs text-muted hover:text-ink flex items-center gap-1 mb-3 min-h-[44px]"><ChevronLeft size={14} aria-hidden="true" /> Alle fakturaer</button>{fejl ? <Meddelelse fejl={fejl} /> : <Indlaeser />}</div>;
@@ -475,15 +510,18 @@ function FakturaVisning({ id, onTilbage }) {
           </>}
           {fak.status === "udstedt" && <>
             <button disabled={busy} onClick={() => handl(() => saetFakturaStatus(id, "betalt"), () => "Markeret som betalt i dag.")} className={knapPrim}><Check size={15} aria-hidden="true" /> Markér betalt</button>
-            <button disabled={busy} onClick={() => handl(() => saetFakturaStatus(id, "annulleret"), () => "Fakturaen er annulleret. Husk en kreditnota i regnskabet, hvis den allerede er sendt.", "Annullér den udstedte faktura? Fakturanummeret bevares i historikken.")} className={knapFare}>Annullér</button>
+            <button disabled={busy} onClick={krediter} className={knapFare}>Kreditér...</button>
           </>}
-          {fak.status === "betalt" && <button disabled={busy} onClick={() => handl(() => saetFakturaStatus(id, "udstedt"), () => "Betalingen er fortrudt.", "Fortryd betalingen?")} className={knapSek}>Fortryd betaling</button>}
-          {fak.status !== "kladde" && fak.status !== "annulleret" && <button onClick={() => window.print()} className={knapSek}><Printer size={15} aria-hidden="true" /> Udskriv / gem som PDF</button>}
+          {fak.status === "betalt" && <>
+            <button disabled={busy} onClick={() => handl(() => saetFakturaStatus(id, "udstedt"), () => "Betalingen er fortrudt.", "Fortryd betalingen?")} className={knapSek}>Fortryd betaling</button>
+            <button disabled={busy} onClick={krediter} className={knapFare}>Kreditér...</button>
+          </>}
+          {(kredit || (fak.status !== "kladde" && fak.status !== "annulleret")) && <button onClick={() => window.print()} className={knapSek}><Printer size={15} aria-hidden="true" /> Udskriv / gem som PDF</button>}
         </div>
         <Meddelelse fejl={fejl} besked={besked} />
       </div>
 
-      <article className="faktura-print relative mt-4 max-w-3xl rounded-xl border border-line bg-white p-5 sm:p-8 shadow-sm text-ink" aria-label={`Faktura ${fak.fakturanr || "kladde"}`}>
+      <article className="faktura-print relative mt-4 max-w-3xl rounded-xl border border-line bg-white p-5 sm:p-8 shadow-sm text-ink" aria-label={kredit ? `Kreditnota ${fak.kreditnr}` : `Faktura ${fak.fakturanr || "kladde"}`}>
         {fak.status === "kladde" && <p className="absolute right-4 top-3 text-2xl font-display font-bold text-faint tracking-widest select-none">KLADDE</p>}
         {fak.status === "annulleret" && <p className="absolute right-4 top-3 text-2xl font-display font-bold text-danger tracking-widest select-none">ANNULLERET</p>}
         <div className="flex justify-between gap-6 flex-wrap">
@@ -493,8 +531,9 @@ function FakturaVisning({ id, onTilbage }) {
             {a.cvr && <p>CVR: {a.cvr}</p>}{a.email && <p>{a.email}</p>}{a.telefon && <p>{a.telefon}</p>}
           </div>
           <div className="text-sm sm:text-right">
-            <p className="text-lg font-display font-bold">Faktura</p>
-            <p>Fakturanr.: <strong>{fak.fakturanr || "–"}</strong></p>
+            <p className="text-lg font-display font-bold">{kredit ? "Kreditnota" : "Faktura"}</p>
+            <p>{kredit ? "Kreditnota nr." : "Fakturanr."}: <strong>{(kredit ? fak.kreditnr : fak.fakturanr) || "–"}</strong></p>
+            {kredit && <p>Krediterer faktura: <strong>{fak.original_nr || "–"}</strong></p>}
             {fak.udstedt_dato && <p>Dato: {datoTekst(fak.udstedt_dato)}</p>}
             {fak.forfaldsdato && <p>Forfald: <strong>{datoTekst(fak.forfaldsdato)}</strong></p>}
           </div>
@@ -505,6 +544,7 @@ function FakturaVisning({ id, onTilbage }) {
           {k.att && <p>Att.: {k.att}</p>}{k.adresse && <p>{k.adresse}</p>}{k.postnr_by && <p>{k.postnr_by}</p>}
           {k.cvr && <p>CVR: {k.cvr}</p>}{k.ean && <p>EAN: {k.ean}</p>}
         </div>
+        {kredit && <p className="mt-5 text-sm">Årsag: {fak.aarsag}</p>}
         <p className="mt-5 text-sm">Periode: {datoTekst(fak.periode_fra)} – {datoTekst(fak.periode_til)}{k.butik ? ` · ${k.butik}` : ""}</p>
 
         <div className="mt-3 overflow-x-auto">
@@ -525,9 +565,9 @@ function FakturaVisning({ id, onTilbage }) {
         <dl className="mt-4 ml-auto max-w-xs text-sm space-y-1">
           <div className="flex justify-between"><dt>Beløb ekskl. moms</dt><dd>{kr(fak.netto_ore)}</dd></div>
           <div className="flex justify-between"><dt>Moms {Number(fak.moms_pct).toLocaleString("da-DK")} %</dt><dd>{kr(fak.moms_ore)}</dd></div>
-          <div className="flex justify-between border-t border-line pt-1 font-semibold text-base"><dt>I alt at betale</dt><dd>{kr(fak.total_ore)}</dd></div>
+          <div className="flex justify-between border-t border-line pt-1 font-semibold text-base"><dt>{kredit ? "I alt til gode" : "I alt at betale"}</dt><dd>{kr(fak.total_ore)}</dd></div>
         </dl>
-        {(a.bank_reg || a.iban) && (
+        {!kredit && (a.bank_reg || a.iban) && (
           <p className="mt-6 text-sm">Betaling til: {a.bank_reg ? `Reg.nr. ${a.bank_reg}, kontonr. ${a.bank_konto || ""}` : ""}{a.iban ? ` · IBAN ${a.iban}` : ""}. Angiv fakturanummer ved betaling.</p>
         )}
         {a.fodtekst && <p className="mt-3 text-xs text-muted whitespace-pre-line">{a.fodtekst}</p>}

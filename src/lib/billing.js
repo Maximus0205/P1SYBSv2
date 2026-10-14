@@ -78,3 +78,18 @@ export const gemUdgift = (u) => {
   return u.id ? koer(() => supabase.from("billing_costs").update(raekke).eq("id", u.id)) : koer(() => supabase.from("billing_costs").insert(raekke));
 };
 export const sletUdgift = (id) => koer(() => supabase.from("billing_costs").delete().eq("id", id));
+
+// ---- Kreditnotaer og aktivitetslog ---------------------------------------------------------------------------------------------
+export const hentKreditnotaer = () => koer(() => supabase.from("billing_credit_notes").select("id, kreditnr, invoice_id, store_id, udstedt_dato, kunde, total_ore, aarsag, created_at").order("created_at", { ascending: false }));
+export async function hentKreditnota(id) {
+  const [c, l] = await Promise.all([
+    koer(() => supabase.from("billing_credit_notes").select("*").eq("id", id).single()),
+    koer(() => supabase.from("billing_credit_note_lines").select("*").eq("credit_id", id).order("raekke")),
+  ]);
+  if (!c.ok) return c;
+  if (!l.ok) return l;
+  const o = await koer(() => supabase.from("billing_invoices").select("fakturanr, udstedt_dato").eq("id", c.data.invoice_id).maybeSingle());
+  return { ok: true, data: { ...c.data, linjer: l.data || [], original_nr: o.ok && o.data ? o.data.fakturanr : "" } };
+}
+export const opretKreditnota = (fakturaId, aarsag) => koer(() => supabase.rpc("billing_opret_kreditnota", { p_faktura: fakturaId, p_aarsag: aarsag }));
+export const hentLog = (antal = 200) => koer(() => supabase.from("billing_log").select("*").order("tidspunkt", { ascending: false }).limit(antal));

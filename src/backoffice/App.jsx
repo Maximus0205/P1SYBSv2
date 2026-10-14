@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Loader2, LogOut, AlertCircle, LayoutDashboard, Gauge, Building2, Tags, Receipt, Wallet, Settings, ArrowLeft } from "lucide-react";
+import { Loader2, LogOut, AlertCircle, LayoutDashboard, Gauge, Building2, Tags, Receipt, Wallet, Settings, ArrowLeft, History } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { Dashboard } from "./Dashboard";
 import { UdgifterSektion } from "./Udgifter";
+import { AktivitetSektion } from "./Aktivitet";
 import { ForbrugSektion, KunderSektion, PlanerSektion, FakturaerSektion, IndstillingerSektion } from "./BillingAdmin";
 
 // BACKOFFICE: eget panel til at drive og sælge SaaS-løsninger - kunder, forbrug, prisplaner, fakturaer, udgifter og overblik.
@@ -17,6 +18,7 @@ const SEKTIONER = [
   { id: "planer", navn: "Prisplaner", Ikon: Tags },
   { id: "fakturaer", navn: "Fakturaer", Ikon: Receipt },
   { id: "udgifter", navn: "Udgifter", Ikon: Wallet },
+  { id: "aktivitet", navn: "Aktivitet", Ikon: History },
   { id: "indstillinger", navn: "Indstillinger", Ikon: Settings },
 ];
 
@@ -109,6 +111,7 @@ export default function App() {
         {sektion === "planer" && <PlanerSektion />}
         {sektion === "fakturaer" && <FakturaerSektion stores={stores} />}
         {sektion === "udgifter" && <UdgifterSektion />}
+        {sektion === "aktivitet" && <AktivitetSektion />}
         {sektion === "indstillinger" && <IndstillingerSektion />}
       </main>
     </div>
