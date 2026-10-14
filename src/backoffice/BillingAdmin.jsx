@@ -10,13 +10,13 @@ import {
 // BACKOFFICE (kun systemadmin, oktober 2026): overblik over kunder (butikker) og forbrug, abonnement og grænser pr. butik, prisplaner, fakturaer
 // og afsenderoplysninger. Beregning, fakturanumre og låsning af udstedte fakturaer sker i databasen (billing_*-funktioner) - her er kun visning
 // og indtastning. Udskrift/PDF sker via browserens "Udskriv" (vælg "Gem som PDF").
-const felt = "w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink min-h-[44px] focus:outline-none focus:border-brand";
-const label = "block text-xs font-semibold uppercase tracking-wide text-muted mb-1";
+const felt = "w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink min-h-[44px] focus:outline-none focus:border-bo";
+const label = "block text-xs font-semibold text-muted mb-1";
 const kort = "rounded-xl border border-line bg-white p-4 sm:p-5 shadow-sm mb-4";
-const overskrift = "text-sm font-semibold uppercase tracking-wide text-ink mb-3";
-const knapPrim = "min-h-[44px] px-4 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none";
-const knapSek = "min-h-[44px] px-4 rounded-lg text-sm font-semibold uppercase tracking-wide text-ink border border-line hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none";
-const knapFare = "min-h-[44px] px-4 rounded-lg text-sm font-semibold uppercase tracking-wide text-danger border border-danger hover:bg-danger hover:text-white focus:outline-none focus:ring-2 focus:ring-danger transition-colors inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none";
+const overskrift = "text-sm font-semibold text-ink mb-3";
+const knapPrim = "min-h-[44px] px-4 rounded-lg text-sm font-semibold text-white bg-bo hover:bg-bo-dark focus:outline-none focus:ring-2 focus:ring-bo transition-colors inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none";
+const knapSek = "min-h-[44px] px-4 rounded-lg text-sm font-semibold text-ink border border-line hover:border-bo hover:text-bo focus:outline-none focus:ring-2 focus:ring-bo transition-colors inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none";
+const knapFare = "min-h-[44px] px-4 rounded-lg text-sm font-semibold text-danger border border-danger hover:bg-danger hover:text-white focus:outline-none focus:ring-2 focus:ring-danger transition-colors inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none";
 
 const STATUS_FARVE = {
   proeve: "bg-info/10 text-info", aktiv: "bg-success/10 text-success", pause: "bg-faint/30 text-muted", opsagt: "bg-danger/10 text-danger",
@@ -44,30 +44,8 @@ function Felt({ id, titel, children, hjaelp }) {
   );
 }
 
-const TABS = [["overblik", "Overblik"], ["kunder", "Kunder"], ["planer", "Prisplaner"], ["fakturaer", "Fakturaer"], ["indstillinger", "Indstillinger"]];
-
-export function BillingAdmin({ stores = [] }) {
-  const [tab, setTab] = useState("overblik");
-  return (
-    <section aria-labelledby="billing-h">
-      <h2 id="billing-h" className="text-base font-semibold text-ink mb-1">Fakturering og forbrug</h2>
-      <p className="text-xs text-muted mb-4 max-w-2xl">Kun synligt for systemadministratorer. Forbrug tælles automatisk på serveren, og grænser håndhæves dér - ikke i skærmbilledet.</p>
-      <div role="tablist" aria-label="Fakturering" className="flex border-b border-line mb-5 overflow-x-auto">
-        {TABS.map(([id, tekst]) => (
-          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`px-3 sm:px-4 py-2 min-h-[44px] text-xs sm:text-sm font-semibold uppercase tracking-wide whitespace-nowrap transition-colors ${tab === id ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>{tekst}</button>
-        ))}
-      </div>
-      {tab === "overblik" && <OverblikTab onVaelgButik={() => setTab("kunder")} />}
-      {tab === "kunder" && <KunderTab stores={stores} />}
-      {tab === "planer" && <PlanerTab />}
-      {tab === "fakturaer" && <FakturaerTab stores={stores} />}
-      {tab === "indstillinger" && <IndstillingerTab />}
-    </section>
-  );
-}
-
 // ---- Overblik -----------------------------------------------------------------------------------------------------------------------
-function OverblikTab({ onVaelgButik }) {
+export function ForbrugSektion({ onVaelgButik }) {
   const [maaned, setMaaned] = useState(indevaerendeMaaned());
   const [raekker, setRaekker] = useState(null);
   const [graenser, setGraenser] = useState([]);
@@ -124,12 +102,12 @@ function OverblikTab({ onVaelgButik }) {
                         <dd className="text-sm text-ink font-semibold">
                           {Number(r.forbrug?.[m] || 0).toLocaleString("da-DK")}
                           {gs[m] === "spaerret" && <span className="ml-1.5 text-[11px] text-danger font-semibold">Spærret</span>}
-                          {gs[m] === "advarsel" && <span className="ml-1.5 text-[11px] text-brand font-semibold">Advarsel</span>}
+                          {gs[m] === "advarsel" && <span className="ml-1.5 text-[11px] text-bo font-semibold">Advarsel</span>}
                         </dd>
                       </div>
                     ))}
                   </dl>
-                  <button onClick={onVaelgButik} className="mt-3 text-xs text-brand underline hover:no-underline">Gå til Kunder for at redigere</button>
+                  <button onClick={onVaelgButik} className="mt-3 text-xs text-bo underline hover:no-underline">Gå til Kunder for at redigere</button>
                 </div>
               );
             })}
@@ -152,7 +130,7 @@ function kontoTilFelter(k) {
   };
 }
 
-function KunderTab({ stores }) {
+export function KunderSektion({ stores }) {
   const [butik, setButik] = useState(stores[0]?.id || "");
   const [planer, setPlaner] = useState([]);
   const [f, setF] = useState(null);
@@ -305,7 +283,7 @@ function planTilFelter(p) {
   return { id: p?.id || null, navn: p?.navn || "", beskrivelse: p?.beskrivelse || "", maanedspris: krTilFelt(p?.maanedspris_ore ?? 0), inkl_brugere: String(p?.inkl_brugere ?? 0), inkl_biler: String(p?.inkl_biler ?? 1), ekstra_bil: krTilFelt(p?.pris_ekstra_bil_ore ?? 0), ekstra_bruger: krTilFelt(p?.pris_ekstra_bruger_ore ?? 0), aktiv: p ? p.aktiv : true, priser };
 }
 
-function PlanerTab() {
+export function PlanerSektion() {
   const [planer, setPlaner] = useState(null);
   const [valgt, setValgt] = useState(null);
   const [fejl, setFejl] = useState("");
@@ -387,7 +365,7 @@ function PlanerTab() {
       <div className="space-y-2 mb-4">
         {planer.length === 0 && <p className="text-sm text-muted">Ingen prisplaner endnu.</p>}
         {planer.map((p) => (
-          <button key={p.id} onClick={() => { setValgt(planTilFelter(p)); setFejl(""); setBesked(""); }} className="w-full text-left rounded-xl border border-line bg-white p-4 shadow-sm hover:border-brand transition-colors min-h-[44px]">
+          <button key={p.id} onClick={() => { setValgt(planTilFelter(p)); setFejl(""); setBesked(""); }} className="w-full text-left rounded-xl border border-line bg-white p-4 shadow-sm hover:border-bo transition-colors min-h-[44px]">
             <span className="flex items-start justify-between gap-3 flex-wrap">
               <span className="text-sm font-semibold text-ink">{p.navn}{!p.aktiv && <span className="ml-2 text-[11px] text-muted font-normal">(ikke aktiv)</span>}</span>
               <span className="text-sm text-ink">{kr(p.maanedspris_ore)} / md. · {p.inkl_biler} bil(er)</span>
@@ -402,7 +380,7 @@ function PlanerTab() {
 }
 
 // ---- Fakturaer ----------------------------------------------------------------------------------------------------------------------
-function FakturaerTab({ stores }) {
+export function FakturaerSektion({ stores }) {
   const [liste, setListe] = useState(null);
   const [fejl, setFejl] = useState("");
   const [besked, setBesked] = useState("");
@@ -446,7 +424,7 @@ function FakturaerTab({ stores }) {
       {liste && liste.length > 0 && (
         <div className="space-y-2 max-w-3xl">
           {liste.map((i) => (
-            <button key={i.id} onClick={() => setValgtId(i.id)} className="w-full text-left rounded-xl border border-line bg-white p-4 shadow-sm hover:border-brand transition-colors">
+            <button key={i.id} onClick={() => setValgtId(i.id)} className="w-full text-left rounded-xl border border-line bg-white p-4 shadow-sm hover:border-bo transition-colors">
               <span className="flex items-start justify-between gap-3 flex-wrap">
                 <span className="min-w-0">
                   <span className="block text-sm font-semibold text-ink">{i.fakturanr || "Kladde"} <Chip id={i.status} tekst={FAKTURA_STATUS[i.status]} /></span>
@@ -515,14 +493,14 @@ function FakturaVisning({ id, onTilbage }) {
             {a.cvr && <p>CVR: {a.cvr}</p>}{a.email && <p>{a.email}</p>}{a.telefon && <p>{a.telefon}</p>}
           </div>
           <div className="text-sm sm:text-right">
-            <p className="text-lg font-display font-bold uppercase tracking-wide">Faktura</p>
+            <p className="text-lg font-display font-bold">Faktura</p>
             <p>Fakturanr.: <strong>{fak.fakturanr || "–"}</strong></p>
             {fak.udstedt_dato && <p>Dato: {datoTekst(fak.udstedt_dato)}</p>}
             {fak.forfaldsdato && <p>Forfald: <strong>{datoTekst(fak.forfaldsdato)}</strong></p>}
           </div>
         </div>
         <div className="mt-6 text-sm">
-          <p className="text-xs uppercase tracking-wide text-muted">Til</p>
+          <p className="text-xs text-muted">Til</p>
           <p className="font-semibold">{k.firma_navn || "(kunde mangler)"}</p>
           {k.att && <p>Att.: {k.att}</p>}{k.adresse && <p>{k.adresse}</p>}{k.postnr_by && <p>{k.postnr_by}</p>}
           {k.cvr && <p>CVR: {k.cvr}</p>}{k.ean && <p>EAN: {k.ean}</p>}
@@ -531,7 +509,7 @@ function FakturaVisning({ id, onTilbage }) {
 
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-sm min-w-[480px]">
-            <thead><tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted"><th className="py-2 pr-2 font-semibold">Beskrivelse</th><th className="py-2 px-2 text-right font-semibold">Antal</th><th className="py-2 px-2 text-right font-semibold">Pris</th><th className="py-2 pl-2 text-right font-semibold">Beløb</th></tr></thead>
+            <thead><tr className="border-b border-line text-left text-xs text-muted"><th className="py-2 pr-2 font-semibold">Beskrivelse</th><th className="py-2 px-2 text-right font-semibold">Antal</th><th className="py-2 px-2 text-right font-semibold">Pris</th><th className="py-2 pl-2 text-right font-semibold">Beløb</th></tr></thead>
             <tbody>
               {fak.linjer.map((l) => (
                 <tr key={l.id} className="border-b border-divider align-top">
@@ -559,7 +537,7 @@ function FakturaVisning({ id, onTilbage }) {
 }
 
 // ---- Indstillinger (afsender) -------------------------------------------------------------------------------------------------------
-function IndstillingerTab() {
+export function IndstillingerSektion() {
   const [f, setF] = useState(null);
   const [naeste, setNaeste] = useState(null);
   const [fejl, setFejl] = useState("");

@@ -69,3 +69,12 @@ export async function hentFaktura(id) {
 export const opretKladde = (storeId, fra, til) => koer(() => supabase.rpc("billing_opret_kladde", { p_store: storeId, p_fra: fra, p_til: til }));
 export const udstedFaktura = (id) => koer(() => supabase.rpc("billing_udsted", { p_id: id }));
 export const saetFakturaStatus = (id, status, dato = null) => koer(() => supabase.rpc("billing_saet_status", { p_id: id, p_status: status, p_dato: dato }));
+
+// ---- Dashboard og udgifter -----------------------------------------------------------------------------------------------------
+export const hentDashboard = (maaneder = 12) => koer(() => supabase.rpc("billing_dashboard", { p_maaneder: maaneder }));
+export const hentUdgifter = () => koer(() => supabase.from("billing_costs").select("*").order("dato", { ascending: false }));
+export const gemUdgift = (u) => {
+  const raekke = { dato: u.dato, tekst: u.tekst, kategori: u.kategori || "", beloeb_ore: u.beloeb_ore, gentag: !!u.gentag, slut_dato: u.gentag && u.slut_dato ? u.slut_dato : null };
+  return u.id ? koer(() => supabase.from("billing_costs").update(raekke).eq("id", u.id)) : koer(() => supabase.from("billing_costs").insert(raekke));
+};
+export const sletUdgift = (id) => koer(() => supabase.from("billing_costs").delete().eq("id", id));

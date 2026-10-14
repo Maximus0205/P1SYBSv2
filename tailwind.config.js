@@ -21,7 +21,7 @@
 //   success / info / danger - funktionelle statusfarver (uafhængige af brand)
 // ---------------------------------------------------------------------------
 module.exports = {
-  content: ["./index.html", "./src/**/*.{js,jsx}"],
+  content: ["./index.html", "./backoffice/index.html", "./src/**/*.{js,jsx}"],
   theme: {
     extend: {
       colors: {
@@ -39,6 +39,8 @@ module.exports = {
         success: "#3D7A5C",
         info: "#1C7C8C",
         danger: "#B3261E",
+        // Backoffice har sin egen rolige blå palet, så den ikke forveksles med selve systemet (rød).
+        bo: { DEFAULT: "#1F4E79", dark: "#173B5C", nav: "#14233B" },
       },
       fontFamily: {
         display: ["'Barlow Condensed'", "sans-serif"],
