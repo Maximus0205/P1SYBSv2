@@ -7,6 +7,51 @@
   </head>
   <body>
     <div id="root"></div>
+    <!--
+      Nødbesked, hvis appen slet ikke kan starte (fx en fil der ikke kan
+      hentes, eller manglende Supabase-opsætning i bygget). Uden den ser
+      brugeren kun en hvid side. Ren JavaScript uden afhængigheder, så den
+      virker, selv når resten af appen ikke gør. Fejl EFTER appen er startet
+      håndteres af ErrorBoundary og lib/errorLog.js, ikke her.
+    -->
+    <script>
+      (function () {
+        var fejl = [];
+        function vis() {
+          var root = document.getElementById("root");
+          if (!root || root.childElementCount > 0 || document.getElementById("startfejl")) return;
+          var boks = document.createElement("div");
+          boks.id = "startfejl";
+          boks.setAttribute("role", "alert");
+          boks.style.cssText = "font-family:system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:1.25rem;border:1px solid #ddd;border-radius:12px;color:#1a1a1a";
+          var titel = document.createElement("p");
+          titel.style.cssText = "font-weight:600;margin:0 0 .5rem";
+          titel.textContent = "Appen kunne ikke starte";
+          var tekst = document.createElement("p");
+          tekst.style.cssText = "margin:0 0 1rem;font-size:.9rem;color:#5c5c5c";
+          tekst.textContent = "Prøv at genindlæse siden. Sker det igen, så send et skærmbillede af denne besked til din administrator.";
+          var knap = document.createElement("button");
+          knap.textContent = "Genindlæs";
+          knap.style.cssText = "min-height:44px;padding:0 1rem;border:0;border-radius:8px;background:#C8232E;color:#fff;font-weight:600";
+          knap.onclick = function () { location.reload(); };
+          var detaljer = document.createElement("pre");
+          detaljer.style.cssText = "white-space:pre-wrap;word-break:break-word;font-size:.75rem;color:#5c5c5c;margin:1rem 0 0";
+          detaljer.textContent = fejl.length ? fejl.join("\n") : "Ingen fejlbesked (siden blev ikke færdig med at indlæse).";
+          boks.append(titel, tekst, knap, detaljer);
+          document.body.appendChild(boks);
+        }
+        window.addEventListener("error", function (e) {
+          var kilde = e.target && (e.target.src || e.target.href);
+          fejl.push(kilde ? "Kunne ikke hente " + kilde : e.message || "Ukendt fejl");
+          setTimeout(vis, 2000);
+        }, true);
+        window.addEventListener("unhandledrejection", function (e) {
+          fejl.push(String((e.reason && e.reason.message) || e.reason));
+          setTimeout(vis, 2000);
+        });
+        setTimeout(vis, 20000);
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
