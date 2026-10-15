@@ -8,7 +8,7 @@ export const METRICS = {
   sager: { navn: "Oprettede sager", enhed: "stk." },
 };
 export const FORBRUG_METRICS = ["sms", "ors_matrix", "ors_soeg", "sager"];
-export const PRIS_METRICS = ["sms", "ors_matrix", "ors_soeg", "sager"];
+export const PRIS_METRICS = ["sms", "ors_matrix", "ors_soeg"];
 // Kun eksterne, betalte tjenester kan spærres automatisk. Sager spærres aldrig.
 export const SPAERRE_METRICS = ["sms", "ors_matrix", "ors_soeg"];
 
