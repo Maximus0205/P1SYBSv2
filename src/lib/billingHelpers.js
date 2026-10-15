@@ -6,10 +6,9 @@ export const METRICS = {
   ors_matrix: { navn: "Ruteberegninger", enhed: "stk." },
   ors_soeg: { navn: "Adresseopslag (reserve)", enhed: "stk." },
   sager: { navn: "Oprettede sager", enhed: "stk." },
-  lager_gb: { navn: "Fillager", enhed: "GB" },
 };
 export const FORBRUG_METRICS = ["sms", "ors_matrix", "ors_soeg", "sager"];
-export const PRIS_METRICS = ["sms", "ors_matrix", "ors_soeg", "sager", "lager_gb"];
+export const PRIS_METRICS = ["sms", "ors_matrix", "ors_soeg", "sager"];
 // Kun eksterne, betalte tjenester kan spærres automatisk. Sager spærres aldrig.
 export const SPAERRE_METRICS = ["sms", "ors_matrix", "ors_soeg"];
 

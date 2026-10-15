@@ -61,7 +61,6 @@ export function ForbrugSektion({ onVaelgButik }) {
     setRaekker(o.data || []); setGraenser(g.ok ? g.data || [] : []);
   }, [maaned]);
   useEffect(() => { hent(); }, [hent]);
-  useEffect(() => { hentOrganisationer().then((r) => { if (r.ok) { setOrganisationer(r.data || []); setNyOrg((v) => v || r.data?.[0]?.id || ""); } }); }, []);
 
   const iDag = maaned === indevaerendeMaaned();
   const sum = useMemo(() => (raekker || []).reduce((s, r) => s + (Number(r.beregning?.netto_ore) || 0), 0), [raekker]);
@@ -109,6 +108,19 @@ export function ForbrugSektion({ onVaelgButik }) {
                       </div>
                     ))}
                   </dl>
+                  {r.lager && (() => {
+                    const brugt = Number(r.lager.brugt_gb) || 0; const til = r.lager.til_raadighed_gb === null || r.lager.til_raadighed_gb === undefined ? null : Number(r.lager.til_raadighed_gb);
+                    const pct = til && til > 0 ? Math.min(100, Math.round((brugt / til) * 100)) : null;
+                    const fyldt = til !== null && brugt >= til;
+                    return (
+                      <div className="mt-3 rounded-lg bg-panel px-3 py-2">
+                        <p className="text-[11px] text-muted">Lagerplads</p>
+                        <p className="text-sm text-ink font-semibold">{brugt.toLocaleString("da-DK", { maximumFractionDigits: 2 })} GB brugt{til !== null ? ` af ${til.toLocaleString("da-DK", { maximumFractionDigits: 2 })} GB` : ""}{fyldt && <span className="ml-1.5 text-[11px] text-danger font-semibold">Fuldt</span>}</p>
+                        {pct !== null && <div className="mt-1.5 h-1.5 rounded-full bg-line overflow-hidden" role="img" aria-label={`${pct} procent af lagerpladsen er brugt`}><div className={`h-full ${pct >= 90 ? "bg-danger" : "bg-bo"}`} style={{ width: `${pct}%` }} /></div>}
+                        {til !== null && <p className="text-[11px] text-muted mt-1">{Number(r.lager.inkl_gb)} GB inkluderet + {r.lager.pakker} × {Number(r.lager.pakke_gb)} GB købt</p>}
+                      </div>
+                    );
+                  })()}
                   <button onClick={onVaelgButik} className="mt-3 text-xs text-bo underline hover:no-underline">Gå til Kunder for at redigere</button>
                 </div>
               );
@@ -121,12 +133,12 @@ export function ForbrugSektion({ onVaelgButik }) {
 }
 
 // ---- Kunder (abonnement + grænser pr. butik) -----------------------------------------------------------------------------------------
-const TOM_KONTO = { plan_id: "", status: "proeve", start_dato: "", pris_override: "", ekstra_biler: "0", rabat_pct: "0", organisation_id: "", kaedepris: false, firma_navn: "", cvr: "", adresse: "", postnr_by: "", att: "", faktura_email: "", ean: "", betalingsfrist_dage: "", spaerret: false, spaerret_aarsag: "", noter: "" };
+const TOM_KONTO = { plan_id: "", status: "proeve", start_dato: "", pris_override: "", ekstra_biler: "0", lager_pakker: "0", rabat_pct: "0", organisation_id: "", kaedepris: false, firma_navn: "", cvr: "", adresse: "", postnr_by: "", att: "", faktura_email: "", ean: "", betalingsfrist_dage: "", spaerret: false, spaerret_aarsag: "", noter: "" };
 
 function kontoTilFelter(k) {
   if (!k) return { ...TOM_KONTO };
   return {
-    plan_id: k.plan_id || "", status: k.status, start_dato: k.start_dato || "", pris_override: krTilFelt(k.pris_override_ore), ekstra_biler: String(k.ekstra_biler ?? 0), rabat_pct: String(k.rabat_pct ?? 0).replace(".", ","), organisation_id: k.organisation_id || "", kaedepris: !!k.kaedepris,
+    plan_id: k.plan_id || "", status: k.status, start_dato: k.start_dato || "", pris_override: krTilFelt(k.pris_override_ore), ekstra_biler: String(k.ekstra_biler ?? 0), lager_pakker: String(k.lager_pakker ?? 0), rabat_pct: String(k.rabat_pct ?? 0).replace(".", ","), organisation_id: k.organisation_id || "", kaedepris: !!k.kaedepris,
     firma_navn: k.firma_navn, cvr: k.cvr, adresse: k.adresse, postnr_by: k.postnr_by, att: k.att, faktura_email: k.faktura_email, ean: k.ean,
     betalingsfrist_dage: k.betalingsfrist_dage === null || k.betalingsfrist_dage === undefined ? "" : String(k.betalingsfrist_dage), spaerret: !!k.spaerret, spaerret_aarsag: k.spaerret_aarsag || "", noter: k.noter || "",
   };
@@ -173,9 +185,11 @@ export function KunderSektion({ stores }) {
     if (frist !== null && (!Number.isInteger(frist) || frist < 0 || frist > 180)) return setFejl("Betalingsfrist skal være et helt antal dage (0-180) eller tom.");
     const ekstraBiler = Number(f.ekstra_biler === "" ? "0" : f.ekstra_biler);
     if (!Number.isInteger(ekstraBiler) || ekstraBiler < 0 || ekstraBiler > 999) return setFejl("Ekstra biler skal være et helt antal (0 eller flere).");
+    const lagerPakker = Number(f.lager_pakker === "" ? "0" : f.lager_pakker);
+    if (!Number.isInteger(lagerPakker) || lagerPakker < 0 || lagerPakker > 9999) return setFejl("Lagerpakker skal være et helt antal (0 eller flere).");
     setBusy(true);
     const r = await gemKonto({
-      store_id: butik, ekstra_biler: ekstraBiler, organisation_id: f.organisation_id || null, kaedepris: !!f.organisation_id && f.kaedepris, plan_id: f.plan_id || null, status: f.status, start_dato: f.start_dato || null, pris_override_ore: override, rabat_pct: rabat,
+      store_id: butik, ekstra_biler: ekstraBiler, lager_pakker: lagerPakker, organisation_id: f.organisation_id || null, kaedepris: !!f.organisation_id && f.kaedepris, plan_id: f.plan_id || null, status: f.status, start_dato: f.start_dato || null, pris_override_ore: override, rabat_pct: rabat,
       firma_navn: f.firma_navn.trim(), cvr: f.cvr.trim(), adresse: f.adresse.trim(), postnr_by: f.postnr_by.trim(), att: f.att.trim(), faktura_email: f.faktura_email.trim(), ean: f.ean.trim(),
       betalingsfrist_dage: frist, spaerret: f.spaerret, spaerret_aarsag: f.spaerret_aarsag.trim(), noter: f.noter,
     });
@@ -217,7 +231,8 @@ export function KunderSektion({ stores }) {
               <Felt id="k-status" titel="Status"><select id="k-status" value={f.status} onChange={(e) => saet("status", e.target.value)} className={felt}>{Object.entries(KONTO_STATUS).map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select></Felt>
               <Felt id="k-start" titel="Startdato"><input id="k-start" type="date" value={f.start_dato} onChange={(e) => saet("start_dato", e.target.value)} className={felt} /></Felt>
               <Felt id="k-frist" titel="Betalingsfrist (dage)" hjaelp="Tom = standard fra Indstillinger."><input id="k-frist" inputMode="numeric" value={f.betalingsfrist_dage} onChange={(e) => saet("betalingsfrist_dage", e.target.value.replace(/\D/g, ""))} className={felt} /></Felt>
-              <Felt id="k-biler" titel="Ekstra biler (købt ud over pakken)" hjaelp={(() => { const p = planer.find((x) => x.id === f.plan_id); return p ? `Pakken indeholder ${p.inkl_biler} bil(er); ekstra bil koster ${kr(p.pris_ekstra_bil_ore)} pr. md. Har butikken flere biler oprettet, end den har købt, afregnes de alligevel.` : "Vælg en prisplan for at se pakkens biler."; })()}><input id="k-biler" inputMode="numeric" value={f.ekstra_biler} onChange={(e) => saet("ekstra_biler", e.target.value.replace(/\D/g, ""))} className={felt} /></Felt>
+              <Felt id="k-biler" titel="Ekstra biler (købt ud over pakken)" hjaelp={(() => { const p = planer.find((x) => x.id === f.plan_id); return p ? `Pakken indeholder ${p.inkl_biler} bil(er); ekstra bil koster ${kr(p.pris_ekstra_bil_ore)} pr. md. Butikken kan ikke selv oprette flere biler end det, der er købt (du kan som administrator).` : "Vælg en prisplan for at se pakkens biler."; })()}><input id="k-biler" inputMode="numeric" value={f.ekstra_biler} onChange={(e) => saet("ekstra_biler", e.target.value.replace(/\D/g, ""))} className={felt} /></Felt>
+              <Felt id="k-lager" titel="Lagerpakker (ud over det inkluderede)" hjaelp={(() => { const p = planer.find((x) => x.id === f.plan_id); return p ? `Pakken har ${Number(p.inkl_lager_gb)} GB inkluderet; hver lagerpakke er ${Number(p.lager_pakke_gb)} GB og koster ${kr(p.pris_lager_pakke_ore)} pr. md. Ændringer afregnes forholdsmæssigt pr. dag fra i dag.` : "Vælg en prisplan for at se lagerpriser."; })()}><input id="k-lager" inputMode="numeric" value={f.lager_pakker} onChange={(e) => saet("lager_pakker", e.target.value.replace(/\D/g, ""))} className={felt} /></Felt>
               <Felt id="k-override" titel="Aftalt månedspris (kr., før moms)" hjaelp="Tom = prisplanens pris."><input id="k-override" inputMode="decimal" value={f.pris_override} onChange={(e) => saet("pris_override", e.target.value)} className={felt} /></Felt>
               <Felt id="k-rabat" titel="Rabat på abonnement (%)"><input id="k-rabat" inputMode="decimal" value={f.rabat_pct} onChange={(e) => saet("rabat_pct", e.target.value)} className={felt} /></Felt>
             </div>
@@ -411,7 +426,7 @@ function planTilFelter(p) {
     const x = (p?.priser || []).find((q) => q.metric === m);
     priser[m] = { inkluderet: x ? String(Number(x.inkluderet)).replace(".", ",") : "", pris: x ? krTilFelt(x.enhedspris_ore) : "" };
   }
-  return { id: p?.id || null, navn: p?.navn || "", beskrivelse: p?.beskrivelse || "", maanedspris: krTilFelt(p?.maanedspris_ore ?? 0), inkl_brugere: String(p?.inkl_brugere ?? 0), inkl_biler: String(p?.inkl_biler ?? 1), ekstra_bil: krTilFelt(p?.pris_ekstra_bil_ore ?? 0), ekstra_bruger: krTilFelt(p?.pris_ekstra_bruger_ore ?? 0), aktiv: p ? p.aktiv : true, priser };
+  return { id: p?.id || null, navn: p?.navn || "", beskrivelse: p?.beskrivelse || "", maanedspris: krTilFelt(p?.maanedspris_ore ?? 0), inkl_brugere: String(p?.inkl_brugere ?? 0), inkl_biler: String(p?.inkl_biler ?? 1), ekstra_bil: krTilFelt(p?.pris_ekstra_bil_ore ?? 0), ekstra_bruger: krTilFelt(p?.pris_ekstra_bruger_ore ?? 0), inkl_lager: String(Number(p?.inkl_lager_gb ?? 0)).replace(".", ","), lager_pakke: String(Number(p?.lager_pakke_gb ?? 10)).replace(".", ","), pris_lager_pakke: krTilFelt(p?.pris_lager_pakke_ore ?? 0), aktiv: p ? p.aktiv : true, priser };
 }
 
 export function PlanerSektion() {
@@ -433,6 +448,10 @@ export function PlanerSektion() {
     const inkl = Number(valgt.inkl_brugere === "" ? "0" : valgt.inkl_brugere);
     const inklBiler = Number(valgt.inkl_biler === "" ? "0" : valgt.inkl_biler);
     const ekstraBil = oreFraKr(valgt.ekstra_bil === "" ? "0" : valgt.ekstra_bil);
+    const inklLager = taalFraTekst(valgt.inkl_lager === "" ? "0" : valgt.inkl_lager);
+    const pakkeGb = taalFraTekst(valgt.lager_pakke === "" ? "0" : valgt.lager_pakke);
+    const prisPakke = oreFraKr(valgt.pris_lager_pakke === "" ? "0" : valgt.pris_lager_pakke);
+    if (inklLager === null || pakkeGb === null || pakkeGb <= 0 || prisPakke === null) return setFejl("Tjek lagerfelterne: GB skal være tal (pakkestørrelsen over 0), og prisen et beløb i kr.");
     if (mdr === null || ekstra === null || ekstraBil === null) return setFejl("Priser skal være beløb i kr.");
     if (!Number.isInteger(inkl) || inkl < 0 || !Number.isInteger(inklBiler) || inklBiler < 0) return setFejl("Inkluderede brugere og biler skal være hele tal.");
     const priser = [];
@@ -444,7 +463,7 @@ export function PlanerSektion() {
       priser.push({ metric: m, inkluderet: ink, enhedspris_ore: pris });
     }
     setBusy(true);
-    const r = await gemPlan({ id: valgt.id, navn, beskrivelse: valgt.beskrivelse, maanedspris_ore: mdr, inkl_brugere: inkl, inkl_biler: inklBiler, pris_ekstra_bil_ore: ekstraBil, pris_ekstra_bruger_ore: ekstra, aktiv: valgt.aktiv }, priser);
+    const r = await gemPlan({ id: valgt.id, navn, beskrivelse: valgt.beskrivelse, maanedspris_ore: mdr, inkl_brugere: inkl, inkl_biler: inklBiler, pris_ekstra_bil_ore: ekstraBil, pris_ekstra_bruger_ore: ekstra, inkl_lager_gb: inklLager, lager_pakke_gb: pakkeGb, pris_lager_pakke_ore: prisPakke, aktiv: valgt.aktiv }, priser);
     setBusy(false);
     if (!r.ok) return setFejl(r.fejl);
     setBesked("Prisplanen er gemt. Nye priser gælder kommende fakturaer og forventede beløb - udstedte fakturaer ændres aldrig.");
@@ -468,12 +487,19 @@ export function PlanerSektion() {
             <Felt id="p-inkl" titel="Inkluderede brugere"><input id="p-inkl" inputMode="numeric" value={valgt.inkl_brugere} onChange={(e) => setP("inkl_brugere", e.target.value.replace(/\D/g, ""))} className={felt} /></Felt>
             <Felt id="p-ekstra" titel="Pris pr. ekstra bruger pr. md. (kr.)"><input id="p-ekstra" inputMode="decimal" value={valgt.ekstra_bruger} onChange={(e) => setP("ekstra_bruger", e.target.value)} className={felt} /></Felt>
           </div>
+          <h4 className="text-xs font-semibold text-ink mt-4 mb-2">Lagerplads (fillager)</h4>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Felt id="p-lager-inkl" titel="Inkluderet lager (GB)"><input id="p-lager-inkl" inputMode="decimal" value={valgt.inkl_lager} onChange={(e) => setP("inkl_lager", e.target.value)} className={felt} /></Felt>
+            <Felt id="p-lager-gb" titel="GB pr. lagerpakke"><input id="p-lager-gb" inputMode="decimal" value={valgt.lager_pakke} onChange={(e) => setP("lager_pakke", e.target.value)} className={felt} /></Felt>
+            <Felt id="p-lager-pris" titel="Pris pr. pakke pr. md. (kr.)"><input id="p-lager-pris" inputMode="decimal" value={valgt.pris_lager_pakke} onChange={(e) => setP("pris_lager_pakke", e.target.value)} className={felt} /></Felt>
+          </div>
+          <p className="text-[11px] text-muted mt-1">Lager købes i pakker med fast månedspris, ikke efter forbrug. Ændres antallet midt i en måned, afregnes pakkerne forholdsmæssigt pr. dag.</p>
           <div className="mt-3"><Felt id="p-besk" titel="Beskrivelse (intern)"><input id="p-besk" value={valgt.beskrivelse} onChange={(e) => setP("beskrivelse", e.target.value)} className={felt} /></Felt></div>
           <label className="flex items-center gap-2 text-sm text-ink min-h-[44px] mt-2"><input type="checkbox" checked={valgt.aktiv} onChange={(e) => setP("aktiv", e.target.checked)} className="h-4 w-4" /> Kan vælges på nye abonnementer</label>
         </div>
         <div className={kort}>
-          <h3 className={overskrift}>Forbrug og lager ud over det inkluderede</h3>
-          <p className="text-xs text-muted mb-3">Inkluderet pr. måned, og pris pr. enhed derudover (kr., fx 0,35 for en SMS). Tomme felter = gratis / ikke afregnet. Fillager: skriv de GB, der er med i prisen, og prisen pr. ekstra GB.</p>
+          <h3 className={overskrift}>Forbrug ud over det inkluderede</h3>
+          <p className="text-xs text-muted mb-3">Inkluderet pr. måned, og pris pr. enhed derudover (kr., fx 0,35 for en SMS). Tomme felter = gratis / ikke afregnet.</p>
           <div className="space-y-3">
             {PRIS_METRICS.map((m) => (
               <div key={m} className="grid grid-cols-2 sm:grid-cols-3 gap-2 items-end">
@@ -483,7 +509,6 @@ export function PlanerSektion() {
               </div>
             ))}
           </div>
-          <p className="text-[11px] text-muted mt-3">Fillager måles som butikkens fillager på fakturatidspunktet (ikke historisk pr. dag).</p>
         </div>
         <button onClick={gem} disabled={busy} className={knapPrim}>{busy ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Check size={15} aria-hidden="true" />} Gem prisplan</button>
         <Meddelelse fejl={fejl} besked={besked} />
@@ -532,6 +557,7 @@ export function FakturaerSektion({ stores }) {
   }, []);
   useEffect(() => { hent(); }, [hent]);
   useEffect(() => { if (!nyButik && stores[0]?.id) setNyButik(stores[0].id); }, [stores]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { hentOrganisationer().then((r) => { if (r.ok) { setOrganisationer(r.data || []); setNyOrg((v) => v || r.data?.[0]?.id || ""); } }); }, []);
 
   const opret = async () => {
     setFejl(""); setBesked("");

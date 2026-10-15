@@ -60,7 +60,7 @@ export const LOG_TABELLER = {
 };
 const FELT_NAVN = {
   status: "Status", navn: "Navn", beskrivelse: "Beskrivelse", aktiv: "Aktiv", maanedspris_ore: "Månedspris", pris_override_ore: "Aftalt månedspris", rabat_pct: "Rabat (%)",
-  inkl_brugere: "Inkluderede brugere", inkl_biler: "Biler i pakken", ekstra_biler: "Ekstra biler", pris_ekstra_bil_ore: "Pris pr. ekstra bil", pris_ekstra_bruger_ore: "Pris pr. ekstra bruger",
+  inkl_brugere: "Inkluderede brugere", inkl_biler: "Biler i pakken", ekstra_biler: "Ekstra biler", lager_pakker: "Lagerpakker", inkl_lager_gb: "Inkluderet lager (GB)", lager_pakke_gb: "GB pr. lagerpakke", pris_lager_pakke_ore: "Pris pr. lagerpakke", pris_ekstra_bil_ore: "Pris pr. ekstra bil", pris_ekstra_bruger_ore: "Pris pr. ekstra bruger",
   spaerret: "Betalte tjenester stoppet", spaerret_aarsag: "Besked ved stop", spaerr_ved: "Loft", advarsel_ved: "Advarsel ved", metric: "Tjeneste", inkluderet: "Inkluderet pr. md.", enhedspris_ore: "Pris pr. enhed",
   sms_indkoeb_ore: "SMS: indkøbspris", sms_paaslag_ore: "SMS: påslag", moms_pct: "Moms (%)", betalingsfrist_dage: "Betalingsfrist (dage)", faktura_prefix: "Fakturapræfiks",
   firma_navn: "Firmanavn", cvr: "CVR", adresse: "Adresse", postnr_by: "Postnr. og by", email: "E-mail", telefon: "Telefon", bank_reg: "Bank reg.nr.", bank_konto: "Bank kontonr.", iban: "IBAN",

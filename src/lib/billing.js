@@ -29,7 +29,7 @@ export async function hentPlaner() {
   return { ok: true, data: (p.data || []).map((pl) => ({ ...pl, priser: (pr.data || []).filter((x) => x.plan_id === pl.id) })) };
 }
 export async function gemPlan(plan, priser) {
-  const raekke = { navn: plan.navn, beskrivelse: plan.beskrivelse || "", maanedspris_ore: plan.maanedspris_ore, inkl_brugere: plan.inkl_brugere, inkl_biler: plan.inkl_biler, pris_ekstra_bil_ore: plan.pris_ekstra_bil_ore, pris_ekstra_bruger_ore: plan.pris_ekstra_bruger_ore, aktiv: plan.aktiv !== false };
+  const raekke = { navn: plan.navn, beskrivelse: plan.beskrivelse || "", maanedspris_ore: plan.maanedspris_ore, inkl_brugere: plan.inkl_brugere, inkl_biler: plan.inkl_biler, pris_ekstra_bil_ore: plan.pris_ekstra_bil_ore, pris_ekstra_bruger_ore: plan.pris_ekstra_bruger_ore, inkl_lager_gb: plan.inkl_lager_gb, lager_pakke_gb: plan.lager_pakke_gb, pris_lager_pakke_ore: plan.pris_lager_pakke_ore, aktiv: plan.aktiv !== false };
   const r = plan.id
     ? await koer(() => supabase.from("billing_plans").update(raekke).eq("id", plan.id).select("id").single())
     : await koer(() => supabase.from("billing_plans").insert(raekke).select("id").single());
