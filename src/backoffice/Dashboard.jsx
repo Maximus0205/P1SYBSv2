@@ -65,7 +65,7 @@ function Soejlegraf({ maaneder, forventetOre, nu }) {
             <p className="font-semibold text-ink mb-1">{maanedLang(tip.m.maaned)}</p>
             <p className="flex items-center gap-1.5 text-ink"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: FARVER.ind, opacity: tip.forventet ? 0.35 : 1 }} aria-hidden="true" /> {tip.forventet ? "Forventet indtægt" : "Indtægt"}: <strong>{kr(tip.ind)}</strong></p>
             <p className="flex items-center gap-1.5 text-ink"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: FARVER.udg }} aria-hidden="true" /> Udgift: <strong>{kr(tip.udg)}</strong></p>
-            {(Number(tip.m.sms_udgift_ore) > 0 || Number(tip.m.manuel_udgift_ore) > 0) && <p className="text-muted mt-1">heraf SMS {kr(tip.m.sms_udgift_ore)}, øvrige {kr(tip.m.manuel_udgift_ore)}</p>}
+            {(Number(tip.m.variabel_udgift_ore) > 0 || Number(tip.m.manuel_udgift_ore) > 0) && <p className="text-muted mt-1">heraf forbrug og indkøb {kr(tip.m.variabel_udgift_ore)}, øvrige {kr(tip.m.manuel_udgift_ore)}</p>}
           </div>
         )}
       </div>
@@ -127,7 +127,7 @@ export function Dashboard({ naviger }) {
         <section aria-labelledby="hero-l" className="rounded-xl border border-line bg-white p-5 sm:p-7 shadow-sm">
           <p id="hero-l" className="text-sm text-muted">Fast månedlig omsætning</p>
           <p className="mt-2 text-[44px] sm:text-[60px] leading-none font-semibold tracking-tight text-ink break-words">{kr(d.mrr_ore)}</p>
-          <p className="mt-3 text-sm text-muted">fra {d.aktive} {d.aktive === 1 ? "aktiv kunde" : "aktive kunder"}, før moms og før forbrug.</p>
+          <p className="mt-3 text-sm text-muted">fra {d.aktive} {d.aktive === 1 ? "aktivt abonnement" : "aktive abonnementer"}, før moms og før forbrug.</p>
           <p className="mt-1 text-sm text-ink">Forventet fakturering for {maanedLang(nu)} inkl. forbrug indtil nu: <strong>{kr(d.forventet_ore)}</strong></p>
         </section>
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-1">
@@ -150,7 +150,7 @@ export function Dashboard({ naviger }) {
         <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
           <div>
             <h2 id="graf-h" className="text-base font-semibold text-ink">Indtægter og udgifter</h2>
-            <p className="text-xs text-muted mt-0.5">Seneste 12 måneder, kr. før moms. Udgifter er jeres SMS-omkostning (beregnet) plus det, I selv har tilføjet.</p>
+            <p className="text-xs text-muted mt-0.5">Seneste 12 måneder, kr. før moms. Udgifter er jeres indkøb til forbrug og købte enheder (beregnet) plus det, I selv har tilføjet.</p>
           </div>
           <button onClick={() => setTabel((v) => !v)} className={knapSek} aria-pressed={tabel}>{tabel ? <BarChart3 size={15} aria-hidden="true" /> : <Table2 size={15} aria-hidden="true" />} {tabel ? "Vis graf" : "Vis som tabel"}</button>
         </div>
@@ -163,9 +163,23 @@ export function Dashboard({ naviger }) {
         {tabel ? <Tabel maaneder={maaneder} forventetOre={d.forventet_ore} nu={nu} /> : <Soejlegraf maaneder={maaneder} forventetOre={d.forventet_ore} nu={nu} />}
       </section>
 
+      {d.produkter?.length > 0 && (
+        <section aria-labelledby="prod-h" className="rounded-xl border border-line bg-white p-5 sm:p-6 shadow-sm">
+          <h2 id="prod-h" className="text-base font-semibold text-ink mb-3">Pr. produkt</h2>
+          <ul className="divide-y divide-divider">
+            {d.produkter.map((p) => (
+              <li key={p.produkt} className="py-2.5 flex items-center justify-between gap-3 flex-wrap text-sm">
+                <span className="text-ink">{p.produkt} <span className="text-muted">· {p.aktive} {p.aktive === 1 ? "abonnement" : "abonnementer"}</span></span>
+                <span className="font-semibold [font-variant-numeric:tabular-nums]">{kr(p.mrr_ore)} <span className="text-xs text-muted font-normal">pr. md.</span></span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section aria-labelledby="hand-h" className="rounded-xl border border-line bg-white p-5 sm:p-6 shadow-sm">
         <h2 id="hand-h" className="text-base font-semibold text-ink mb-3">Kræver handling</h2>
-        {handlinger === 0 && <p className="text-sm text-muted flex items-center gap-1.5"><CheckCircle2 size={15} className="text-success" aria-hidden="true" /> Alt er ajour: ingen forfaldne fakturaer, og alle aktive kunder er faktureret for {maanedLang(d.forrige_maaned)}.</p>}
+        {handlinger === 0 && <p className="text-sm text-muted flex items-center gap-1.5"><CheckCircle2 size={15} className="text-success" aria-hidden="true" /> Alt er ajour: ingen forfaldne fakturaer, og alle kunder med aktive abonnementer er faktureret for {maanedLang(d.forrige_maaned)}.</p>}
         {d.forfaldne?.length > 0 && (
           <div className="mb-4">
             <p className="text-sm font-semibold text-ink mb-1">Forfaldne fakturaer</p>
@@ -183,7 +197,7 @@ export function Dashboard({ naviger }) {
         {d.mangler_faktura?.length > 0 && (
           <div>
             <p className="text-sm font-semibold text-ink mb-1">Ikke faktureret for {maanedLang(d.forrige_maaned)}</p>
-            <ul className="text-sm text-ink list-disc pl-5">{d.mangler_faktura.map((k) => <li key={k.store_id || k.organisation_id}>{k.navn}</li>)}</ul>
+            <ul className="text-sm text-ink list-disc pl-5">{d.mangler_faktura.map((k) => <li key={k.customer_id}>{k.navn}</li>)}</ul>
             <button onClick={() => naviger("fakturaer")} className={knapSek + " mt-2"}>Opret kladde under fakturaer</button>
           </div>
         )}

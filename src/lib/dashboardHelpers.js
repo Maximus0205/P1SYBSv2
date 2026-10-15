@@ -55,8 +55,9 @@ export function soejleSti(x, y, bredde, base, r = 4) {
 
 // ---- Aktivitetslog: gør rå ændringer (felter med fra/til) læsbare på dansk ---------------------------------------------------------
 export const LOG_TABELLER = {
-  billing_accounts: "Abonnement", billing_plans: "Prisplan", billing_plan_prices: "Prislinje", billing_limits: "Loft",
-  billing_settings: "Indstillinger", billing_costs: "Udgift", billing_invoices: "Faktura", billing_credit_notes: "Kreditnota", billing_organisations: "Organisation",
+  billing_products: "Produkt", billing_product_metrics: "Målepunkt", billing_customers: "Kunde", billing_subscriptions: "Abonnement", billing_abo_graenser: "Grænse",
+  billing_plans: "Prisplan", billing_plan_prices: "Prislinje", billing_settings: "Indstillinger", billing_costs: "Udgift", billing_invoices: "Faktura", billing_credit_notes: "Kreditnota",
+  billing_accounts: "Abonnement (gammelt)", billing_limits: "Loft (gammelt)", billing_organisations: "Organisation (gammelt)",
 };
 const FELT_NAVN = {
   status: "Status", navn: "Navn", beskrivelse: "Beskrivelse", aktiv: "Aktiv", maanedspris_ore: "Månedspris", pris_override_ore: "Aftalt månedspris", rabat_pct: "Rabat (%)",
@@ -68,6 +69,7 @@ const FELT_NAVN = {
   fakturanr: "Fakturanr.", kreditnr: "Kreditnota nr.", aarsag: "Årsag", udstedt_dato: "Udstedt", forfaldsdato: "Forfald", betalt_dato: "Betalt", periode_fra: "Periode fra", periode_til: "Periode til",
   netto_ore: "Beløb ekskl. moms", moms_ore: "Moms", total_ore: "I alt", beloeb_ore: "Beløb", dato: "Dato", tekst: "Tekst", kategori: "Kategori", gentag: "Gentages hver måned", slut_dato: "Stopper", invoice_id: "Faktura (id)",
   faktura_fodtekst: "Fodtekst",
+  koebt: "Købte enheder", tenant_ref: "Reference i produktet", tenant_navn: "Visningsnavn", customer_id: "Kunde (id)", product_id: "Produkt (id)", parent_id: "Hører til kæde (id)", art: "Type", indkoeb_ore: "Indkøbspris", paaslag_ore: "Påslag", spaerbar: "Kan spærres", enhed: "Enhed", enhed_stoerrelse: "Størrelse pr. enhed", kode: "Kode",
 };
 
 export function logFeltNavn(felt) {
@@ -78,7 +80,7 @@ export function logFeltNavn(felt) {
 export function logVaerdi(felt, v) {
   if (v === null || v === undefined || v === "") return "–";
   if (typeof v === "boolean") return v ? "ja" : "nej";
-  if (String(felt).endsWith("_ore") && Number.isFinite(Number(v))) return /^(sms_|enhedspris)/.test(felt) ? krEnhed(v) : kr(v);
+  if (String(felt).endsWith("_ore") && Number.isFinite(Number(v))) return /^(sms_|enhedspris|indkoeb|paaslag)/.test(felt) ? krEnhed(v) : kr(v);
   if (typeof v === "object") return JSON.stringify(v);
   return String(v);
 }

@@ -1,18 +1,12 @@
 // Rene hjælpere til backoffice (fakturering/forbrug) - ingen netværk, så de kan testes i Node (tests/billing.test.mjs).
 // Beløb er hele øre; enhedspriser må have decimaler (fx 35,5 øre pr. SMS).
 
-export const METRICS = {
-  sms: { navn: "SMS", enhed: "stk." },
-  ors_matrix: { navn: "Ruteberegninger", enhed: "stk." },
-  ors_soeg: { navn: "Adresseopslag (reserve)", enhed: "stk." },
-  sager: { navn: "Oprettede sager", enhed: "stk." },
-};
-export const FORBRUG_METRICS = ["sms", "ors_matrix", "ors_soeg", "sager"];
-export const PRIS_METRICS = ["sms", "ors_matrix", "ors_soeg"];
-// Kun eksterne, betalte tjenester kan spærres automatisk. Sager spærres aldrig.
-export const SPAERRE_METRICS = ["sms", "ors_matrix", "ors_soeg"];
+// Målepunkter (SMS, biler, lager ...) er ikke hårdkodet her: hvert produkt definerer sine egne i databasen (billing_product_metrics).
+// art: "forbrug" = afregnes efter brug i måneden, "koebt" = købes i enheder pr. måned (kapacitet, lager, tilkøb), "info" = måles kun.
+export const MAALEPUNKT_ART = { forbrug: "Forbrug (pr. brugt enhed)", koebt: "Købt (fast pris pr. enhed pr. md.)", info: "Kun måling" };
 
-export const KONTO_STATUS = { proeve: "Prøve", aktiv: "Aktiv", pause: "Pause", opsagt: "Opsagt" };
+export const KONTO_STATUS = { proeve: "Prøve (faktureres ikke)", aktiv: "Aktiv", pause: "Pause (faktureres ikke)", opsagt: "Opsagt (faktureres ikke)" };
+export const KONTO_STATUS_KORT = { proeve: "Prøve", aktiv: "Aktiv", pause: "Pause", opsagt: "Opsagt" };
 export const FAKTURA_STATUS = { kladde: "Kladde", udstedt: "Udstedt", betalt: "Betalt", annulleret: "Annulleret" };
 
 // ---- Rene hjælpere -------------------------------------------------------------------------------------------------------------

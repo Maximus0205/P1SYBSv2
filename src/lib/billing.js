@@ -1,4 +1,4 @@
-// BACKOFFICE: abonnement, forbrug, grænser og fakturaer (oktober 2026). Kun for systemadmin.
+// BACKOFFICE: produkter, kunder, abonnementer, forbrug, priser og fakturaer (oktober 2026). Kun for systemadmin.
 //
 // ALT beregnes og håndhæves i databasen (funktioner billing_* i Supabase) - her er kun adgang til dem og rene hjælpere til visning/indtastning.
 // Databasen afviser selv alle kald fra andre end systemadmin (RLS + tjek i hver funktion), så skjulte faner i brugerfladen er ikke sikkerheden.
@@ -14,11 +14,37 @@ async function koer(fn) {
 }
 
 export const hentOverblik = (fra, til) => koer(() => supabase.rpc("billing_overblik", { p_fra: fra, p_til: til }));
-export const hentAlleGraenser = () => koer(() => supabase.from("billing_limits").select("store_id, metric, advarsel_ved, spaerr_ved"));
+export const hentUdenAbonnement = () => koer(() => supabase.rpc("billing_p1_uden_abonnement"));
+export const beregnAbonnement = (aboId, fra, til) => koer(() => supabase.rpc("billing_beregn_abonnement", { p_sub: aboId, p_fra: fra, p_til: til }));
+export const hentAlleGraenser = () => koer(() => supabase.from("billing_abo_graenser").select("subscription_id, metric, advarsel_ved, spaerr_ved"));
+export const hentGraenser = (aboId) => koer(() => supabase.from("billing_abo_graenser").select("*").eq("subscription_id", aboId));
+export async function gemGraense(aboId, metric, advarsel, spaerr) {
+  if (advarsel === null && spaerr === null) return koer(() => supabase.from("billing_abo_graenser").delete().eq("subscription_id", aboId).eq("metric", metric));
+  return koer(() => supabase.from("billing_abo_graenser").upsert({ subscription_id: aboId, metric, advarsel_ved: advarsel, spaerr_ved: spaerr }, { onConflict: "subscription_id,metric" }));
+}
 
 export const hentIndstillinger = () => koer(() => supabase.from("billing_settings").select("*").eq("singleton", true).maybeSingle());
 export const gemIndstillinger = (felter) => koer(() => supabase.from("billing_settings").update({ ...felter, updated_at: new Date().toISOString() }).eq("singleton", true));
 
+// ---- Produkter og målepunkter --------------------------------------------------------------------------------------------------
+export async function hentProdukter() {
+  const [p, m] = await Promise.all([
+    koer(() => supabase.from("billing_products").select("*").order("created_at")),
+    koer(() => supabase.from("billing_product_metrics").select("*").order("raekkefoelge").order("kode")),
+  ]);
+  if (!p.ok) return p;
+  if (!m.ok) return m;
+  return { ok: true, data: (p.data || []).map((x) => ({ ...x, maalepunkter: (m.data || []).filter((y) => y.product_id === x.id) })) };
+}
+export const gemProdukt = (p) => {
+  const raekke = { navn: p.navn, beskrivelse: p.beskrivelse || "", aktiv: p.aktiv !== false };
+  return p.id ? koer(() => supabase.from("billing_products").update(raekke).eq("id", p.id).select("id").single()) : koer(() => supabase.from("billing_products").insert({ ...raekke, kode: p.kode }).select("id").single());
+};
+export const gemMaalepunkt = (productId, m) => koer(() => supabase.from("billing_product_metrics").upsert({
+  product_id: productId, kode: m.kode, navn: m.navn, enhed: m.enhed || "stk.", art: m.art, indkoeb_ore: m.indkoeb_ore, paaslag_ore: m.paaslag_ore, spaerbar: m.art === "forbrug" && !!m.spaerbar, raekkefoelge: m.raekkefoelge ?? 0,
+}, { onConflict: "product_id,kode" }));
+
+// ---- Prisplaner (hører til et produkt) -----------------------------------------------------------------------------------------------
 export async function hentPlaner() {
   const [p, pr] = await Promise.all([
     koer(() => supabase.from("billing_plans").select("*").order("created_at")),
@@ -28,35 +54,42 @@ export async function hentPlaner() {
   if (!pr.ok) return pr;
   return { ok: true, data: (p.data || []).map((pl) => ({ ...pl, priser: (pr.data || []).filter((x) => x.plan_id === pl.id) })) };
 }
-export async function gemPlan(plan, priser) {
-  const raekke = { navn: plan.navn, beskrivelse: plan.beskrivelse || "", maanedspris_ore: plan.maanedspris_ore, inkl_brugere: plan.inkl_brugere, inkl_biler: plan.inkl_biler, pris_ekstra_bil_ore: plan.pris_ekstra_bil_ore, pris_ekstra_bruger_ore: plan.pris_ekstra_bruger_ore, inkl_lager_gb: plan.inkl_lager_gb, lager_pakke_gb: plan.lager_pakke_gb, pris_lager_pakke_ore: plan.pris_lager_pakke_ore, aktiv: plan.aktiv !== false };
+// priser: [{ metric, inkluderet, enhedspris_ore (null = standardpris), enhed_stoerrelse }] - kun de målepunkter, der skal være med i planen
+export async function gemPlan(plan, priser, alleMetrics) {
+  const raekke = { navn: plan.navn, beskrivelse: plan.beskrivelse || "", maanedspris_ore: plan.maanedspris_ore, aktiv: plan.aktiv !== false };
   const r = plan.id
     ? await koer(() => supabase.from("billing_plans").update(raekke).eq("id", plan.id).select("id").single())
-    : await koer(() => supabase.from("billing_plans").insert(raekke).select("id").single());
+    : await koer(() => supabase.from("billing_plans").insert({ ...raekke, product_id: plan.product_id }).select("id").single());
   if (!r.ok) return r;
   const id = r.data.id;
-  const medPris = priser.filter((x) => x.enhedspris_ore > 0 || x.inkluderet > 0);
-  if (medPris.length) {
-    const u = await koer(() => supabase.from("billing_plan_prices").upsert(medPris.map((x) => ({ plan_id: id, metric: x.metric, inkluderet: x.inkluderet, enhedspris_ore: x.enhedspris_ore })), { onConflict: "plan_id,metric" }));
+  if (priser.length) {
+    const u = await koer(() => supabase.from("billing_plan_prices").upsert(priser.map((x) => ({ plan_id: id, metric: x.metric, inkluderet: x.inkluderet, enhedspris_ore: x.enhedspris_ore, enhed_stoerrelse: x.enhed_stoerrelse })), { onConflict: "plan_id,metric" }));
     if (!u.ok) return u;
   }
-  const tomme = priser.filter((x) => !(x.enhedspris_ore > 0 || x.inkluderet > 0)).map((x) => x.metric);
-  if (tomme.length) {
-    const d = await koer(() => supabase.from("billing_plan_prices").delete().eq("plan_id", id).in("metric", tomme));
+  const bort = (alleMetrics || []).filter((m) => !priser.some((x) => x.metric === m));
+  if (bort.length) {
+    const d = await koer(() => supabase.from("billing_plan_prices").delete().eq("plan_id", id).in("metric", bort));
     if (!d.ok) return d;
   }
   return { ok: true, id };
 }
 
-export const hentKonto = (storeId) => koer(() => supabase.from("billing_accounts").select("*").eq("store_id", storeId).maybeSingle());
-export const gemKonto = (konto) => koer(() => supabase.from("billing_accounts").upsert({ ...konto, updated_at: new Date().toISOString() }, { onConflict: "store_id" }));
-export const hentGraenser = (storeId) => koer(() => supabase.from("billing_limits").select("*").eq("store_id", storeId));
-export async function gemGraense(storeId, metric, advarsel, spaerr) {
-  if (advarsel === null && spaerr === null) return koer(() => supabase.from("billing_limits").delete().eq("store_id", storeId).eq("metric", metric));
-  return koer(() => supabase.from("billing_limits").upsert({ store_id: storeId, metric, advarsel_ved: advarsel, spaerr_ved: spaerr }, { onConflict: "store_id,metric" }));
-}
+// ---- Kunder og abonnementer ----------------------------------------------------------------------------------------------------------
+export const hentKunder = () => koer(() => supabase.from("billing_customers").select("*").order("navn"));
+export const gemKunde = (k) => {
+  const { id, ...felter } = k;
+  const raekke = { ...felter, updated_at: new Date().toISOString() };
+  return id ? koer(() => supabase.from("billing_customers").update(raekke).eq("id", id).select("id").single()) : koer(() => supabase.from("billing_customers").insert(raekke).select("id").single());
+};
+export const hentAbonnementer = () => koer(() => supabase.from("billing_subscriptions").select("*").order("created_at"));
+export const gemAbonnement = (a) => {
+  const { id, ...felter } = a;
+  const raekke = { ...felter, updated_at: new Date().toISOString() };
+  return id ? koer(() => supabase.from("billing_subscriptions").update(raekke).eq("id", id).select("id").single()) : koer(() => supabase.from("billing_subscriptions").insert(raekke).select("id").single());
+};
 
-export const hentFakturaer = () => koer(() => supabase.from("billing_invoices").select("id, fakturanr, store_id, organisation_id, periode_fra, periode_til, status, udstedt_dato, forfaldsdato, betalt_dato, kunde, total_ore, netto_ore, moms_ore, created_at").order("created_at", { ascending: false }));
+// ---- Fakturaer -----------------------------------------------------------------------------------------------------------------------
+export const hentFakturaer = () => koer(() => supabase.from("billing_invoices").select("id, fakturanr, customer_id, periode_fra, periode_til, status, udstedt_dato, forfaldsdato, betalt_dato, kunde, total_ore, netto_ore, moms_ore, created_at").order("created_at", { ascending: false }));
 export async function hentFaktura(id) {
   const [f, l] = await Promise.all([
     koer(() => supabase.from("billing_invoices").select("*").eq("id", id).single()),
@@ -66,15 +99,8 @@ export async function hentFaktura(id) {
   if (!l.ok) return l;
   return { ok: true, data: { ...f.data, linjer: l.data || [] } };
 }
-export const opretKladde = (storeId, fra, til) => koer(() => supabase.rpc("billing_opret_kladde", { p_store: storeId, p_fra: fra, p_til: til }));
-export const opretOrgKladde = (orgId, fra, til) => koer(() => supabase.rpc("billing_opret_org_kladde", { p_org: orgId, p_fra: fra, p_til: til }));
-export const hentOrganisationer = () => koer(() => supabase.from("billing_organisations").select("*").order("navn"));
-export const gemOrganisation = (o) => {
-  const { id, ...felter } = o;
-  const række = { ...felter, updated_at: new Date().toISOString() };
-  return id ? koer(() => supabase.from("billing_organisations").update(række).eq("id", id).select("id").single()) : koer(() => supabase.from("billing_organisations").insert(række).select("id").single());
-};
-export const hentMedlemmer = (orgId) => koer(() => supabase.from("billing_accounts").select("store_id, kaedepris, status").eq("organisation_id", orgId));
+export const opretKladde = (kundeId, fra, til) => koer(() => supabase.rpc("billing_opret_faktura_kladde", { p_kunde: kundeId, p_fra: fra, p_til: til }));
+export const opretAlleKladder = (fra, til) => koer(() => supabase.rpc("billing_opret_alle_kladder", { p_fra: fra, p_til: til }));
 export const udstedFaktura = (id) => koer(() => supabase.rpc("billing_udsted", { p_id: id }));
 export const saetFakturaStatus = (id, status, dato = null) => koer(() => supabase.rpc("billing_saet_status", { p_id: id, p_status: status, p_dato: dato }));
 
@@ -88,7 +114,7 @@ export const gemUdgift = (u) => {
 export const sletUdgift = (id) => koer(() => supabase.from("billing_costs").delete().eq("id", id));
 
 // ---- Kreditnotaer og aktivitetslog ---------------------------------------------------------------------------------------------
-export const hentKreditnotaer = () => koer(() => supabase.from("billing_credit_notes").select("id, kreditnr, invoice_id, store_id, organisation_id, udstedt_dato, kunde, total_ore, aarsag, created_at").order("created_at", { ascending: false }));
+export const hentKreditnotaer = () => koer(() => supabase.from("billing_credit_notes").select("id, kreditnr, invoice_id, customer_id, udstedt_dato, kunde, total_ore, aarsag, created_at").order("created_at", { ascending: false }));
 export async function hentKreditnota(id) {
   const [c, l] = await Promise.all([
     koer(() => supabase.from("billing_credit_notes").select("*").eq("id", id).single()),
