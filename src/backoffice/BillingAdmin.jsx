@@ -133,12 +133,12 @@ export function ForbrugSektion({ onVaelgButik }) {
 }
 
 // ---- Kunder (abonnement + grænser pr. butik) -----------------------------------------------------------------------------------------
-const TOM_KONTO = { plan_id: "", status: "proeve", start_dato: "", pris_override: "", ekstra_biler: "0", lager_pakker: "0", rabat_pct: "0", organisation_id: "", kaedepris: false, firma_navn: "", cvr: "", adresse: "", postnr_by: "", att: "", faktura_email: "", ean: "", betalingsfrist_dage: "", spaerret: false, spaerret_aarsag: "", noter: "" };
+const TOM_KONTO = { plan_id: "", status: "proeve", start_dato: "", pris_override: "", ekstra_biler: "0", lager_pakker: "0", egen_afsender: false, afsender_tekst: "", rabat_pct: "0", organisation_id: "", kaedepris: false, firma_navn: "", cvr: "", adresse: "", postnr_by: "", att: "", faktura_email: "", ean: "", betalingsfrist_dage: "", spaerret: false, spaerret_aarsag: "", noter: "" };
 
 function kontoTilFelter(k) {
   if (!k) return { ...TOM_KONTO };
   return {
-    plan_id: k.plan_id || "", status: k.status, start_dato: k.start_dato || "", pris_override: krTilFelt(k.pris_override_ore), ekstra_biler: String(k.ekstra_biler ?? 0), lager_pakker: String(k.lager_pakker ?? 0), rabat_pct: String(k.rabat_pct ?? 0).replace(".", ","), organisation_id: k.organisation_id || "", kaedepris: !!k.kaedepris,
+    plan_id: k.plan_id || "", status: k.status, start_dato: k.start_dato || "", pris_override: krTilFelt(k.pris_override_ore), ekstra_biler: String(k.ekstra_biler ?? 0), lager_pakker: String(k.lager_pakker ?? 0), egen_afsender: !!k.egen_afsender, afsender_tekst: k.afsender_tekst || "", rabat_pct: String(k.rabat_pct ?? 0).replace(".", ","), organisation_id: k.organisation_id || "", kaedepris: !!k.kaedepris,
     firma_navn: k.firma_navn, cvr: k.cvr, adresse: k.adresse, postnr_by: k.postnr_by, att: k.att, faktura_email: k.faktura_email, ean: k.ean,
     betalingsfrist_dage: k.betalingsfrist_dage === null || k.betalingsfrist_dage === undefined ? "" : String(k.betalingsfrist_dage), spaerret: !!k.spaerret, spaerret_aarsag: k.spaerret_aarsag || "", noter: k.noter || "",
   };
@@ -189,7 +189,7 @@ export function KunderSektion({ stores }) {
     if (!Number.isInteger(lagerPakker) || lagerPakker < 0 || lagerPakker > 9999) return setFejl("Lagerpakker skal være et helt antal (0 eller flere).");
     setBusy(true);
     const r = await gemKonto({
-      store_id: butik, ekstra_biler: ekstraBiler, lager_pakker: lagerPakker, organisation_id: f.organisation_id || null, kaedepris: !!f.organisation_id && f.kaedepris, plan_id: f.plan_id || null, status: f.status, start_dato: f.start_dato || null, pris_override_ore: override, rabat_pct: rabat,
+      store_id: butik, ekstra_biler: ekstraBiler, lager_pakker: lagerPakker, egen_afsender: f.egen_afsender, afsender_tekst: f.egen_afsender ? f.afsender_tekst.trim().slice(0, 40) : "", organisation_id: f.organisation_id || null, kaedepris: !!f.organisation_id && f.kaedepris, plan_id: f.plan_id || null, status: f.status, start_dato: f.start_dato || null, pris_override_ore: override, rabat_pct: rabat,
       firma_navn: f.firma_navn.trim(), cvr: f.cvr.trim(), adresse: f.adresse.trim(), postnr_by: f.postnr_by.trim(), att: f.att.trim(), faktura_email: f.faktura_email.trim(), ean: f.ean.trim(),
       betalingsfrist_dage: frist, spaerret: f.spaerret, spaerret_aarsag: f.spaerret_aarsag.trim(), noter: f.noter,
     });
@@ -236,6 +236,15 @@ export function KunderSektion({ stores }) {
               <Felt id="k-override" titel="Aftalt månedspris (kr., før moms)" hjaelp="Tom = prisplanens pris."><input id="k-override" inputMode="decimal" value={f.pris_override} onChange={(e) => saet("pris_override", e.target.value)} className={felt} /></Felt>
               <Felt id="k-rabat" titel="Rabat på abonnement (%)"><input id="k-rabat" inputMode="decimal" value={f.rabat_pct} onChange={(e) => saet("rabat_pct", e.target.value)} className={felt} /></Felt>
             </div>
+          </div>
+
+          <div className={kort}>
+            <h3 className={overskrift}>SMS-afsender</h3>
+            <label className="flex items-start gap-2 text-sm text-ink min-h-[44px]">
+              <input type="checkbox" checked={f.egen_afsender} onChange={(e) => saet("egen_afsender", e.target.checked)} className="mt-1 h-4 w-4" />
+              <span>Butikken har eget afsendernavn eller -nummer på sine SMS'er (lægges som fast månedspris oven i abonnementet, se priser under Indstillinger).</span>
+            </label>
+            {f.egen_afsender && <div className="mt-2"><Felt id="k-afs" titel="Afsendernavn/-nummer (til fakturalinjen)" hjaelp="Højst 40 tegn. Kun en note til fakturaen - selve opsætningen hos Gatewayapi skal stadig laves."><input id="k-afs" maxLength={40} value={f.afsender_tekst} onChange={(e) => saet("afsender_tekst", e.target.value)} className={felt} /></Felt></div>}
           </div>
 
           <div className={kort}>
@@ -753,7 +762,8 @@ export function IndstillingerSektion() {
       if (!r.ok || !r.data) { setFejl(r.fejl || "Indstillingerne kunne ikke hentes."); return; }
       const d = r.data;
       setNaeste(d.naeste_fakturanr);
-      setF({ firma_navn: d.firma_navn, cvr: d.cvr, adresse: d.adresse, postnr_by: d.postnr_by, email: d.email, telefon: d.telefon, bank_reg: d.bank_reg, bank_konto: d.bank_konto, iban: d.iban, faktura_prefix: d.faktura_prefix, moms_pct: String(d.moms_pct).replace(".", ","), betalingsfrist_dage: String(d.betalingsfrist_dage), faktura_fodtekst: d.faktura_fodtekst });
+      setF({ firma_navn: d.firma_navn, cvr: d.cvr, adresse: d.adresse, postnr_by: d.postnr_by, email: d.email, telefon: d.telefon, bank_reg: d.bank_reg, bank_konto: d.bank_konto, iban: d.iban, faktura_prefix: d.faktura_prefix, moms_pct: String(d.moms_pct).replace(".", ","), betalingsfrist_dage: String(d.betalingsfrist_dage), faktura_fodtekst: d.faktura_fodtekst,
+        sms_indkoeb: krTilFelt(d.sms_indkoeb_ore), sms_paaslag: krTilFelt(d.sms_paaslag_ore), afsender_indkoeb: krTilFelt(d.afsender_indkoeb_ore), afsender_paaslag: krTilFelt(d.afsender_paaslag_ore) });
     });
   }, []);
 
@@ -765,8 +775,13 @@ export function IndstillingerSektion() {
     if (moms === null || moms > 100) return setFejl("Moms skal være et tal mellem 0 og 100.");
     if (!Number.isInteger(frist) || frist < 0 || frist > 180) return setFejl("Betalingsfrist skal være et helt antal dage (0-180).");
     if (!/^[A-Za-z0-9-]{0,6}$/.test(f.faktura_prefix)) return setFejl("Præfikset må højst være 6 tegn (bogstaver, tal eller bindestreg).");
+    const smsIndkoeb = enhedsOreFraKr(f.sms_indkoeb === "" ? "0" : f.sms_indkoeb);
+    const smsPaaslag = enhedsOreFraKr(f.sms_paaslag === "" ? "0" : f.sms_paaslag);
+    const afsIndkoeb = oreFraKr(f.afsender_indkoeb === "" ? "0" : f.afsender_indkoeb);
+    const afsPaaslag = oreFraKr(f.afsender_paaslag === "" ? "0" : f.afsender_paaslag);
+    if ([smsIndkoeb, smsPaaslag, afsIndkoeb, afsPaaslag].some((v) => v === null || v < 0)) return setFejl("SMS- og afsenderpriser skal være beløb i kr. (0 eller mere).");
     setBusy(true);
-    const r = await gemIndstillinger({ firma_navn: f.firma_navn.trim(), cvr: f.cvr.trim(), adresse: f.adresse.trim(), postnr_by: f.postnr_by.trim(), email: f.email.trim(), telefon: f.telefon.trim(), bank_reg: f.bank_reg.trim(), bank_konto: f.bank_konto.trim(), iban: f.iban.trim(), faktura_prefix: f.faktura_prefix.trim(), moms_pct: moms, betalingsfrist_dage: frist, faktura_fodtekst: f.faktura_fodtekst });
+    const r = await gemIndstillinger({ sms_indkoeb_ore: smsIndkoeb, sms_paaslag_ore: smsPaaslag, afsender_indkoeb_ore: afsIndkoeb, afsender_paaslag_ore: afsPaaslag, firma_navn: f.firma_navn.trim(), cvr: f.cvr.trim(), adresse: f.adresse.trim(), postnr_by: f.postnr_by.trim(), email: f.email.trim(), telefon: f.telefon.trim(), bank_reg: f.bank_reg.trim(), bank_konto: f.bank_konto.trim(), iban: f.iban.trim(), faktura_prefix: f.faktura_prefix.trim(), moms_pct: moms, betalingsfrist_dage: frist, faktura_fodtekst: f.faktura_fodtekst });
     setBusy(false);
     if (!r.ok) return setFejl(r.fejl);
     setBesked("Indstillingerne er gemt.");
@@ -798,6 +813,17 @@ export function IndstillingerSektion() {
         </div>
         <div className="mt-3"><Felt id="i-fod" titel="Fodtekst på fakturaen (valgfri)"><textarea id="i-fod" rows={3} value={f.faktura_fodtekst} onChange={(e) => saet("faktura_fodtekst", e.target.value)} className={felt + " min-h-[88px]"} /></Felt></div>
         <p className="text-[11px] text-muted mt-2">Fakturanumre tildeles fortløbende af databasen, når en faktura udstedes - de kan ikke redigeres.</p>
+      </div>
+      <div className={kort}>
+        <h3 className={overskrift}>SMS og afsendernavn (Gatewayapi)</h3>
+        <p className="text-xs text-muted mb-3">Indkøbspris er det, Gatewayapi tager af jer. Påslaget er jeres margin. Kunden betaler indkøb + påslag, og kun indkøbsprisen tæller som udgift i dashboardet.</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Felt id="i-sms-ind" titel="SMS: indkøbspris pr. stk. (kr.)" hjaelp="Fx 0,35. Tjek Gatewayapis aktuelle pris for Danmark i jeres konto."><input id="i-sms-ind" inputMode="decimal" value={f.sms_indkoeb} onChange={(e) => saet("sms_indkoeb", e.target.value)} className={felt} /></Felt>
+          <Felt id="i-sms-paa" titel="SMS: jeres påslag pr. stk. (kr.)"><input id="i-sms-paa" inputMode="decimal" value={f.sms_paaslag} onChange={(e) => saet("sms_paaslag", e.target.value)} className={felt} /></Felt>
+          <Felt id="i-afs-ind" titel="Eget afsendernavn/-nummer: indkøb pr. md. (kr.)" hjaelp="Det, det koster jer pr. butik pr. måned."><input id="i-afs-ind" inputMode="decimal" value={f.afsender_indkoeb} onChange={(e) => saet("afsender_indkoeb", e.target.value)} className={felt} /></Felt>
+          <Felt id="i-afs-paa" titel="Eget afsendernavn/-nummer: påslag pr. md. (kr.)"><input id="i-afs-paa" inputMode="decimal" value={f.afsender_paaslag} onChange={(e) => saet("afsender_paaslag", e.target.value)} className={felt} /></Felt>
+        </div>
+        <p className="text-[11px] text-muted mt-2">Kunden betaler for SMS: {kr(Math.round((enhedsOreFraKr(f.sms_indkoeb || "0") || 0) + (enhedsOreFraKr(f.sms_paaslag || "0") || 0)))} pr. stk. · for eget afsendernavn: {kr((oreFraKr(f.afsender_indkoeb || "0") || 0) + (oreFraKr(f.afsender_paaslag || "0") || 0))} pr. md. Priserne gælder kommende fakturaer.</p>
       </div>
       <button onClick={gem} disabled={busy} className={knapPrim}>{busy ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Check size={15} aria-hidden="true" />} Gem indstillinger</button>
       <Meddelelse fejl={fejl} besked={besked} />
