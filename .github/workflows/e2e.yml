@@ -32,16 +32,7 @@ jobs:
         run: npm run test:e2e
 
       # Enhedstestene kører ALTID, også hvis browsertestene fejlede, så begge dele kan ses på én gang.
+      # Alle enhedstests køres hver for sig; en fejl vises som en annotering med filnavn og de første linjer.
       - name: Enhedstests
         if: ${{ !cancelled() }}
         run: npm test
-
-      # Rapport og skærmbilleder af fejlede tests gemmes, så man kan se hvad der gik galt.
-      - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
-        with:
-          name: playwright-rapport
-          path: |
-            playwright-report/
-            test-results/
-          retention-days: 14
