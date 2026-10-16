@@ -209,9 +209,22 @@ function LineItemEditor({ order, catalog, onSave, onCancel, embedded = false, it
 
   const patch = (id, fields) => setItems((prev) => prev.map((v) => (v.id === id ? { ...v, ...fields } : v)));
 
-  const changeProductType = (id, varetypeId) => {
+  // Et skift af varetype fjerner de tillæg, der ikke gælder for den nye type - samme regel som ved ny booking
+  // (OrderFormFields.jsx). Før blev de stående og kunne give en forkert tid og pris på en sag.
+  // tid: true (fra punkt1-advarslen) sætter også standardtiden, hvis der findes et admin-sat tal for den nye type.
+  const changeProductType = (id, varetypeId, { tid = false } = {}) => {
     const t = productTypes.find((p) => p.id === varetypeId);
-    patch(id, { varetypeId, varetypeNavn: t ? t.navn : "Andet (skriv selv)" });
+    setItems((prev) => prev.map((v) => {
+      if (v.id !== id) return v;
+      const nyeTillaeg = availableAddOns(varetypeId, v.primaerYdelse?.id, addOnServices);
+      const nyTid = tid && v.primaerYdelse ? getDefaultEstimateMinutes(defaultTimeEstimates, varetypeId, v.primaerYdelse.id) : null;
+      return {
+        ...v, varetypeId, varetypeNavn: t ? t.navn : "Andet (skriv selv)",
+        ...(v.varetypeId !== varetypeId ? { varetypeTekst: "" } : {}),
+        tillaeg: (v.tillaeg || []).filter((x) => nyeTillaeg.some((n) => n.navn === x.navn)),
+        ...(nyTid !== null ? { primaerYdelse: { ...v.primaerYdelse, minutter: nyTid } } : {}),
+      };
+    }));
   };
 
   const changeService = (id, serviceId) => {
@@ -310,6 +323,9 @@ function LineItemEditor({ order, catalog, onSave, onCancel, embedded = false, it
                   <div className="sm:col-span-2 -mt-1">
                     <ModelNumberLookup
                       model={v.model}
+                      varetypeId={v.varetypeId}
+                      productTypes={productTypes}
+                      onSuggestType={(t) => changeProductType(v.id, t.id, { tid: true })}
                       onSelectProduct={({ brand, model: m, productId }) => setItems(
                         (prev) => prev.map((x) => (x.id === v.id ? { ...x, ...(brand ? { maerke: brand } : {}), ...(m ? { model: m } : {}), ...(productId ? { punkt1Id: String(productId) } : {}) } : x)),
                         { stille: true },

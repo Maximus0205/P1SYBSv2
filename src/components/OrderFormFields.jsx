@@ -79,7 +79,12 @@ function guessProductType(title, productTypes) {
 // reaktion på afledt state. confirmedRef opdateres FØR onSelectProduct
 // kaldes, så selv hvis "model"-prop'en ændrer sig som konsekvens, er
 // søgningen allerede markeret som bekræftet og udløser ikke et nyt kald.
-function ModelNumberLookup({ model, onSelectProduct }) {
+// VARETYPE MOD PUNKT1 (oktober 2026): kender kaldeste varetypeId/productTypes/onSuggestType, sammenlignes den
+// valgte varetype med den, punkt1.dk selv kalder det bekræftede produkt. Er de forskellige (fx varetypen blev
+// ændret bagefter, eller modelnummeret skiftet til en anden slags vare), vises en advarsel med et tryk til at
+// skifte. Advarslen RÅDGIVER kun - intet ændres uden et tryk - og afledes ved hvert render, så den også dukker
+// op, når varetypen ændres EFTER at modelnummeret blev bekræftet.
+function ModelNumberLookup({ model, onSelectProduct, varetypeId, productTypes, onSuggestType }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null); // { matchCount, products } | null
   const [error, setError] = useState(null);
@@ -147,6 +152,22 @@ function ModelNumberLookup({ model, onSelectProduct }) {
           <CheckCircle2 size={13} className="shrink-0" /> Bekræftet på punkt1.dk: {exactMatch.title}
         </p>
       )}
+
+      {!loading && !error && result && exactMatch && productTypes && onSuggestType && (() => {
+        const foreslaaet = guessProductType(exactMatch.title, productTypes);
+        if (!foreslaaet || foreslaaet.id === varetypeId) return null;
+        const nuvaerende = productTypes.find((t) => t.id === varetypeId);
+        return (
+          <div role="alert" className="mt-1 rounded-lg border border-danger/40 bg-[#FBEFEF] px-2 py-1.5">
+            <p className="text-[11px] text-danger font-semibold">
+              punkt1.dk kalder denne vare "{foreslaaet.navn}", men varetypen er "{nuvaerende ? nuvaerende.navn : "Andet"}".
+            </p>
+            <button type="button" onClick={() => onSuggestType(foreslaaet)} className="mt-1 px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-danger border border-danger hover:bg-white focus:outline-none focus:ring-2 focus:ring-danger">
+              Skift til {foreslaaet.navn}
+            </button>
+          </div>
+        );
+      })()}
 
       {!loading && !error && result && !exactMatch && result.matchCount === 0 && (
         <p className="text-[11px] text-danger font-semibold flex items-center gap-1.5">
@@ -488,6 +509,19 @@ function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices
     });
   };
 
+  // Skift til den varetype, punkt1.dk foreslår (fra advarslen under modelfeltet). Samme som et almindeligt
+  // varetype-skift, plus standardtiden for den valgte ydelse, hvis der findes et admin-sat tal for den nye type.
+  const skiftTilType = (t) => {
+    const nyTid = lineItem.primaerYdelse ? getDefaultEstimateMinutes(defaultTimeEstimates, t.id, lineItem.primaerYdelse.id) : null;
+    const nyeTillaeg = availableAddOns(t.id, lineItem.primaerYdelse?.id, addOnServices);
+    onChange({
+      ...lineItem,
+      varetypeId: t.id, varetypeNavn: t.navn, varetypeTekst: "",
+      tillaeg: lineItem.tillaeg.filter((x) => nyeTillaeg.some((n) => n.navn === x.navn)),
+      primaerYdelse: nyTid !== null && lineItem.primaerYdelse ? { ...lineItem.primaerYdelse, minutter: nyTid } : lineItem.primaerYdelse,
+    });
+  };
+
   return (
     <div className="rounded-xl border border-line bg-panel p-3">
       <div className="flex items-start gap-2 mb-1">
@@ -503,7 +537,7 @@ function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices
             className={`w-full rounded-lg border bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand ${modelFejl ? "border-danger" : "border-line"}`}
           />
           {modelFejl && <p id={`model-fejl-${lineItem.id}`} role="alert" className="text-xs text-danger mt-1">Modelnummer skal udfyldes.</p>}
-          <ModelNumberLookup model={lineItem.model} onSelectProduct={applyProductLookup} />
+          <ModelNumberLookup model={lineItem.model} onSelectProduct={applyProductLookup} varetypeId={lineItem.varetypeId} productTypes={productTypes} onSuggestType={skiftTilType} />
         </div>
         {canRemove && <button onClick={onRemove} className="p-1.5 text-muted hover:text-danger shrink-0" title="Fjern varelinje"><Trash2 size={15} /></button>}
       </div>
