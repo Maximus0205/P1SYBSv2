@@ -1,7 +1,7 @@
 name: Browsertests (Playwright)
 
-# Kører de automatiske browsertests ved hver ændring. Testene bruger simulerede data (se vite.e2e.config.js)
-# og har derfor hverken brug for login, database eller hemmeligheder.
+# Kører de automatiske browsertests ved hver ændring. Jobbet "e2e" bruger simulerede data (se vite.e2e.config.js)
+# og kræver ingen hemmeligheder. Jobbet "live" logger ind mod Testmiljøet.
 on:
   push:
     branches: ["main"]
@@ -36,3 +36,39 @@ jobs:
       - name: Enhedstests
         if: ${{ !cancelled() }}
         run: npm test
+
+  # Login-tests mod den RIGTIGE app og Testmiljø-databasen (kun læsning). Kører kun på main og manuelt, aldrig på
+  # pull requests, så hemmelighederne ikke kan nås fra andres kode. Springer testene over, hvis E2E_*-hemmelighederne mangler.
+  live:
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Installér afhængigheder
+        run: npm install
+
+      - name: Installér Chromium til Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Kør login-tests mod Testmiljøet
+        run: npm run test:e2e:live
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+
+      - name: Gem rapport
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-rapport-live
+          path: playwright-report-live
+          retention-days: 7
+          if-no-files-found: ignore

@@ -19,3 +19,5 @@ supabase/
 # Playwright
 test-results
 playwright-report
+test-results-live
+playwright-report-live
