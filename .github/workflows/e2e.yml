@@ -1,0 +1,47 @@
+name: Browsertests (Playwright)
+
+# Kører de automatiske browsertests ved hver ændring. Testene bruger simulerede data (se vite.e2e.config.js)
+# og har derfor hverken brug for login, database eller hemmeligheder.
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Installér afhængigheder
+        run: npm install
+
+      - name: Installér Chromium til Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Kør browsertests
+        run: npm run test:e2e
+
+      # Enhedstestene kører ALTID, også hvis browsertestene fejlede, så begge dele kan ses på én gang.
+      - name: Enhedstests
+        if: ${{ !cancelled() }}
+        run: npm test
+
+      # Rapport og skærmbilleder af fejlede tests gemmes, så man kan se hvad der gik galt.
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-rapport
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
