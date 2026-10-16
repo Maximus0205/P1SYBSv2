@@ -20,6 +20,7 @@ import { DateSelector } from "./components/common";
 import { LoginPage } from "./components/LoginPage";
 import { OrderView } from "./components/OrderView";
 import { AccountSettingsModal } from "./components/AccountSettingsModal";
+import { ErstatningPanel } from "./components/ErstatningPanel";
 
 import { DashboardPage } from "./pages/DashboardPage";
 import { SalesPage } from "./pages/SalesPage";
@@ -244,6 +245,7 @@ export default function App() {
 
   // Kontoindstillinger (PIN-opsætning m.v.) - se components/AccountSettingsModal.jsx.
   const [showAccountSettings, setShowAccountSettings] = useState(false);
+  const [erstat, setErstat] = useState(null); // { orderId, lineId }: erstatning for en manglende vare, åbnet fra notifikationen
 
   // BUTIKS-SKIFT: activeStoreId er den butik, hvis data der vises lige nu.
   // For de fleste er det altid deres egen (profile.butikId) - men en
@@ -586,6 +588,21 @@ export default function App() {
         <AccountSettingsModal store={effectiveStore} onClose={() => setShowAccountSettings(false)} />
       )}
 
+      {erstat && (() => {
+        const o = orders.find((x) => x.id === erstat.orderId);
+        const l = o?.varelinjer?.find((x) => x.id === erstat.lineId);
+        if (!o || !l) return null;
+        return (
+          <ErstatningPanel
+            key={`${o.id}:${l.id}`} order={o} line={l} storeId={activeStoreId}
+            canChange={profile.erSystemadmin || permissions.includes("sag_feltarbejde")}
+            onApply={(lineId, fields) => ordersStore.updateLineItem(o.id, lineId, fields)}
+            onOpenOrder={(id) => { setErstat(null); onOpen(id); }}
+            onClose={() => setErstat(null)}
+          />
+        );
+      })()}
+
       {!hideTopNav && (
         <TopNav
           page={currentPage} onChange={(key) => navigate(`/${key}`)} user={profile} onLogOut={logOut}
@@ -593,6 +610,7 @@ export default function App() {
           store={effectiveStore} allStores={allStores} onSwitchStore={switchStore}
           onExitStoreView={profile.erSystemadmin ? exitStoreView : undefined}
           onOpenAccountSettings={() => setShowAccountSettings(true)}
+          onReplaceItem={(orderId, lineId) => setErstat({ orderId, lineId })}
         />
       )}
 

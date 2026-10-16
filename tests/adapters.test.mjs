@@ -114,7 +114,7 @@ eq("punkt1: fejl giver { ok:false, fejl }", (await p1.produktopslag("X")).ok, fa
 // ---------- POS
 nulstil();
 const pos = opretPosAdapter({ transport: t, klient, log });
-eq("pos: som udgangspunkt er opslag til og synkronisering ved afslutning FRA", pos.kapabiliteter, { opslag: true, synkVedAfslutning: false });
+eq("pos: som udgangspunkt er opslag til og synkronisering ved afslutning FRA", pos.kapabiliteter, { opslag: true, alternativer: true, synkVedAfslutning: false });
 eq("pos: kapabiliteterne kan ikke ændres udefra", (() => { try { pos.kapabiliteter.synkVedAfslutning = true; } catch (_) { /* streng tilstand */ } return pos.kapabiliteter.synkVedAfslutning; })(), false);
 const sprunget = await pos.synkVedAfslutning({ storeId: "s1", orderId: "o1" });
 eq("pos: synkronisering ved afslutning er slået fra: intet kald, ingen status", [sprunget.ok, sprunget.sprunget, kald.length], [true, true, 0]);
@@ -137,6 +137,18 @@ eq("pos: opslagsfejl logges ikke (vises direkte i panelet)", logget, []);
 const posUdenOpslag = opretPosAdapter({ transport: t, klient, log, kapabiliteter: { opslag: false } });
 nulstil();
 eq("pos: opslag kan slås fra", [(await posUdenOpslag.opslag({ storeId: "s", query: "1", queryType: "telefon" })).sprunget, kald.length], [true, 0]);
+
+// erstatning af manglende vare
+nulstil(); svar = { data: { original: { varenummer: "1" }, alternativer: [{ varenummer: "2" }] }, error: null };
+eq("pos: alternativer", await pos.alternativer({ storeId: "s1", maerke: "Point", model: "X", varetypeNavn: "Vaskemaskine" }), { ok: true, original: { varenummer: "1" }, alternativer: [{ varenummer: "2" }] });
+eq("pos: alternativer sender action alternatives", kald[0].body, { action: "alternatives", storeId: "s1", maerke: "Point", model: "X", varetypeNavn: "Vaskemaskine" });
+nulstil(); svar = { data: { original: null }, error: null };
+eq("pos: alternativer uden liste giver tom liste", (await pos.alternativer({ storeId: "s1" })).alternativer, []);
+nulstil(); svar = { data: { fejl: "afventer dokumentation fra Flow Retail" }, error: null };
+eq("pos: alternativer ærlig fejl", await pos.alternativer({ storeId: "s1" }), { ok: false, fejl: "afventer dokumentation fra Flow Retail" });
+const posUdenAlt = opretPosAdapter({ transport: t, klient, log, kapabiliteter: { alternativer: false } });
+nulstil();
+eq("pos: alternativer kan slås fra", [(await posUdenAlt.alternativer({ storeId: "s" })).sprunget, kald.length], [true, 0]);
 
 nulstil();
 eq("pos: erAktiv ja", await pos.erAktiv(), true);

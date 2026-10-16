@@ -15,7 +15,7 @@
 export function opretPosAdapter({ transport, klient, log, kapabiliteter } = {}) {
   if (!transport || typeof transport.kald !== "function") throw new Error("opretPosAdapter: transport mangler");
   const logger = typeof log === "function" ? log : () => {};
-  const kap = Object.freeze({ opslag: true, synkVedAfslutning: false, ...(kapabiliteter || {}) });
+  const kap = Object.freeze({ opslag: true, alternativer: true, synkVedAfslutning: false, ...(kapabiliteter || {}) });
   const FUNKTION = "pos-integration";
 
   return {
@@ -41,6 +41,18 @@ export function opretPosAdapter({ transport, klient, log, kapabiliteter } = {}) 
       if (!kap.opslag) return { ok: false, sprunget: true, fejl: "POS-opslag er ikke slået til" };
       const r = await transport.kald(FUNKTION, { action: "lookup", storeId, query, queryType }, { standardFejl: "POS-opslaget fejlede", logFejl: false });
       return r.ok ? { ok: true, resultat: r.data?.resultat } : { ok: false, fejl: r.fejl };
+    },
+
+    // Erstatning for en manglende vare (oktober 2026): finder lignende varer på lager og leverer priser,
+    // så sælgeren kan se konsekvensen FØR kunden kontaktes. Svarform (Edge Functionen skal aflevere præcis
+    // denne - al prisomregning hører hjemme dér, ikke i appen):
+    //   original:    { varenummer, navn, maerke, model, udsalgspris (inkl. moms), indkoebspris (ekskl. moms), lager }
+    //   alternativer:[ samme felter + forskelle?: ["Større tromle", ...] ]
+    // Er originalen ukendt i POS, er original null - alternativerne vises så uden sammenligning.
+    async alternativer({ storeId, maerke, model, varetypeNavn }) {
+      if (!kap.alternativer) return { ok: false, sprunget: true, fejl: "Forslag til erstatning er ikke slået til" };
+      const r = await transport.kald(FUNKTION, { action: "alternatives", storeId, maerke, model, varetypeNavn }, { standardFejl: "Kunne ikke hente forslag til erstatning", logFejl: false });
+      return r.ok ? { ok: true, original: r.data?.original ?? null, alternativer: Array.isArray(r.data?.alternativer) ? r.data.alternativer : [] } : { ok: false, fejl: r.fejl };
     },
 
     // Fakturering og lagerudlevering, når en sag færdigmeldes. Funktionen skriver SELV posStatus på sagen;

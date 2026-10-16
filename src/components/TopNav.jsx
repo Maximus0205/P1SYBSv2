@@ -44,8 +44,11 @@ function NotifGroup({ title, icon: Icon, color, items, onOpen }) {
 //      kun kundenavnet, må sælgeren åbne sagen for at se hvilken af de
 //      tre varer, der mangler - og det er præcis det opkald til kunden,
 //      der haster.
-function MissingGroup({ items, onOpen }) {
+function MissingGroup({ items, onOpen, onReplace }) {
   if (items.length === 0) return null;
+  // Ét punkt pr. manglende VARE (ikke pr. sag): erstatning gælder en bestemt vare. Uden onReplace
+  // (fx hvis POS-panelet ikke er koblet på) åbnes sagen som hidtil.
+  const raekker = items.flatMap((o) => missingLineItems(o).map((v) => ({ o, v })));
   return (
     <div className="p-3">
       <p className="text-[11px] font-semibold uppercase tracking-wide mb-1.5 flex items-center gap-1.5 text-danger">
@@ -53,20 +56,16 @@ function MissingGroup({ items, onOpen }) {
         {items.length === 1 ? "1 sag mangler en vare" : `${items.length} sager mangler varer`}
       </p>
       <div className="space-y-0.5">
-        {items.map((o) => {
-          const mangler = missingLineItems(o);
-          return (
-            <button key={o.id} onClick={() => onOpen(o.id)} className="w-full text-left rounded-lg hover:bg-panel px-2 py-2 transition-colors focus:outline-none focus:ring-2 focus:ring-brand">
-              <span className="flex items-center justify-between gap-2">
-                <span className="text-xs text-ink truncate">{o.kunde?.navn || "Ukendt kunde"}</span>
-                <span className="font-mono text-[10px] text-muted shrink-0">#{o.nr}</span>
-              </span>
-              <span className="block text-[11px] text-danger truncate">
-                {mangler.map((v) => lineItemLabel(v)).join(", ")}
-              </span>
-            </button>
-          );
-        })}
+        {raekker.map(({ o, v }) => (
+          <button key={`${o.id}:${v.id}`} onClick={() => (onReplace ? onReplace(o.id, v.id) : onOpen(o.id))} className="w-full text-left rounded-lg hover:bg-panel px-2 py-2.5 transition-colors focus:outline-none focus:ring-2 focus:ring-brand">
+            <span className="flex items-center justify-between gap-2">
+              <span className="text-xs text-ink truncate">{o.kunde?.navn || "Ukendt kunde"}</span>
+              <span className="font-mono text-[10px] text-muted shrink-0">#{o.nr}</span>
+            </span>
+            <span className="block text-[11px] text-danger truncate">{lineItemLabel(v)}</span>
+            {onReplace && <span className="block text-[10px] text-muted">Tryk for at finde en erstatning</span>}
+          </button>
+        ))}
       </div>
       <p className="text-[10px] text-muted mt-1.5 px-2">
         Bliver stående, indtil sagen får en ny dato, varen skiftes ud, eller lageret finder den.
@@ -75,7 +74,7 @@ function MissingGroup({ items, onOpen }) {
   );
 }
 
-function NotificationBell({ notifications, onOpenOrder }) {
+function NotificationBell({ notifications, onOpenOrder, onReplaceItem }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -105,6 +104,7 @@ function NotificationBell({ notifications, onOpenOrder }) {
   const total = materialer.length + problemer.length + opfoelgninger.length + manglendeVarer.length + delvise.length;
 
   const openAndClose = (id) => { setOpen(false); onOpenOrder(id); };
+  const replaceAndClose = onReplaceItem ? (orderId, lineId) => { setOpen(false); onReplaceItem(orderId, lineId); } : undefined;
 
   return (
     <div ref={ref} className="relative shrink-0">
@@ -131,7 +131,7 @@ function NotificationBell({ notifications, onOpenOrder }) {
               {/* Manglende varer står ØVERST: det er den eneste af de fire,
                   hvor en kunde risikerer at få et forgæves besøg, hvis
                   ingen når at reagere i tide. */}
-              <MissingGroup items={manglendeVarer} onOpen={openAndClose} />
+              <MissingGroup items={manglendeVarer} onOpen={openAndClose} onReplace={replaceAndClose} />
               <NotifGroup title={`${problemer.length} ${problemer.length === 1 ? "sag" : "sager"} kom ikke i mål`} icon={AlertTriangle} color="#B3261E" items={problemer} onOpen={openAndClose} />
               <NotifGroup title={`${delvise.length} ${delvise.length === 1 ? "sag er" : "sager er"} delvist afsluttet — skal have ny dato`} icon={CalendarCheck2} color="#C8232E" items={delvise} onOpen={openAndClose} />
               <NotifGroup title={`${materialer.length} ${materialer.length === 1 ? "sag har" : "sager har"} nyt materialeforbrug`} icon={Package} color="#C8232E" items={materialer} onOpen={openAndClose} />
@@ -197,7 +197,7 @@ function StoreSwitcher({ store, isSystemAdmin, allStores, onSwitchStore, onExitS
 // én række, hvor der er plads. Løst med flex-wrap + order, så knapperne
 // kun findes ÉT sted i DOM'en - ikke to udgaver med hidden/visible, som
 // ville gentage hele navigationen for en skærmlæser.
-function TopNav({ page, onChange, user, onLogOut, notifications, onOpenOrder, allowedPages, store, allStores, onSwitchStore, onExitStoreView, onOpenAccountSettings }) {
+function TopNav({ page, onChange, user, onLogOut, notifications, onOpenOrder, allowedPages, store, allStores, onSwitchStore, onExitStoreView, onOpenAccountSettings, onReplaceItem }) {
   const allowed = PAGES.filter((s) => allowedPages.includes(s.key) || (s.key === "systemadmin" && user.erSystemadmin));
   return (
     <div className="sticky top-0 z-20 bg-ink mb-6">
@@ -211,7 +211,7 @@ function TopNav({ page, onChange, user, onLogOut, notifications, onOpenOrder, al
         <div className="flex items-center gap-2 shrink-0 ml-auto order-2 sm:order-3 sm:ml-0">
           <StoreSwitcher store={store} isSystemAdmin={user.erSystemadmin} allStores={allStores} onSwitchStore={onSwitchStore} onExitStoreView={onExitStoreView} />
           <span className="text-xs text-[#C9C9C9] hidden sm:inline pr-1">{user.navn}</span>
-          {notifications && onOpenOrder && <NotificationBell notifications={notifications} onOpenOrder={onOpenOrder} />}
+          {notifications && onOpenOrder && <NotificationBell notifications={notifications} onOpenOrder={onOpenOrder} onReplaceItem={onReplaceItem} />}
           {onOpenAccountSettings && (
             <button
               onClick={onOpenAccountSettings}

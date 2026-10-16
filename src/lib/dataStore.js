@@ -921,6 +921,7 @@ export const getAllPosIntegrationsAsSystemAdmin = () => pos.hentAlleOpsaetninger
 export const setPosIntegrationKey = (args) => pos.gemNoegle(args);
 export const testPosIntegration = (storeId) => pos.test(storeId);
 export const lookupPosOrder = (args) => pos.opslag(args);
+export const findPosAlternatives = (args) => pos.alternativer(args);
 export const syncPosOnFinish = (args) => pos.synkVedAfslutning(args);
 
 // Butikkens eget lager (S3-kompatibelt NAS). Adapter: lager. Selve upload/download af filer: lib/attachments.js.
