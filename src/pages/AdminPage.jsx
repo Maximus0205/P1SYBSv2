@@ -24,7 +24,7 @@ function AdminPage({
   productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates,
   permissions,
   onUpdateTechnicianVehicle, onAddVehicle, onUpdateVehicle, onDeleteVehicle, onToggleVehicleClosed,
-  onAddUser, onUpdateUser, onDeleteUser, onResetPassword, onUpdatePermissions,
+  onAddUser, onUpdateUser, onDeleteUser, onResetPassword, onResetPin, onUpdatePermissions,
   onAddProductCategory, onUpdateProductCategory, onDeleteProductCategory,
   onAddProductType, onUpdateProductType, onDeleteProductType,
   onAddPrimaryService, onUpdatePrimaryService, onDeletePrimaryService,
@@ -166,7 +166,7 @@ function AdminPage({
           {hasPerm(permissions, "admin_butik") && (
             <LoginPolicySetting store={store} onPasswordUpdated={onPasswordPolicyUpdated} onLoginPolicyUpdated={onLoginPolicyUpdated} />
           )}
-          <NewUserForm onAdd={onAddUser} passwordPolicy={passwordPolicy} />
+          <NewUserForm onAdd={onAddUser} butiksnummer={store?.butiksnummer} />
           <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Alle brugere ({users.length})</h3>
           <div className="space-y-2">
             {users.map((b) => {
@@ -174,7 +174,7 @@ function AdminPage({
               return (
                 <UserRow
                   key={b.id} user={b} vehicle={vehicle} currentUserId={currentUserId}
-                  onUpdate={onUpdateUser} onDelete={onDeleteUser} onResetPassword={onResetPassword}
+                  onUpdate={onUpdateUser} onDelete={onDeleteUser} onResetPassword={onResetPassword} onResetPin={onResetPin}
                   permissionsCatalog={permissionsCatalog} roleDefaults={roleDefaults} onUpdatePermissions={onUpdatePermissions}
                   passwordPolicy={passwordPolicy}
                 />

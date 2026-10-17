@@ -405,10 +405,16 @@ export async function setLoginPin(pin) {
   return { ok: true };
 }
 
-export async function loginWithPin(identifier, pin) {
-  const { data, error } = await supabase.functions.invoke("login-with-pin", { body: { identifier, pin } });
+// Login = butiksnummer + brugernavn (initialer) + 4-cifret PIN.
+// Returnerer { ok } ved succes, { ok:false, skalSkiftePin:true } hvis PIN'en er en
+// MIDLERTIDIG (sat af admin) - kald da igen med nyPin - ellers { ok:false, fejl }.
+export async function loginWithPin({ butik, brugernavn, pin, nyPin }) {
+  const body = { butik, brugernavn, pin };
+  if (nyPin) body.nyPin = nyPin;
+  const { data, error } = await supabase.functions.invoke("login-with-pin", { body });
+  if (data?.skalSkiftePin) return { ok: false, skalSkiftePin: true };
   if (error || data?.fejl) {
-    const fejl = await readEdgeFunctionError(data, error, "Forkert bruger eller PIN-kode.");
+    const fejl = await readEdgeFunctionError(data, error, "Forkert butik, bruger eller PIN-kode.");
     return { ok: false, fejl };
   }
   // Selve session-oprettelsen: engangskoden fra Edge Function'en indløses
@@ -418,6 +424,18 @@ export async function loginWithPin(identifier, pin) {
   const { error: otpFejl } = await supabase.auth.verifyOtp({ email: data.email, token: data.otp, type: "magiclink" });
   if (otpFejl) return { ok: false, fejl: "Koden var rigtig, men login-sessionen kunne ikke oprettes. Prøv igen." };
   return { ok: true };
+}
+
+// En admin nulstiller en andens PIN. Returnerer den nye MIDLERTIDIGE PIN (vises kun denne ene gang) -
+// brugeren vælger selv en ny ved næste login.
+export async function resetPinAsAdmin(userId) {
+  const { data, error } = await supabase.functions.invoke("set-login-pin", { body: { brugerId: userId } });
+  if (error || data?.fejl) {
+    const fejl = await readEdgeFunctionError(data, error, "Kunne ikke nulstille PIN-koden");
+    logError("dataStore:resetPinAsAdmin", fejl);
+    return { ok: false, fejl };
+  }
+  return { ok: true, pin: data.pin };
 }
 
 // ---------- Biometrisk login (WebAuthn) - september 2026 ----------
@@ -446,8 +464,8 @@ export async function registerBiometric(deviceLabel) {
   return { ok: true };
 }
 
-export async function loginWithBiometric(identifier) {
-  const { data, error } = await supabase.functions.invoke("webauthn-login-options", { body: { identifier } });
+export async function loginWithBiometric({ butik, brugernavn }) {
+  const { data, error } = await supabase.functions.invoke("webauthn-login-options", { body: { butik, brugernavn } });
   if (error || data?.fejl) {
     return { ok: false, fejl: await readEdgeFunctionError(data, error, "Biometrisk login er ikke sat op for denne bruger.") };
   }
@@ -457,7 +475,7 @@ export async function loginWithBiometric(identifier) {
   } catch (e) {
     return { ok: false, fejl: e?.name === "NotAllowedError" ? "Annulleret." : (e?.message || "Biometrisk login blev annulleret.") };
   }
-  const { data: verifyData, error: verifyError } = await supabase.functions.invoke("webauthn-login-verify", { body: { identifier, response } });
+  const { data: verifyData, error: verifyError } = await supabase.functions.invoke("webauthn-login-verify", { body: { butik, brugernavn, response } });
   if (verifyError || verifyData?.fejl) {
     return { ok: false, fejl: await readEdgeFunctionError(verifyData, verifyError, "Biometrisk login lykkedes ikke.") };
   }
@@ -671,7 +689,7 @@ export async function createUserAsAdmin({ loginType, email, brugernavn, adgangsk
     logError("dataStore:createUserAsAdmin", fejl);
     return { ok: false, fejl };
   }
-  return { ok: true };
+  return { ok: true, midlertidigPin: data?.midlertidigPin || null, butiksnummer: data?.butiksnummer || null };
 }
 
 export async function resetPasswordAsAdmin(userId, newPassword) {

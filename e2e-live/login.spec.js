@@ -1,6 +1,8 @@
 // Login mod den RIGTIGE app og Testmiljø-databasen. Kun læsning: testene opretter, ændrer og sletter intet.
 // Brugeren (rollen sælger, butikken TESTMILJØ2.0) ligger i hemmelighederne E2E_EMAIL og E2E_PASSWORD.
-// E2E_EMAIL kan være et brugernavn ("e2e") eller en e-mail - samme felt som på loginsiden.
+// Testen logger ind via "Systemadministrator-login" (e-mail + adgangskode) på loginsiden.
+// Almindeligt login er butiksnummer + brugernavn (initialer) + 4-cifret PIN, som testmiljøets
+// brugere ikke har hemmeligheder til - E2E_EMAIL skal derfor være en rigtig e-mail.
 import { test, expect } from "@playwright/test";
 
 const bruger = process.env.E2E_EMAIL;
@@ -14,7 +16,8 @@ const aabn = async (page) => {
 };
 
 const logInd = async (page, b, k) => {
-  await page.getByLabel(/e-mail eller brugernavn/i).fill(b);
+  await page.getByRole("button", { name: "Systemadministrator-login" }).click();
+  await page.getByLabel("E-mail").fill(b);
   await page.getByLabel("Adgangskode").fill(k);
   await page.getByRole("button", { name: "Log ind", exact: true }).click();
 };
@@ -22,7 +25,7 @@ const logInd = async (page, b, k) => {
 test("forkert adgangskode afvises med en forståelig fejl", async ({ page }) => {
   await aabn(page);
   await logInd(page, bruger, `${kode}-forkert`);
-  await expect(page.getByText("Forkert e-mail/brugernavn eller adgangskode.")).toBeVisible();
+  await expect(page.getByText("Forkert e-mail eller adgangskode.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Log ud" })).toHaveCount(0);
 });
 

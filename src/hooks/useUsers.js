@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { getStoreUsers, createUserAsAdmin, updateProfile, resetPasswordAsAdmin, updateUserPermissions, deleteUserAsAdmin } from "../lib/dataStore";
+import { getStoreUsers, createUserAsAdmin, updateProfile, resetPasswordAsAdmin, resetPinAsAdmin, updateUserPermissions, deleteUserAsAdmin } from "../lib/dataStore";
 import { sletBruger } from "../lib/sletBruger";
 
 // Al state og CRUD for BRUGERE (som "montører" udledes af, se koererSelv
@@ -82,6 +82,9 @@ export function useUsers(storeId) {
 
   const resetPassword = (userId, newPassword) => resetPasswordAsAdmin(userId, newPassword);
 
+  // Nulstiller en brugers PIN til en tilfældig MIDLERTIDIG PIN (returneres én gang). Brugeren vælger selv en ny ved næste login.
+  const resetPin = (userId) => resetPinAsAdmin(userId);
+
   // Individuelle rettigheds-til-/fravalg. Håndhæves også i databasen (se
   // profiles_guard_privileged_fields), så dette kald ikke kan bruges til
   // at give nogen flere rettigheder end man selv har lov til.
@@ -91,5 +94,5 @@ export function useUsers(storeId) {
     return result;
   };
 
-  return { users, addUser, updateUser, deleteUser, resetPassword, updatePermissions, reload: () => load(storeId) };
+  return { users, addUser, updateUser, deleteUser, resetPassword, resetPin, updatePermissions, reload: () => load(storeId) };
 }

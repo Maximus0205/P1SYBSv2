@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { X, KeyRound, Check, AlertCircle, Loader2, Fingerprint, Info } from "lucide-react";
+import { X, KeyRound, Check, AlertCircle, Loader2, Fingerprint } from "lucide-react";
 import { setLoginPin, registerBiometric } from "../lib/dataStore";
 import { erBiometriTilgaengelig } from "../lib/webauthn";
 
@@ -22,8 +22,8 @@ const PIN_LAENGDE = 4;
 // have to forskellige krav samtidig. Håndhæves server-side i
 // set-login-pin (Edge Function).
 //
-// Begge dele skjules helt, hvis butikken har slået "simpelt login" fra
-// (Admin -> Brugere) - se store.simpelLoginAktiveret.
+// PIN-skift er altid tilgængeligt. Face ID/fingeraftryk skjules, hvis butikken har
+// slået det fra (Admin -> Brugere) - se store.simpelLoginAktiveret.
 function AccountSettingsModal({ store, onClose }) {
   const simpelLoginAktiveret = store?.simpelLoginAktiveret !== false;
 
@@ -76,17 +76,12 @@ function AccountSettingsModal({ store, onClose }) {
           </button>
         </div>
 
-        {!simpelLoginAktiveret ? (
-          <p className="text-sm text-muted flex items-start gap-2">
-            <Info size={15} className="text-brand shrink-0 mt-0.5" aria-hidden="true" />
-            PIN-login og Face ID/fingeraftryk er slået fra for denne butik. Log ind med din almindelige adgangskode.
-          </p>
-        ) : (
+        {
           <>
-            {!checkingBiometric && biometricAvailable && (
+            {simpelLoginAktiveret && !checkingBiometric && biometricAvailable && (
               <div className="mb-5 pb-5 border-b border-divider">
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1.5 flex items-center gap-1.5"><Fingerprint size={15} className="text-brand" aria-hidden="true" /> Face ID/fingeraftryk</h3>
-                <p className="text-xs text-muted mb-3">Log ind med telefonens egen Face ID eller fingeraftryk i stedet for adgangskode eller PIN.</p>
+                <p className="text-xs text-muted mb-3">Log ind med telefonens egen Face ID eller fingeraftryk i stedet for at taste PIN. Du skal stadig skrive butiksnummer og brugernavn.</p>
                 <button
                   onClick={enableBiometric}
                   disabled={biometricBusy}
@@ -100,9 +95,9 @@ function AccountSettingsModal({ store, onClose }) {
               </div>
             )}
 
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1.5 flex items-center gap-1.5"><KeyRound size={15} className="text-brand" aria-hidden="true" /> PIN-login</h3>
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1.5 flex items-center gap-1.5"><KeyRound size={15} className="text-brand" aria-hidden="true" /> Skift PIN-kode</h3>
             <p className="text-xs text-muted mb-3">
-              Sæt en {PIN_LAENGDE}-cifret PIN-kode, så du kan logge ind hurtigere fremover - på denne eller enhver anden enhed. Din almindelige adgangskode virker stadig som hidtil.
+              Vælg en ny {PIN_LAENGDE}-cifret PIN-kode. Du bruger den sammen med butiksnummer og brugernavn (initialer) til at logge ind på alle dine enheder. Undgå lette koder som 1234 eller 1111.
             </p>
             <div className="grid gap-2 mb-3">
               <input
@@ -134,7 +129,7 @@ function AccountSettingsModal({ store, onClose }) {
               {saving ? "Gemmer..." : "Gem PIN-kode"}
             </button>
           </>
-        )}
+        }
       </div>
     </div>
   );

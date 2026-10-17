@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Trash2, X, Plus, Pencil, UserPlus, PalmtreeIcon, CalendarOff, KeyRound, Stethoscope, HeartPulse, ShieldCheck, Truck, Clock, Gauge, TimerReset } from "lucide-react";
 import { vehicleLabel, technicianColor, todayISO, activeSickLeave } from "../data/domain";
-import { suggestUsername, isValidUsername } from "../lib/username";
 import { updateSickLeaveWindow, updatePasswordPolicy, updateLoginPolicy } from "../lib/dataStore";
 import { MinutesInput } from "../components/common";
 
@@ -301,10 +300,10 @@ function LoginPolicySetting({ store, onPasswordUpdated, onLoginPolicyUpdated }) 
       <div className="rounded-lg bg-panel p-3 mb-3">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-ink">PIN-kode og Face ID/fingeraftryk</p>
-            <p className="text-[11px] text-muted mt-0.5">En 4-cifret kode eller biometri som alternativ til adgangskode - hver bruger sætter selv sin op under "Din konto". Sluk kontakten for kun at tillade fuld adgangskode (fx en kundes egen politik).</p>
+            <p className="text-sm font-medium text-ink">Face ID/fingeraftryk</p>
+            <p className="text-[11px] text-muted mt-0.5">Brugerne logger ind med butiksnummer, brugernavn (initialer) og 4-cifret PIN. Face ID/fingeraftryk er et valgfrit supplement, hver bruger sætter op under "Din konto". Sluk kontakten for at forbyde det i butikken.</p>
           </div>
-          <Toggle checked={simpleLoginEnabled} onChange={setSimpleLoginEnabled} ariaLabel="Tillad PIN-login og biometrisk login" />
+          <Toggle checked={simpleLoginEnabled} onChange={setSimpleLoginEnabled} ariaLabel="Tillad biometrisk login (Face ID/fingeraftryk)" />
         </div>
       </div>
 
@@ -489,28 +488,21 @@ function PermissionsEditor({ user, permissionsCatalog, roleDefaults, onUpdatePer
   );
 }
 
-function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPassword, permissionsCatalog, roleDefaults, onUpdatePermissions, passwordPolicy }) {
+function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPin, permissionsCatalog, roleDefaults, onUpdatePermissions }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user.navn);
-  const [showReset, setShowReset] = useState(false);
-  const [newPassword, setNewPassword] = useState("");
-  const [resetMessage, setResetMessage] = useState("");
+  const [pinInfo, setPinInfo] = useState(null); // { pin } | { fejl }
   const [busy, setBusy] = useState(false);
   const [showPermissions, setShowPermissions] = useState(false);
 
-  const minLength = passwordPolicy?.minLength ?? 6;
-  const requireMixed = passwordPolicy?.requireMixed ?? false;
-
-  const reset = async () => {
-    if (newPassword.length < minLength) { setResetMessage(`Mindst ${minLength} tegn.`); return; }
-    if (requireMixed && !opfylderBlandingskrav(newPassword)) { setResetMessage("Skal indeholde både bogstaver og tal."); return; }
+  // Nulstiller PIN til en tilfældig, midlertidig kode. Den vises KUN her, én gang -
+  // admin giver den videre, og brugeren vælger selv en ny ved næste login.
+  const resetPin = async () => {
+    if (!window.confirm(`Nulstil PIN-koden for ${user.navn}?\n\nDen nuværende PIN holder op med at virke, og du får en ny midlertidig PIN, som du giver videre til ${user.navn}.`)) return;
     setBusy(true);
-    const result = await onResetPassword(user.id, newPassword);
+    const result = await onResetPin(user.id);
     setBusy(false);
-    if (!result?.ok) { setResetMessage(result?.fejl || "Kunne ikke nulstille."); return; }
-    setResetMessage("Adgangskode nulstillet.");
-    setNewPassword("");
-    setTimeout(() => { setShowReset(false); setResetMessage(""); }, 1500);
+    setPinInfo(result?.ok ? { pin: result.pin } : { fejl: result?.fejl || "Kunne ikke nulstille PIN-koden." });
   };
 
   const canEditPermissions = user.id !== currentUserId && onUpdatePermissions && permissionsCatalog;
@@ -542,7 +534,7 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
           )}
           <p className="text-xs text-muted truncate">
             {ROLE_LABEL[user.rolle] || user.rolle}
-            {user.brugernavn && <span> · logger ind som "{user.brugernavn}"</span>}
+            {user.brugernavn && <span> · brugernavn "{user.brugernavn}"</span>}
             {erMedhjaelper ? <span> · bil sættes pr. dag i Planlægning</span> : koerer && <span> · {vehicle ? vehicleLabel(vehicle) : "kører rute, ingen bil endnu"}</span>}
             {(user.extraPermissions?.length > 0 || user.revokedPermissions?.length > 0) && <span> · rettigheder tilpasset</span>}
           </p>
@@ -569,7 +561,7 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
           </button>
         )}
         {!editing && <button onClick={() => { setName(user.navn); setEditing(true); }} aria-label={`Ret navn på ${user.navn}`} className="w-10 h-10 flex items-center justify-center rounded-lg text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand" title="Ret navn"><Pencil size={15} aria-hidden="true" /></button>}
-        {onResetPassword && <button onClick={() => setShowReset((v) => !v)} aria-expanded={showReset} aria-label={`Nulstil adgangskode for ${user.navn}`} className="w-10 h-10 flex items-center justify-center rounded-lg text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand" title="Nulstil adgangskode"><KeyRound size={15} aria-hidden="true" /></button>}
+        {onResetPin && user.id !== currentUserId && <button onClick={resetPin} disabled={busy} aria-label={`Nulstil PIN for ${user.navn}`} className="w-10 h-10 flex items-center justify-center rounded-lg text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand disabled:opacity-60" title="Nulstil PIN"><KeyRound size={15} aria-hidden="true" /></button>}
         {/* Tooltip'en sagde tidligere "Fjern adgang", fordi knappen dengang
             blot fjernede butikstilknytningen. Den SLETTER nu brugeren
             permanent, og en knap må ikke beskrive sig selv mildere end den
@@ -583,20 +575,17 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
       {!erFastMontor && user.kanKoere && !vehicle && (
         <p className="px-3 pb-2 text-[11px] text-brand">Tildel en bil under fanen "Montører", før personen kan få sager.</p>
       )}
-      {showReset && (
-        <div className="px-3 pb-3 flex items-center gap-2 flex-wrap">
-          <input
-            type="password"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            placeholder={`Ny adgangskode (mindst ${minLength} tegn${requireMixed ? ", bogstaver + tal" : ""})`}
-            aria-label="Ny adgangskode"
-            className="flex-1 min-w-[160px] rounded-lg border border-line bg-panel px-2 py-2 text-xs text-ink focus:outline-none focus:border-brand"
-          />
-          <button onClick={reset} disabled={busy} className="px-3 py-2 rounded-lg text-[10px] font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60">
-            {busy ? "..." : "Sæt ny adgangskode"}
-          </button>
-          {resetMessage && <span className={`text-[11px] ${resetMessage.includes("nulstillet") ? "text-success" : "text-danger"}`}>{resetMessage}</span>}
+      {pinInfo && (
+        <div className="px-3 pb-3" role="status">
+          {pinInfo.pin ? (
+            <div className="rounded-lg border border-success bg-success/5 p-3 flex items-center gap-3 flex-wrap">
+              <p className="text-sm text-ink flex-1 min-w-[200px]">Midlertidig PIN for {user.navn}: <span className="font-mono text-lg font-bold tracking-[0.3em] ml-1">{pinInfo.pin}</span>
+                <span className="block text-[11px] text-muted mt-0.5">Vises kun nu. {user.navn} vælger selv en ny PIN ved næste login.</span></p>
+              <button onClick={() => setPinInfo(null)} className="px-3 py-2 rounded-lg text-[10px] font-semibold uppercase tracking-wide text-ink border border-line hover:border-brand">Luk</button>
+            </div>
+          ) : (
+            <p className="text-xs text-danger">{pinInfo.fejl} <button onClick={() => setPinInfo(null)} className="underline ml-1">Luk</button></p>
+          )}
         </div>
       )}
       {showPermissions && canEditPermissions && (
@@ -609,55 +598,63 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPass
   );
 }
 
-function NewUserForm({ onAdd, passwordPolicy }) {
-  const [loginType, setLoginType] = useState("brugernavn");
+// Foreslår initialer ud fra et navn: "Magnus Andersen" -> "ma" (første bogstav i hvert ord, max 5).
+// Er der kun ét ord, bruges de to første bogstaver. Kan altid rettes af admin.
+const foreslaaInitialer = (navn) => {
+  const ord = (navn || "").trim().toLowerCase().replace(/æ/g, "a").replace(/ø/g, "o").replace(/å/g, "a").replace(/[^a-z\s]/g, "").split(/\s+/).filter(Boolean);
+  if (ord.length === 0) return "";
+  if (ord.length === 1) return ord[0].slice(0, 2);
+  return ord.map((o) => o[0]).join("").slice(0, 5);
+};
+const erGyldigeInitialer = (v) => /^[a-z]{2,5}$/.test((v || "").trim().toLowerCase());
+
+function NewUserForm({ onAdd, butiksnummer }) {
   const [name, setName] = useState("");
-  const [username, setUsername] = useState("");
-  const [usernameEdited, setUsernameEdited] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [initials, setInitials] = useState("");
+  const [initialsEdited, setInitialsEdited] = useState(false);
   const [role, setRole] = useState("saelger");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-
-  const minLength = passwordPolicy?.minLength ?? 6;
-  const requireMixed = passwordPolicy?.requireMixed ?? false;
+  const [oprettet, setOprettet] = useState(null); // { navn, brugernavn, pin, butiksnummer }
 
   const changeName = (val) => {
     setName(val);
-    if (!usernameEdited) setUsername(suggestUsername(val));
+    if (!initialsEdited) setInitials(foreslaaInitialer(val));
   };
 
   const create = async () => {
     setError("");
-    if (!name.trim() || !password.trim()) { setError("Udfyld navn og adgangskode."); return; }
-    if (loginType === "brugernavn" && !isValidUsername(username)) { setError("Brugernavn skal være 2-40 tegn (a-z, tal, punktum eller bindestreg)."); return; }
-    if (loginType === "email" && !email.trim()) { setError("Udfyld e-mail."); return; }
-    if (password.length < minLength) { setError(`Adgangskoden skal være mindst ${minLength} tegn (denne butiks eget krav).`); return; }
-    if (requireMixed && !opfylderBlandingskrav(password)) { setError("Adgangskoden skal indeholde både bogstaver og tal (denne butiks eget krav)."); return; }
+    if (!name.trim()) { setError("Udfyld navn."); return; }
+    if (!erGyldigeInitialer(initials)) { setError("Initialer skal være 2-5 bogstaver (a-z, uden æøå og mellemrum)."); return; }
     setBusy(true);
-    const result = await onAdd({ navn: name.trim(), loginType, email: email.trim(), brugernavn: username.trim().toLowerCase(), adgangskode: password, rolle: role });
+    const brugernavn = initials.trim().toLowerCase();
+    const result = await onAdd({ navn: name.trim(), loginType: "pin", brugernavn, rolle: role });
     setBusy(false);
     if (!result.ok) { setError(result.fejl || "Kunne ikke oprette brugeren."); return; }
-    setName(""); setUsername(""); setUsernameEdited(false); setEmail(""); setPassword(""); setRole("saelger");
+    setOprettet({ navn: name.trim(), brugernavn, pin: result.midlertidigPin, butiksnummer: result.butiksnummer || butiksnummer });
+    setName(""); setInitials(""); setInitialsEdited(false); setRole("saelger");
   };
 
   return (
     <div className="rounded-xl border border-line bg-white p-5 mb-6 shadow-sm">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Opret ny bruger</h3>
-      <div className="flex rounded-lg border border-line mb-3 text-xs font-semibold uppercase tracking-wide w-fit overflow-hidden">
-        <button onClick={() => setLoginType("brugernavn")} aria-pressed={loginType === "brugernavn"} className={`px-3 py-2 transition-colors ${loginType === "brugernavn" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>Brugernavn</button>
-        <button onClick={() => setLoginType("email")} aria-pressed={loginType === "email"} className={`px-3 py-2 transition-colors ${loginType === "email" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>E-mail</button>
-      </div>
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1">Opret ny bruger</h3>
+      <p className="text-xs text-muted mb-3">Brugeren logger ind med butiksnummer{butiksnummer ? ` (${butiksnummer})` : ""}, brugernavn (initialer) og en 4-cifret PIN. Du får en midlertidig PIN, som brugeren selv skifter ved første login.</p>
+      {oprettet && (
+        <div className="rounded-lg border border-success bg-success/5 p-3 mb-4" role="status">
+          <p className="text-sm font-semibold text-ink mb-1">{oprettet.navn} er oprettet. Giv personen disse loginoplysninger:</p>
+          <dl className="text-sm text-ink grid grid-cols-[auto,1fr] gap-x-3 gap-y-0.5">
+            <dt className="text-muted">Butiksnummer</dt><dd className="font-mono">{oprettet.butiksnummer || "—"}</dd>
+            <dt className="text-muted">Brugernavn</dt><dd className="font-mono">{oprettet.brugernavn}</dd>
+            <dt className="text-muted">Midlertidig PIN</dt><dd className="font-mono text-lg font-bold tracking-[0.3em]">{oprettet.pin}</dd>
+          </dl>
+          <p className="text-[11px] text-muted mt-2">PIN'en vises kun nu. Mister du den, kan du nulstille den på brugeren i listen nedenfor.</p>
+          <button onClick={() => setOprettet(null)} className="mt-2 px-3 py-2 rounded-lg text-[10px] font-semibold uppercase tracking-wide text-ink border border-line hover:border-brand">Luk</button>
+        </div>
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
         <input value={name} onChange={(e) => changeName(e.target.value)} placeholder="Navn" aria-label="Navn" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-        {loginType === "brugernavn" ? (
-          <input value={username} onChange={(e) => { setUsername(e.target.value); setUsernameEdited(true); }} placeholder="Brugernavn (foreslået, kan rettes)" aria-label="Brugernavn" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
-        ) : (
-          <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="E-mail" aria-label="E-mail" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-        )}
-        <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder={`Adgangskode (mindst ${minLength} tegn${requireMixed ? ", bogstaver + tal" : ""})`} aria-label="Adgangskode" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-        <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Rolle" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
+        <input value={initials} onChange={(e) => { setInitials(e.target.value.toLowerCase().replace(/[^a-z]/g, "").slice(0, 5)); setInitialsEdited(true); }} placeholder="Initialer (foreslået, kan rettes)" aria-label="Brugernavn (initialer)" autoCapitalize="off" autoCorrect="off" spellCheck={false} className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
+        <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Rolle" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand sm:col-span-2">
           <option value="saelger">Sælger (opret sager, Planlægning, Lager, Arkiv)</option>
           <option value="montor">Montør (kun sin egen rute)</option>
           <option value="medhjaelper">Medhjælper (løfter og pakker ud, ser dagens tur)</option>
@@ -672,7 +669,7 @@ function NewUserForm({ onAdd, passwordPolicy }) {
           Skal personen også kunne køre en rute en gang imellem, slås "Kører rute" til på brugeren i listen nedenfor — det kræver ikke en ekstra konto.
         </p>
       )}
-      {error && <p className="text-xs text-danger mt-2">{error}</p>}
+      {error && <p role="alert" className="text-xs text-danger mt-2">{error}</p>}
       <button onClick={create} disabled={busy} className="mt-3 px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5 disabled:opacity-60">
         <UserPlus size={15} aria-hidden="true" /> {busy ? "Opretter..." : "Opret bruger"}
       </button>
