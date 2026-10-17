@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { Check, KeyRound, AlertTriangle, Lock, RotateCw, X } from "lucide-react";
-import { lineItemLabel, formatLongDate, canDo, isMissingActive } from "../data/domain";
+import { lineItemLabel, formatLongDate, canDo, isMissingActive, isToday } from "../data/domain";
 import { DateSelector } from "../components/common";
 import { linjeSkalPlukkes } from "../lib/ydelser";
+import { useNytPluk } from "../hooks/useNytPluk";
+import { nytPlukNoegle } from "../lib/nytPlukLogik";
 
 // Lagersiden viser ét pluk-PUNKT pr. varelinje - IKKE ét punkt pr. ordre.
 // En ordre med 3 varelinjer giver altså 3 selvstændige rækker her, som hver
@@ -120,6 +122,11 @@ function WarehousePage({ orders, vehicles, primaryServices, selectedDate, onDate
   const udenPlukCount = alleLinjer.length - points.length;
   const sortFn = (a, b) => (a.order.start || "").localeCompare(b.order.start || "");
 
+  // NYT PÅ DAGENS PLUK (oktober 2026): varer, der er kommet på listen for I DAG, siden brugeren sidst trykkede "Forstået".
+  // Kun for dags dato, og først når sagerne er hentet. Se hooks/useNytPluk.js og lib/nytPlukLogik.js.
+  const { nye, markerSet } = useNytPluk(points.map((p) => nytPlukNoegle(p.order.id, p.lineItem.id)), isToday(selectedDate) && orders.length > 0);
+  const nyeVarer = points.filter((p) => !p.lineItem.plukket && !isMissingActive(p.order, p.lineItem) && nye.has(nytPlukNoegle(p.order.id, p.lineItem.id)));
+
   // Manglende varer får deres EGEN sektion øverst. De hører ikke hjemme
   // under "mangler pluk", for der er intet at plukke - og de må slet ikke
   // gemme sig blandt de øvrige, når hele pointen er, at nogen skal handle
@@ -131,8 +138,9 @@ function WarehousePage({ orders, vehicles, primaryServices, selectedDate, onDate
   const Row = ({ order, lineItem, variant }) => {
     const vehicle = (vehicles || []).find((v) => v.id === order.bilId);
     const erManglende = variant === "mangler";
+    const erNy = !erManglende && !lineItem.plukket && nye.has(nytPlukNoegle(order.id, lineItem.id));
     return (
-      <div className={`rounded-xl bg-white border shadow-sm p-3 ${erManglende ? "border-danger" : "border-[#ECECEC]"}`}>
+      <div className={`rounded-xl bg-white border shadow-sm p-3 ${erManglende ? "border-danger" : erNy ? "border-brand" : "border-[#ECECEC]"}`}>
         <div className="flex items-center gap-3">
           {erManglende ? (
             <AlertTriangle size={22} className="shrink-0 text-danger" aria-hidden="true" />
@@ -151,6 +159,7 @@ function WarehousePage({ orders, vehicles, primaryServices, selectedDate, onDate
             <div className="flex items-center gap-2">
               <p className="font-semibold text-sm text-ink truncate">{lineItemLabel(lineItem)}</p>
               <span className="font-mono text-[10px] text-faint">#{order.nr}</span>
+              {erNy && <span className="shrink-0 rounded bg-brand px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Nyt</span>}
               {order.noegle?.kraeves && <KeyRound size={12} className="text-brand shrink-0" aria-label="Nøgle/adgang kræves" />}
             </div>
             <p className="text-xs text-muted truncate">{order.kunde.navn} · {order.start}–{order.slut}{vehicle ? ` · ${vehicle.navn}` : ""}</p>
@@ -213,6 +222,21 @@ function WarehousePage({ orders, vehicles, primaryServices, selectedDate, onDate
         <p className="text-xs text-muted italic mb-4">
           {udenPlukCount} {udenPlukCount === 1 ? "varelinje vises" : "varelinjer vises"} ikke her, fordi {udenPlukCount === 1 ? "den hører" : "de hører"} til en ydelse uden pluk (fx servicetur, hvor varen er hos kunden).
         </p>
+      )}
+
+      {nyeVarer.length > 0 && (
+        <div role="status" className="rounded-xl border border-brand bg-white p-3 mb-6 flex items-center gap-3 flex-wrap">
+          <p className="text-sm text-ink flex-1 min-w-[200px]">
+            <span className="font-semibold">{nyeVarer.length} {nyeVarer.length === 1 ? "ny vare" : "nye varer"}</span> er kommet på dagens pluk, siden du sidst så listen. De er mærket "Nyt" nedenfor.
+          </p>
+          <button
+            type="button"
+            onClick={markerSet}
+            className="min-h-[44px] px-4 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors"
+          >
+            Forstået
+          </button>
+        </div>
       )}
 
       {missingItems.length > 0 && (
