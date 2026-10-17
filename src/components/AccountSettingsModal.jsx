@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { X, KeyRound, Check, AlertCircle, Loader2, Fingerprint } from "lucide-react";
 import { setLoginPin, registerBiometric } from "../lib/dataStore";
 import { erBiometriTilgaengelig } from "../lib/webauthn";
+import { MinSmsAdvisering } from "./MinSmsAdvisering";
 
 const ABSOLUT_MIN = 4;
 const MAX_LAENGDE = 64;
@@ -24,6 +25,9 @@ const MAX_LAENGDE = 64;
 //
 // PIN-skift er altid tilgængeligt. Face ID/fingeraftryk skjules, hvis butikken har
 // slået det fra (Admin -> Brugere) - se store.simpelLoginAktiveret.
+//
+// SMS-ADVISERING (oktober 2026): øverst kan medarbejderen tilmelde sig SMS-advisering med eget nummer, hvis butikkens admin har
+// tændt det (Admin -> SMS) - se MinSmsAdvisering.jsx. Dialogen kan rulle, så den også virker på små skærme.
 function AccountSettingsModal({ store, onClose }) {
   const simpelLoginAktiveret = store?.simpelLoginAktiveret !== false;
   const minLaengde = Math.max(ABSOLUT_MIN, store?.adgangskodeMinLaengde || ABSOLUT_MIN);
@@ -72,7 +76,7 @@ function AccountSettingsModal({ store, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-ink/50 p-3" role="dialog" aria-modal="true" aria-label="Kontoindstillinger">
-      <div className="w-full sm:max-w-sm rounded-xl bg-white border border-line shadow-lg p-6">
+      <div className="w-full sm:max-w-sm max-h-[90vh] overflow-y-auto rounded-xl bg-white border border-line shadow-lg p-6">
         <div className="flex items-start justify-between gap-2 mb-4">
           <h2 className="font-display text-2xl uppercase tracking-tight text-ink">Din konto</h2>
           <button onClick={onClose} aria-label="Luk" className="w-9 h-9 -m-1 flex items-center justify-center rounded-lg text-muted hover:text-ink focus:outline-none focus:ring-2 focus:ring-brand shrink-0">
@@ -82,6 +86,8 @@ function AccountSettingsModal({ store, onClose }) {
 
         {
           <>
+            <MinSmsAdvisering />
+
             {simpelLoginAktiveret && !checkingBiometric && biometricAvailable && (
               <div className="mb-5 pb-5 border-b border-divider">
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1.5 flex items-center gap-1.5"><Fingerprint size={15} className="text-brand" aria-hidden="true" /> Face ID/fingeraftryk</h3>
@@ -105,7 +111,7 @@ function AccountSettingsModal({ store, onClose }) {
             </p>
             <div className="grid gap-2 mb-3">
               <input
-                type="password" inputMode="text" autoComplete="new-password" autoCapitalize="off" autoCorrect="off" spellCheck={false} maxLength={MAX_LAENGDE} autoFocus={!biometricAvailable}
+                type="password" inputMode="text" autoComplete="new-password" autoCapitalize="off" autoCorrect="off" spellCheck={false} maxLength={MAX_LAENGDE}
                 value={pin}
                 onChange={(e) => setPin(e.target.value.replace(/\s/g, "").slice(0, MAX_LAENGDE))}
                 placeholder="Ny kode"
