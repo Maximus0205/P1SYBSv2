@@ -1,15 +1,16 @@
 import React, { useEffect, useState } from "react";
 import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus, X, Bug, RefreshCw, Plug, HardDrive, ChevronLeft, Calculator, Receipt } from "lucide-react";
-import { getAllStores, createStoreAsSystemAdmin, updateStoreAsSystemAdmin, deleteStoreAsSystemAdmin, getAllUsersAsSystemAdmin, updateProfile, resetPasswordAsAdmin, createUserAsAdmin, deleteUserAsAdmin, getErrorLogs, deleteErrorLog, clearErrorLogs, getAllPosIntegrationsAsSystemAdmin, getAllStorageIntegrationsAsSystemAdmin } from "../lib/dataStore";
+import { getAllStores, createStoreAsSystemAdmin, updateStoreAsSystemAdmin, deleteStoreAsSystemAdmin, getAllUsersAsSystemAdmin, updateProfile, resetPasswordAsAdmin, resetPinAsAdmin, createUserAsAdmin, deleteUserAsAdmin, getErrorLogs, deleteErrorLog, clearErrorLogs, getAllPosIntegrationsAsSystemAdmin, getAllStorageIntegrationsAsSystemAdmin } from "../lib/dataStore";
 import { sletBruger } from "../lib/sletBruger";
 import { getStorageUsage, formatBytes } from "../lib/attachments";
 import { geocodeAddresses } from "../lib/geocoding";
-import { suggestUsername, isValidUsername } from "../lib/username";
+import { foreslaaInitialer, erGyldigeInitialer } from "../lib/username";
 import { AddressInput } from "../components/AddressInput";
 import { PosIntegrationAdmin } from "../components/PosIntegrationAdmin";
 import { StorageIntegrationAdmin } from "../components/StorageIntegrationAdmin";
 import { KapacitetsLab } from "../components/KapacitetsLab";
 import { KapacitetsRegler } from "../components/KapacitetsRegler";
+import { LoginOplysninger } from "../components/AdminParts";
 
 const ROLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montør", lager: "Lager", medhjaelper: "Medhjælper" };
 
@@ -77,48 +78,41 @@ function StoresTab({ stores, loading, reload, currentUserId, onOwnStoreLinked })
   const [storeNumber, setStoreNumber] = useState("");
   const [address, setAddress] = useState("");
   const [addressStatus, setAddressStatus] = useState("tom");
-  const [adminLoginType, setAdminLoginType] = useState("brugernavn");
   const [adminName, setAdminName] = useState("");
-  const [adminUsername, setAdminUsername] = useState("");
-  const [adminUsernameEdited, setAdminUsernameEdited] = useState(false);
-  const [adminEmail, setAdminEmail] = useState("");
-  const [adminPassword, setAdminPassword] = useState("");
+  const [adminInitials, setAdminInitials] = useState("");
+  const [adminInitialsEdited, setAdminInitialsEdited] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [oprettetButik, setOprettetButik] = useState(null);
 
   const changeAdminName = (val) => {
     setAdminName(val);
-    if (!adminUsernameEdited) setAdminUsername(suggestUsername(val));
+    if (!adminInitialsEdited) setAdminInitials(foreslaaInitialer(val));
   };
 
   const create = async () => {
-    setError(""); setMessage("");
-    if (!storeName.trim() || !address.trim() || adminPassword.length < 6) {
-      setError("Udfyld butiksnavn, adresse og en adgangskode på mindst 6 tegn.");
+    setError(""); setOprettetButik(null);
+    if (!storeName.trim() || !address.trim() || !adminName.trim()) {
+      setError("Udfyld butiksnavn, adresse og navn på butikkens første admin.");
       return;
     }
     if (storeNumber.trim() && !/^\d{4}$/.test(storeNumber.trim())) {
       setError("Butiksnummer skal være præcis 4 cifre.");
       return;
     }
-    if (adminLoginType === "brugernavn" && !isValidUsername(adminUsername)) {
-      setError("Brugernavn skal være 2-40 tegn (a-z, tal, punktum eller bindestreg).");
-      return;
-    }
-    if (adminLoginType === "email" && !adminEmail.trim()) {
-      setError("Udfyld admin e-mail.");
+    if (!erGyldigeInitialer(adminInitials)) {
+      setError("Initialer skal være 2-5 bogstaver (a-z, uden æøå og mellemrum).");
       return;
     }
     setBusy(true);
     const result = await createStoreAsSystemAdmin({
       butiksNavn: storeName.trim(), adresse: address.trim(), butiksnummer: storeNumber.trim() || null,
-      adminNavn: adminName.trim(), adminLoginType, adminEmail: adminEmail.trim(), adminBrugernavn: adminUsername.trim().toLowerCase(), adminAdgangskode: adminPassword,
+      adminNavn: adminName.trim(), adminLoginType: "pin", adminBrugernavn: adminInitials.trim().toLowerCase(),
     });
     setBusy(false);
     if (!result.ok) { setError(result.fejl); return; }
-    setMessage(`Butikken "${storeName}" er oprettet, med ${adminLoginType === "brugernavn" ? `brugernavnet "${adminUsername}"` : adminEmail} som admin.`);
-    setStoreName(""); setStoreNumber(""); setAddress(""); setAdminName(""); setAdminUsername(""); setAdminUsernameEdited(false); setAdminEmail(""); setAdminPassword("");
+    setOprettetButik({ navn: adminName.trim(), butikNavn: storeName.trim(), butiksnummer: result.butiksnummer || storeNumber.trim(), brugernavn: result.brugernavn || adminInitials.trim().toLowerCase(), pin: result.midlertidigPin });
+    setStoreName(""); setStoreNumber(""); setAddress(""); setAdminName(""); setAdminInitials(""); setAdminInitialsEdited(false);
     reload();
   };
 
@@ -140,28 +134,24 @@ function StoresTab({ stores, loading, reload, currentUserId, onOwnStoreLinked })
         <p className="text-xs text-muted mb-3">Butikkens adresse geokodes automatisk - resten af butikkens system (adresseforslag ved booking) tager udgangspunkt i den, så en butik på Fyn ikke primært får forslag fra København.</p>
         <div className="grid gap-3 sm:grid-cols-2">
           <input value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="Butiksnavn" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-          <input value={storeNumber} onChange={(e) => setStoreNumber(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="Butiksnummer (4 cifre, valgfrit)" inputMode="numeric" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
+          <input value={storeNumber} onChange={(e) => setStoreNumber(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="Butiksnummer (4 cifre - tildeles automatisk, hvis tomt)" inputMode="numeric" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
           <div className="sm:col-span-2">
             <AddressInput value={address} onChange={setAddress} placeholder="Butikkens adresse" onValidationChange={setAddressStatus} />
           </div>
         </div>
 
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted mt-4 mb-2">Butikkens første admin</p>
-        <div className="flex rounded-full border border-line mb-3 text-xs font-semibold uppercase tracking-wide w-fit overflow-hidden">
-          <button onClick={() => setAdminLoginType("brugernavn")} className={`px-3 py-1.5 transition-colors ${adminLoginType === "brugernavn" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>Brugernavn</button>
-          <button onClick={() => setAdminLoginType("email")} className={`px-3 py-1.5 transition-colors ${adminLoginType === "email" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>E-mail</button>
-        </div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted mt-4 mb-1">Butikkens første admin</p>
+        <p className="text-xs text-muted mb-2">Logger ind som alle andre: butiksnummer + initialer + kode. Du får en midlertidig kode, som admin selv skifter ved første login.</p>
         <div className="grid gap-3 sm:grid-cols-2">
-          <input value={adminName} onChange={(e) => changeAdminName(e.target.value)} placeholder="Navn på butikkens første admin" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-          {adminLoginType === "brugernavn" ? (
-            <input value={adminUsername} onChange={(e) => { setAdminUsername(e.target.value); setAdminUsernameEdited(true); }} placeholder="Brugernavn (foreslået, kan rettes)" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
-          ) : (
-            <input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} placeholder="Admin e-mail" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-          )}
-          <input value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} placeholder="Admin adgangskode (mindst 6 tegn)" className="sm:col-span-2 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+          <input value={adminName} onChange={(e) => changeAdminName(e.target.value)} placeholder="Navn på butikkens første admin" aria-label="Navn på butikkens første admin" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+          <input value={adminInitials} onChange={(e) => { setAdminInitials(e.target.value.toLowerCase().replace(/[^a-z]/g, "").slice(0, 5)); setAdminInitialsEdited(true); }} placeholder="Initialer (foreslået, kan rettes)" aria-label="Brugernavn (initialer)" autoCapitalize="off" autoCorrect="off" spellCheck={false} className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
         </div>
-        {error && <p className="text-xs text-danger mt-2 flex items-center gap-1.5"><AlertCircle size={13} /> {error}</p>}
-        {message && <p className="text-xs text-success mt-2 flex items-center gap-1.5"><Check size={13} /> {message}</p>}
+        {error && <p role="alert" className="text-xs text-danger mt-2 flex items-center gap-1.5"><AlertCircle size={13} /> {error}</p>}
+        {oprettetButik && (
+          <div className="mt-3">
+            <LoginOplysninger navn={`Butikken "${oprettetButik.butikNavn}" og admin ${oprettetButik.navn}`} butiksnummer={oprettetButik.butiksnummer} brugernavn={oprettetButik.brugernavn} pin={oprettetButik.pin} onLuk={() => setOprettetButik(null)} />
+          </div>
+        )}
         <button onClick={create} disabled={busy} className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark transition-colors flex items-center gap-1.5 disabled:opacity-60">
           {busy && <Loader2 size={14} className="animate-spin" />} {busy ? "Opretter..." : "Opret butik"}
         </button>
@@ -475,64 +465,52 @@ function StoreEditor({ store, onDone, onCancel }) {
 // "opret ny butik"-flowet - fx til en butik der allerede findes.
 function CreateUserDirect({ stores }) {
   const [storeId, setStoreId] = useState("");
-  const [loginType, setLoginType] = useState("brugernavn");
   const [name, setName] = useState("");
-  const [username, setUsername] = useState("");
-  const [usernameEdited, setUsernameEdited] = useState(false);
-  const [email, setEmail] = useState("");
+  const [initials, setInitials] = useState("");
+  const [initialsEdited, setInitialsEdited] = useState(false);
   const [role, setRole] = useState("saelger");
-  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [oprettet, setOprettet] = useState(null);
 
   const changeName = (val) => {
     setName(val);
-    if (!usernameEdited) setUsername(suggestUsername(val));
+    if (!initialsEdited) setInitials(foreslaaInitialer(val));
   };
 
   const create = async () => {
-    setError(""); setMessage("");
+    setError(""); setOprettet(null);
     if (!storeId) { setError("Vælg hvilken butik brugeren skal høre til."); return; }
-    if (!name.trim() || !password.trim()) { setError("Udfyld navn og adgangskode."); return; }
-    if (loginType === "brugernavn" && !isValidUsername(username)) { setError("Brugernavn skal være 2-40 tegn (a-z, tal, punktum eller bindestreg)."); return; }
-    if (loginType === "email" && !email.trim()) { setError("Udfyld e-mail."); return; }
+    if (!name.trim()) { setError("Udfyld navn."); return; }
+    if (!erGyldigeInitialer(initials)) { setError("Initialer skal være 2-5 bogstaver (a-z, uden æøå og mellemrum)."); return; }
     setBusy(true);
-    const result = await createUserAsAdmin({ navn: name.trim(), loginType, email: email.trim(), brugernavn: username.trim().toLowerCase(), adgangskode: password, rolle: role, butikId: storeId });
+    const brugernavn = initials.trim().toLowerCase();
+    const result = await createUserAsAdmin({ navn: name.trim(), loginType: "pin", brugernavn, rolle: role, butikId: storeId });
     setBusy(false);
     if (!result.ok) { setError(result.fejl || "Kunne ikke oprette brugeren."); return; }
-    setMessage(`Bruger oprettet i valgt butik.`);
-    setName(""); setUsername(""); setUsernameEdited(false); setEmail(""); setPassword(""); setRole("saelger");
+    setOprettet({ navn: name.trim(), brugernavn, pin: result.midlertidigPin, butiksnummer: result.butiksnummer });
+    setName(""); setInitials(""); setInitialsEdited(false); setRole("saelger");
   };
 
   return (
     <div className="rounded-xl border border-line bg-white p-5 mb-8 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-2"><UserPlus size={16} /> Opret bruger direkte til en butik</h3>
-      <p className="text-xs text-muted mb-3">Til at oprette en ekstra bruger i en butik, der allerede findes — uden at skulle oprette en ny butik.</p>
-      <div className="flex rounded-full border border-line mb-3 text-xs font-semibold uppercase tracking-wide w-fit overflow-hidden">
-        <button onClick={() => setLoginType("brugernavn")} className={`px-3 py-1.5 transition-colors ${loginType === "brugernavn" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>Brugernavn</button>
-        <button onClick={() => setLoginType("email")} className={`px-3 py-1.5 transition-colors ${loginType === "email" ? "bg-ink text-white" : "text-muted hover:text-ink"}`}>E-mail</button>
-      </div>
+      <p className="text-xs text-muted mb-3">Til at oprette en ekstra bruger i en butik, der allerede findes. Brugeren logger ind med butiksnummer + initialer + en midlertidig kode, som du får vist her.</p>
+      {oprettet && <LoginOplysninger navn={oprettet.navn} butiksnummer={oprettet.butiksnummer} brugernavn={oprettet.brugernavn} pin={oprettet.pin} onLuk={() => setOprettet(null)} />}
       <div className="grid gap-3 sm:grid-cols-2">
-        <select value={storeId} onChange={(e) => setStoreId(e.target.value)} className="sm:col-span-2 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
+        <select value={storeId} onChange={(e) => setStoreId(e.target.value)} aria-label="Butik" className="sm:col-span-2 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
           <option value="">Vælg butik...</option>
           {stores.map((b) => <option key={b.id} value={b.id}>{b.navn}{b.butiksnummer ? ` #${b.butiksnummer}` : ""}</option>)}
         </select>
-        <input value={name} onChange={(e) => changeName(e.target.value)} placeholder="Navn" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-        {loginType === "brugernavn" ? (
-          <input value={username} onChange={(e) => { setUsername(e.target.value); setUsernameEdited(true); }} placeholder="Brugernavn (foreslået, kan rettes)" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
-        ) : (
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
-        )}
-        <select value={role} onChange={(e) => setRole(e.target.value)} className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink">
+        <input value={name} onChange={(e) => changeName(e.target.value)} placeholder="Navn" aria-label="Navn" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+        <input value={initials} onChange={(e) => { setInitials(e.target.value.toLowerCase().replace(/[^a-z]/g, "").slice(0, 5)); setInitialsEdited(true); }} placeholder="Initialer (foreslået, kan rettes)" aria-label="Brugernavn (initialer)" autoCapitalize="off" autoCorrect="off" spellCheck={false} className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
+        <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Rolle" className="sm:col-span-2 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink">
           <option value="saelger">Sælger</option>
           <option value="montor">Montør</option>
           <option value="admin">Administrator</option>
         </select>
-        <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Adgangskode (mindst 6 tegn)" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
       </div>
-      {error && <p className="text-xs text-danger mt-2 flex items-center gap-1.5"><AlertCircle size={13} /> {error}</p>}
-      {message && <p className="text-xs text-success mt-2 flex items-center gap-1.5"><Check size={13} /> {message}</p>}
+      {error && <p role="alert" className="text-xs text-danger mt-2 flex items-center gap-1.5"><AlertCircle size={13} /> {error}</p>}
       <button onClick={create} disabled={busy} className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark transition-colors flex items-center gap-1.5 disabled:opacity-60">
         {busy && <Loader2 size={14} className="animate-spin" />} {busy ? "Opretter..." : "Opret bruger"}
       </button>
@@ -559,7 +537,12 @@ function SystemAdminUserRow({ user, stores, onUpdated, currentUserId, onOwnStore
   const [showReset, setShowReset] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [resetMessage, setResetMessage] = useState("");
+  const [pinInfo, setPinInfo] = useState(null); // { pin } | { fejl }
   const [busy, setBusy] = useState(false);
+
+  // Butiksbrugere logger ind med butiksnummer + initialer + kode -> nulstilling giver en midlertidig kode.
+  // Systemadministratorer og brugere uden butik bruger e-mail/adgangskode -> almindelig adgangskode-nulstilling.
+  const brugerKode = !!user.butikId && !user.erSystemAdmin;
 
   const store = stores.find((bu) => bu.id === user.butikId);
   const isSelf = user.id === currentUserId;
@@ -588,6 +571,14 @@ function SystemAdminUserRow({ user, stores, onUpdated, currentUserId, onOwnStore
     const r = await sletBruger(user.id, { slet: deleteUserAsAdmin, bekraeft: (t) => window.confirm(t), advar: (t) => window.alert(t) });
     setBusy(false);
     if (r.ok) onUpdated();
+  };
+
+  const resetKode = async () => {
+    if (!window.confirm(`Nulstil koden for ${user.navn}?\n\nDen nuværende kode holder op med at virke, og du får en ny midlertidig kode, som du giver videre.`)) return;
+    setBusy(true); setPinInfo(null);
+    const result = await resetPinAsAdmin(user.id);
+    setBusy(false);
+    setPinInfo(result?.ok ? { pin: result.pin } : { fejl: result?.fejl || "Kunne ikke nulstille koden." });
   };
 
   const reset = async () => {
@@ -627,10 +618,23 @@ function SystemAdminUserRow({ user, stores, onUpdated, currentUserId, onOwnStore
           {stores.map((bu) => <option key={bu.id} value={bu.id}>{bu.navn}{bu.butiksnummer ? ` #${bu.butiksnummer}` : ""}</option>)}
         </select>
         {!editingName && <button onClick={() => setEditingName(true)} className="p-1.5 text-muted hover:text-brand" title="Ret navn"><Pencil size={15} /></button>}
-        <button onClick={() => { setShowReset((v) => !v); setResetMessage(""); setNewPassword(""); }} className="p-1.5 text-muted hover:text-brand" title="Nulstil adgangskode"><KeyRound size={15} /></button>
+        {brugerKode ? (
+          <button onClick={resetKode} disabled={busy} aria-label={`Nulstil kode for ${user.navn}`} className="p-1.5 text-muted hover:text-brand disabled:opacity-50" title="Nulstil kode"><KeyRound size={15} aria-hidden="true" /></button>
+        ) : (
+          <button onClick={() => { setShowReset((v) => !v); setResetMessage(""); setNewPassword(""); }} className="p-1.5 text-muted hover:text-brand" title="Nulstil adgangskode"><KeyRound size={15} /></button>
+        )}
         {!isSelf && <button onClick={remove} disabled={busy} aria-label={`Slet ${user.navn}`} className="p-1.5 text-muted hover:text-danger disabled:opacity-50" title="Slet bruger"><Trash2 size={15} aria-hidden="true" /></button>}
         {busy && <Loader2 size={14} className="animate-spin text-muted" />}
       </div>
+      {pinInfo && (
+        <div className="mt-2.5 pt-2.5 border-t border-divider" role="status">
+          {pinInfo.pin ? (
+            <p className="text-sm text-ink">Midlertidig kode for {user.navn}: <span className="font-mono text-lg font-bold tracking-[0.3em] ml-1">{pinInfo.pin}</span>
+              <span className="block text-[11px] text-muted mt-0.5">Vises kun nu. {user.navn} vælger selv en ny kode ved næste login{store?.butiksnummer ? ` (butiksnummer ${store.butiksnummer}${user.brugernavn ? `, brugernavn ${user.brugernavn}` : ""})` : ""}.</span></p>
+          ) : <p className="text-xs text-danger">{pinInfo.fejl}</p>}
+          <button onClick={() => setPinInfo(null)} className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-muted hover:text-ink">Luk</button>
+        </div>
+      )}
       {showReset && (
         <div className="mt-2.5 pt-2.5 border-t border-divider flex items-center gap-2 flex-wrap">
           <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Ny adgangskode (mindst 6 tegn)" className="flex-1 min-w-[160px] rounded-lg border border-line bg-panel px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-brand" />
@@ -664,7 +668,7 @@ function AllUsers({ stores, currentUserId, onOwnStoreLinked }) {
   return (
     <div>
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-2"><Users size={16} /> Alle brugere</h3>
-      <p className="text-xs text-muted mb-3">Se, redigér og kobl enhver bruger i hele kæden til en butik, eller nulstil deres adgangskode. Uden "Vis alle" vises kun brugere der endnu ikke er koblet til nogen butik.</p>
+      <p className="text-xs text-muted mb-3">Se, redigér og kobl enhver bruger i hele kæden til en butik, eller nulstil deres kode/adgangskode. Uden "Vis alle" vises kun brugere der endnu ikke er koblet til nogen butik.</p>
 
       <div className="flex gap-2 mb-3 flex-wrap items-center">
         <div className="relative flex-1 min-w-[200px]">

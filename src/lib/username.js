@@ -32,3 +32,14 @@ export const isEmailFormat = (text) => (text || "").includes("@") && !text.trim(
 // Converts whatever the user typed in the login field into the email
 // Supabase Auth actually needs to sign in with.
 export const identifierToEmail = (text) => (isEmailFormat(text) ? text.trim() : emailFromUsername(text));
+
+// ---- Initialer (brugernavn i det nye login: butiksnummer + initialer + kode) ----
+// Foreslår initialer ud fra et navn: "Jens Peter Hansen" -> "jph". Kun ét ord -> de to første
+// bogstaver. Kan altid rettes af admin. Brugernavnet er unikt INDEN FOR en butik.
+export const foreslaaInitialer = (navn) => {
+  const ord = (navn || "").trim().toLowerCase().replace(/æ/g, "a").replace(/ø/g, "o").replace(/å/g, "a").replace(/[^a-z\s]/g, "").split(/\s+/).filter(Boolean);
+  if (ord.length === 0) return "";
+  if (ord.length === 1) return ord[0].slice(0, 2);
+  return ord.map((o) => o[0]).join("").slice(0, 5);
+};
+export const erGyldigeInitialer = (v) => /^[a-z]{2,5}$/.test((v || "").trim().toLowerCase());

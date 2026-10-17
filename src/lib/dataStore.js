@@ -541,7 +541,8 @@ export async function createStoreAsSystemAdmin(fields) {
     logError("dataStore:createStoreAsSystemAdmin", fejl);
     return { ok: false, fejl };
   }
-  return { ok: true };
+  // Ved PIN-admin: butiksnummer (evt. automatisk tildelt), brugernavn og midlertidig kode - vises kun denne ene gang.
+  return { ok: true, butiksnummer: data?.butiksnummer, brugernavn: data?.brugernavn, midlertidigPin: data?.midlertidigPin };
 }
 
 export async function updateStoreAsSystemAdmin(storeId, fields) {
@@ -766,7 +767,7 @@ export async function getStoreUsers(storeId) {
 }
 
 export async function getAllUsersAsSystemAdmin(search, showAll) {
-  let query = supabase.from("profiles").select("id, name, role, store_id, username").order("created_at", { ascending: false });
+  let query = supabase.from("profiles").select("id, name, role, store_id, username, is_system_admin").order("created_at", { ascending: false });
   if (showAll) {
     if (search?.trim()) query = query.or(`name.ilike.%${search.trim()}%,username.ilike.%${search.trim()}%`);
   } else {
@@ -777,7 +778,7 @@ export async function getAllUsersAsSystemAdmin(search, showAll) {
     logDbError("dataStore:getAllUsersAsSystemAdmin", "Could not load users (system admin)", error);
     return [];
   }
-  return (data || []).map((p) => ({ id: p.id, navn: p.name, rolle: p.role, butikId: p.store_id, brugernavn: p.username }));
+  return (data || []).map((p) => ({ id: p.id, navn: p.name, rolle: p.role, butikId: p.store_id, brugernavn: p.username, erSystemAdmin: p.is_system_admin === true }));
 }
 
 // ---------- Fravær (pr. montør) ----------

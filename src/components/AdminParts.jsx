@@ -3,6 +3,7 @@ import { Trash2, X, Plus, Pencil, UserPlus, PalmtreeIcon, CalendarOff, KeyRound,
 import { vehicleLabel, technicianColor, todayISO, activeSickLeave } from "../data/domain";
 import { updateSickLeaveWindow, updatePasswordPolicy, updateLoginPolicy } from "../lib/dataStore";
 import { MinutesInput } from "../components/common";
+import { foreslaaInitialer, erGyldigeInitialer } from "../lib/username";
 
 // ---------------------------------------------------------------------------
 // FÆLLES AFKRYDSNINGSLISTE (september 2026)
@@ -496,11 +497,11 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPin,
   // Nulstiller PIN til en tilfældig, midlertidig kode. Den vises KUN her, én gang -
   // admin giver den videre, og brugeren vælger selv en ny ved næste login.
   const resetPin = async () => {
-    if (!window.confirm(`Nulstil PIN-koden for ${user.navn}?\n\nDen nuværende PIN holder op med at virke, og du får en ny midlertidig PIN, som du giver videre til ${user.navn}.`)) return;
+    if (!window.confirm(`Nulstil koden for ${user.navn}?\n\nDen nuværende kode holder op med at virke, og du får en ny midlertidig kode, som du giver videre til ${user.navn}.`)) return;
     setBusy(true);
     const result = await onResetPin(user.id);
     setBusy(false);
-    setPinInfo(result?.ok ? { pin: result.pin } : { fejl: result?.fejl || "Kunne ikke nulstille PIN-koden." });
+    setPinInfo(result?.ok ? { pin: result.pin } : { fejl: result?.fejl || "Kunne ikke nulstille koden." });
   };
 
   const canEditPermissions = user.id !== currentUserId && onUpdatePermissions && permissionsCatalog;
@@ -559,7 +560,7 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPin,
           </button>
         )}
         {!editing && <button onClick={() => { setName(user.navn); setEditing(true); }} aria-label={`Ret navn på ${user.navn}`} className="w-10 h-10 flex items-center justify-center rounded-lg text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand" title="Ret navn"><Pencil size={15} aria-hidden="true" /></button>}
-        {onResetPin && user.id !== currentUserId && <button onClick={resetPin} disabled={busy} aria-label={`Nulstil PIN for ${user.navn}`} className="w-10 h-10 flex items-center justify-center rounded-lg text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand disabled:opacity-60" title="Nulstil PIN"><KeyRound size={15} aria-hidden="true" /></button>}
+        {onResetPin && user.id !== currentUserId && <button onClick={resetPin} disabled={busy} aria-label={`Nulstil kode for ${user.navn}`} className="w-10 h-10 flex items-center justify-center rounded-lg text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand disabled:opacity-60" title="Nulstil kode"><KeyRound size={15} aria-hidden="true" /></button>}
         {/* Tooltip'en sagde tidligere "Fjern adgang", fordi knappen dengang
             blot fjernede butikstilknytningen. Den SLETTER nu brugeren
             permanent, og en knap må ikke beskrive sig selv mildere end den
@@ -577,8 +578,8 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPin,
         <div className="px-3 pb-3" role="status">
           {pinInfo.pin ? (
             <div className="rounded-lg border border-success bg-success/5 p-3 flex items-center gap-3 flex-wrap">
-              <p className="text-sm text-ink flex-1 min-w-[200px]">Midlertidig PIN for {user.navn}: <span className="font-mono text-lg font-bold tracking-[0.3em] ml-1">{pinInfo.pin}</span>
-                <span className="block text-[11px] text-muted mt-0.5">Vises kun nu. {user.navn} vælger selv en ny PIN ved næste login.</span></p>
+              <p className="text-sm text-ink flex-1 min-w-[200px]">Midlertidig kode for {user.navn}: <span className="font-mono text-lg font-bold tracking-[0.3em] ml-1">{pinInfo.pin}</span>
+                <span className="block text-[11px] text-muted mt-0.5">Vises kun nu. {user.navn} vælger selv en ny kode ved næste login.</span></p>
               <button onClick={() => setPinInfo(null)} className="px-3 py-2 rounded-lg text-[10px] font-semibold uppercase tracking-wide text-ink border border-line hover:border-brand">Luk</button>
             </div>
           ) : (
@@ -596,15 +597,21 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPin,
   );
 }
 
-// Foreslår initialer ud fra et navn: "Magnus Andersen" -> "ma" (første bogstav i hvert ord, max 5).
-// Er der kun ét ord, bruges de to første bogstaver. Kan altid rettes af admin.
-const foreslaaInitialer = (navn) => {
-  const ord = (navn || "").trim().toLowerCase().replace(/æ/g, "a").replace(/ø/g, "o").replace(/å/g, "a").replace(/[^a-z\s]/g, "").split(/\s+/).filter(Boolean);
-  if (ord.length === 0) return "";
-  if (ord.length === 1) return ord[0].slice(0, 2);
-  return ord.map((o) => o[0]).join("").slice(0, 5);
-};
-const erGyldigeInitialer = (v) => /^[a-z]{2,5}$/.test((v || "").trim().toLowerCase());
+// Loginoplysninger der vises ÉN gang efter oprettelse: butiksnummer + brugernavn + midlertidig kode.
+function LoginOplysninger({ navn, butiksnummer, brugernavn, pin, onLuk }) {
+  return (
+    <div className="rounded-lg border border-success bg-success/5 p-3 mb-4" role="status">
+      <p className="text-sm font-semibold text-ink mb-1">{navn} er oprettet. Giv personen disse loginoplysninger:</p>
+      <dl className="text-sm text-ink grid grid-cols-[auto,1fr] gap-x-3 gap-y-0.5">
+        <dt className="text-muted">Butiksnummer</dt><dd className="font-mono">{butiksnummer || "—"}</dd>
+        <dt className="text-muted">Brugernavn</dt><dd className="font-mono">{brugernavn}</dd>
+        <dt className="text-muted">Midlertidig kode</dt><dd className="font-mono text-lg font-bold tracking-[0.3em]">{pin}</dd>
+      </dl>
+      <p className="text-[11px] text-muted mt-2">Koden vises kun nu, og brugeren vælger selv en ny ved første login. Mister du den, kan du nulstille koden på brugeren i listen.</p>
+      <button type="button" onClick={onLuk} className="mt-2 px-3 py-2 rounded-lg text-[10px] font-semibold uppercase tracking-wide text-ink border border-line hover:border-brand">Luk</button>
+    </div>
+  );
+}
 
 function NewUserForm({ onAdd, butiksnummer }) {
   const [name, setName] = useState("");
@@ -637,18 +644,7 @@ function NewUserForm({ onAdd, butiksnummer }) {
     <div className="rounded-xl border border-line bg-white p-5 mb-6 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1">Opret ny bruger</h3>
       <p className="text-xs text-muted mb-3">Brugeren logger ind med butiksnummer{butiksnummer ? ` (${butiksnummer})` : ""}, brugernavn (initialer) og en kode. Du får en midlertidig kode, som brugeren selv skifter ved første login.</p>
-      {oprettet && (
-        <div className="rounded-lg border border-success bg-success/5 p-3 mb-4" role="status">
-          <p className="text-sm font-semibold text-ink mb-1">{oprettet.navn} er oprettet. Giv personen disse loginoplysninger:</p>
-          <dl className="text-sm text-ink grid grid-cols-[auto,1fr] gap-x-3 gap-y-0.5">
-            <dt className="text-muted">Butiksnummer</dt><dd className="font-mono">{oprettet.butiksnummer || "—"}</dd>
-            <dt className="text-muted">Brugernavn</dt><dd className="font-mono">{oprettet.brugernavn}</dd>
-            <dt className="text-muted">Midlertidig PIN</dt><dd className="font-mono text-lg font-bold tracking-[0.3em]">{oprettet.pin}</dd>
-          </dl>
-          <p className="text-[11px] text-muted mt-2">PIN'en vises kun nu. Mister du den, kan du nulstille den på brugeren i listen nedenfor.</p>
-          <button onClick={() => setOprettet(null)} className="mt-2 px-3 py-2 rounded-lg text-[10px] font-semibold uppercase tracking-wide text-ink border border-line hover:border-brand">Luk</button>
-        </div>
-      )}
+      {oprettet && <LoginOplysninger navn={oprettet.navn} butiksnummer={oprettet.butiksnummer} brugernavn={oprettet.brugernavn} pin={oprettet.pin} onLuk={() => setOprettet(null)} />}
       <div className="grid gap-3 sm:grid-cols-2">
         <input value={name} onChange={(e) => changeName(e.target.value)} placeholder="Navn" aria-label="Navn" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
         <input value={initials} onChange={(e) => { setInitials(e.target.value.toLowerCase().replace(/[^a-z]/g, "").slice(0, 5)); setInitialsEdited(true); }} placeholder="Initialer (foreslået, kan rettes)" aria-label="Brugernavn (initialer)" autoCapitalize="off" autoCorrect="off" spellCheck={false} className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
@@ -1025,4 +1021,4 @@ function DefaultTimeEstimateAdmin({ productTypes, primaryServices, addOnServices
   );
 }
 
-export { TechnicianRow, SickLeaveWindowSetting, LoginPolicySetting, VehicleRow, UserRow, NewUserForm, ROLE_LABEL, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin, DefaultTimeEstimateAdmin };
+export { LoginOplysninger, TechnicianRow, SickLeaveWindowSetting, LoginPolicySetting, VehicleRow, UserRow, NewUserForm, ROLE_LABEL, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin, DefaultTimeEstimateAdmin };
