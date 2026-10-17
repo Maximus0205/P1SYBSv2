@@ -386,9 +386,8 @@ async function readEdgeFunctionError(data, error, fallbackMessage) {
 // Erstatter den tidligere, kun-lokale "lås denne telefon op"-genvej (se
 // lib/deviceUnlock.js) med en RIGTIG, konto-bunden login-metode. PIN'en
 // gemmes ALDRIG i Supabase Auth's eget adgangskodefelt - kun hashet, i
-// egen tabel (login_pins). PIN-koden er PR. DEFINITION 4 cifre - ikke
-// noget butikken selv sætter en "minimumslængde" for (se
-// set-login-pin Edge Function).
+// egen tabel (login_pins). Koden følger butikkens krav (min. 4 tegn,
+// evt. bogstaver + tal, se Login-krav i Admin og set-login-pin Edge Function).
 //
 // setLoginPin: en ALLEREDE indlogget bruger sætter/ændrer sin egen PIN.
 // loginWithPin: selve login-vejen - kræver intet forudgående login. Den

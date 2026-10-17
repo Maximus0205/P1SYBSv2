@@ -18,10 +18,9 @@ const MAX_LAENGDE = 64;
 // også som login på en ANDEN enhed, hvis den understøtter samme biometri
 // (eller for PIN'en: overalt, den er jo bare en kode).
 //
-// PIN-KODEN ER FAST 4 CIFRE (rettet september 2026) - ikke noget butikken
-// sætter en "minimumslængde" for, det gav kun indtryk af, at "koden" kunne
-// have to forskellige krav samtidig. Håndhæves server-side i
-// set-login-pin (Edge Function).
+// KODEKRAV: butikkens admin bestemmer minimumslængde (aldrig under 4 tegn) og om
+// koden skal have både bogstaver og tal (Admin -> Login-krav). Kravet vises her og
+// håndhæves server-side i set-login-pin (Edge Function).
 //
 // PIN-skift er altid tilgængeligt. Face ID/fingeraftryk skjules, hvis butikken har
 // slået det fra (Admin -> Brugere) - se store.simpelLoginAktiveret.
