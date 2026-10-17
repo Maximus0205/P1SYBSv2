@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Settings2, Plus, ChevronUp, ChevronDown, Upload, AlertTriangle, Truck, Trash2, ClipboardList, CalendarCheck2 } from "lucide-react";
+import { Settings2, Plus, ChevronUp, ChevronDown, Upload, AlertTriangle, Truck, Trash2, ClipboardList, CalendarCheck2, Bell } from "lucide-react";
 import { todayISO, dailyOrderCompare, canDo, DASHBOARD_WIDGET_CATALOG, missingLineItems, lineItemLabel } from "../data/domain";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 import { classify } from "./PlanningPage";
@@ -8,6 +8,8 @@ import { TrashPanel } from "../components/TrashPanel";
 import { BookingOverviewModal } from "../components/BookingOverviewModal";
 import { ParkeredeSager } from "../components/ParkeredeSager";
 import { linjeSkalPlukkes } from "../lib/ydelser";
+import { useNytPluk } from "../hooks/useNytPluk";
+import { nytPlukNoegle } from "../lib/nytPlukLogik";
 
 // ---------------------------------------------------------------------------
 // FORSIDE / DASHBOARD (august 2026): en tilpasselig samling af "widgets" -
@@ -109,7 +111,7 @@ function TodayRouteWidget({ orders, technicians, vehicles, profile, crew, onOpen
 function PickListWidget({ orders, vehicles, primaryServices, onNavigate }) {
   const catalogEntry = DASHBOARD_WIDGET_CATALOG.find((w) => w.key === "pick_list");
   const today = todayISO();
-  const { missing, ready, kanIkkeFindes } = useMemo(() => {
+  const { missing, ready, kanIkkeFindes, points } = useMemo(() => {
     const todaysOrders = orders.filter((s) => s.dato === today);
     const pickable = todaysOrders.filter((o) => isOrderPickable(o, vehicles));
     // Linjer uden pluk (fx servicetur, hvor varen er hos kunden) tælles ikke med - se lib/ydelser.js.
@@ -119,14 +121,28 @@ function PickListWidget({ orders, vehicles, primaryServices, onNavigate }) {
       missing: points.filter((p) => !p.lineItem.plukket && !p.lineItem.mangler?.note),
       ready: points.filter((p) => p.lineItem.plukket),
       kanIkkeFindes: manglende,
+      points,
     };
   }, [orders, vehicles, primaryServices, today]);
+  // NYT PÅ DAGENS PLUK (oktober 2026): samme regel som på Lager-siden - se hooks/useNytPluk.js.
+  const { nye } = useNytPluk(points.map((p) => nytPlukNoegle(p.order.id, p.lineItem.id)), orders.length > 0);
+  const nyeAntal = points.filter((p) => !p.lineItem.plukket && !p.lineItem.mangler?.note && nye.has(nytPlukNoegle(p.order.id, p.lineItem.id))).length;
   return (
     <WidgetCard title={catalogEntry.label} icon={catalogEntry.icon} onTitleClick={() => onNavigate("lager")}>
       <div className="grid grid-cols-2 gap-2">
         <Stat label="Mangler pluk" value={missing.length} color="#E2621B" />
         <Stat label="Klar" value={ready.length} color="#3D7A5C" />
       </div>
+      {nyeAntal > 0 && (
+        <button
+          type="button"
+          onClick={() => onNavigate("lager")}
+          className="mt-2 w-full text-left text-xs font-semibold text-brand flex items-center gap-1.5 rounded px-1 py-1.5 hover:underline focus:outline-none focus:ring-2 focus:ring-brand"
+        >
+          <Bell size={12} className="shrink-0" aria-hidden="true" />
+          {nyeAntal} {nyeAntal === 1 ? "ny vare" : "nye varer"} på dagens pluk siden sidst
+        </button>
+      )}
       {kanIkkeFindes > 0 && (
         <p className="text-xs text-danger mt-2 flex items-center gap-1.5">
           <AlertTriangle size={12} className="shrink-0" aria-hidden="true" />
