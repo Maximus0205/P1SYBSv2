@@ -238,18 +238,16 @@ function SickLeaveWindowSetting({ store, onUpdated }) {
 }
 
 // ---------------------------------------------------------------------------
-// LOGIN-KRAV (september 2026, rettet efter tilbagemelding)
+// LOGIN-KRAV
 //
-// PIN-koden har IKKE længere en konfigurerbar "minimumslængde" - den er
-// pr. definition 4 cifre, håndhævet fast i set-login-pin (Edge Function).
-// Der var reelt intet at indstille, og feltet gav kun indtryk af, at
-// "adgangskodens længde" kunne sættes to gange.
+// Butikkens admin bestemmer kravene til den kode, brugerne vælger selv
+// (stores.password_min_length - aldrig under 4 - og password_require_mixed).
+// Det håndhæves server-side i login-with-pin (første login) og set-login-pin
+// (Skift kode); UI'et her gemmer kun ønsket via update_password_policy.
+// Midlertidige koder fra admin er altid 4 cifre og skal skiftes med det samme.
 //
-// I stedet: EN TIL/FRA-KONTAKT for HELE "simpelt login" (PIN + biometrisk
-// login samlet) - tænkt til den dag kæden sælger licenser til en kunde,
-// der af egen politik ikke vil tillade den slags login-genveje overhovedet.
-// Slås den fra, afviser login-with-pin og webauthn-*-Edge Functions det
-// med det samme, uanset om en bruger allerede har sat en PIN/Face ID op.
+// Kontakten for Face ID/fingeraftryk (simple_login_enabled) gælder KUN det
+// biometriske supplement - selve koden kan ikke slås fra.
 function LoginPolicySetting({ store, onPasswordUpdated, onLoginPolicyUpdated }) {
   const [passwordMinLength, setPasswordMinLength] = useState(store?.adgangskodeMinLaengde ?? 6);
   const [requireMixed, setRequireMixed] = useState(store?.adgangskodeKraeverBlanding ?? false);
@@ -260,7 +258,7 @@ function LoginPolicySetting({ store, onPasswordUpdated, onLoginPolicyUpdated }) 
   const [error, setError] = useState("");
 
   const save = async () => {
-    const pwN = Math.min(64, Math.max(6, Math.round(Number(passwordMinLength)) || 6));
+    const pwN = Math.min(64, Math.max(4, Math.round(Number(passwordMinLength)) || 4));
     const idleN = Math.min(10080, Math.max(5, Math.round(Number(idleMinutes)) || 480));
     setPasswordMinLength(pwN); setIdleMinutes(idleN);
     setSaving(true); setError(""); setSaved(false);
@@ -281,27 +279,27 @@ function LoginPolicySetting({ store, onPasswordUpdated, onLoginPolicyUpdated }) 
   return (
     <div className="rounded-xl border border-line bg-white p-4 mb-4 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-1.5"><KeyRound size={15} className="text-brand" aria-hidden="true" /> Login-krav</h3>
-      <p className="text-xs text-muted mb-4">Gælder nye/nulstillede adgangskoder fremover, rører ikke det der allerede er sat.</p>
+      <p className="text-xs text-muted mb-4">Gælder nye koder fremover - eksisterende koder kan stadig bruges.</p>
 
       <div className="rounded-lg bg-panel p-3 mb-3">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted mb-2">Adgangskode</p>
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted mb-2">Kode til login</p>
         <label className="flex items-center gap-2 text-sm text-ink mb-2">
           Mindst
-          <input type="number" min="6" max="64" value={passwordMinLength} onChange={(e) => setPasswordMinLength(e.target.value)} aria-label="Minimum antal tegn i adgangskode" className="w-16 rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink text-center focus:outline-none focus:border-brand" />
+          <input type="number" min="4" max="64" value={passwordMinLength} onChange={(e) => setPasswordMinLength(e.target.value)} aria-label="Minimum antal tegn i koden" className="w-16 rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink text-center focus:outline-none focus:border-brand" />
           tegn
         </label>
         <label className="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={requireMixed} onChange={(e) => setRequireMixed(e.target.checked)} className="w-4 h-4 accent-brand" />
           <span className="text-sm text-ink">Kræver både bogstaver og tal</span>
         </label>
-        <p className="text-[10px] text-muted mt-2">Kan ikke sættes under 6 tegn - Supabase Auth (login-systemet bag appen) håndhæver denne bund på selve platformen.</p>
+        <p className="text-[10px] text-muted mt-2">Koden kan aldrig være kortere end 4 tegn. Kravet gælder, når en bruger vælger sin egen kode (første login og "Skift kode"). Midlertidige koder fra admin er altid 4 cifre og skal skiftes med det samme.</p>
       </div>
 
       <div className="rounded-lg bg-panel p-3 mb-3">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm font-medium text-ink">Face ID/fingeraftryk</p>
-            <p className="text-[11px] text-muted mt-0.5">Brugerne logger ind med butiksnummer, brugernavn (initialer) og 4-cifret PIN. Face ID/fingeraftryk er et valgfrit supplement, hver bruger sætter op under "Din konto". Sluk kontakten for at forbyde det i butikken.</p>
+            <p className="text-[11px] text-muted mt-0.5">Brugerne logger ind med butiksnummer, brugernavn (initialer) og kode. Face ID/fingeraftryk er et valgfrit supplement, hver bruger sætter op under "Din konto". Sluk kontakten for at forbyde det i butikken.</p>
           </div>
           <Toggle checked={simpleLoginEnabled} onChange={setSimpleLoginEnabled} ariaLabel="Tillad biometrisk login (Face ID/fingeraftryk)" />
         </div>
@@ -638,7 +636,7 @@ function NewUserForm({ onAdd, butiksnummer }) {
   return (
     <div className="rounded-xl border border-line bg-white p-5 mb-6 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1">Opret ny bruger</h3>
-      <p className="text-xs text-muted mb-3">Brugeren logger ind med butiksnummer{butiksnummer ? ` (${butiksnummer})` : ""}, brugernavn (initialer) og en 4-cifret PIN. Du får en midlertidig PIN, som brugeren selv skifter ved første login.</p>
+      <p className="text-xs text-muted mb-3">Brugeren logger ind med butiksnummer{butiksnummer ? ` (${butiksnummer})` : ""}, brugernavn (initialer) og en kode. Du får en midlertidig kode, som brugeren selv skifter ved første login.</p>
       {oprettet && (
         <div className="rounded-lg border border-success bg-success/5 p-3 mb-4" role="status">
           <p className="text-sm font-semibold text-ink mb-1">{oprettet.navn} er oprettet. Giv personen disse loginoplysninger:</p>

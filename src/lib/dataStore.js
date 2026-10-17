@@ -405,16 +405,16 @@ export async function setLoginPin(pin) {
   return { ok: true };
 }
 
-// Login = butiksnummer + brugernavn (initialer) + 4-cifret PIN.
+// Login = butiksnummer + brugernavn (initialer) + kode (butikken bestemmer kravene, min. 4 tegn).
 // Returnerer { ok } ved succes, { ok:false, skalSkiftePin:true } hvis PIN'en er en
 // MIDLERTIDIG (sat af admin) - kald da igen med nyPin - ellers { ok:false, fejl }.
 export async function loginWithPin({ butik, brugernavn, pin, nyPin }) {
   const body = { butik, brugernavn, pin };
   if (nyPin) body.nyPin = nyPin;
   const { data, error } = await supabase.functions.invoke("login-with-pin", { body });
-  if (data?.skalSkiftePin) return { ok: false, skalSkiftePin: true };
+  if (data?.skalSkiftePin) return { ok: false, skalSkiftePin: true, minLaengde: data.minLaengde, kraeverBlanding: data.kraeverBlanding === true };
   if (error || data?.fejl) {
-    const fejl = await readEdgeFunctionError(data, error, "Forkert butik, bruger eller PIN-kode.");
+    const fejl = await readEdgeFunctionError(data, error, "Forkert butik, bruger eller kode.");
     return { ok: false, fejl };
   }
   // Selve session-oprettelsen: engangskoden fra Edge Function'en indløses

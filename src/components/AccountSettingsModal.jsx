@@ -3,7 +3,8 @@ import { X, KeyRound, Check, AlertCircle, Loader2, Fingerprint } from "lucide-re
 import { setLoginPin, registerBiometric } from "../lib/dataStore";
 import { erBiometriTilgaengelig } from "../lib/webauthn";
 
-const PIN_LAENGDE = 4;
+const ABSOLUT_MIN = 4;
+const MAX_LAENGDE = 64;
 
 // ---------------------------------------------------------------------------
 // KONTOINDSTILLINGER (september 2026, rettet) - PIN-opsætning + biometrisk
@@ -26,6 +27,9 @@ const PIN_LAENGDE = 4;
 // slået det fra (Admin -> Brugere) - se store.simpelLoginAktiveret.
 function AccountSettingsModal({ store, onClose }) {
   const simpelLoginAktiveret = store?.simpelLoginAktiveret !== false;
+  const minLaengde = Math.max(ABSOLUT_MIN, store?.adgangskodeMinLaengde || ABSOLUT_MIN);
+  const kraeverBlanding = store?.adgangskodeKraeverBlanding === true;
+  const kravTekst = `Mindst ${minLaengde} tegn${kraeverBlanding ? ", både bogstaver og tal" : ""}.`;
 
   const [pin, setPin] = useState("");
   const [pinConfirm, setPinConfirm] = useState("");
@@ -46,12 +50,13 @@ function AccountSettingsModal({ store, onClose }) {
 
   const save = async () => {
     setError(""); setSaved(false);
-    if (pin.length !== PIN_LAENGDE) { setError(`PIN-koden skal være præcis ${PIN_LAENGDE} cifre.`); return; }
+    if (pin.length < minLaengde) { setError(`Koden er for kort. ${kravTekst}`); return; }
+    if (kraeverBlanding && !(/\p{L}/u.test(pin) && /\d/.test(pin))) { setError("Koden skal indeholde både bogstaver og tal."); return; }
     if (pin !== pinConfirm) { setError("De to koder er ikke ens."); setPinConfirm(""); return; }
     setSaving(true);
     const result = await setLoginPin(pin);
     setSaving(false);
-    if (!result.ok) { setError(result.fejl || "Kunne ikke gemme PIN-koden."); return; }
+    if (!result.ok) { setError(result.fejl || "Kunne ikke gemme koden."); return; }
     setSaved(true);
     setPin(""); setPinConfirm("");
     setTimeout(() => setSaved(false), 2000);
@@ -95,38 +100,38 @@ function AccountSettingsModal({ store, onClose }) {
               </div>
             )}
 
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1.5 flex items-center gap-1.5"><KeyRound size={15} className="text-brand" aria-hidden="true" /> Skift PIN-kode</h3>
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1.5 flex items-center gap-1.5"><KeyRound size={15} className="text-brand" aria-hidden="true" /> Skift kode</h3>
             <p className="text-xs text-muted mb-3">
-              Vælg en ny {PIN_LAENGDE}-cifret PIN-kode. Du bruger den sammen med butiksnummer og brugernavn (initialer) til at logge ind på alle dine enheder. Undgå lette koder som 1234 eller 1111.
+              Vælg en ny kode. {kravTekst} Du bruger den sammen med butiksnummer og brugernavn (initialer) til at logge ind på alle dine enheder. Undgå lette koder som 1234 eller aaaa.
             </p>
             <div className="grid gap-2 mb-3">
               <input
-                type="password" inputMode="numeric" autoFocus={!biometricAvailable}
+                type="password" inputMode="text" autoComplete="new-password" autoCapitalize="off" autoCorrect="off" spellCheck={false} maxLength={MAX_LAENGDE} autoFocus={!biometricAvailable}
                 value={pin}
-                onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, PIN_LAENGDE))}
-                placeholder="Ny PIN-kode"
-                aria-label="Ny PIN-kode"
-                className="w-full rounded-lg border border-line bg-panel px-3 py-3 text-center text-xl tracking-[0.4em] text-ink focus:outline-none focus:border-brand"
+                onChange={(e) => setPin(e.target.value.replace(/\s/g, "").slice(0, MAX_LAENGDE))}
+                placeholder="Ny kode"
+                aria-label="Ny kode"
+                className="w-full rounded-lg border border-line bg-panel px-3 py-3 text-center text-xl tracking-[0.2em] text-ink focus:outline-none focus:border-brand"
               />
               <input
-                type="password" inputMode="numeric"
+                type="password" inputMode="text" autoComplete="new-password" autoCapitalize="off" autoCorrect="off" spellCheck={false} maxLength={MAX_LAENGDE}
                 value={pinConfirm}
-                onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, "").slice(0, PIN_LAENGDE))}
+                onChange={(e) => setPinConfirm(e.target.value.replace(/\s/g, "").slice(0, MAX_LAENGDE))}
                 onKeyDown={(e) => e.key === "Enter" && save()}
-                placeholder="Gentag PIN-koden"
-                aria-label="Gentag PIN-koden"
-                className="w-full rounded-lg border border-line bg-panel px-3 py-3 text-center text-xl tracking-[0.4em] text-ink focus:outline-none focus:border-brand"
+                placeholder="Gentag koden"
+                aria-label="Gentag koden"
+                className="w-full rounded-lg border border-line bg-panel px-3 py-3 text-center text-xl tracking-[0.2em] text-ink focus:outline-none focus:border-brand"
               />
             </div>
             {error && <p className="text-xs text-danger mb-3 flex items-center gap-1.5"><AlertCircle size={13} className="shrink-0" aria-hidden="true" /> {error}</p>}
-            {saved && <p className="text-xs text-success mb-3 flex items-center gap-1.5"><Check size={13} className="shrink-0" aria-hidden="true" /> PIN-koden er gemt.</p>}
+            {saved && <p className="text-xs text-success mb-3 flex items-center gap-1.5"><Check size={13} className="shrink-0" aria-hidden="true" /> Koden er gemt.</p>}
             <button
               onClick={save}
-              disabled={saving || pin.length !== PIN_LAENGDE}
+              disabled={saving || pin.length < minLaengde}
               className="w-full px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {saving && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
-              {saving ? "Gemmer..." : "Gem PIN-kode"}
+              {saving ? "Gemmer..." : "Gem kode"}
             </button>
           </>
         }

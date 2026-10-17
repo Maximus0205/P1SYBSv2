@@ -5,7 +5,8 @@ import { loginWithPin, loginWithBiometric } from "../lib/dataStore";
 import { erBiometriTilgaengelig } from "../lib/webauthn";
 import PUNKT1_LOGO_POSITIV from "../assets/punkt1_positiv.png";
 
-const PIN_LAENGDE = 4;
+const MIN_LAENGDE = 4; // absolut bund - butikkens eget krav (kan være højere) håndhæves af serveren
+const MAX_LAENGDE = 64;
 const BUTIK_NOEGLE = "p1sybs_butiksnr"; // kun en bekvemmelighed: husker butiksnummeret på denne enhed
 
 const laesButik = () => {
@@ -14,9 +15,13 @@ const laesButik = () => {
 const gemButik = (v) => {
   try { localStorage.setItem(BUTIK_NOEGLE, v); } catch { /* privat tilstand el. lign. - ikke kritisk */ }
 };
-const kunCifre = (v) => v.replace(/\D/g, "").slice(0, PIN_LAENGDE);
+const rensKode = (v) => v.replace(/\s/g, "").slice(0, MAX_LAENGDE);
+const kravTekst = (krav) => {
+  const min = Math.max(MIN_LAENGDE, krav?.minLaengde || MIN_LAENGDE);
+  return `Mindst ${min} tegn${krav?.kraeverBlanding ? ", både bogstaver og tal" : ""}.`;
+};
 
-// LOGIN = butiksnummer + brugernavn (initialer) + 4-cifret PIN.
+// LOGIN = butiksnummer + brugernavn (initialer) + kode (butikkens krav, min. 4 tegn).
 //
 // Brugernavn (initialer) er kun unikt INDEN FOR en butik, derfor er butiksnummeret
 // med. PIN'en verificeres server-side (Edge Function login-with-pin) med
@@ -38,6 +43,7 @@ function LoginPage() {
   const [pin, setPin] = useState("");
   const [nyPin, setNyPin] = useState("");
   const [nyPin2, setNyPin2] = useState("");
+  const [krav, setKrav] = useState(null); // butikkens kodekrav, leveres af serveren ved midlertidig kode
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -53,23 +59,23 @@ function LoginPage() {
 
   const logIndMedPin = async () => {
     setError("");
-    if (!harBrugerFelter() || pin.length !== PIN_LAENGDE) { setError(`Udfyld butiksnummer, brugernavn og ${PIN_LAENGDE}-cifret PIN-kode.`); return; }
+    if (!harBrugerFelter() || pin.length < MIN_LAENGDE) { setError("Udfyld butiksnummer, brugernavn og kode."); return; }
     setBusy(true);
     const result = await loginWithPin({ butik: butik.trim(), brugernavn: brugernavn.trim(), pin });
     setBusy(false);
-    if (result.skalSkiftePin) { gemButik(butik.trim()); setMode("nyPin"); return; }
-    if (!result.ok) { setError(result.fejl || "Forkert butik, bruger eller PIN-kode."); setPin(""); return; }
+    if (result.skalSkiftePin) { gemButik(butik.trim()); setKrav({ minLaengde: result.minLaengde, kraeverBlanding: result.kraeverBlanding }); setMode("nyPin"); return; }
+    if (!result.ok) { setError(result.fejl || "Forkert butik, bruger eller kode."); setPin(""); return; }
     gemButik(butik.trim());
   };
 
   const vaelgNyPin = async () => {
     setError("");
-    if (nyPin.length !== PIN_LAENGDE) { setError(`Den nye PIN-kode skal være præcis ${PIN_LAENGDE} cifre.`); return; }
+    if (nyPin.length < Math.max(MIN_LAENGDE, krav?.minLaengde || MIN_LAENGDE)) { setError(`Den nye kode er for kort. ${kravTekst(krav)}`); return; }
     if (nyPin !== nyPin2) { setError("De to koder er ikke ens."); setNyPin2(""); return; }
     setBusy(true);
     const result = await loginWithPin({ butik: butik.trim(), brugernavn: brugernavn.trim(), pin, nyPin });
     setBusy(false);
-    if (!result.ok) { setError(result.fejl || "Kunne ikke gemme den nye PIN-kode."); return; }
+    if (!result.ok) { setError(result.fejl || "Kunne ikke gemme den nye kode."); return; }
   };
 
   const logIndMedBiometri = async () => {
@@ -99,11 +105,10 @@ function LoginPage() {
     return logIndMedPin();
   };
 
-  const skiftTilbage = () => { setMode("pin"); setError(""); setPin(""); setNyPin(""); setNyPin2(""); };
+  const skiftTilbage = () => { setMode("pin"); setError(""); setPin(""); setNyPin(""); setNyPin2(""); setKrav(null); };
 
   const felt = "w-full rounded-lg border border-line bg-paper pl-8 pr-3 py-2.5 text-sm text-ink focus:outline-none focus:border-brand";
   const ikon = "absolute left-2.5 top-1/2 -translate-y-1/2 text-muted";
-  const pinFelt = `${felt} tracking-[0.3em]`;
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-paper p-3">
@@ -123,7 +128,7 @@ function LoginPage() {
           />
         )}
         <h1 className="font-display text-3xl uppercase tracking-tight text-ink mb-6">
-          {mode === "nyPin" ? "Vælg din PIN" : mode === "admin" ? "Systemadministrator" : "Velkommen"}
+          {mode === "nyPin" ? "Vælg din kode" : mode === "admin" ? "Systemadministrator" : "Velkommen"}
         </h1>
 
         <form onSubmit={submit} className="grid gap-3" noValidate>
@@ -150,12 +155,12 @@ function LoginPage() {
                 </div>
               </div>
               <div>
-                <label htmlFor="login-pin" className="text-xs text-muted">PIN-kode</label>
+                <label htmlFor="login-pin" className="text-xs text-muted">Kode</label>
                 <div className="relative mt-1">
                   <KeyRound size={14} className={ikon} aria-hidden="true" />
                   <input
-                    id="login-pin" type="password" inputMode="numeric" autoComplete="off"
-                    value={pin} onChange={(e) => setPin(kunCifre(e.target.value))} className={pinFelt}
+                    id="login-pin" type="password" inputMode="text" autoComplete="current-password" autoCapitalize="off" autoCorrect="off" spellCheck={false} maxLength={MAX_LAENGDE}
+                    value={pin} onChange={(e) => setPin(rensKode(e.target.value))} className={felt}
                   />
                 </div>
               </div>
@@ -164,22 +169,22 @@ function LoginPage() {
 
           {mode === "nyPin" && (
             <>
-              <p className="text-xs text-muted">Du loggede ind med en midlertidig PIN. Vælg nu din egen {PIN_LAENGDE}-cifrede PIN-kode, som du bruger fremover.</p>
+              <p className="text-xs text-muted">Du loggede ind med en midlertidig kode. Vælg nu din egen kode, som du bruger fremover. {kravTekst(krav)}</p>
               <div>
-                <label htmlFor="login-ny-pin" className="text-xs text-muted">Ny PIN-kode</label>
+                <label htmlFor="login-ny-pin" className="text-xs text-muted">Ny kode</label>
                 <div className="relative mt-1">
                   <KeyRound size={14} className={ikon} aria-hidden="true" />
-                  <input id="login-ny-pin" type="password" inputMode="numeric" autoComplete="new-password" autoFocus value={nyPin} onChange={(e) => setNyPin(kunCifre(e.target.value))} className={pinFelt} />
+                  <input id="login-ny-pin" type="password" inputMode="text" autoComplete="new-password" autoCapitalize="off" autoCorrect="off" spellCheck={false} maxLength={MAX_LAENGDE} autoFocus value={nyPin} onChange={(e) => setNyPin(rensKode(e.target.value))} className={felt} />
                 </div>
               </div>
               <div>
-                <label htmlFor="login-ny-pin2" className="text-xs text-muted">Gentag PIN-koden</label>
+                <label htmlFor="login-ny-pin2" className="text-xs text-muted">Gentag koden</label>
                 <div className="relative mt-1">
                   <KeyRound size={14} className={ikon} aria-hidden="true" />
-                  <input id="login-ny-pin2" type="password" inputMode="numeric" autoComplete="new-password" value={nyPin2} onChange={(e) => setNyPin2(kunCifre(e.target.value))} className={pinFelt} />
+                  <input id="login-ny-pin2" type="password" inputMode="text" autoComplete="new-password" autoCapitalize="off" autoCorrect="off" spellCheck={false} maxLength={MAX_LAENGDE} value={nyPin2} onChange={(e) => setNyPin2(rensKode(e.target.value))} className={felt} />
                 </div>
               </div>
-              <p className="text-[11px] text-muted">Undgå lette koder som 1234 eller 1111 - de afvises.</p>
+              <p className="text-[11px] text-muted">Undgå lette koder som 1234 eller aaaa - de afvises.</p>
             </>
           )}
 
@@ -210,7 +215,7 @@ function LoginPage() {
             className="w-full mt-2 px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
           >
             {busy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
-            {mode === "nyPin" ? "Gem PIN og log ind" : "Log ind"}
+            {mode === "nyPin" ? "Gem kode og log ind" : "Log ind"}
           </button>
         </form>
 
@@ -223,7 +228,7 @@ function LoginPage() {
           </button>
         )}
 
-        {mode === "pin" && <p className="text-[11px] text-muted mt-4">Glemt din PIN, eller er din bruger ny? Bed din butiks admin om en ny midlertidig PIN.</p>}
+        {mode === "pin" && <p className="text-[11px] text-muted mt-4">Glemt din kode, eller er din bruger ny? Bed din butiks admin om en ny midlertidig kode.</p>}
 
         {mode === "pin" ? (
           <button type="button" onClick={() => { setMode("admin"); setError(""); }} className="w-full mt-3 text-[11px] text-muted hover:text-brand underline">
