@@ -2,10 +2,12 @@
 // Brugeren (rollen sælger, butikken TESTMILJØ2.0) ligger i hemmelighederne E2E_EMAIL og E2E_PASSWORD.
 // Testen logger ind via "Systemadministrator-login" (e-mail + adgangskode) på loginsiden.
 // Almindeligt login er butiksnummer + brugernavn (initialer) + 4-cifret PIN, som testmiljøets
-// brugere ikke har hemmeligheder til - E2E_EMAIL skal derfor være en rigtig e-mail.
+// brugere ikke har hemmeligheder til. Er E2E_EMAIL et brugernavn (fx "e2e") uden @, bruges
+// den tilsvarende interne login-e-mail, som kontoen har i Supabase Auth.
 import { test, expect } from "@playwright/test";
 
-const bruger = process.env.E2E_EMAIL;
+const rå = process.env.E2E_EMAIL;
+const bruger = rå && !rå.includes("@") ? `${rå.trim().toLowerCase()}@brugere.kaedeplan.local` : rå;
 const kode = process.env.E2E_PASSWORD;
 
 test.skip(!bruger || !kode, "E2E_EMAIL/E2E_PASSWORD er ikke sat - login-testene springes over");
