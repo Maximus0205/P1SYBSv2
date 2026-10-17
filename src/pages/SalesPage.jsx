@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
-import { isToday, formatLongDate } from "../data/domain";
+import { isToday, formatLongDate, todayISO } from "../data/domain";
 import { DateSelector } from "../components/common";
 import { NewOrderForm } from "../components/NewOrderForm";
 import { CsvImport } from "../components/CsvImport";
@@ -11,17 +11,36 @@ import { nyKladdeId, hentGenoptagelse } from "../lib/orderDrafts";
 const norm = (s) => (s || "").toString().toLowerCase();
 const normPhone = (s) => (s || "").replace(/\D/g, "");
 
-// Søger KUN i dagens allerede viste sager (adresse eller telefonnummer) -
-// til hurtigt at finde en sag, når en kunde ringer ind samme dag ("jeg
-// bor på Skovvej" / "mit nummer er ..."). Til opslag på tværs af ALLE
-// dage og datoer findes det bredere Arkiv i stedet.
+// Maks. antal sager der vises ved en søgning på tværs af alle dage - så en meget kort søgning
+// (fx "a") ikke render hundredvis af kort på én gang. Overskydende nævnes under listen.
+const MAX_SOEGERESULTATER = 50;
+
+// Søger i ALLE butikkens sager - på tværs af alle dage (adresse, telefonnummer,
+// kundenavn eller sagsnummer) - til hurtigt at finde en sag, når en kunde ringer
+// ind ("jeg har en tid hos jer" / "jeg bor på Skovvej" / "mit nummer er ...").
+// Tidligere søgte feltet kun i den valgte dag, så sælgeren måtte forbi Arkivet.
+// Kortene viser selv datoen, så man kan se, hvilken dag sagen ligger på.
 function matchesSearch(order, search) {
   const q = search.trim();
   if (!q) return true;
   const addressMatch = norm(order.kunde?.adresse).includes(norm(q));
+  const nameMatch = norm(order.kunde?.navn).includes(norm(q));
   const qDigits = normPhone(q);
   const phoneMatch = qDigits.length >= 2 && normPhone(order.kunde?.telefon).includes(qDigits);
-  return addressMatch || phoneMatch;
+  const nrMatch = norm(order.nr).includes(norm(q.replace(/^#/, "")));
+  return addressMatch || nameMatch || phoneMatch || nrMatch;
+}
+
+// Kommende sager (i dag og frem) først, tidligste først - det er dem, kunden typisk ringer om.
+// Derefter tidligere sager, nyeste først.
+function sortSoegeresultater(a, b, today) {
+  const aFremad = (a.dato || "") >= today;
+  const bFremad = (b.dato || "") >= today;
+  if (aFremad !== bFremad) return aFremad ? -1 : 1;
+  const d = (a.dato || "").localeCompare(b.dato || "");
+  const tid = (a.start || "").localeCompare(b.start || "");
+  if (aFremad) return d || tid;
+  return -d || tid;
 }
 
 // personnel/timeOff (september 2026): videresendes til NewOrderForm, som
@@ -83,8 +102,15 @@ function SalesPage({ storeId, orders, technicians, personnel, timeOff, vehicles,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [afventer, klar, kladder]);
   const sortFn = (a, b) => (a.start || "").localeCompare(b.start || "");
-  const todaysOrders = orders.filter((s) => s.dato === selectedDate).sort(sortFn);
-  const visibleOrders = useMemo(() => todaysOrders.filter((s) => matchesSearch(s, search)), [todaysOrders, search]);
+  const todaysOrders = useMemo(() => orders.filter((s) => s.dato === selectedDate).sort(sortFn), [orders, selectedDate]);
+  const soeger = search.trim().length > 0;
+  // Uden søgning: den valgte dags sager. Med søgning: ALLE sager der matcher, på tværs af dage.
+  const soegeresultater = useMemo(() => {
+    if (!soeger) return [];
+    const today = todayISO();
+    return orders.filter((s) => matchesSearch(s, search)).sort((a, b) => sortSoegeresultater(a, b, today));
+  }, [orders, search, soeger]);
+  const visibleOrders = soeger ? soegeresultater.slice(0, MAX_SOEGERESULTATER) : todaysOrders;
 
   const startNy = () => { setSeed({ id: nyKladdeId(), draft: null }); setPanel("ny"); };
 
@@ -113,27 +139,47 @@ function SalesPage({ storeId, orders, technicians, personnel, timeOff, vehicles,
       {panel === "import" && <div className="mb-6"><CsvImport technicians={technicians} productTypes={productTypes} primaryServices={primaryServices} onImport={onImport} onClose={() => setPanel(null)} /></div>}
 
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink">Sager {isToday(selectedDate) ? "i dag" : `d. ${selectedDate}`}</h2>
-        <div className="relative w-full sm:w-64">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink">
+          {soeger ? "Søgeresultat · alle dage" : `Sager ${isToday(selectedDate) ? "i dag" : `d. ${selectedDate}`}`}
+        </h2>
+        <div className="relative w-full sm:w-72">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
           <input
+            type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Søg adresse eller telefon..."
-            className="w-full rounded-lg border border-line bg-white pl-8 pr-8 py-1.5 text-sm text-ink focus:outline-none focus:border-brand"
+            placeholder="Søg i alle dage: navn, adresse, telefon, sagsnr."
+            aria-label="Søg i alle sager på tværs af dage: navn, adresse, telefon eller sagsnummer"
+            className="w-full rounded-lg border border-line bg-white pl-8 pr-8 py-2 text-sm text-ink focus:outline-none focus:border-brand"
           />
           {search && (
-            <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-brand">
+            <button type="button" onClick={() => setSearch("")} aria-label="Ryd søgning" className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 text-muted hover:text-brand">
               <X size={14} />
             </button>
           )}
         </div>
       </div>
 
-      {todaysOrders.length === 0 ? (
+      {soeger ? (
+        soegeresultater.length === 0 ? (
+          <p className="text-sm text-muted italic">Ingen sager på tværs af alle dage matcher "{search}".</p>
+        ) : (
+          <>
+            <p className="text-xs text-muted mb-2">
+              {soegeresultater.length} {soegeresultater.length === 1 ? "sag" : "sager"} fundet · kommende først, derefter tidligere
+            </p>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {visibleOrders.map((s) => (
+                <OrderCardCompact key={s.id} order={s} technicians={technicians} onOpen={onOpen} minimal />
+              ))}
+            </div>
+            {soegeresultater.length > MAX_SOEGERESULTATER && (
+              <p className="text-xs text-muted italic mt-2">Viser de første {MAX_SOEGERESULTATER}. Skriv mere i søgefeltet for at indsnævre.</p>
+            )}
+          </>
+        )
+      ) : todaysOrders.length === 0 ? (
         <p className="text-sm text-muted italic">Ingen sager booket på denne dato endnu.</p>
-      ) : visibleOrders.length === 0 ? (
-        <p className="text-sm text-muted italic">Ingen af dagens sager matcher "{search}".</p>
       ) : (
         <div className="grid sm:grid-cols-2 gap-2">
           {visibleOrders.map((s) => (
