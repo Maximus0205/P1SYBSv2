@@ -223,7 +223,7 @@ function AdminPage({
       {tab === "sms" && (
         <div>
           <p className="text-xs text-muted mb-4">
-            Ankomst-SMS'en, som montører og sælgere kan sende til kunden. Her styrer du, om den er slået til, hvad den siger, og hvilke hurtigknapper der vises. Afsenderen sættes af systemadministratoren.
+            Tre hovedpunkter, som du hver især kan slå til og fra: ankomst-SMS, som montører og sælgere sender selv til kunden; automatisk SMS-advisering af kunder (fx en påmindelse dagen før); og SMS-advisering af personale. Alt er slået fra, indtil du tænder det. Afsenderen sættes af systemadministratoren.
           </p>
           <SmsSettingsAdmin storeId={store?.id} isSystemAdmin={permissions === null} />
         </div>
