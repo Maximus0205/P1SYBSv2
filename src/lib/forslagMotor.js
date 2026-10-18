@@ -13,7 +13,7 @@
 // Mangler en sag på dagen koordinater, kan dagen ikke vurderes og udelades (og det meldes i noter) - der gættes aldrig.
 // Ren logik: netværk (hentMatrix) og sagsomsætning (ordreTilStop) sendes ind, så den kan testes i Node (tests/forslagMotor.test.mjs).
 import { vurderTilfoejelse, skoenMatrix } from "../engine/kapacitet/index.js";
-import { harJyllandForrang } from "../engine/kapacitet/omraade.js";
+import { harForrang, omraadeForBil } from "../engine/kapacitet/omraade.js";
 import { bilTilMotor, personerTilMotor } from "./dagsplan.js";
 
 const erWeekend = (iso) => { const d = new Date(`${iso}T12:00:00`).getDay(); return d === 0 || d === 6; };
@@ -93,8 +93,8 @@ export async function motorForslag({
   const vurderet = [];
   for (const k of kombinationer) {
     const v = vurderTilfoejelse(input(k, skoenMatrix(punkterFor(k))), kandStop);
-    // Forrang: en fast Jylland-bil vælges frem for en anden bil på samme dag, når sagen ligger i Jylland og begge kan tage den. Den udelukker ingen.
-    if (v.mulig) vurderet.push({ k, v, s: score(v), forrang: harJyllandForrang(k.bil, kandStop.adresse) });
+    // Forrang: en bil med fast kørselsområde vælges frem for en anden bil på samme dag, når sagen ligger i området og begge kan tage den. Den udelukker ingen.
+    if (v.mulig) vurderet.push({ k, v, s: score(v), forrang: harForrang(k.bil, kandStop.adresse, grundlag.indstillinger?.omraader) });
   }
   vurderet.sort((a, b) => (b.forrang - a.forrang) || (a.s - b.s));
 
@@ -117,7 +117,7 @@ export async function motorForslag({
 
   const forslag = raffineret.slice(0, max).map(({ k, v, forrang }) => ({
     dato: k.dato, bilId: k.bil.id, bilNavn: k.bil.navn, montorId: k.bil.id, montorNavn: k.bil.navn,
-    begrundelse: begrund(v, k.bil.navn, k.dato, originalDate) + (forrang ? " · fast Jylland-bil" : ""),
+    begrundelse: begrund(v, k.bil.navn, k.dato, originalDate) + (forrang ? ` · fast bil i ${omraadeForBil(k.bil, grundlag.indstillinger?.omraader)?.navn || "området"}` : ""),
     ekstraMin: Math.round(v.ekstra?.min ?? 0), ekstraKm: afrund1(v.ekstra?.km ?? 0),
     hjemmeKl: v.efter.noegletal.hjemmeKl || null, ledigMin: v.efter.noegletal.ledigMin ?? null,
     skoen: !!v.efter.forudsaetninger?.skoenKoersel,

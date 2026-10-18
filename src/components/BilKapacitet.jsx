@@ -1,14 +1,16 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Check, AlertCircle } from "lucide-react";
+import { hentKapacitetsIndstillinger } from "../lib/kapacitetStore";
+import { KoerselsOmraader } from "./KoerselsOmraader";
 
 // Admin -> Biler (oktober 2026): bilens nyttelast, værktøjsvægt og lasterum. Kapacitetsmotoren bruger dem til at afgøre, om varerne kan
 // være på bilen (vægt og plads). Er et felt tomt, springer motoren den del over for bilen - intet gættes. Tallene tastes fra bilens
 // papirer og kassens datablad. Personers vægt regnes automatisk (fast standardværdi) og skal ikke tastes her.
 const tekst = (v) => (v === null || v === undefined ? "" : String(v));
-const fraBil = (b) => ({ nyttelastKg: tekst(b.nyttelastKg), vaerktoejKg: tekst(b.vaerktoejKg), l: tekst(b.lasterum?.laengdeCm), b: tekst(b.lasterum?.breddeCm), h: tekst(b.lasterum?.hoejdeCm), omraade: b.omraade === "jylland" ? "jylland" : "" });
+const fraBil = (b) => ({ nyttelastKg: tekst(b.nyttelastKg), vaerktoejKg: tekst(b.vaerktoejKg), l: tekst(b.lasterum?.laengdeCm), b: tekst(b.lasterum?.breddeCm), h: tekst(b.lasterum?.hoejdeCm), omraade: typeof b.omraade === "string" ? b.omraade : "" });
 const num = (v) => (String(v).trim() === "" ? null : Number(String(v).replace(",", ".")));
 
-function BilRaekke({ bil, onUpdate }) {
+function BilRaekke({ bil, onUpdate, omraader }) {
   const [d, setD] = useState(() => fraBil(bil));
   const [fejl, setFejl] = useState("");
   const [besked, setBesked] = useState("");
@@ -22,7 +24,7 @@ function BilRaekke({ bil, onUpdate }) {
     const udfyldt = mål.filter((x) => x !== null).length;
     if (udfyldt !== 0 && udfyldt !== 3) return setFejl("Udfyld alle tre mål på lasterummet (længde, bredde og højde), eller ingen af dem.");
     if (udfyldt === 3 && !mål.every((x) => x > 0 && x <= 1000)) return setFejl("Lasterummets mål skal være mellem 1 og 1000 cm.");
-    onUpdate(bil.id, { nyttelastKg: nytte, vaerktoejKg: vaerk, lasterum: udfyldt === 3 ? { laengdeCm: mål[0], breddeCm: mål[1], hoejdeCm: mål[2] } : null, omraade: d.omraade === "jylland" ? "jylland" : null });
+    onUpdate(bil.id, { nyttelastKg: nytte, vaerktoejKg: vaerk, lasterum: udfyldt === 3 ? { laengdeCm: mål[0], breddeCm: mål[1], hoejdeCm: mål[2] } : null, omraade: d.omraade || null });
     setBesked("Gemt.");
   };
   const felt = "w-24 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand";
@@ -47,9 +49,10 @@ function BilRaekke({ bil, onUpdate }) {
         <label htmlFor={id("omraade")} className="block text-xs font-semibold uppercase tracking-wide text-muted mb-1">Kørselsområde</label>
         <select id={id("omraade")} value={d.omraade} onChange={(e) => sæt("omraade", e.target.value)} className="w-full sm:w-auto min-h-[44px] rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
           <option value="">Ingen fast område</option>
-          <option value="jylland">Fast Jylland (forrang)</option>
+          {omraader.map((o) => <option key={o.id} value={o.id}>{o.navn} (forrang)</option>)}
+          {d.omraade && !omraader.some((o) => o.id === d.omraade) && <option value={d.omraade}>{d.omraade === "jylland" ? "Jylland (indbygget, forrang)" : "Område findes ikke mere"}</option>}
         </select>
-        <p className="text-xs text-muted mt-1">En fast Jylland-bil har forrang på sager med adresse i Jylland (postnummer 6000-9999), når den kan tage dem. Den kan stadig tage sager på Fyn og på vejen, og de andre biler må stadig køre i Jylland.</p>
+        <p className="text-xs text-muted mt-1">En bil med fast område har forrang på sager med adresse i området (ud fra postnummeret), når den kan tage dem. Den kan stadig tage andre sager, og de andre biler må stadig køre i området. Opret områder under "Kørselsområder" nedenfor.</p>
       </div>
       {fejl && <p role="alert" className="text-xs text-danger mt-2 flex items-center gap-1.5"><AlertCircle size={13} className="shrink-0" aria-hidden="true" /> {fejl}</p>}
       {besked && !aendret && <p role="status" className="text-xs text-success mt-2 flex items-center gap-1.5"><Check size={13} className="shrink-0" aria-hidden="true" /> {besked}</p>}
@@ -58,13 +61,20 @@ function BilRaekke({ bil, onUpdate }) {
   );
 }
 
-function BilKapacitet({ vehicles, onUpdate }) {
+function BilKapacitet({ vehicles, onUpdate, storeId }) {
+  const [omraader, setOmraader] = useState([]);
+  useEffect(() => {
+    let levende = true;
+    hentKapacitetsIndstillinger(storeId).then((r) => { if (levende && r) setOmraader(r.omraader || []); });
+    return () => { levende = false; };
+  }, [storeId]);
   if (!vehicles || vehicles.length === 0) return null;
   return (
     <div className="mt-8">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1">Nyttelast, lasterum og kørselsområde</h3>
-      <p className="text-xs text-muted mb-3">Bruges af planlægningen til at sikre, at bilen ikke overlæsses, og at varerne er der plads til. Står et felt tomt, springer planlægningen den del over for den bil. Personerne i bilen regnes automatisk med en fast standardvægt.</p>
-      <div className="space-y-2">{vehicles.map((b) => <BilRaekke key={b.id} bil={b} onUpdate={onUpdate} />)}</div>
+      <p className="text-xs text-muted mb-3">Bruges af planlægningen til at sikre, at bilen ikke overlæssses, og at varerne er der plads til. Står et felt tomt, springer planlægningen den del over for den bil. Personerne i bilen regnes automatisk med en fast standardvægt.</p>
+      <div className="space-y-2">{vehicles.map((b) => <BilRaekke key={b.id} bil={b} onUpdate={onUpdate} omraader={omraader} />)}</div>
+      <KoerselsOmraader storeId={storeId} omraader={omraader} vehicles={vehicles} onGemt={setOmraader} />
     </div>
   );
 }
