@@ -8,6 +8,7 @@
 // registreres aldrig en enkelt medarbejders vægt (GDPR), og tallet står derfor kun i koden.
 
 import { tilMin } from "./tid.js";
+import { renPostnumre } from "./omraade.js";
 
 export const PERSONVAEGT_KG = 86.5;
 
@@ -56,6 +57,22 @@ const tal = (v, min, max, std) => {
 const heltal = (v, min, max, std) => Math.round(tal(v, min, max, std));
 const hhmm = (v, std) => (tilMin(v) !== null ? String(v).trim() : std);
 
+// Kørselsområder admin selv opretter (Admin -> Biler): [{ id, navn, postnumre }], postnumre fx "6000-8304, 5000". En bil peger på et område med
+// bil.omraade = id (se omraade.js). Højst 20 områder; ugyldige rækker og dubletter kasseres.
+function renOmraader(raa) {
+  if (!Array.isArray(raa)) return [];
+  const set = new Set();
+  const ud = [];
+  for (const o of raa.slice(0, 20)) {
+    const id = typeof o?.id === "string" ? o.id.trim().slice(0, 40) : "";
+    const navn = typeof o?.navn === "string" ? o.navn.trim().slice(0, 60) : "";
+    if (!id || !navn || set.has(id)) continue;
+    set.add(id);
+    ud.push({ id, navn, postnumre: renPostnumre(o.postnumre) });
+  }
+  return ud;
+}
+
 export function rensIndstillinger(raa) {
   const r = raa && typeof raa === "object" && !Array.isArray(raa) ? raa : {};
   const g = (k) => (r[k] && typeof r[k] === "object" && !Array.isArray(r[k]) ? r[k] : {});
@@ -94,6 +111,7 @@ export function rensIndstillinger(raa) {
     },
     koersel: { trafikTillaegPct: tal(g("koersel").trafikTillaegPct, 0, 100, S.koersel.trafikTillaegPct) },
     samling: { maksEkstraVentetidDage: heltal(g("samling").maksEkstraVentetidDage, 0, 30, S.samling.maksEkstraVentetidDage) },
+    omraader: renOmraader(r.omraader),
     regler,
   };
 }
