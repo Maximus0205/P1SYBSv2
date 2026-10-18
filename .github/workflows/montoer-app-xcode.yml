@@ -17,6 +17,8 @@ jobs:
         working-directory: montoer-app
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: feature/montoer-app-capacitor
 
       - uses: actions/setup-node@v4
         with:
