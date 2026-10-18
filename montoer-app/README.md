@@ -21,6 +21,9 @@ Rigtig app til **montør og medhjælper** (lageret kommer senere) – bygget i E
 ## iPhone / iPad
 Kræver Apple Developer-konto (99 USD/år). Så kan appen deles privat via TestFlight (eller Apple Business Manager) – ikke offentligt i App Store. Byg via EAS Build (`eas build -p ios`).
 
+### Test på egen iPhone uden betalt konto
+GitHub → Actions → "Montør-app - byg iPhone (IPA til test)" → Run workflow. Hent `p1sybs-montor-iphone` under kørslen (Artifacts), pak ud, og installer `.ipa` med Sideloadly (gratis Apple-ID, holder 7 dage). Telefonen: Udviklertilstand slået til, og godkend profilen under Indstillinger → Generelt → VPN og enhedsstyring.
+
 ## Kør lokalt (udvikler)
 ```
 cd montoer-app
