@@ -16,6 +16,7 @@ export function bilTilMotor(vehicleRow, fallbackRow) {
   return {
     id: String(v.id), navn: v.navn || v.bil || "Bil", tempo: tal(v.tempo) || 100, nyttelastKg: tal(v.nyttelastKg), vaerktoejKg: tal(v.vaerktoejKg) || 0,
     lasterum: l && b && h ? { laengdeCm: l, breddeCm: b, hoejdeCm: h } : null,
+    omraade: v.omraade === "jylland" ? "jylland" : null, // fast Jylland-bil: forrang på sager i Jylland (engine/kapacitet/omraade.js)
   };
 }
 

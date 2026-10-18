@@ -13,6 +13,7 @@
 // Mangler en sag på dagen koordinater, kan dagen ikke vurderes og udelades (og det meldes i noter) - der gættes aldrig.
 // Ren logik: netværk (hentMatrix) og sagsomsætning (ordreTilStop) sendes ind, så den kan testes i Node (tests/forslagMotor.test.mjs).
 import { vurderTilfoejelse, skoenMatrix } from "../engine/kapacitet/index.js";
+import { harJyllandForrang } from "../engine/kapacitet/omraade.js";
 import { bilTilMotor, personerTilMotor } from "./dagsplan.js";
 
 const erWeekend = (iso) => { const d = new Date(`${iso}T12:00:00`).getDay(); return d === 0 || d === 6; };
@@ -92,9 +93,10 @@ export async function motorForslag({
   const vurderet = [];
   for (const k of kombinationer) {
     const v = vurderTilfoejelse(input(k, skoenMatrix(punkterFor(k))), kandStop);
-    if (v.mulig) vurderet.push({ k, v, s: score(v) });
+    // Forrang: en fast Jylland-bil vælges frem for en anden bil på samme dag, når sagen ligger i Jylland og begge kan tage den. Den udelukker ingen.
+    if (v.mulig) vurderet.push({ k, v, s: score(v), forrang: harJyllandForrang(k.bil, kandStop.adresse) });
   }
-  vurderet.sort((a, b) => a.s - b.s);
+  vurderet.sort((a, b) => (b.forrang - a.forrang) || (a.s - b.s));
 
   // Bedste bil pr. dato; datoerne i kronologisk rækkefølge (tidligste først).
   const set = new Set();
@@ -108,14 +110,14 @@ export async function motorForslag({
     const m = await matrixFor(hentMatrix, punkterFor(x.k));
     if (!m) { raffineret.push(x); continue; }
     const v = vurderTilfoejelse(input(x.k, m), kandStop);
-    if (v.mulig) raffineret.push({ k: x.k, v, s: score(v) });
+    if (v.mulig) raffineret.push({ k: x.k, v, s: score(v), forrang: x.forrang });
     // Er den ikke mulig med de rigtige tider, udgår kombinationen (skønnet var for optimistisk).
   }
   raffineret.sort((a, b) => (a.k.dato < b.k.dato ? -1 : a.k.dato > b.k.dato ? 1 : 0));
 
-  const forslag = raffineret.slice(0, max).map(({ k, v }) => ({
+  const forslag = raffineret.slice(0, max).map(({ k, v, forrang }) => ({
     dato: k.dato, bilId: k.bil.id, bilNavn: k.bil.navn, montorId: k.bil.id, montorNavn: k.bil.navn,
-    begrundelse: begrund(v, k.bil.navn, k.dato, originalDate),
+    begrundelse: begrund(v, k.bil.navn, k.dato, originalDate) + (forrang ? " · fast Jylland-bil" : ""),
     ekstraMin: Math.round(v.ekstra?.min ?? 0), ekstraKm: afrund1(v.ekstra?.km ?? 0),
     hjemmeKl: v.efter.noegletal.hjemmeKl || null, ledigMin: v.efter.noegletal.ledigMin ?? null,
     skoen: !!v.efter.forudsaetninger?.skoenKoersel,
