@@ -210,19 +210,19 @@ function MontorRoute({ profile, vehicles, orders, ordersStore, keyCabinets, crew
   const dagensBilId = holdBilId || (erMedhjaelper ? undefined : profile.bilId);
   const koererSom2Mand = !!holdBilId && !erMedhjaelper && holdBilId !== profile.bilId;
   const ownVehicle = vehicles.find((v) => v.id === dagensBilId);
-  if (!ownVehicle && erMedhjaelper) {
+  if (!ownVehicle) {
+    // Datovælgeren vises ALTID her: en montør uden fast bil (eller med en anden bil) kan være sat som 2. mand på en BESTEMT dag og skal kunne
+    // bladre frem til den.
     return (
       <div>
         <DateSelector date={selectedDate} onChange={onDateChange} />
-        <p className="text-sm text-muted mt-3">Du er ikke sat på en bil denne dag endnu. Prøv en anden dag, eller tjek igen senere.</p>
+        <p className="text-sm text-muted mt-3">
+          {erMedhjaelper || !profile.bilId
+            ? "Du er ikke sat på en bil denne dag. Bladr til en anden dag, eller tjek igen senere."
+            : "Din bil kunne ikke findes. Bed en administrator tjekke din bil under Admin → Brugere."}
+        </p>
+        {!erMedhjaelper && !profile.bilId && <p className="text-xs text-muted mt-2">Har du en fast bil, skal en administrator tildele dig den under Admin → Brugere.</p>}
       </div>
-    );
-  }
-  if (!ownVehicle) {
-    return (
-      <p className="text-sm text-muted">
-        Din bruger er ikke koblet til en bil endnu. Bed en administrator om at tildele dig en under Admin → Brugere.
-      </p>
     );
   }
   const technician = { id: ownVehicle.id, navn: ownVehicle.navn, bil: ownVehicle.nummerplade };
