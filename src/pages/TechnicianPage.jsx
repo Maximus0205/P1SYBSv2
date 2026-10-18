@@ -220,20 +220,21 @@ function OrderStopCard({ order: s, keyCabinets, onOpen, onMoveUp, onMoveDown, ca
           </div>
           {/* Ingen sagsoverskrift: montøren har brug for KUNDEN og HVAD der skal i bilen, ikke en opsummering af sagen. Kundeinfo står øverst,
               og hver varelinje er listet direkte på kortet, så bilen kan pakkes uden at åbne hver enkelt sag (oktober 2026). */}
-          <p className="font-semibold text-sm text-ink">
-            {s.kunde.navn}{s.koeber ? <span className="font-normal text-muted"> · køber {s.koeber.navn}</span> : null}
-          </p>
+          <p className="font-semibold text-sm text-ink">{s.kunde.navn}</p>
+          {s.koeber && <p className="text-xs text-muted">Køber: {s.koeber.navn}</p>}
           <p className="text-xs text-muted">{s.kunde.adresse}</p>
           {(s.varelinjer || []).length > 0 && (
-            <ul className="mt-1.5 space-y-0.5" aria-label="Varer på sagen">
+            <ul className="mt-2 space-y-1.5" aria-label="Varer på sagen">
               {s.varelinjer.map((v) => {
+                // Ydelsen vises ALTID (også når den er ens på flere linjer): montøren skal kunne se, hvad der skal gøres ved hver vare,
+                // hvis dagen ændrer sig undervejs.
                 const ydelser = [v.primaerYdelse?.navn, ...(v.tillaeg || []).map((y) => y.navn)].filter(Boolean).join(" + ");
                 return (
-                  <li key={v.id} className="text-xs text-ink flex items-start gap-1.5">
+                  <li key={v.id} className="text-xs flex items-start gap-1.5">
                     <span className="text-faint shrink-0" aria-hidden="true">•</span>
                     <span className="min-w-0">
-                      <span className="font-semibold">{lineItemLabel(v)}</span>
-                      {ydelser && <span className="text-muted"> · {ydelser}</span>}
+                      <span className="block font-semibold text-ink">{lineItemLabel(v)}</span>
+                      {ydelser && <span className="block text-muted">{ydelser}</span>}
                     </span>
                   </li>
                 );
