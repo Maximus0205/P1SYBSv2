@@ -106,7 +106,7 @@ function StorageIntegrationAdmin({ storeId, storeLabel }) {
         <h3 className="text-sm font-semibold uppercase tracking-wide text-ink">Eget lager (NAS)</h3>
       </div>
       <p className="text-xs text-muted mb-4">
-        {storeLabel ? `Hvor ${storeLabel} gemmer sagsdokumentation (billeder, underskrifter mv.).` : "Hvor denne butik gemmer sagsdokumentation (billeder, underskrifter mv.)."} Som standard hos os, i en fælles, sikkert adskilt bøtte. Slå til for i stedet at pege på jeres eget NAS - kræver at NAS'et kører en S3-kompatibel tjeneste (fx MinIO, findes som en simpel pakke til Synology/QNAP).
+        {storeLabel ? `Hvor ${storeLabel} gemmer sagsdokumentation (billeder, underskrifter mv.).` : "Hvor denne butik gemmer sagsdokumentation (billeder, underskrifter mv.)."} Som standard gemmes de hos os. Slå til for i stedet at bruge jeres eget NAS. Det kræver en S3-kompatibel tjeneste (fx MinIO, som findes til Synology og QNAP).
       </p>
 
       <label className="flex items-center gap-2 cursor-pointer mb-4">
@@ -149,11 +149,11 @@ function StorageIntegrationAdmin({ storeId, storeLabel }) {
           </div>
           <label className="flex items-center gap-2 cursor-pointer mb-3">
             <input type="checkbox" checked={pathStyle} onChange={(e) => setPathStyle(e.target.checked)} className="w-4 h-4 accent-brand" />
-            <span className="text-xs text-ink">Sti-baseret adressering (path-style) — de fleste NAS/MinIO-opsætninger kræver dette, lad stå til med mindre andet er oplyst</span>
+            <span className="text-xs text-ink">Sti-baseret adressering (path-style). De fleste NAS/MinIO-opsætninger kræver det. Lad stå til, medmindre andet er oplyst.</span>
           </label>
           <p className="text-[11px] text-muted flex items-start gap-1.5 mb-4">
             <ShieldCheck size={12} className="shrink-0 mt-0.5" aria-hidden="true" />
-            Den hemmelige nøgle vises aldrig igen, når den er gemt — kun om den er sat. Den opbevares krypteret og forlader aldrig serveren.
+            Den hemmelige nøgle vises ikke igen, når den er gemt. Den opbevares krypteret og forlader aldrig serveren.
           </p>
           <p className="text-[11px] text-info flex items-start gap-1.5 mb-4">
             <Info size={12} className="shrink-0 mt-0.5" aria-hidden="true" />

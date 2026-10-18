@@ -293,7 +293,7 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, onKoor
 
       {status === "usikker" && (
         <p className="text-[11px] text-danger mt-1 flex items-center gap-1">
-          <AlertTriangle size={11} /> {suggestions.length > 0 && suggestions.every((s) => s.type === "adresse") ? "Vælg den konkrete lejlighed herunder." : "Adressen er endnu ikke specifik nok, eller kunne ikke bekræftes — tilføj fx husnummer eller postnummer, eller vælg et forslag herunder."}
+          <AlertTriangle size={11} /> {suggestions.length > 0 && suggestions.every((s) => s.type === "adresse") ? "Vælg den konkrete lejlighed herunder." : "Adressen er ikke præcis nok eller kunne ikke bekræftes. Tilføj fx husnummer eller postnummer, eller vælg et forslag herunder."}
         </p>
       )}
 

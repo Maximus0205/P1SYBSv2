@@ -21,7 +21,7 @@ export function DelvisPanel({ order, onSubmit, onCancel }) {
   const gem = () => {
     if (!kanGemme) return;
     const ok = onSubmit({ udfoerteLinjeIds: [...valgte], note });
-    if (ok === false) setFejl("Kunne ikke gemme — sagen er måske ændret. Prøv igen.");
+    if (ok === false) setFejl("Kunne ikke gemme. Sagen er måske ændret. Prøv igen.");
   };
   return (
     <div className="rounded-xl bg-white border border-brand p-4 mb-4 shadow-sm">
@@ -39,7 +39,7 @@ export function DelvisPanel({ order, onSubmit, onCancel }) {
             </label>
           ))}
         </div>
-        {alle && rest.length > 0 && <p role="alert" className="text-xs text-danger mt-1.5">Alle varer er valgt — brug i stedet "Færdigmeld".</p>}
+        {alle && rest.length > 0 && <p role="alert" className="text-xs text-danger mt-1.5">Alle varer er valgt. Brug i stedet "Færdigmeld".</p>}
       </fieldset>
       <label htmlFor="delvis-note" className="text-xs font-semibold uppercase tracking-wide text-muted block mb-1">Hvorfor mangler resten?</label>
       <textarea

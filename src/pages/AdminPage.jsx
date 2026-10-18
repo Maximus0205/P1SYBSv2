@@ -102,7 +102,7 @@ function AdminPage({
       {tab === "montorer" && (
         <div>
           <p className="text-xs text-muted mb-4">
-            En montør er ikke noget man opretter her — det er en bruger med rollen "Montør" (se fanen "Brugere"). Her styrer du hvilken bil hver montør kører i lige nu, registrerer ferieperioder, og kan sygemelde/raskmelde en montør akut. Den bil en montør er tilknyttet, vises automatisk som blokeret i kørselsoverblikket i de perioder montøren er fraværende (ferie eller sygdom). Bilens eget tempo (bruges kun til kapacitetsberegningen i Planlægning) sættes under fanen "Biler".
+            Montører oprettes under fanen "Brugere" med rollen "Montør". Her vælger du bil til hver montør, registrerer ferie og kan sygemelde eller raskmelde akut. Bilen vises som blokeret, mens montøren er fraværende. Bilens tempo (kun til kapacitetsberegningen) sættes under "Biler".
           </p>
           {hasPerm(permissions, "admin_butik") && <SickLeaveWindowSetting store={store} onUpdated={onSickLeaveWindowUpdated} />}
           {hasPerm(permissions, "admin_montorer") && crew && (
@@ -110,7 +110,7 @@ function AdminPage({
           )}
           <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Alle montører og medhjælpere ({technicians.length})</h3>
           {technicians.length === 0 ? (
-            <p className="text-sm text-muted italic">Ingen brugere med rollen "Montør" endnu — opret en under fanen "Brugere".</p>
+            <p className="text-sm text-muted italic">Ingen brugere med rollen "Montør" endnu. Opret en under fanen "Brugere".</p>
           ) : (
             <div className="space-y-2">
               {technicians.map((m) => (
@@ -145,7 +145,7 @@ function AdminPage({
               </button>
             </div>
           </div>
-          <p className="text-xs text-muted mb-3">"Blokér" bruges fx når en bil er på værksted. Bilen kan stadig ses, men kan ikke vælges som ny tilknytning for en montør, før den åbnes igen. Bliver bilens montør fraværende (ferie eller sygdom), blokeres bilen automatisk i den periode — det kræver ikke noget manuelt her. Tempo-skyderen justerer kun kapacitetsberegningen i Planlægning, ikke selve sagens tidsestimat.</p>
+          <p className="text-xs text-muted mb-3">"Blokér" bruges fx når en bil er på værksted. Bilen kan ses, men kan ikke vælges til en montør, før den åbnes igen. Er montøren fraværende, blokeres bilen automatisk. Tempo justerer kun kapacitetsberegningen i Planlægning, ikke sagens tidsestimat.</p>
           <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Alle biler ({vehicles.length})</h3>
           {vehicles.length === 0 ? (
             <p className="text-sm text-muted italic">Ingen biler oprettet endnu.</p>
@@ -181,14 +181,14 @@ function AdminPage({
               );
             })}
           </div>
-          <p className="text-[11px] text-muted mt-3">Sætter du en bruger til rollen "Montør", skal du huske at give vedkommende en bil under fanen "Montører". Brug "Rettigheder" på den enkelte bruger til at tilføje eller fratage adgang udover det, rollen giver som udgangspunkt.</p>
+          <p className="text-[11px] text-muted mt-3">En bruger med rollen "Montør" skal have en bil under fanen "Montører". "Rettigheder" på brugeren giver eller fjerner adgang ud over rollen.</p>
         </div>
       )}
 
       {tab === "varer" && (
         <div>
           <p className="text-xs text-muted mb-4">
-            En sag vælger for hver varelinje: en varetype, mærke/model, én primær ydelse (fx "Montering" — bestemmer grundtiden) og valgfrit tillægsydelser. Hvilke tillægsydelser der kan vælges styres samlet under fanen "Tillægsydelser" nedenfor: der sættes for hver tillægsydelse, hvilke primære ydelser den gælder under, og eventuelt hvilke varetyper den er begrænset til. Standardtider (fanen "Standardtider") er kun udgangspunkter — de kan altid rettes for den enkelte booking. Ændringer her påvirker kun nye bookinger; allerede bookede sager beholder deres egne tal.
+            Hver varelinje på en sag har en varetype, mærke/model, én primær ydelse (fx "Montering", som bestemmer grundtiden) og evt. tillægsydelser. Hvilke tillægsydelser der kan vælges, styres under "Tillægsydelser". Standardtider er kun et udgangspunkt og kan rettes pr. booking. Ændringer påvirker kun nye bookinger.
           </p>
           <div className="flex gap-1.5 mb-4 flex-wrap">
             {[{ k: "kategorier", l: "Kategorier" }, { k: "varetyper", l: "Varetyper" }, { k: "primaer", l: "Primære ydelser" }, { k: "tillaeg", l: "Tillægsydelser" }, { k: "standardtider", l: "Standardtider" }].map((f) => (
@@ -223,7 +223,7 @@ function AdminPage({
       {tab === "sms" && (
         <div>
           <p className="text-xs text-muted mb-4">
-            Tre hovedpunkter, som du hver især kan slå til og fra: ankomst-SMS, som montører og sælgere sender selv til kunden; automatisk SMS-advisering af kunder (fx en påmindelse dagen før); og SMS-advisering af personale. Alt er slået fra, indtil du tænder det. Afsenderen sættes af systemadministratoren.
+            Tre ting kan slås til og fra hver for sig: ankomst-SMS (sendes af montør eller sælger), automatisk SMS til kunder (fx påmindelse dagen før) og SMS til personale. Alt er slået fra, indtil du tænder det. Afsenderen sættes af systemadministratoren.
           </p>
           <SmsSettingsAdmin storeId={store?.id} isSystemAdmin={permissions === null} />
         </div>
@@ -241,7 +241,7 @@ function AdminPage({
       {tab === "kapacitet" && (
         <div>
           <p className="text-xs text-muted mb-4">
-            De indstillinger, planlægningen regner efter: tider, kørsel og samling af kørsel. Hvilke regler der blokerer en booking, styres af systemadministratoren. Alt har en fornuftig standard. Bilens nyttelast og lasterum sættes under Biler, og montørernes arbejdstid under Montører.
+            Det planlægningen regner efter: tider, kørsel og samling af kørsel. Systemadministratoren bestemmer, hvilke regler der blokerer en booking. Bilens nyttelast og lasterum sættes under Biler, montørernes arbejdstid under Montører.
           </p>
           <KapacitetsIndstillinger storeId={store?.id} butikAdresse={store?.adresse} />
         </div>

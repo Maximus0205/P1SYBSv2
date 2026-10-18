@@ -28,8 +28,8 @@ function YdelsesIndstillinger({ primaryServices, onUpdate }) {
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1">Standard, opgavebeskrivelse og pluk</h3>
       <p className="text-xs text-muted mb-3">
         <strong>Standard</strong> er den ydelse, en ny varelinje starter på, når der bookes en sag. Sælgeren kan altid vælge en anden.
-        <strong> Opgavebeskrivelse</strong> giver et felt på varelinjen, hvor sælgeren skriver, hvad montøren skal gøre — fx ved en servicetur.
-        <strong> Plukkes</strong> styrer, om varen står på lagerets plukliste — slå det fra, når produktet allerede er hos kunden.
+        <strong> Opgavebeskrivelse</strong> giver et felt på varelinjen, hvor sælgeren skriver, hvad montøren skal gøre, fx ved en servicetur.
+        <strong> Plukkes</strong> styrer, om varen står på lagerets plukliste. Slå det fra, når produktet allerede er hos kunden.
       </p>
       <fieldset>
         <legend className="sr-only">Standardydelse og opgavebeskrivelse pr. ydelse</legend>

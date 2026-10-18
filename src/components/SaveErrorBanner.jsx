@@ -45,7 +45,7 @@ function SaveErrorBanner() {
           <p className="text-sm font-semibold text-danger">Ændringen blev ikke gemt</p>
           <p className="text-xs text-ink mt-0.5 break-words">{failure.besked}</p>
           <p className="text-[11px] text-muted mt-1.5">
-            Det, du så på skærmen, er rullet tilbage til den version, der står i databasen. Prøv igen — bliver ved med at fejle, så tryk Opdater, så du helt sikkert arbejder på de nyeste data.
+            Det, du så på skærmen, er rullet tilbage til den version, der står i databasen. Prøv igen. Fejler det igen, så tryk Opdater for at få de nyeste data.
           </p>
         </div>
         <button

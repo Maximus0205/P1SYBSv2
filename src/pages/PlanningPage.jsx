@@ -202,7 +202,7 @@ function ReplanCard({ order, technicians, suggestion, loadingSuggestion, onApply
           <button onClick={() => onApplySuggestion(order, suggestion)} className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors rounded-lg px-3 py-2 flex items-center gap-1"><Check size={11} aria-hidden="true" /> Brug</button>
         </div>
       ) : (
-        <p className="text-[11px] text-muted italic mb-2">{order.senestDato ? "Intet forslag med en dækket bil fundet inden fristen — tildel manuelt nedenfor." : "Intet forslag med en dækket bil fundet inden for de næste 14 dage — tildel manuelt nedenfor."}</p>
+        <p className="text-[11px] text-muted italic mb-2">{order.senestDato ? "Intet forslag med en dækket bil inden fristen. Tildel manuelt nedenfor." : "Intet forslag med en dækket bil de næste 14 dage. Tildel manuelt nedenfor."}</p>
       )}
 
       <div className="flex gap-1.5 flex-wrap">
@@ -687,7 +687,7 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
       const byId = new Map(dayOrders.map((o) => [String(o.id), o]));
       const ordnet = r.res.rutefolge.map((id) => byId.get(String(id))).filter(Boolean);
       // Sikkerhed: ingen sag må forsvinde eller dubleres af en rækkefølge.
-      if (ordnet.length !== dayOrders.length || new Set(ordnet.map((o) => o.id)).size !== dayOrders.length) throw new Error("Motorens rækkefølge matchede ikke dagens sager - rækkefølgen er ikke ændret.");
+      if (ordnet.length !== dayOrders.length || new Set(ordnet.map((o) => o.id)).size !== dayOrders.length) throw new Error("Rækkefølgen passede ikke til dagens sager og er ikke ændret.");
       onSetVisitOrder(vehicleId, day, ordnet.map((o) => o.id));
     } catch (e) {
       setOptimeringsFejl(`Rækkefølgen kunne ikke foreslås: ${e?.message || e}`);
@@ -727,10 +727,10 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
             {storeCoord ? <Building2 size={11} className="shrink-0" aria-hidden="true" /> : <Car size={11} className="shrink-0" aria-hidden="true" />}
             <span className="hidden sm:inline">
               {storeCoord
-                ? "Tidstal = dagens forløb fra start til bilen er hjemme, beregnet af kapacitetsmotoren: lagerlæsning, kørsel tur/retur fra firmaets adresse og mellem stop, bilens tempo, pause og personernes arbejdstid. Rød = dagen bryder et krav; ~ = køretiden er et skøn. Hold musen over tallet for detaljer."
-                : "Tidstal = dagens forløb beregnet af kapacitetsmotoren (kørsel mellem stop, bilens tempo, pause og arbejdstid). Sæt butikkens adresse op under Admin for lagerlæsning og turen ud fra og hjem til firmaet."}
+                ? "Tidstal = dagens forløb fra start til bilen er hjemme: lagerlæsning, kørsel til og fra butikken og mellem stop, bilens tempo, pause og arbejdstid. Rød = dagen bryder et krav. ~ = køretiden er et skøn. Hold musen over tallet for detaljer."
+                : "Tidstal = dagens forløb (kørsel mellem stop, bilens tempo, pause og arbejdstid). Sæt butikkens adresse op under Admin for at få lagerlæsning og kørsel til og fra butikken med."}
             </span>
-            <span className="sm:hidden">Tal = dagens forløb fra start til hjemme (kapacitetsmotoren). Rød = bryder et krav.</span>
+            <span className="sm:hidden">Tal = dagens forløb fra start til hjemme. Rød = bryder et krav.</span>
           </p>
 
           {/* Dagens medhjælpere pr. bil (oktober 2026) - for den valgte dag. Vises kun, hvis butikken har medhjælpere. */}

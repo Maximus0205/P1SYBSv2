@@ -159,7 +159,7 @@ function TechnicianRow({ technician, vehicles, timeOff, onUpdateVehicle, onAddTi
 
       {sygemelding && (
         <div className="border-t border-divider p-3 bg-danger/5">
-          <p className="text-xs text-muted mb-2">Starter en sygemelding fra i dag — ingen slutdato endnu. Sagerne rykkes til "Sygemelding"-fanen i Planlægning, og montøren raskmeldes igen når de er tilbage.</p>
+          <p className="text-xs text-muted mb-2">Starter en sygemelding fra i dag, uden slutdato. Sagerne rykkes til fanen "Sygemelding" i Planlægning, og montøren raskmeldes, når vedkommende er tilbage.</p>
           <div className="flex gap-2 flex-wrap">
             <input value={sygeNote} onChange={(e) => setSygeNote(e.target.value)} placeholder="Note (valgfri)" aria-label="Note til sygemelding" className="flex-1 min-w-[140px] rounded-lg border border-line bg-white px-2 py-2 text-xs text-ink" />
             <button onClick={confirmSygemeld} className="px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-danger hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-ink transition-opacity">Bekræft sygemelding</button>
@@ -300,7 +300,7 @@ function LoginPolicySetting({ store, onPasswordUpdated, onLoginPolicyUpdated }) 
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm font-medium text-ink">Face ID/fingeraftryk</p>
-            <p className="text-[11px] text-muted mt-0.5">Brugerne logger ind med butiksnummer, brugernavn (initialer) og kode. Face ID/fingeraftryk er et valgfrit supplement, hver bruger sætter op under "Din konto". Sluk kontakten for at forbyde det i butikken.</p>
+            <p className="text-[11px] text-muted mt-0.5">Brugerne logger ind med butiksnummer, brugernavn (initialer) og kode. Face ID eller fingeraftryk er valgfrit og sættes op af hver bruger under "Din konto". Sluk kontakten for at forbyde det i butikken.</p>
           </div>
           <Toggle checked={simpleLoginEnabled} onChange={setSimpleLoginEnabled} ariaLabel="Tillad biometrisk login (Face ID/fingeraftryk)" />
         </div>
@@ -692,10 +692,10 @@ function NewUserForm({ onAdd, butiksnummer }) {
         </select>
       </div>
       {role === "montor" && <p className="text-[11px] text-muted mt-2">Bil tilknyttes bagefter under fanen "Montører".</p>}
-      {role === "medhjaelper" && <p className="text-[11px] text-muted mt-2">En medhjælper har ingen fast bil — hvem der kører med hvilken bil, sættes pr. dag i Planlægning (systemet kan foreslå det).</p>}
+      {role === "medhjaelper" && <p className="text-[11px] text-muted mt-2">En medhjælper har ingen fast bil. Hvem der kører med hvilken bil, sættes pr. dag i Planlægning.</p>}
       {role !== "montor" && role !== "medhjaelper" && (
         <p className="text-[11px] text-muted mt-2">
-          Skal personen også kunne køre en rute en gang imellem, slås "Kører rute" til på brugeren i listen nedenfor — det kræver ikke en ekstra konto.
+          Skal personen også kunne køre en rute en gang imellem, slås "Kører rute" til på brugeren i listen nedenfor. Det kræver ikke en ekstra konto.
         </p>
       )}
       {error && <p role="alert" className="text-xs text-danger mt-2">{error}</p>}
@@ -946,7 +946,7 @@ function AddOnServiceAdmin({ addOnServices, productTypes, primaryServices, onAdd
           <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Fx 'Dørvending'" aria-label="Navn på tillægsydelse" className="flex-1 min-w-[160px] rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
           <button onClick={() => { if (!newName.trim()) return; onAdd(newName.trim()); setNewName(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5"><Plus size={15} aria-hidden="true" /> Opret</button>
         </div>
-        <p className="text-[11px] text-muted mt-2">Efter oprettelse skal du sætte hvilke primære ydelser den gælder under (nedenfor på hver række) — ellers vises den aldrig i booking-flowet.</p>
+        <p className="text-[11px] text-muted mt-2">Efter oprettelse skal du vælge, hvilke primære ydelser den gælder under (på hver række), ellers vises den ikke i booking.</p>
       </div>
       <div className="space-y-2">
         {addOnServices.map((t) => (

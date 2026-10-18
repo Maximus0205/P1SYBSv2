@@ -80,10 +80,10 @@ function KapacitetsTjek({ dato, bilId, adresse, koordinater, minutter, tidsrumId
         svar.kanOverrule ? (
           <label className="mt-2 flex items-start gap-2 text-xs text-ink min-h-[44px] cursor-pointer">
             <input type="checkbox" checked={overrulet} onChange={(e) => setOverrulet(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0" />
-            <span>Jeg overruler kapacitetsmotoren og booker alligevel. Det noteres på sagen.</span>
+            <span>Jeg overstyrer kapacitetstjekket og booker alligevel. Det noteres på sagen.</span>
           </label>
         ) : (
-          <p className="text-xs text-danger mt-2">Vælg en anden dato/bil, eller bed en kollega med ret til at overstyre kapaciteten om at booke.</p>
+          <p className="text-xs text-danger mt-2">Vælg en anden dato eller bil, eller bed en kollega med ret til at overstyre om at booke.</p>
         )
       )}
     </div>

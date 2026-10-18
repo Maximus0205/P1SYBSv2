@@ -20,8 +20,8 @@ function OrderDrafts({ kladder, onResume, onDiscard, antalTrin = 4, kompakt = fa
         <Clock size={15} className="text-brand shrink-0" aria-hidden="true" />
         Parkerede bookinger ({kladder.length})
       </h2>
-      {!kompakt && <p className="text-xs text-muted mb-3">Ufærdige sager, der blev afbrudt. Fortsæt, hvor du slap — de følger dig på tværs af dine enheder og gemmes i op til 14 dage.</p>}
-      {kompakt && <p className="text-[11px] text-muted mb-2">Kun dine egne — de følger dig på tværs af enheder og gemmes i op til 14 dage.</p>}
+      {!kompakt && <p className="text-xs text-muted mb-3">Ufærdige sager. Fortsæt, hvor du slap. De følger dig på tværs af enheder og gemmes i op til 14 dage.</p>}
+      {kompakt && <p className="text-[11px] text-muted mb-2">Kun dine egne. De følger dig på tværs af enheder og gemmes i op til 14 dage.</p>}
       <ul className="space-y-2">
         {kladder.map((k) => {
           const { navn, linje2 } = kladdeEtiket(k);

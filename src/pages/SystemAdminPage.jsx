@@ -46,7 +46,7 @@ function SystemAdminPage({ currentUserId, onOwnStoreLinked }) {
           <HardDrive size={15} /> Lager (NAS)
         </button>
         <button onClick={() => setTab("kapacitet")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "kapacitet" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
-          <Calculator size={15} /> Kapacitetsmotor
+          <Calculator size={15} /> Kapacitet
         </button>
         <a href={`${import.meta.env.BASE_URL}backoffice/`} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 text-muted hover:text-ink">
           <Receipt size={15} /> Backoffice
@@ -227,7 +227,7 @@ function PosIntegrationsTab({ stores }) {
   return (
     <div>
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-2"><Plug size={16} /> POS-integrationer</h3>
-      <p className="text-xs text-muted mb-4">Overblik over hver butiks forbindelse til Flow Retail. Klik en butik for at konfigurere den — fx hvis butikken selv mangler en admin med rettigheden, eller har brug for hjælp.</p>
+      <p className="text-xs text-muted mb-4">Overblik over hver butiks forbindelse til Flow Retail. Klik på en butik for at sætte den op, fx hvis den mangler en admin med rettigheden.</p>
       {loading ? (
         <p className="text-sm text-muted">Indlæser...</p>
       ) : stores.length === 0 ? (
@@ -290,7 +290,7 @@ function StorageIntegrationsTab({ stores }) {
   return (
     <div>
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-2"><HardDrive size={16} /> Lager (NAS)</h3>
-      <p className="text-xs text-muted mb-4">Overblik over hvor hver butik gemmer sagsdokumentation — hos os (fælles, kvote-styret bøtte) eller på deres eget NAS. Klik en butik for at konfigurere det på deres vegne.</p>
+      <p className="text-xs text-muted mb-4">Overblik over hvor hver butik gemmer sagsdokumentation: hos os eller på eget NAS. Klik på en butik for at sætte det op for den.</p>
       {loading ? (
         <p className="text-sm text-muted">Indlæser...</p>
       ) : stores.length === 0 ? (
@@ -352,7 +352,7 @@ function ErrorLogTab({ stores }) {
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div>
           <h3 className="text-sm font-semibold uppercase tracking-wide text-ink flex items-center gap-2"><Bug size={16} /> Fejl-log</h3>
-          <p className="text-xs text-muted">Uventede fejl og mislykkede kald, fanget automatisk fra hele systemet — nyeste øverst.</p>
+          <p className="text-xs text-muted">Uventede fejl og mislykkede kald fra hele systemet, nyeste øverst.</p>
         </div>
         <div className="flex gap-2">
           <button onClick={reload} className="p-2 rounded-lg text-ink border border-line hover:border-brand hover:text-brand transition-colors" title="Opdater"><RefreshCw size={15} /></button>

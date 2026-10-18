@@ -33,7 +33,7 @@ function KapacitetsForslag({ sagId, adresse, koordinater, minutter, tidsrumId, v
       <h4 id="ombook-h" className="text-xs font-semibold uppercase tracking-wide text-muted mb-1 flex items-center gap-1.5">
         <CalendarClock size={13} aria-hidden="true" /> Find ny dato
       </h4>
-      <p className="text-xs text-muted mb-2">Kapacitetsmotoren finder de nærmeste dage, hvor sagen kan ligge (samme tidsrum som sagen har nu). Fx hvis kunden er syg eller har glemt aftalen.</p>
+      <p className="text-xs text-muted mb-2">Finder de nærmeste dage, hvor sagen kan ligge (samme tidsrum som nu), fx hvis kunden er syg eller har glemt aftalen.</p>
       <div className="flex items-end gap-2 flex-wrap">
         <label className="text-xs text-muted">
           Fra og med
@@ -50,7 +50,7 @@ function KapacitetsForslag({ sagId, adresse, koordinater, minutter, tidsrumId, v
           <p role="alert" className="text-xs text-danger mt-2 flex items-start gap-1.5"><Info size={13} className="shrink-0 mt-0.5" aria-hidden="true" /> {tilstand.fejl}</p>
         )}
         {tilstand.fase === "klar" && tilstand.forslag.length === 0 && (
-          <p className="text-xs text-ink mt-2">Ingen ledige dage fundet i perioden. Prøv at vælge en senere startdato, eller tjek biler, montørernes arbejdstider og fravær.</p>
+          <p className="text-xs text-ink mt-2">Ingen ledige dage i perioden. Prøv en senere startdato, eller tjek biler, arbejdstider og fravær.</p>
         )}
         {tilstand.fase === "klar" && tilstand.forslag.length > 0 && (
           <ul className="mt-2 space-y-2">

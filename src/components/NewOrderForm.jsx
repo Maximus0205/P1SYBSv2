@@ -147,7 +147,7 @@ function PosLookupPanel({ storeId, onApply }) {
         </button>
       </div>
       {fejl && <p className="text-xs text-danger mt-2 flex items-start gap-1.5"><AlertTriangle size={12} className="shrink-0 mt-0.5" aria-hidden="true" /> {fejl}</p>}
-      <p className="text-[10px] text-muted mt-2">Udfylder navn, telefon, e-mail og adresse — samt varenummer, hvis sagen fandtes med en leveringslinje.</p>
+      <p className="text-[10px] text-muted mt-2">Udfylder navn, telefon, e-mail og adresse, og varenummer hvis sagen havde en leveringslinje.</p>
     </div>
   );
 }
@@ -407,9 +407,9 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
         <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
           <p className={`text-[11px] ${kladde.fejl ? "text-danger font-semibold" : "text-muted"}`} aria-live="polite">
             {kladde.fejl
-              ? "Kladden kunne ikke gemmes på denne enhed — færdiggør sagen, før du forlader siden."
+              ? "Kladden kunne ikke gemmes på denne enhed. Færdiggør sagen, før du forlader siden."
               : kladde.gemtTid
-                ? `Kladde gemt kl. ${klokkeslaet(kladde.gemtTid)} — du kan lukke og fortsætte senere.`
+                ? `Kladde gemt kl. ${klokkeslaet(kladde.gemtTid)}. Du kan lukke og fortsætte senere.`
                 : "Gemmer kladde…"}
           </p>
           <button type="button" onClick={kasserKladde} className="min-h-[44px] text-[11px] font-semibold uppercase tracking-wide text-muted hover:text-danger focus:outline-none focus:ring-2 focus:ring-danger rounded px-2">Kassér kladde</button>
@@ -429,7 +429,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
           </h4>
           {erTomgang && (
             <p className="text-[11px] text-muted mb-2">
-              Der er ingen på adressen. Kontaktoplysningerne bruges til at afklare sagen — ikke til at varsle ankomst.
+              Der er ingen på adressen. Kontaktoplysningerne bruges til at afklare sagen, ikke til at varsle ankomst.
             </p>
           )}
           <div className="grid gap-3 sm:grid-cols-2 mb-3">
@@ -477,7 +477,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
             <input value={deliveryNote} onChange={(e) => setDeliveryNote(e.target.value)} placeholder={erTomgang ? "Note, fx 'Opgang B, 3. sal th'" : "Leveringsnote, fx 'Ring før ankomst'"} aria-label="Note" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
           </div>
           {addressStatus === "usikker" && (
-            <p className="text-xs text-danger mb-4">Bemærk: adressen kunne ikke bekræftes af korttjenesten — dobbelttjek den.</p>
+            <p className="text-xs text-danger mb-4">Adressen kunne ikke bekræftes. Tjek den en ekstra gang.</p>
           )}
 
           {/* VIDENSDELING (september 2026, rettet): kun en ADVARSEL her, hvis
@@ -532,7 +532,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
                   <AlertTriangle size={12} className="shrink-0 mt-0.5" aria-hidden="true" /> {a}
                 </p>
               ))}
-              <p className="text-[11px] text-muted mt-1.5">Du kan godt booke alligevel — men montøren kører forgæves, hvis det ikke er på plads inden.</p>
+              <p className="text-[11px] text-muted mt-1.5">Du kan booke alligevel, men montøren kører forgæves, hvis det ikke er på plads inden.</p>
             </div>
           )}
         </div>
@@ -599,7 +599,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
                 </button>
                 <button type="button" aria-pressed={fleksibel} onClick={() => setFleksibel(true)} className={`rounded-xl border-2 p-3 text-left bg-white hover:bg-panel focus:outline-none focus:ring-2 focus:ring-brand ${fleksibel ? "border-brand" : "border-line"}`}>
                   <p className={`text-sm font-semibold ${fleksibel ? "text-brand" : "text-ink"}`}>Fleksibel</p>
-                  <p className="text-[11px] text-muted mt-0.5 leading-snug">Ingen fast dato — den placeres i planlægningen, inden fristen.</p>
+                  <p className="text-[11px] text-muted mt-0.5 leading-snug">Ingen fast dato. Sagen placeres i planlægningen inden fristen.</p>
                 </button>
               </div>
               <label className="text-xs text-muted block">
@@ -614,7 +614,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
           {!udenFastDato && (
           <>
           <p className="text-xs text-muted mb-3">
-            Forslag til "{titlePreview}" {erTomgang ? "på" : "hos"} {address || (erTomgang ? "lejemålet" : "kunden")} herunder — tryk på ét for at bruge det, eller vælg selv i ugevisningen.
+            Forslag til "{titlePreview}" {erTomgang ? "på" : "hos"} {address || (erTomgang ? "lejemålet" : "kunden")} herunder. Tryk på ét for at bruge det, eller vælg selv i ugevisningen.
           </p>
 
           <SuggestedDates
@@ -664,7 +664,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
           {erTomgang && advarsler.length > 0 && (
             <p className="text-xs text-danger flex items-start gap-1.5 mt-2">
               <AlertTriangle size={12} className="shrink-0 mt-0.5" aria-hidden="true" />
-              Nøgleoplysningerne mangler stadig — gå tilbage til Levering, hvis de kan skaffes nu.
+              Nøgleoplysningerne mangler stadig. Gå tilbage til Levering, hvis de kan skaffes nu.
             </p>
           )}
         </div>

@@ -52,13 +52,13 @@ function ReceiptUpload({ productTypes, onFill }) {
         fullText += content.items.map((it) => it.str).join(" ") + "\n";
       }
       if (!fullText.trim()) {
-        setStatus({ loading: false, fejl: "Fandt ingen tekst i PDF'en — er det en scannet/fotograferet kvittering? Så skal felterne udfyldes manuelt." });
+        setStatus({ loading: false, fejl: "Fandt ingen tekst i PDF'en. Er det en scannet kvittering, skal felterne udfyldes manuelt." });
         return;
       }
       const fields = extractFromReceiptText(fullText, productTypes);
       const found = Object.keys(fields);
       if (found.length === 0) {
-        setStatus({ loading: false, fejl: "Kunne ikke genkende nogen felter automatisk — udfyld venligst manuelt." });
+        setStatus({ loading: false, fejl: "Kunne ikke genkende felterne. Udfyld dem manuelt." });
         return;
       }
       onFill(fields);
@@ -74,7 +74,7 @@ function ReceiptUpload({ productTypes, onFill }) {
         <Upload size={18} className="text-muted shrink-0" />
         <div>
           <p className="text-sm font-semibold text-ink">Læs ordreinfo fra PDF-kvittering (forsøg)</p>
-          <p className="text-xs text-muted">Udfylder navn/adresse/telefon/varetype hvis de kan genkendes — tjek altid felterne bagefter.</p>
+          <p className="text-xs text-muted">Udfylder navn, adresse, telefon og varetype, hvis de kan genkendes. Tjek altid felterne bagefter.</p>
         </div>
         <input ref={inputRef} type="file" accept=".pdf,application/pdf" className="hidden" onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
       </div>

@@ -121,7 +121,7 @@ function KapacitetsIndstillinger({ storeId, butikAdresse }) {
 
       <div className={kort}>
         <h3 className={overskrift}>Samling af kørsel</h3>
-        <Felt id="kap-samling" label="Højst ekstra ventetid for at samle kørsel" hjaelp="Bruges af forslag ved booking (kommer): en kunde skal ikke vente længere end dette for at spare kørsel." enhed="dage">{tal("samling", "maksEkstraVentetidDage", "kap-samling")}</Felt>
+        <Felt id="kap-samling" label="Højst ekstra ventetid for at samle kørsel" hjaelp="Bruges af forslag ved booking: en kunde skal ikke vente længere end dette for at spare kørsel." enhed="dage">{tal("samling", "maksEkstraVentetidDage", "kap-samling")}</Felt>
       </div>
 
       {fejl && <p role="alert" className="text-xs text-danger mb-3 flex items-center gap-1.5"><AlertCircle size={13} className="shrink-0" aria-hidden="true" /> {fejl}</p>}

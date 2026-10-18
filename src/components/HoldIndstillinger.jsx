@@ -23,7 +23,7 @@ export function HoldIndstillinger({ montoerer, medhjaelpere, crew, onSetPair, on
       <p className="text-xs text-muted mb-3">
         Bruges, når systemet foreslår dagens hold til ture med to-mands-opgaver. Et fast makkerpar sættes sammen først, når begge er på arbejde. En montør der kører alene får aldrig en medhjælper foreslået.
       </p>
-      {medhjaelpere.length === 0 && <p className="text-xs text-muted italic mb-3">Ingen medhjælpere endnu — opret en bruger med rollen "Medhjælper" under fanen "Brugere".</p>}
+      {medhjaelpere.length === 0 && <p className="text-xs text-muted italic mb-3">Ingen medhjælpere endnu. Opret en bruger med rollen "Medhjælper" under fanen "Brugere".</p>}
       <div className="space-y-2">
         {montoerer.map((m) => {
           const alene = soloSet.has(m.id);

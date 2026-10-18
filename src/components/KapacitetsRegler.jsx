@@ -56,7 +56,7 @@ function KapacitetsRegler({ stores = [] }) {
   return (
     <section aria-labelledby="kap-regler-h" className="mb-8">
       <h2 id="kap-regler-h" className="text-base font-semibold text-ink mb-1">Hvilke regler styrer planlægningen?</h2>
-      <p className="text-xs text-muted mb-4 max-w-2xl"><strong>Krav</strong> blokerer en booking, der bryder reglen. <strong>Rådgivende</strong> advarer, men blokerer ikke. <strong>Fra</strong> ignorerer reglen. Reglerne gælder alle i den valgte butik. At kunne <em>overrule</em> motoren gives pr. bruger under Admin &rarr; Brugere &rarr; rettigheder.</p>
+      <p className="text-xs text-muted mb-4 max-w-2xl"><strong>Krav</strong> blokerer en booking, der bryder reglen. <strong>Rådgivende</strong> advarer, men blokerer ikke. <strong>Fra</strong> ignorerer reglen. Reglerne gælder alle i den valgte butik. At kunne <em>overstyre</em> kapacitetstjekket gives pr. bruger under Admin &rarr; Brugere &rarr; rettigheder.</p>
 
       {stores.length > 1 && (
         <div className="mb-4">

@@ -81,7 +81,7 @@ function OrderRoute({ profile, storeId, orders, technicians, personnel, crew, or
   if (!order) {
     return (
       <div>
-        <p className="text-sm text-muted mb-3">Sagen blev ikke fundet — den er muligvis slettet, eller linket er forkert.</p>
+        <p className="text-sm text-muted mb-3">Sagen blev ikke fundet. Den er måske slettet, eller linket er forkert.</p>
         <button onClick={() => navigate(-1)} className="text-sm text-brand hover:underline">← Tilbage</button>
       </div>
     );
@@ -209,14 +209,14 @@ function MontorRoute({ profile, vehicles, orders, ordersStore, keyCabinets, crew
     return (
       <div>
         <DateSelector date={selectedDate} onChange={onDateChange} />
-        <p className="text-sm text-muted mt-3">Du er ikke sat på en bil denne dag endnu. Planlæggeren sætter dagens hold i Planlægning — prøv en anden dag, eller tjek igen senere.</p>
+        <p className="text-sm text-muted mt-3">Du er ikke sat på en bil denne dag endnu. Prøv en anden dag, eller tjek igen senere.</p>
       </div>
     );
   }
   if (!ownVehicle) {
     return (
       <p className="text-sm text-muted">
-        Din bruger er ikke koblet til en bil endnu — bed en administrator om at tildele dig en under Admin → Brugere.
+        Din bruger er ikke koblet til en bil endnu. Bed en administrator om at tildele dig en under Admin → Brugere.
       </p>
     );
   }

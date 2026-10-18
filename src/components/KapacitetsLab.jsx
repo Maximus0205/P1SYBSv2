@@ -175,7 +175,7 @@ function KapacitetsLab({ stores = [] }) {
     try {
       if (kand.length === 1) { const kStop = alle[stop.findIndex((s) => s.kandidat)]; const v = vurderTilfoejelse(input, kStop); setVurdering(v); setRes(v.efter); }
       else setRes(planlaegDag(input));
-    } catch (e) { setFejl(`Motoren fejlede: ${e?.message || e}`); }
+    } catch (e) { setFejl(`Beregningen fejlede: ${e?.message || e}`); }
     setBusy(false);
   };
 
@@ -186,8 +186,8 @@ function KapacitetsLab({ stores = [] }) {
     <div>
       <Punkt1MaalTest />
 
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1">Kapacitetsmotor - testlaboratorium</h3>
-      <p className="text-xs text-muted mb-4">Afprøv den digitale disponent uden at røre rigtige sager. Intet gemmes. Personer i bilen regnes med {PERSONVAEGT_KG} kg hver (fast). Markér ét stop som <strong>kandidat</strong> for at se, hvad det koster at lægge netop det stop oven i dagen.</p>
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1">Kapacitetstest</h3>
+      <p className="text-xs text-muted mb-4">Afprøv planlægningen uden at røre rigtige sager. Intet gemmes. Hver person i bilen regnes som {PERSONVAEGT_KG} kg. Markér ét stop som <strong>kandidat</strong> for at se, hvad det koster at lægge det oven i dagen.</p>
 
       <div className="grid gap-4 lg:grid-cols-2 mb-4">
         <div className={kort}>

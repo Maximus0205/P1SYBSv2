@@ -247,7 +247,7 @@ function NotificationsWidget({ notifications, onOpen }) {
             </button>
           ))}
           {handlingskraevende.length > 5 && (
-            <p className="text-[11px] text-muted px-2">+ {handlingskraevende.length - 5} mere — se klokken øverst.</p>
+            <p className="text-[11px] text-muted px-2">+ {handlingskraevende.length - 5} mere. Se klokken øverst.</p>
           )}
         </div>
       )}
@@ -408,7 +408,7 @@ function DashboardPage({ profile, permissions, crew, orders, technicians, person
       {visPapirkurv && maaSePapirkurv && <TrashPanel storeId={store?.id} onClose={() => setVisPapirkurv(false)} />}
 
       {activeKeys.length === 0 ? (
-        <p className="text-sm text-muted italic">Ingen widgets valgt endnu — tryk "Tilpas" for at sætte din forside op.</p>
+        <p className="text-sm text-muted italic">Ingen widgets valgt endnu. Tryk "Tilpas" for at sætte din forside op.</p>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {activeKeys.map((key) => {

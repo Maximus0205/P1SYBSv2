@@ -50,7 +50,7 @@ function KoerselsOmraader({ storeId, omraader, vehicles, onGemt }) {
   return (
     <div className="mt-8">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1">Kørselsområder</h3>
-      <p className="text-xs text-muted mb-3">Opret de områder, en bil kan køre fast i, fx "Jylland" eller "Sjælland", og angiv postnumrene. Under hver bil kan du bagefter vælge bilens faste område. Bilen har forrang på sager i området, men udelukkes ikke fra andre opgaver, og de andre biler må stadig køre i området.</p>
+      <p className="text-xs text-muted mb-3">Opret de områder, en bil kan køre fast i, fx "Jylland" eller "Sjælland", med postnumre. Vælg bagefter området på den enkelte bil.</p>
       <div className="space-y-2">
         {raekker.length === 0 && <p className="text-sm text-muted italic">Ingen områder oprettet endnu.</p>}
         {raekker.map((r) => (

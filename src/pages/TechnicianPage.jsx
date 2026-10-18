@@ -62,7 +62,7 @@ function TechnicianPicker({ technicians, onSelect }) {
       <p className="font-mono text-[11px] tracking-widest uppercase text-brand mb-1">Montør-visning</p>
       <h1 className="font-display text-3xl uppercase tracking-tight text-ink mb-6">Vælg montør at se</h1>
       {technicians.length === 0 ? (
-        <p className="text-sm text-muted italic">Ingen montører oprettet endnu — opret under fanen "Admin".</p>
+        <p className="text-sm text-muted italic">Ingen montører oprettet endnu. Opret dem under fanen "Admin".</p>
       ) : (
         <div className="space-y-2">
           {technicians.map((m) => (
@@ -480,7 +480,7 @@ function FinishPanel({ order, onConfirm, onCancel, onGoToTab }) {
               </li>
             ))}
           </ul>
-          <p className="text-[11px] text-muted mt-2">Du kan godt færdigmelde uden — det er en påmindelse, ikke et krav.</p>
+          <p className="text-[11px] text-muted mt-2">Du kan færdigmelde uden. Det er en påmindelse, ikke et krav.</p>
         </div>
       ) : (
         <p className="text-xs text-success mb-3 flex items-center gap-1.5">

@@ -171,7 +171,7 @@ function ModelNumberLookup({ model, onSelectProduct, varetypeId, productTypes, o
 
       {!loading && !error && result && !exactMatch && result.matchCount === 0 && (
         <p className="text-[11px] text-danger font-semibold flex items-center gap-1.5">
-          <XCircle size={13} className="shrink-0" /> Intet fundet på punkt1.dk for "{checkedTerm}" — tjek stavning.
+          <XCircle size={13} className="shrink-0" /> Intet fundet på punkt1.dk for "{checkedTerm}". Tjek stavningen.
         </p>
       )}
 
@@ -541,7 +541,7 @@ function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices
         </div>
         {canRemove && <button onClick={onRemove} className="p-1.5 text-muted hover:text-danger shrink-0" title="Fjern varelinje"><Trash2 size={15} /></button>}
       </div>
-      <p className="text-[10px] text-muted mb-2">Modelnummer tjekkes automatisk mod punkt1.dk's varekartotek — grønt flueben = bekræftet, rødt kryds = ikke fundet.</p>
+      <p className="text-[10px] text-muted mb-2">Modelnummer tjekkes automatisk mod punkt1.dk's varekartotek. Grønt flueben = bekræftet, rødt kryds = ikke fundet.</p>
 
       <input
         value={lineItem.maerke}
@@ -786,7 +786,7 @@ function CustomerHistoryLookup({ orders, currentOrderId, phone, address, name, o
               />
             </div>
           </label>
-          <p className="text-[10px] text-muted">Matcher på telefonnummer eller samme opgang/ejendom — begge felter kan rettes for at søge bredere eller mere præcist.</p>
+          <p className="text-[10px] text-muted">Matcher på telefonnummer eller samme opgang/ejendom. Begge felter kan rettes for at søge bredere eller mere præcist.</p>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 pb-4 border-t border-divider pt-3">
@@ -897,7 +897,7 @@ function WeeklyScheduleOverview({ orders, technicians, date, vehicles, personnel
           ))}
         </tbody>
       </table>
-      <p className="text-[10px] text-muted mt-2">Tiden er beregnet af kapacitetsmotoren (som i Planlægning). Rødt = motoren melder brud, fx arbejdstiden overskredet. "?" = kan ikke beregnes, fx fordi en sag mangler koordinater.</p>
+      <p className="text-[10px] text-muted mt-2">Tiden er beregnet som i Planlægning. Rødt = bryder et krav, fx arbejdstiden. "?" = kan ikke beregnes, fx fordi en sag mangler koordinater.</p>
     </div>
   );
 }
@@ -996,7 +996,7 @@ function InteractiveWeekPicker({ orders, technicians, date, onSelectDate, vehicl
           </tbody>
         </table>
       </div>
-      <p className="text-[10px] text-muted mt-2">Klik på en dag for kun at vælge dato — klik under en bils egen række for at vælge dato og bil samtidig. Tiderne er beregnet af kapacitetsmotoren (som i Planlægning): rødt = motoren melder brud, "?" = kan ikke beregnes.</p>
+      <p className="text-[10px] text-muted mt-2">Klik på en dag for kun at vælge dato, eller under en bils egen række for at vælge dato og bil. Tiderne er beregnet som i Planlægning: rødt = bryder et krav, "?" = kan ikke beregnes.</p>
     </div>
   );
 }
@@ -1081,7 +1081,7 @@ function SuggestedDates({ orders, technicians, personnel, timeOff, vehicles, cre
         </button>
       </div>
 
-      {loading && <p className="text-xs text-muted">Beregner med kapacitetsmotoren ud fra køretid, arbejdstid og de sager, der ligger i forvejen...</p>}
+      {loading && <p className="text-xs text-muted">Beregner forslag ud fra køretid, arbejdstid og de sager, der ligger i forvejen...</p>}
       {error && <p role="alert" className="text-xs text-danger">Forslag kan ikke beregnes: {error}</p>}
 
       {!loading && !error && suggestions?.length > 0 && (
@@ -1102,7 +1102,7 @@ function SuggestedDates({ orders, technicians, personnel, timeOff, vehicles, cre
         </div>
       )}
       {!loading && !error && suggestions?.length === 0 && (
-        <p className="text-xs text-muted">Ingen dag de næste tre uger har plads til sagen ud fra kapacitetsmotoren — vælg selv nedenfor.</p>
+        <p className="text-xs text-muted">Ingen dag de næste tre uger har plads til sagen. Vælg selv nedenfor.</p>
       )}
       {!loading && noter.length > 0 && (
         <p className="text-[11px] text-muted mt-1.5">{noter.length === 1 ? noter[0] : `${noter.length} dage kunne ikke vurderes, fordi koordinater mangler på sager (fx ${noter[0]})`}</p>
@@ -1114,7 +1114,7 @@ function SuggestedDates({ orders, technicians, personnel, timeOff, vehicles, cre
       </button>
       {showDetails && <div className="mt-2"><WeeklyScheduleOverview orders={orders} technicians={technicians} date={date} vehicles={vehicles} personnel={personnel} timeOff={timeOff} crew={crew} store={store} /></div>}
 
-      <p className="text-[10px] text-muted mt-2">Forslag beregnet af kapacitetsmotoren (samme beregning som tidsbadgen i Planlægning) for de næste tre uger — et forslag, ikke en automatisk booking. Tryk på et forslag for at bruge det.</p>
+      <p className="text-[10px] text-muted mt-2">Forslag for de næste tre uger, beregnet som tidsbadgen i Planlægning. Det er kun et forslag, ikke en booking. Tryk på et forslag for at bruge det.</p>
     </div>
   );
 }
@@ -1125,7 +1125,7 @@ function ToMandFelt({ checked, onChange, disabled = false }) {
   return (
     <label className={`flex items-center gap-3 rounded-lg border border-line bg-panel px-3 min-h-[44px] ${disabled ? "opacity-60" : "cursor-pointer"} has-[:checked]:border-brand has-[:checked]:bg-brand/10`}>
       <input type="checkbox" checked={!!checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} className="w-5 h-5 accent-[#C8232E] shrink-0" />
-      <span className="text-sm text-ink">Kræver to mand <span className="text-xs text-muted">(tung eller besværlig opgave — der skal en medhjælper med)</span></span>
+      <span className="text-sm text-ink">Kræver to mand <span className="text-xs text-muted">(tung eller besværlig opgave, der kræver en medhjælper)</span></span>
     </label>
   );
 }

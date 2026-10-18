@@ -49,10 +49,10 @@ function BilRaekke({ bil, onUpdate, omraader }) {
         <label htmlFor={id("omraade")} className="block text-xs font-semibold uppercase tracking-wide text-muted mb-1">Kørselsområde</label>
         <select id={id("omraade")} value={d.omraade} onChange={(e) => sæt("omraade", e.target.value)} className="w-full sm:w-auto min-h-[44px] rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand">
           <option value="">Ingen fast område</option>
-          {omraader.map((o) => <option key={o.id} value={o.id}>{o.navn} (forrang)</option>)}
-          {d.omraade && !omraader.some((o) => o.id === d.omraade) && <option value={d.omraade}>{d.omraade === "jylland" ? "Jylland (indbygget, forrang)" : "Område findes ikke mere"}</option>}
+          {omraader.map((o) => <option key={o.id} value={o.id}>{o.navn}</option>)}
+          {d.omraade && !omraader.some((o) => o.id === d.omraade) && <option value={d.omraade}>{d.omraade === "jylland" ? "Jylland" : "Område findes ikke mere"}</option>}
         </select>
-        <p className="text-xs text-muted mt-1">En bil med fast område har forrang på sager med adresse i området (ud fra postnummeret), når den kan tage dem. Den kan stadig tage andre sager, og de andre biler må stadig køre i området. Opret områder under "Kørselsområder" nedenfor.</p>
+        <p className="text-xs text-muted mt-1">Bilen får forrang på sager med postnummer i området. Den kan stadig tage andre sager, og andre biler må også køre i området. Områder oprettes under "Kørselsområder" nedenfor.</p>
       </div>
       {fejl && <p role="alert" className="text-xs text-danger mt-2 flex items-center gap-1.5"><AlertCircle size={13} className="shrink-0" aria-hidden="true" /> {fejl}</p>}
       {besked && !aendret && <p role="status" className="text-xs text-success mt-2 flex items-center gap-1.5"><Check size={13} className="shrink-0" aria-hidden="true" /> {besked}</p>}
@@ -72,7 +72,7 @@ function BilKapacitet({ vehicles, onUpdate, storeId }) {
   return (
     <div className="mt-8">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1">Nyttelast, lasterum og kørselsområde</h3>
-      <p className="text-xs text-muted mb-3">Bruges af planlægningen til at sikre, at bilen ikke overlæsses, og at varerne er der plads til. Står et felt tomt, springer planlægningen den del over for den bil. Personerne i bilen regnes automatisk med en fast standardvægt.</p>
+      <p className="text-xs text-muted mb-3">Planlægningen bruger det til at tjekke vægt og plads. Tomme felter springes over.</p>
       <div className="space-y-2">{vehicles.map((b) => <BilRaekke key={b.id} bil={b} onUpdate={onUpdate} omraader={omraader} />)}</div>
       <KoerselsOmraader storeId={storeId} omraader={omraader} vehicles={vehicles} onGemt={setOmraader} />
     </div>

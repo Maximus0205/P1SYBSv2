@@ -448,7 +448,7 @@ function DeleteOrderPanel({ order, onConfirm, onCancel }) {
         {foelgerMed.length > 0 ? ` Følgende gemmes med: ${foelgerMed.join(", ")}.` : ""}
       </p>
       <p className="text-xs text-muted mt-2">
-        Skal sagen bare ikke udføres, er det ofte bedre at færdigmelde den — så bevares historikken. Slet kun, hvis sagen aldrig skulle have været oprettet.
+        Skal sagen bare ikke udføres, er det ofte bedre at færdigmelde den, så bevares historikken. Slet kun, hvis sagen aldrig skulle have været oprettet.
       </p>
 
       <div className="flex gap-2 mt-3">
@@ -491,7 +491,7 @@ function DuplicatePanel({ order, onDuplicate, onCancel }) {
   return (
     <div className="rounded-xl bg-white border border-brand p-4 mb-5 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-1.5"><Copy size={14} aria-hidden="true" /> Dupliker / opret opfølgning</h3>
-      <p className="text-xs text-muted mb-3">Opretter en ny sag med samme kunde, adresse og nøgleoplysninger — dato og bil er ikke sat endnu og skal vælges bagefter. Vælg hvad opfølgningen skyldes, og hvilke varelinjer der skal med.</p>
+      <p className="text-xs text-muted mb-3">Opretter en ny sag med samme kunde, adresse og nøgleoplysninger. Dato og bil vælges bagefter. Vælg hvad opfølgningen skyldes, og hvilke varelinjer der skal med.</p>
 
       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-1.5">Hvorfor skal der køres igen?</p>
       <div className="grid gap-2 sm:grid-cols-3 mb-3">

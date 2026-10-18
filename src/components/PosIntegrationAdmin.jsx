@@ -117,7 +117,7 @@ function PosIntegrationAdmin({ storeId, storeLabel }) {
       </label>
       <p className="text-[11px] text-muted flex items-start gap-1.5 mb-4">
         <ShieldCheck size={12} className="shrink-0 mt-0.5" aria-hidden="true" />
-        Nøglen vises aldrig igen, når den er gemt — kun om den er sat. Den opbevares krypteret og forlader aldrig serveren.
+        Nøglen vises ikke igen, når den er gemt. Den opbevares krypteret og forlader aldrig serveren.
       </p>
 
       {besked && (
