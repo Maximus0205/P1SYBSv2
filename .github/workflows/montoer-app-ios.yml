@@ -28,6 +28,8 @@ jobs:
         run: |
           X=$(ls -d /Applications/Xcode_16*.app | sort -V | tail -n 1)
           sudo xcode-select -s "$X"
+          echo "DEVELOPER_DIR=$X/Contents/Developer" >> "$GITHUB_ENV"
+          echo "Valgt: $X"
           xcodebuild -version
 
       - uses: actions/setup-node@v4
@@ -48,7 +50,9 @@ jobs:
 
       - name: Installer pods
         working-directory: montoer-app/ios
-        run: pod install
+        run: |
+          xcodebuild -version
+          pod install
 
       - name: Byg uden signering
         working-directory: montoer-app/ios
