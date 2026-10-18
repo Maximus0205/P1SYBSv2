@@ -1,3 +1,7 @@
+> **Status (oktober 2026):** Den rigtige montør-app med native skærme ligger nu i mappen `montoer-app/`
+> (Expo / React Native, se `montoer-app/README.md`). Det er den, der bygges videre på. Capacitor-skallen
+> herunder (en hjemmeside pakket ind i en app) beholdes kun som reserve og er ikke den vej, vi går.
+
 # Montør-app (iOS + Android) med Capacitor
 
 Samme React-kodebase som webappen, pakket i en native skal. Web-udgaven på
