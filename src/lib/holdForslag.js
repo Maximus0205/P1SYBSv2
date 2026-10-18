@@ -19,7 +19,8 @@ const antal = (m, k) => m.get(k) || 0;
 const nøgle = (a, b) => `${a}|${b}`;
 
 // biler: [{ id, navn, montoerIds: [personId...] (dem der arbejder), stop: n, toMandStop: n }]
-// hjaelpere: [{ id, navn }]   (kun ledige: arbejder den dag)
+// hjaelpere: [{ id, navn, reserve? }]   (kun ledige: arbejder den dag). reserve = en MONTØR, der kan køre med som 2. mand, men først
+//   bruges, når der ikke er en rigtig medhjælper at give bilen (en montør kan også være den 2. mand, se lib/dagsplan.js).
 // faste: [{ montorId, helperId }]
 // alene: [montorId...]
 // historik: [{ dato, helperId, vehicleId }]  (tidligere dages hold, til retfærdighed)
@@ -45,7 +46,7 @@ export function foreslaaHold({ biler = [], hjaelpere = [], faste = [], alene = [
     const h = hjMap.get(f.helperId);
     if (!h || brugt.has(h.id)) continue;
     const bil = biler.find((b) => !dækket.has(b.id) && b.stop > 0 && b.montoerIds.includes(f.montorId));
-    if (!bil || b2alene(bil, aleneSet)) continue;
+    if (!bil || b2alene(bil, aleneSet) || bil.montoerIds.includes(h.id)) continue;
     brugt.add(h.id); dækket.add(bil.id);
     tildelinger.push({ personId: h.id, vehicleId: bil.id, aarsag: "fast" });
   }
@@ -68,15 +69,19 @@ export function foreslaaHold({ biler = [], hjaelpere = [], faste = [], alene = [
   let pulje = hjaelpere.filter((h) => !brugt.has(h.id));
   // Flere medhjælpere end biler: de med flest dage står over.
   if (pulje.length > kandidater.length) {
-    pulje = [...pulje].sort((a, b) => antal(total, a.id) - antal(total, b.id) || a.navn.localeCompare(b.navn, "da") || String(a.id).localeCompare(String(b.id))).slice(0, kandidater.length);
+    pulje = [...pulje].sort((a, b) => reserveRang(a) - reserveRang(b) || antal(total, a.id) - antal(total, b.id) || a.navn.localeCompare(b.navn, "da") || String(a.id).localeCompare(String(b.id))).slice(0, kandidater.length);
   }
   for (const bil of kandidater) {
-    if (pulje.length === 0) { mangler.push({ vehicleId: bil.id, aarsag: "ingen-ledig" }); continue; }
-    pulje.sort((a, b) =>
-      antal(paaBil, nøgle(a.id, bil.id)) - antal(paaBil, nøgle(b.id, bil.id))
+    // En montør kan aldrig være 2. mand på sin EGEN bil.
+    const egnede = pulje.filter((h) => !bil.montoerIds.includes(h.id));
+    if (egnede.length === 0) { mangler.push({ vehicleId: bil.id, aarsag: "ingen-ledig" }); continue; }
+    egnede.sort((a, b) =>
+      reserveRang(a) - reserveRang(b)
+      || antal(paaBil, nøgle(a.id, bil.id)) - antal(paaBil, nøgle(b.id, bil.id))
       || antal(total, a.id) - antal(total, b.id)
       || a.navn.localeCompare(b.navn, "da") || String(a.id).localeCompare(String(b.id)));
-    const valgt = pulje.shift();
+    const valgt = egnede[0];
+    pulje.splice(pulje.indexOf(valgt), 1);
     brugt.add(valgt.id); dækket.add(bil.id);
     tildelinger.push({ personId: valgt.id, vehicleId: bil.id, aarsag: "forslag" });
   }
@@ -85,6 +90,7 @@ export function foreslaaHold({ biler = [], hjaelpere = [], faste = [], alene = [
   return { tildelinger, mangler, ledige };
 }
 
+const reserveRang = (h) => (h.reserve ? 1 : 0);
 const b2alene = (bil, aleneSet) => bil.montoerIds.some((id) => aleneSet.has(id));
 
 // Teksten til UI'et ud for en "mangler"-linje.

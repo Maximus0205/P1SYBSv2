@@ -56,5 +56,21 @@ eq("fejl: ugyldigt input giver fejl-objekt eller gyldigt svar, aldrig undefined"
   eq("manglende koordinater: badge giver fejl og ingen minutter", [bg.minutter, typeof bg.fejl, bg.fejl.includes("koordinater")], [null, "string", true]);
 }
 
+// 2. MAND (oktober 2026): en MONTØR kan være 2. mand på en anden bil
+{
+  const pers2 = [
+    { id: "m1", navn: "Montør 1", bilId: "b1", rolle: "montor" },
+    { id: "m2", navn: "Montør 2", bilId: "b2", rolle: "montor" },
+  ];
+  const med = personerTilMotor({ dato, bilId: "b1", personnel: pers2, timeOff: [], arbejdstider: [], uaendringer: [], indstillinger: IND, hjaelperIds: ["m2"] });
+  eq("2. mand: montør på anden bil kører med som medhjælper (ikke montør)", med.personer.map((p) => [p.id, p.rolle]), [["m1", "montoer"], ["m2", "medhjaelper"]]);
+  const hjemme = personerTilMotor({ dato, bilId: "b2", personnel: pers2, timeOff: [], arbejdstider: [], uaendringer: [], indstillinger: IND, bortePersonIds: ["m2"] });
+  eq("2. mand: montøren er væk fra sin egen bil den dag", hjemme.personer, []);
+  const uden = personerTilMotor({ dato, bilId: "b1", personnel: pers2, timeOff: [{ montorId: "m1", startDato: dato, slutDato: dato, type: "sygdom" }], arbejdstider: [], uaendringer: [], indstillinger: IND, hjaelperIds: ["m2"] });
+  eq("2. mand: kører ikke med, hvis bilens egen montør er syg (ellers bliver 2. mand chauffør)", uden.personer, []);
+  const dublet = personerTilMotor({ dato, bilId: "b1", personnel: pers2, timeOff: [], arbejdstider: [], uaendringer: [], indstillinger: IND, hjaelperIds: ["m1"] });
+  eq("2. mand: samme person tælles ikke to gange på egen bil", dublet.personer.map((p) => p.id), ["m1"]);
+}
+
 console.log(`${pass} bestået, ${fail} fejlet`);
 if (fail) process.exit(1);

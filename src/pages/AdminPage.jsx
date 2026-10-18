@@ -106,7 +106,7 @@ function AdminPage({
           </p>
           {hasPerm(permissions, "admin_butik") && <SickLeaveWindowSetting store={store} onUpdated={onSickLeaveWindowUpdated} />}
           {hasPerm(permissions, "admin_montorer") && crew && (
-            <HoldIndstillinger montoerer={technicians.filter((t) => t.rolle !== "medhjaelper")} medhjaelpere={technicians.filter((t) => t.rolle === "medhjaelper")} crew={crew} onSetPair={onSetCrewPair} onSetSolo={onSetCrewSolo} />
+            <HoldIndstillinger montoerer={technicians.filter((t) => t.rolle !== "medhjaelper")} medhjaelpere={technicians} crew={crew} onSetPair={onSetCrewPair} onSetSolo={onSetCrewSolo} />
           )}
           <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Alle montører og medhjælpere ({technicians.length})</h3>
           {technicians.length === 0 ? (

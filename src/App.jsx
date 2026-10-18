@@ -124,8 +124,10 @@ function OrderRoute({ profile, storeId, orders, technicians, personnel, crew, or
         bilNavn: bil ? bil.navn.replace(/\s*\([^)]*\)\s*$/, "") : null,
         // Fast tilknyttede montører + dagens medhjælpere på bilen (dagens hold), så også de forbliver synlige på sagen.
         montoerer: [
-          ...(personnel || []).filter((p) => order.bilId && p.bilId === order.bilId && p.rolle !== "medhjaelper"),
-          ...(crew?.helpers || []).filter((h) => order.bilId && order.dato && h.vehicleId === order.bilId && h.dato === order.dato).map((h) => (personnel || []).find((p) => p.id === h.personId)).filter(Boolean),
+          // En montør, der den dag er sat som 2. mand på en ANDEN bil, hører ikke til denne bils faste montører.
+          ...(personnel || []).filter((p) => order.bilId && p.bilId === order.bilId && p.rolle !== "medhjaelper"
+            && !(crew?.helpers || []).some((h) => h.personId === p.id && h.dato === order.dato && h.vehicleId !== order.bilId)),
+          ...(crew?.helpers || []).filter((h) => order.bilId && order.dato && h.vehicleId === order.bilId && h.dato === order.dato).map((h) => (personnel || []).find((p) => p.id === h.personId)).filter((p) => p && p.bilId !== order.bilId),
         ].map((p) => ({ id: p.id, navn: p.navn })),
       });
     },
@@ -201,9 +203,12 @@ function OrderRoute({ profile, storeId, orders, technicians, personnel, crew, or
 // "technicians" (som nu er assignment-rækker til dropdowns, se App() -
 // mere direkte og uafhængigt af, hvordan de rækker er sat sammen).
 function MontorRoute({ profile, vehicles, orders, ordersStore, keyCabinets, crew, refresh, refreshing, selectedDate, onDateChange, onOpen }) {
-  // En medhjælper har ingen fast bil: bilen er den, vedkommende er sat på den valgte dag (Planlægning -> medhjælpere denne dag).
+  // En medhjælper har ingen fast bil: bilen er den, vedkommende er sat på den valgte dag (Planlægning -> 2. mand denne dag).
+  // 2. MAND (oktober 2026): også en MONTØR kan være sat som 2. mand på en anden bil en given dag - dagens hold går da forud for egen bil.
   const erMedhjaelper = profile.rolle === "medhjaelper";
-  const dagensBilId = erMedhjaelper ? crew?.helpers?.find((h) => h.personId === profile.id && h.dato === selectedDate)?.vehicleId : profile.bilId;
+  const holdBilId = crew?.helpers?.find((h) => h.personId === profile.id && h.dato === selectedDate)?.vehicleId;
+  const dagensBilId = holdBilId || (erMedhjaelper ? undefined : profile.bilId);
+  const koererSom2Mand = !!holdBilId && !erMedhjaelper && holdBilId !== profile.bilId;
   const ownVehicle = vehicles.find((v) => v.id === dagensBilId);
   if (!ownVehicle && erMedhjaelper) {
     return (
@@ -222,11 +227,14 @@ function MontorRoute({ profile, vehicles, orders, ordersStore, keyCabinets, crew
   }
   const technician = { id: ownVehicle.id, navn: ownVehicle.navn, bil: ownVehicle.nummerplade };
   return (
+    <>
+      {koererSom2Mand && <p role="status" className="text-sm text-ink bg-panel border border-line rounded-lg px-3 py-2 mb-3">Du kører som 2. mand på {ownVehicle.navn} denne dag.</p>}
     <TechnicianRouteView
       orders={orders} technician={technician} keyCabinets={keyCabinets} selectedDate={selectedDate} onDateChange={onDateChange}
       onOpen={onOpen} onReorder={ordersStore.reorderOrder}
       onRefresh={refresh} refreshing={refreshing}
     />
+    </>
   );
 }
 

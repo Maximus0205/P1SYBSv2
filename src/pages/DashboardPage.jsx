@@ -79,8 +79,10 @@ function NeedsActionWidget({ orders, technicians, personnel, vehicles, timeOff, 
 // opslaget på "hvad er min rute".
 function TodayRouteWidget({ orders, technicians, vehicles, profile, crew, onOpen, onNavigate }) {
   const catalogEntry = DASHBOARD_WIDGET_CATALOG.find((w) => w.key === "today_route");
-  // En medhjælper har ingen fast bil: bilen er den, vedkommende er sat på i dag (dagens hold).
-  const bilId = profile.rolle === "medhjaelper" ? crew?.helpers?.find((h) => h.personId === profile.id && h.dato === todayISO())?.vehicleId : profile.bilId;
+  // En medhjælper har ingen fast bil: bilen er den, vedkommende er sat på i dag (dagens hold). En montør, der i dag er sat som 2. mand på
+  // en anden bil, følger også dagens hold (oktober 2026).
+  const holdBilId = crew?.helpers?.find((h) => h.personId === profile.id && h.dato === todayISO())?.vehicleId;
+  const bilId = holdBilId || (profile.rolle === "medhjaelper" ? undefined : profile.bilId);
   const ownVehicle = (vehicles || []).find((v) => v.id === bilId);
   if (!ownVehicle) {
     return (

@@ -53,7 +53,8 @@ export async function beregnDagMotor({ bilId, dato, list, vehicles, technicians,
   const tRow = (technicians || []).find((t) => t.id === bilId);
   const bil = bilTilMotor(vRow, tRow);
   const hjaelperIds = (crew?.helpers || []).filter((h) => h.dato === dato && h.vehicleId === bilId).map((h) => h.personId);
-  const { personer, pauseMin } = personerTilMotor({ dato, bilId, personnel, timeOff, arbejdstider: grundlag.arbejdstider, uaendringer: grundlag.uaendringer, indstillinger: grundlag.indstillinger, hjaelperIds });
+  const bortePersonIds = (crew?.helpers || []).filter((h) => h.dato === dato && h.vehicleId !== bilId).map((h) => h.personId);
+  const { personer, pauseMin } = personerTilMotor({ dato, bilId, personnel, timeOff, arbejdstider: grundlag.arbejdstider, uaendringer: grundlag.uaendringer, indstillinger: grundlag.indstillinger, hjaelperIds, bortePersonIds });
   const lagerPunkt = lager ? { id: "lager", lat: lager.lat, lon: lager.lon } : undefined;
   const punkter = [...(lagerPunkt ? [lagerPunkt] : []), ...stop.filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lon)).map((s) => ({ id: s.id, lat: s.lat, lon: s.lon }))];
   const matrix = punkter.length >= 2 ? await hentMotorMatrix(punkter) : null;

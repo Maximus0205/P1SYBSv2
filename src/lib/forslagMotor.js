@@ -76,7 +76,8 @@ export async function motorForslag({
       const vRow = (vehicles || []).find((v) => v.id === t.id);
       const bil = bilTilMotor(vRow, t);
       const hjaelperIds = (crew?.helpers || []).filter((h) => h.dato === dato && h.vehicleId === t.id).map((h) => h.personId);
-      const { personer, pauseMin } = personerTilMotor({ dato, bilId: t.id, personnel, timeOff, arbejdstider: grundlag.arbejdstider, uaendringer: grundlag.uaendringer, indstillinger: grundlag.indstillinger, hjaelperIds });
+      const bortePersonIds = (crew?.helpers || []).filter((h) => h.dato === dato && h.vehicleId !== t.id).map((h) => h.personId);
+      const { personer, pauseMin } = personerTilMotor({ dato, bilId: t.id, personnel, timeOff, arbejdstider: grundlag.arbejdstider, uaendringer: grundlag.uaendringer, indstillinger: grundlag.indstillinger, hjaelperIds, bortePersonIds });
       if (personer.length === 0) continue; // ingen på bilen den dag
       const dagensOrdrer = (orders || []).filter((o) => o.dato === dato && o.bilId === t.id && o.status !== "afsluttet" && o.id !== ekskluderSagId);
       const stop = dagensOrdrer.map(ordreTilStop);

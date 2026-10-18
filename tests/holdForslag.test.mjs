@@ -58,5 +58,16 @@ eq("deterministisk", JSON.stringify(foreslaaHold({ biler: [bil("b1", ["m1"], 3, 
 
 // Tomme input
 eq("tom", foreslaaHold(), { tildelinger: [], mangler: [], ledige: [] });
+// 2. MAND (oktober 2026): montører kan være 2. mand - men først når der ikke er en rigtig medhjælper
+const mt = (id) => ({ id, navn: id, reserve: true });
+r = foreslaaHold({ biler: [bil("b1", ["m1"], 3, 1)], hjaelpere: [mt("m2"), hj("h1")] });
+eq("montør er reserve: rigtig medhjælper vælges først", pr(r), ["h1>b1:forslag"]);
+r = foreslaaHold({ biler: [bil("b1", ["m1"], 3, 1)], hjaelpere: [mt("m2")] });
+eq("montør kan være 2. mand, når der ingen medhjælper er", pr(r), ["m2>b1:forslag"]);
+r = foreslaaHold({ biler: [bil("b1", ["m1"], 3, 1)], hjaelpere: [mt("m1")] });
+eq("montør kan aldrig være 2. mand på sin egen bil", [pr(r), r.mangler], [[], [{ vehicleId: "b1", aarsag: "ingen-ledig" }]]);
+r = foreslaaHold({ biler: [bil("b1", ["m1"], 3, 1), bil("b2", ["m2"], 0, 0)], hjaelpere: [mt("m2")], faste: [{ montorId: "m1", helperId: "m2" }] });
+eq("fast makker kan være en anden montør", pr(r), ["m2>b1:fast"]);
+
 console.log(`${pass} bestået, ${fail} fejlet`);
 if (fail > 0) process.exit(1);

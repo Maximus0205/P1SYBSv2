@@ -2,12 +2,14 @@
 import React from "react";
 import { Users, User } from "lucide-react";
 
+// medhjaelpere = alle, der kan være fast makker (2. mand): medhjælpere OG andre montører. En montør kan ikke være sin egen makker.
 export function HoldIndstillinger({ montoerer, medhjaelpere, crew, onSetPair, onSetSolo }) {
   const [fejl, setFejl] = React.useState("");
   const [optaget, setOptaget] = React.useState(null);
   const fast = new Map(crew.pairs.map((p) => [p.montorId, p.helperId]));
   const soloSet = new Set(crew.solo);
   const navn = (id) => [...montoerer, ...medhjaelpere].find((p) => p.id === id)?.navn || "Ukendt";
+  const erMedhjaelper = (id) => montoerer.every((m) => m.id !== id);
 
   const kør = async (id, fn) => {
     setFejl(""); setOptaget(id);
@@ -21,9 +23,9 @@ export function HoldIndstillinger({ montoerer, medhjaelpere, crew, onSetPair, on
     <div className="rounded-xl border border-line bg-white p-4 mb-6 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-1.5"><Users size={14} aria-hidden="true" /> Makkere og kørsel alene</h3>
       <p className="text-xs text-muted mb-3">
-        Bruges, når systemet foreslår dagens hold til ture med to-mands-opgaver. Et fast makkerpar sættes sammen først, når begge er på arbejde. En montør der kører alene får aldrig en medhjælper foreslået.
+        Bruges, når systemet foreslår dagens hold til ture med to-mands-opgaver. Et fast makkerpar sættes sammen først, når begge er på arbejde. En montør der kører alene får aldrig en 2. mand foreslået. Fast makker kan være en medhjælper eller en anden montør.
       </p>
-      {medhjaelpere.length === 0 && <p className="text-xs text-muted italic mb-3">Ingen medhjælpere endnu. Opret en bruger med rollen "Medhjælper" under fanen "Brugere".</p>}
+      {medhjaelpere.length === montoerer.length && <p className="text-xs text-muted italic mb-3">Ingen medhjælpere endnu. Opret en bruger med rollen "Medhjælper" under fanen "Brugere", eller vælg en anden montør som makker.</p>}
       <div className="space-y-2">
         {montoerer.map((m) => {
           const alene = soloSet.has(m.id);
@@ -48,9 +50,15 @@ export function HoldIndstillinger({ montoerer, medhjaelpere, crew, onSetPair, on
                 className="h-10 rounded-lg border border-line bg-white px-2 text-xs text-ink focus:outline-none focus:border-brand disabled:opacity-50"
               >
                 <option value="">Ingen fast makker</option>
-                {medhjaelpere.map((h) => (
-                  <option key={h.id} value={h.id} disabled={optagetAfAndre.has(h.id)}>{h.navn}{optagetAfAndre.has(h.id) ? ` (makker med ${navn([...fast.entries()].find(([, hid]) => hid === h.id)?.[0])})` : ""}</option>
-                ))}
+                {medhjaelpere.filter((h) => h.id !== m.id).map((h) => {
+                  const modsat = fast.get(h.id) === m.id; // h er allerede fast makker TIL m - ellers ville de to være hinandens makker
+                  const optaget = optagetAfAndre.has(h.id);
+                  return (
+                    <option key={h.id} value={h.id} disabled={optaget || modsat}>
+                      {h.navn}{erMedhjaelper(h.id) ? "" : " (montør)"}{optaget ? ` (makker med ${navn([...fast.entries()].find(([, hid]) => hid === h.id)?.[0])})` : modsat ? " (har dig som makker)" : ""}
+                    </option>
+                  );
+                })}
               </select>
             </div>
           );

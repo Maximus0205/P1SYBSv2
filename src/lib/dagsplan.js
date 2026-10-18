@@ -34,15 +34,22 @@ export function arbejderDenDag({ dato, personId, timeOff, arbejdstider, uaendrin
   });
 }
 
-export function personerTilMotor({ dato, bilId, personnel, timeOff, arbejdstider, uaendringer, indstillinger, hjaelperIds }) {
-  const fast = (personnel || []).filter((p) => p.bilId === bilId && p.rolle !== "medhjaelper");
-  const hjaelpere = (hjaelperIds || []).map((id) => (personnel || []).find((p) => p.id === id)).filter(Boolean);
+// 2. MAND (oktober 2026): en MONTØR kan også køre med som 2. mand på en anden bil en given dag (day_helpers) - ikke kun rollen medhjælper.
+// "Hjælper" afgøres derfor af, HVORDAN personen er på bilen (står i hjaelperIds), ikke af rollen:
+//  - hjaelperIds: dagens 2. mand på netop denne bil.
+//  - bortePersonIds: personer, der er sat på en ANDEN bil som 2. mand samme dag. De er væk fra deres egen faste bil og tælles ikke
+//    med som dens montør (ellers ville en montør tælle på to biler på én gang).
+export function personerTilMotor({ dato, bilId, personnel, timeOff, arbejdstider, uaendringer, indstillinger, hjaelperIds, bortePersonIds }) {
+  const borte = new Set((bortePersonIds || []).map(String));
+  const fast = (personnel || []).filter((p) => p.bilId === bilId && p.rolle !== "medhjaelper" && !borte.has(String(p.id)));
+  const fastIds = new Set(fast.map((p) => String(p.id)));
+  const hjaelpere = (hjaelperIds || []).map((id) => (personnel || []).find((p) => p.id === id)).filter((p) => p && !fastIds.has(String(p.id)));
   const ud = [];
   let pauseMin = null;
   let fastArbejder = 0;
-  for (const p of [...fast, ...hjaelpere]) {
-    // En medhjælper kører kun med, hvis bilens montør faktisk arbejder - ellers ville motoren gøre vedkommende til montør.
-    if (p.rolle === "medhjaelper" && fastArbejder === 0) continue;
+  for (const { p, erHjaelper } of [...fast.map((p) => ({ p, erHjaelper: false })), ...hjaelpere.map((p) => ({ p, erHjaelper: true }))]) {
+    // En 2. mand kører kun med, hvis bilens montør faktisk arbejder - ellers ville motoren gøre vedkommende til montør.
+    if (erHjaelper && fastArbejder === 0) continue;
     const t = dagensTilgaengelighed({
       dato, indstillinger,
       raekker: (arbejdstider || []).filter((r) => r.person_id === p.id),
@@ -50,7 +57,7 @@ export function personerTilMotor({ dato, bilId, personnel, timeOff, arbejdstider
       uaendringer: (uaendringer || []).filter((u) => u.person_id === p.id).map((u) => ({ dato: u.dato, fraMin: u.from_min, tilMin: u.to_min })),
     });
     if (!t.arbejder) continue;
-    if (p.rolle !== "medhjaelper") fastArbejder += 1;
+    if (!erHjaelper) fastArbejder += 1;
     if (pauseMin === null) pauseMin = t.pauseMin;
     ud.push({ id: String(p.id), navn: p.navn || "Person", rolle: ud.length === 0 ? "montoer" : "medhjaelper", vinduer: t.vinduer });
   }
