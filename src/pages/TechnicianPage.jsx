@@ -218,11 +218,28 @@ function OrderStopCard({ order: s, keyCabinets, onOpen, onMoveUp, onMoveDown, ca
             <span className="font-mono text-[10px] text-faint">#{s.nr}</span>
             {tomgang && <TomgangBadge />}
           </div>
-          <p className="font-semibold text-sm text-ink truncate">{buildTitle(s.varelinjer)}</p>
-          <p className="text-xs text-muted truncate">
-            {s.kunde.navn}{s.koeber ? ` · køber ${s.koeber.navn}` : ""}
+          {/* Ingen sagsoverskrift: montøren har brug for KUNDEN og HVAD der skal i bilen, ikke en opsummering af sagen. Kundeinfo står øverst,
+              og hver varelinje er listet direkte på kortet, så bilen kan pakkes uden at åbne hver enkelt sag (oktober 2026). */}
+          <p className="font-semibold text-sm text-ink">
+            {s.kunde.navn}{s.koeber ? <span className="font-normal text-muted"> · køber {s.koeber.navn}</span> : null}
           </p>
-          <p className="text-xs text-muted truncate">{s.kunde.adresse}</p>
+          <p className="text-xs text-muted">{s.kunde.adresse}</p>
+          {(s.varelinjer || []).length > 0 && (
+            <ul className="mt-1.5 space-y-0.5" aria-label="Varer på sagen">
+              {s.varelinjer.map((v) => {
+                const ydelser = [v.primaerYdelse?.navn, ...(v.tillaeg || []).map((y) => y.navn)].filter(Boolean).join(" + ");
+                return (
+                  <li key={v.id} className="text-xs text-ink flex items-start gap-1.5">
+                    <span className="text-faint shrink-0" aria-hidden="true">•</span>
+                    <span className="min-w-0">
+                      <span className="font-semibold">{lineItemLabel(v)}</span>
+                      {ydelser && <span className="text-muted"> · {ydelser}</span>}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
           {erAfsluttet && (
             <p className="text-[11px] text-success flex items-center gap-1 mt-0.5">
               <CalendarCheck2 size={11} className="shrink-0" aria-hidden="true" /> Færdigmeldt
