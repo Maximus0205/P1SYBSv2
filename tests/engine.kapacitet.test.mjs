@@ -29,7 +29,7 @@ eq("indstillinger: ugyldige tider og regler giver standard", [rensIndstillinger(
 eq("indstillinger: arbejdsdage renses", rensIndstillinger({ tider: { arbejdsdage: [1, 1, 6, 9, "x", 3.5, 0] } }).tider.arbejdsdage, [1, 6]);
 eq("indstillinger: lagerkoordinater kræver begge og gyldige værdier", [rensIndstillinger({ lager: { lat: 55, lon: 10 } }).lager.lat, rensIndstillinger({ lager: { lat: 55, lon: null } }).lager.lat, rensIndstillinger({ lager: { lat: 999, lon: 10 } }).lager.lat], [55, null, null]);
 eq("indstillinger: personvægten er FAST og kan ikke sættes udefra", [PERSONVAEGT_KG, "personVaegtKg" in rensIndstillinger({ personVaegtKg: 200, pakning: { personVaegtKg: 200 }, nyttelast: { personVaegtKg: 200 } }), JSON.stringify(rensIndstillinger({ nyttelast: { personVaegtKg: 200 } })).includes("200")], [86.5, false, false]);
-eq("indstillinger: ukendte felter kasseres", Object.keys(rensIndstillinger({ hacker: 1, tider: { x: 1 } })).sort(), ["koersel", "lager", "regler", "samling", "tider"]);
+eq("indstillinger: ukendte felter kasseres", Object.keys(rensIndstillinger({ hacker: 1, tider: { x: 1 } })).sort(), ["koersel", "lager", "omraader", "regler", "samling", "tider"]);
 
 // =====================================================================================================
 // PERSONERS TILGÆNGELIGHED
