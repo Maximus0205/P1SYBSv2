@@ -72,7 +72,7 @@ function BilKapacitet({ vehicles, onUpdate, storeId }) {
   return (
     <div className="mt-8">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1">Nyttelast, lasterum og kørselsområde</h3>
-      <p className="text-xs text-muted mb-3">Bruges af planlægningen til at sikre, at bilen ikke overlæssses, og at varerne er der plads til. Står et felt tomt, springer planlægningen den del over for den bil. Personerne i bilen regnes automatisk med en fast standardvægt.</p>
+      <p className="text-xs text-muted mb-3">Bruges af planlægningen til at sikre, at bilen ikke overlæsses, og at varerne er der plads til. Står et felt tomt, springer planlægningen den del over for den bil. Personerne i bilen regnes automatisk med en fast standardvægt.</p>
       <div className="space-y-2">{vehicles.map((b) => <BilRaekke key={b.id} bil={b} onUpdate={onUpdate} omraader={omraader} />)}</div>
       <KoerselsOmraader storeId={storeId} omraader={omraader} vehicles={vehicles} onGemt={setOmraader} />
     </div>
