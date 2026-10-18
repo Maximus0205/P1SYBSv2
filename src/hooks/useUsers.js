@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { getStoreUsers, createUserAsAdmin, updateProfile, resetPasswordAsAdmin, resetPinAsAdmin, updateUserPermissions, deleteUserAsAdmin } from "../lib/dataStore";
+import { getStoreUsers, createUserAsAdmin, updateProfile, resetPasswordAsAdmin, resetPinAsAdmin, changeInitialsAsAdmin, updateUserPermissions, deleteUserAsAdmin } from "../lib/dataStore";
 import { sletBruger } from "../lib/sletBruger";
 
 // Al state og CRUD for BRUGERE (som "montører" udledes af, se koererSelv
@@ -85,6 +85,13 @@ export function useUsers(storeId) {
   // Nulstiller en brugers PIN til en tilfældig MIDLERTIDIG PIN (returneres én gang). Brugeren vælger selv en ny ved næste login.
   const resetPin = (userId) => resetPinAsAdmin(userId);
 
+  // Ændrer en brugers brugernavn (initialer) og henter listen igen, så det nye navn vises.
+  const changeInitials = async (userId, initialer) => {
+    const result = await changeInitialsAsAdmin(userId, initialer);
+    if (result.ok && storeId) await load(storeId);
+    return result;
+  };
+
   // Individuelle rettigheds-til-/fravalg. Håndhæves også i databasen (se
   // profiles_guard_privileged_fields), så dette kald ikke kan bruges til
   // at give nogen flere rettigheder end man selv har lov til.
@@ -94,5 +101,5 @@ export function useUsers(storeId) {
     return result;
   };
 
-  return { users, addUser, updateUser, deleteUser, resetPassword, resetPin, updatePermissions, reload: () => load(storeId) };
+  return { users, addUser, updateUser, deleteUser, resetPassword, resetPin, changeInitials, updatePermissions, reload: () => load(storeId) };
 }

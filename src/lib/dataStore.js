@@ -437,6 +437,18 @@ export async function resetPinAsAdmin(userId) {
   return { ok: true, pin: data.pin };
 }
 
+// En admin ændrer en brugers brugernavn (initialer). Unikke inden for butikken - tjekkes server-side.
+// Koden og eksisterende sessioner påvirkes ikke.
+export async function changeInitialsAsAdmin(userId, initialer) {
+  const { data, error } = await supabase.functions.invoke("skift-initialer", { body: { brugerId: userId, initialer } });
+  if (error || data?.fejl) {
+    const fejl = await readEdgeFunctionError(data, error, "Kunne ikke ændre initialerne");
+    logError("dataStore:changeInitialsAsAdmin", fejl);
+    return { ok: false, fejl };
+  }
+  return { ok: true, brugernavn: data?.brugernavn };
+}
+
 // ---------- Biometrisk login (WebAuthn) - september 2026 ----------
 // Se lib/webauthn.js for selve browser-formatkonverteringen, og
 // webauthn-register-options/-verify og webauthn-login-options/-verify

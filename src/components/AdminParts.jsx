@@ -487,11 +487,14 @@ function PermissionsEditor({ user, permissionsCatalog, roleDefaults, onUpdatePer
   );
 }
 
-function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPin, permissionsCatalog, roleDefaults, onUpdatePermissions }) {
+function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPin, onChangeInitials, permissionsCatalog, roleDefaults, onUpdatePermissions }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user.navn);
   const [pinInfo, setPinInfo] = useState(null); // { pin } | { fejl }
   const [busy, setBusy] = useState(false);
+  const [editingInitials, setEditingInitials] = useState(false);
+  const [initials, setInitials] = useState(user.brugernavn || "");
+  const [initialsError, setInitialsError] = useState("");
   const [showPermissions, setShowPermissions] = useState(false);
 
   // Nulstiller PIN til en tilfældig, midlertidig kode. Den vises KUN her, én gang -
@@ -502,6 +505,17 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPin,
     const result = await onResetPin(user.id);
     setBusy(false);
     setPinInfo(result?.ok ? { pin: result.pin } : { fejl: result?.fejl || "Kunne ikke nulstille koden." });
+  };
+
+  // Ændrer brugernavnet (initialer). Koden er uændret - brugeren skriver bare de nye initialer ved næste login.
+  const saveInitials = async () => {
+    setInitialsError("");
+    if (!erGyldigeInitialer(initials)) { setInitialsError("Initialer skal være 2-5 bogstaver (a-z, uden æøå og mellemrum)."); return; }
+    setBusy(true);
+    const result = await onChangeInitials(user.id, initials.trim().toLowerCase());
+    setBusy(false);
+    if (!result?.ok) { setInitialsError(result?.fejl || "Kunne ikke ændre initialerne."); return; }
+    setEditingInitials(false);
   };
 
   const canEditPermissions = user.id !== currentUserId && onUpdatePermissions && permissionsCatalog;
@@ -533,10 +547,28 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPin,
           )}
           <p className="text-xs text-muted truncate">
             {ROLE_LABEL[user.rolle] || user.rolle}
-            {user.brugernavn && <span> · brugernavn "{user.brugernavn}"</span>}
+            {user.brugernavn && !editingInitials && <span> · brugernavn "{user.brugernavn}"</span>}
             {erMedhjaelper ? <span> · bil sættes pr. dag i Planlægning</span> : koerer && <span> · {vehicle ? vehicleLabel(vehicle) : "kører rute, ingen bil endnu"}</span>}
             {(user.extraPermissions?.length > 0 || user.revokedPermissions?.length > 0) && <span> · rettigheder tilpasset</span>}
           </p>
+          {editingInitials && (
+            <div className="mt-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <label htmlFor={`initialer-${user.id}`} className="text-xs text-muted">Brugernavn (initialer)</label>
+                <input
+                  id={`initialer-${user.id}`} autoFocus value={initials}
+                  onChange={(e) => setInitials(e.target.value.toLowerCase().replace(/[^a-z]/g, "").slice(0, 5))}
+                  onKeyDown={(e) => e.key === "Enter" && saveInitials()}
+                  autoCapitalize="off" autoCorrect="off" spellCheck={false}
+                  className="w-24 rounded-lg border border-line bg-panel px-2 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand"
+                />
+                <button onClick={saveInitials} disabled={busy} className="text-xs text-success font-semibold uppercase px-2 py-2 disabled:opacity-60">Gem</button>
+                <button onClick={() => { setEditingInitials(false); setInitialsError(""); }} className="text-xs text-muted font-semibold uppercase px-2 py-2">Fortryd</button>
+              </div>
+              <p className="text-[11px] text-muted mt-0.5">Koden er uændret. {user.navn} skriver de nye initialer ved næste login.</p>
+              {initialsError && <p role="alert" className="text-xs text-danger mt-0.5">{initialsError}</p>}
+            </div>
+          )}
         </div>
         <select value={user.rolle} onChange={(e) => onUpdate(user.id, { rolle: e.target.value })} aria-label={`Rolle for ${user.navn}`} className="rounded-lg border border-line bg-panel px-2 py-2 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-brand">
           {Object.entries(ROLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -560,6 +592,9 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPin,
           </button>
         )}
         {!editing && <button onClick={() => { setName(user.navn); setEditing(true); }} aria-label={`Ret navn på ${user.navn}`} className="w-10 h-10 flex items-center justify-center rounded-lg text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand" title="Ret navn"><Pencil size={15} aria-hidden="true" /></button>}
+        {onChangeInitials && user.brugernavn && !editingInitials && (
+          <button onClick={() => { setInitials(user.brugernavn || ""); setInitialsError(""); setEditingInitials(true); }} aria-label={`Ret initialer for ${user.navn}`} className="h-10 px-2 flex items-center justify-center rounded-lg text-xs font-mono font-semibold text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand" title="Ret brugernavn (initialer)">ab</button>
+        )}
         {onResetPin && user.id !== currentUserId && <button onClick={resetPin} disabled={busy} aria-label={`Nulstil kode for ${user.navn}`} className="w-10 h-10 flex items-center justify-center rounded-lg text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand disabled:opacity-60" title="Nulstil kode"><KeyRound size={15} aria-hidden="true" /></button>}
         {/* Tooltip'en sagde tidligere "Fjern adgang", fordi knappen dengang
             blot fjernede butikstilknytningen. Den SLETTER nu brugeren

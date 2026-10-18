@@ -24,7 +24,7 @@ function AdminPage({
   productTypes, productCategories, primaryServices, addOnServices, defaultTimeEstimates,
   permissions,
   onUpdateTechnicianVehicle, onAddVehicle, onUpdateVehicle, onDeleteVehicle, onToggleVehicleClosed,
-  onAddUser, onUpdateUser, onDeleteUser, onResetPassword, onResetPin, onUpdatePermissions,
+  onAddUser, onUpdateUser, onDeleteUser, onResetPassword, onResetPin, onChangeInitials, onUpdatePermissions,
   onAddProductCategory, onUpdateProductCategory, onDeleteProductCategory,
   onAddProductType, onUpdateProductType, onDeleteProductType,
   onAddPrimaryService, onUpdatePrimaryService, onDeletePrimaryService,
@@ -174,7 +174,7 @@ function AdminPage({
               return (
                 <UserRow
                   key={b.id} user={b} vehicle={vehicle} currentUserId={currentUserId}
-                  onUpdate={onUpdateUser} onDelete={onDeleteUser} onResetPassword={onResetPassword} onResetPin={onResetPin}
+                  onUpdate={onUpdateUser} onDelete={onDeleteUser} onResetPassword={onResetPassword} onResetPin={onResetPin} onChangeInitials={onChangeInitials}
                   permissionsCatalog={permissionsCatalog} roleDefaults={roleDefaults} onUpdatePermissions={onUpdatePermissions}
                   passwordPolicy={passwordPolicy}
                 />
