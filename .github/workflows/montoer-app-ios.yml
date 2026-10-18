@@ -1,0 +1,67 @@
+name: Montør-app - byg iPhone (IPA til test)
+
+# Køres kun manuelt. Laver en usigneret .ipa, som du selv signerer med dit gratis Apple-ID i Sideloadly (holder 7 dage).
+# Rører hverken webappen eller main. Bruger samme secrets som webappen: VITE_SUPABASE_URL og VITE_SUPABASE_ANON_KEY.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: montoer-app
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      EXPO_NO_TELEMETRY: "1"
+      CI: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/montoer-app-capacitor
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Tjek at databasen er sat op
+        run: |
+          test -n "$EXPO_PUBLIC_SUPABASE_URL" || (echo "Secret VITE_SUPABASE_URL mangler" && exit 1)
+          test -n "$EXPO_PUBLIC_SUPABASE_ANON_KEY" || (echo "Secret VITE_SUPABASE_ANON_KEY mangler" && exit 1)
+
+      - run: npm install --no-audit --no-fund
+      - run: npx expo install --fix
+      - run: npm test
+
+      - name: Lav iOS-projektet
+        run: npx expo prebuild --platform ios --no-install --clean
+
+      - name: Installer pods
+        working-directory: montoer-app/ios
+        run: pod install
+
+      - name: Byg uden signering
+        working-directory: montoer-app/ios
+        run: |
+          WS=$(ls -d *.xcworkspace | head -n 1)
+          SCHEME="${WS%.xcworkspace}"
+          xcodebuild -workspace "$WS" -scheme "$SCHEME" -configuration Release \
+            -sdk iphoneos -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build | tail -n 40
+
+      - name: Pak som IPA
+        run: |
+          APP=$(ls -d ios/build/Build/Products/Release-iphoneos/*.app | head -n 1)
+          rm -rf Payload && mkdir Payload && cp -R "$APP" Payload/
+          zip -qry p1sybs-montor.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p1sybs-montor-iphone
+          path: montoer-app/p1sybs-montor.ipa
+          retention-days: 30

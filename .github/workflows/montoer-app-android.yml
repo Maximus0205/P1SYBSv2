@@ -1,0 +1,90 @@
+name: Montør-app - byg Android (APK)
+
+# Køres kun manuelt: GitHub -> Actions -> "Montør-app - byg Android (APK)" -> Run workflow (vælg branchen feature/montoer-app-capacitor).
+# Rører hverken webappen eller main. APK'en hentes bagefter under kørslen (Artifacts) eller som udgivelse, hvis "udgiv" er slået til.
+# Bruger de samme GitHub-secrets som webappen: VITE_SUPABASE_URL og VITE_SUPABASE_ANON_KEY (offentlige værdier, ikke hemmeligheder).
+on:
+  workflow_dispatch:
+    inputs:
+      udgiv:
+        description: "Læg APK'en ud som en udgivelse med fast link (ellers kun som download under kørslen)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: montoer-app
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      EXPO_NO_TELEMETRY: "1"
+      CI: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: feature/montoer-app-capacitor
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Tjek at databasen er sat op
+        run: |
+          test -n "$EXPO_PUBLIC_SUPABASE_URL" || (echo "Secret VITE_SUPABASE_URL mangler i repoet" && exit 1)
+          test -n "$EXPO_PUBLIC_SUPABASE_ANON_KEY" || (echo "Secret VITE_SUPABASE_ANON_KEY mangler i repoet" && exit 1)
+
+      - name: Installer
+        run: npm install --no-audit --no-fund
+
+      - name: Afstem versioner til Expo
+        run: npx expo install --fix
+
+      - name: Test af ruteregler
+        run: npm test
+
+      - name: Lav Android-projektet
+        run: npx expo prebuild --platform android --no-install --clean
+
+      - name: Byg APK
+        working-directory: montoer-app/android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Find APK
+        id: apk
+        run: |
+          APK=$(ls android/app/build/outputs/apk/release/*.apk | head -n 1)
+          cp "$APK" p1sybs-montor.apk
+          echo "sti=montoer-app/p1sybs-montor.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Gem APK som download
+        uses: actions/upload-artifact@v4
+        with:
+          name: p1sybs-montor-android
+          path: montoer-app/p1sybs-montor.apk
+          retention-days: 30
+
+      - name: Udgiv med fast link
+        if: ${{ inputs.udgiv }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          TAG="montor-app-${{ github.run_number }}"
+          gh release create "$TAG" "${{ steps.apk.outputs.sti }}" --prerelease --title "Montør-app (test) $TAG" --notes "Test-version til Android. Åbn linket på telefonen og installer. Se montoer-app/README.md." --target "${{ github.sha }}"

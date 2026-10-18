@@ -1,0 +1,66 @@
+name: Montør-app - klar til Xcode (Mac)
+
+# Køres kun manuelt. Afleverer et færdigt Xcode-projekt (med pods og moduler), så det kan åbnes i Xcode på en Mac
+# og køres på egen iPhone med et gratis Apple-ID. Rører hverken webappen eller main.
+# Bruger samme secrets som webappen: VITE_SUPABASE_URL og VITE_SUPABASE_ANON_KEY.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  xcode:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: montoer-app
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/montoer-app-capacitor
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Tjek at databasen er sat op
+        env:
+          U: ${{ secrets.VITE_SUPABASE_URL }}
+          K: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          test -n "$U" || (echo "Secret VITE_SUPABASE_URL mangler" && exit 1)
+          test -n "$K" || (echo "Secret VITE_SUPABASE_ANON_KEY mangler" && exit 1)
+          # Offentlige værdier (samme som i webappen). Lægges i .env så Xcode-bygningen på Macen kan bruge dem.
+          printf 'EXPO_PUBLIC_SUPABASE_URL=%s\nEXPO_PUBLIC_SUPABASE_ANON_KEY=%s\n' "$U" "$K" > .env
+
+      - run: npm install --no-audit --no-fund
+      - run: npx expo install --fix
+      - run: npm test
+
+      - name: Lav iOS-projektet med pods
+        run: npx expo prebuild --platform ios --no-install --clean
+
+      - name: Installer pods
+        working-directory: montoer-app/ios
+        run: pod install
+
+      - name: Gør projektet flytbart
+        run: |
+          rm -f ios/.xcode.env.local
+          cat > LÆS-MIG-FØRST.txt <<'T'
+          1. Installer Node.js (LTS) fra nodejs.org (almindeligt installationsprogram).
+          2. Åbn mappen ios og dobbeltklik på filen med endelsen .xcworkspace (IKKE .xcodeproj).
+          3. Klik på projektet øverst til venstre, vælg Signing & Capabilities, og vælg dit Apple-ID under Team.
+             Skift evt. Bundle Identifier til noget unikt, fx dk.dinbutik.montor.
+          4. Vælg din iPhone øverst (tilsluttet med kabel, Udviklertilstand slået til) og tryk Run.
+          5. På iPhonen: Indstillinger, Generelt, VPN og enhedsstyring, vælg dit Apple-ID og tryk Stol på.
+          Appen holder 7 dage med et gratis Apple-ID.
+          T
+          cd .. && zip -qry montoer-app-xcode.zip montoer-app -x "montoer-app/.git/*"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p1sybs-montor-xcode
+          path: montoer-app-xcode.zip
+          retention-days: 7
