@@ -208,7 +208,7 @@ function MontorRoute({ profile, vehicles, orders, ordersStore, keyCabinets, crew
   if (!ownVehicle && erMedhjaelper) {
     return (
       <div>
-        <DateSelector value={selectedDate} onChange={onDateChange} />
+        <DateSelector date={selectedDate} onChange={onDateChange} />
         <p className="text-sm text-muted mt-3">Du er ikke sat på en bil denne dag endnu. Planlæggeren sætter dagens hold i Planlægning — prøv en anden dag, eller tjek igen senere.</p>
       </div>
     );
