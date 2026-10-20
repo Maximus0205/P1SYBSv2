@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { X, Plus, Lock, Loader2, ImageOff } from "lucide-react";
 import { formatTime, formatDuration, now, totalMinutes, lineItemLabel, serviceIcon } from "../data/domain";
 import { getAttachments, getAttachmentUrls, uploadAttachment, markAttachmentForDeletion } from "../lib/attachments";
+import ImageLightbox from "./ImageLightbox";
 
 // RETTET (august 2026): alle "tilføj/rediger"-handlinger herunder
 // (onAdd/onToggleAddOn/onSave osv.) kan nu være undefined - se
@@ -202,6 +203,13 @@ function Photos({ order, onAdd }) {
 
   const legacyPhotos = order.billeder || [];
 
+  // Forstørret visning: id på det billede, der er åbent (null = lukket).
+  // Galleriet er ALLE billeder, der faktisk kan vises, i samme rækkefølge som
+  // miniaturerne - nye fra lageret først, derefter de gamle base64-billeder -
+  // så man kan bladre gennem dem alle. Billeder, lageret ikke kunne levere
+  // (se "Kunne ikke hentes" nedenfor), har intet at forstørre og er udeladt.
+  const [forstoerretId, setForstoerretId] = useState(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     const liste = await getAttachments(order.id);
@@ -249,6 +257,12 @@ function Photos({ order, onAdd }) {
   const trinTekst = { komprimerer: "Forbereder billedet...", starter: "Forbereder...", sender: "Sender...", bekraefter: "Gemmer..." };
   const intetAtVise = !loading && attachments.length === 0 && legacyPhotos.length === 0;
 
+  const galleri = [
+    ...attachments.filter((a) => urls[a.id]?.url).map((a) => ({ id: `a:${a.id}`, src: urls[a.id].url, navn: a.navn || "Billede" })),
+    ...legacyPhotos.map((b) => ({ id: `l:${b.id}`, src: b.src, navn: b.navn || "Billede" })),
+  ];
+  const forstoerretStart = galleri.findIndex((g) => g.id === forstoerretId);
+
   return (
     <div>
       {canEdit ? (
@@ -284,7 +298,14 @@ function Photos({ order, onAdd }) {
             return (
               <div key={a.id} className="rounded-xl overflow-hidden border border-line bg-white shadow-sm group relative">
                 {fil ? (
-                  <img src={fil.url} alt={a.navn || "Billede fra sagen"} className="w-full h-32 object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setForstoerretId(`a:${a.id}`)}
+                    aria-label={`Forstør billedet ${a.navn || ""}`.trim()}
+                    className="block w-full focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand"
+                  >
+                    <img src={fil.url} alt={a.navn || "Billede fra sagen"} className="w-full h-32 object-cover cursor-zoom-in" />
+                  </button>
                 ) : (
                   // Lageret svarede ikke. Sagen og alt andet virker
                   // stadig - kun billedet mangler, og det siges ligeud i
@@ -310,11 +331,22 @@ function Photos({ order, onAdd }) {
           {/* Gamle base64-billeder fra før omlægningen. Vises uændret. */}
           {legacyPhotos.map((b) => (
             <div key={b.id} className="rounded-xl overflow-hidden border border-line bg-white shadow-sm">
-              <img src={b.src} alt={b.navn} className="w-full h-32 object-cover" />
+              <button
+                type="button"
+                onClick={() => setForstoerretId(`l:${b.id}`)}
+                aria-label={`Forstør billedet ${b.navn || ""}`.trim()}
+                className="block w-full focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand"
+              >
+                <img src={b.src} alt={b.navn} className="w-full h-32 object-cover cursor-zoom-in" />
+              </button>
               <p className="text-[11px] text-muted px-2 py-1 truncate">{b.navn}</p>
             </div>
           ))}
         </div>
+      )}
+
+      {forstoerretStart >= 0 && (
+        <ImageLightbox images={galleri} startIndex={forstoerretStart} onClose={() => setForstoerretId(null)} />
       )}
     </div>
   );
