@@ -63,7 +63,7 @@ function NeedsActionWidget({ orders, technicians, personnel, vehicles, timeOff, 
         <p className="text-sm text-success italic">Intet kræver handling lige nu.</p>
       ) : (
         <div className="grid grid-cols-2 gap-2">
-          <Stat label="Sygemelding / feriefridag" value={fravaer.length} color="#C8232E" />
+          <Stat label="Sygemelding / feriefridag" value={fravaer.length} color="rgb(var(--color-brand))" />
           <Stat label="Skal planlægges" value={needsPlan.length} color="#B36B1E" />
           <Stat label="Uafsluttet/fejl" value={unresolved.length} color="#8B5E3C" />
         </div>

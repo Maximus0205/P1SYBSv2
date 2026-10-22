@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Lock, User, AlertCircle, Loader2, KeyRound, Fingerprint, Store, Mail } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { loginWithPin, loginWithBiometric } from "../lib/dataStore";
 import { erBiometriTilgaengelig } from "../lib/webauthn";
-import PUNKT1_LOGO_POSITIV from "../assets/punkt1_positiv.png";
+import { laesEnhedsLogin, gemEnhedsLogin, sletEnhedsLogin } from "../lib/enhedsLogin";
+import { BrandLogo } from "./BrandLogo";
 
 const MIN_LAENGDE = 4; // absolut bund - butikkens eget krav (kan være højere) håndhæves af serveren
 const MAX_LAENGDE = 64;
@@ -36,7 +37,7 @@ const kravTekst = (krav) => {
 // SYSTEMADMINISTRATOR-LOGIN (e-mail + adgangskode) er en separat, bevidst
 // tilbagetrukket indgang til kædens administratorer/udvikler. Almindelige
 // butiksbrugere bruger den ikke.
-function LoginPage() {
+function LoginPage({ branding }) {
   const [mode, setMode] = useState("pin"); // 'pin' | 'nyPin' | 'admin'
   const [butik, setButik] = useState(laesButik);
   const [brugernavn, setBrugernavn] = useState("");
@@ -49,9 +50,10 @@ function LoginPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
-  // Logoet er indlejret som en stor base64-data-URI i JS-bundlen og kan fejle
-  // på nogle mobile browsere - falder da tilbage til et tekstbaseret ordmærke.
-  const [logoFailed, setLogoFailed] = useState(false);
+  // Enhed der allerede har Face ID slået til: login starter direkte med Face ID, uden at der skrives noget. visKode = "brug kode i stedet".
+  const [enhed, setEnhed] = useState(laesEnhedsLogin);
+  const [visKode, setVisKode] = useState(false);
+  const hurtigtFaceId = mode === "pin" && biometricAvailable && !!enhed && !visKode;
 
   useEffect(() => { erBiometriTilgaengelig().then(setBiometricAvailable); }, []);
 
@@ -78,14 +80,31 @@ function LoginPage() {
     if (!result.ok) { setError(result.fejl || "Kunne ikke gemme den nye kode."); return; }
   };
 
-  const logIndMedBiometri = async () => {
+  const logIndMedBiometri = async (direkte) => {
     setError("");
-    if (!harBrugerFelter()) { setError("Udfyld butiksnummer og brugernavn."); return; }
+    const id = direkte === true && enhed ? enhed : { butik: butik.trim(), brugernavn: brugernavn.trim() };
+    if (!id.butik || !id.brugernavn) { setError("Udfyld butiksnummer og brugernavn."); return; }
     setBusy(true);
-    const result = await loginWithBiometric({ butik: butik.trim(), brugernavn: brugernavn.trim() });
+    const result = await loginWithBiometric(id);
     setBusy(false);
-    if (!result.ok) { setError(result.fejl || "Face ID-login lykkedes ikke."); return; }
-    gemButik(butik.trim());
+    if (!result.ok) { setError(result.fejl === "Annulleret." ? "" : (result.fejl || "Face ID-login lykkedes ikke.")); return; }
+    gemButik(id.butik);
+    gemEnhedsLogin(id);
+  };
+
+  // Åbnes appen på en enhed med Face ID, spørges der med det samme, som i en mobilbank. Afvises det (eller kræver browseren et tryk), står knappen klar.
+  const autoForsoegt = useRef(false);
+  useEffect(() => {
+    if (!hurtigtFaceId || autoForsoegt.current) return;
+    autoForsoegt.current = true;
+    logIndMedBiometri(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hurtigtFaceId]);
+
+  const skiftBruger = () => { sletEnhedsLogin(); setEnhed(null); setVisKode(false); setError(""); };
+  const brugKode = () => {
+    if (enhed) { setButik(enhed.butik); setBrugernavn(enhed.brugernavn); }
+    setVisKode(true); setError("");
   };
 
   const logIndAdmin = async () => {
@@ -113,25 +132,35 @@ function LoginPage() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-paper p-3">
       <div className="w-full max-w-sm rounded-xl border border-line bg-white p-6 shadow-sm">
-        {logoFailed ? (
-          <p className="font-display text-2xl uppercase tracking-tight text-ink mb-6">Punkt1</p>
-        ) : (
-          <img
-            src={PUNKT1_LOGO_POSITIV}
-            alt="Punkt1"
-            className="h-9 w-auto mb-6"
-            width={180}
-            height={36}
-            loading="eager"
-            decoding="sync"
-            onError={() => setLogoFailed(true)}
+        {/* Kædens logo ud fra domænet - se useBranding. */}
+        <div className="mb-6">
+          <BrandLogo
+            branding={branding}
+            variant="light"
+            className="h-12 w-auto max-w-full object-contain object-left"
+            textClassName="block font-display text-2xl uppercase tracking-tight text-ink"
           />
-        )}
+        </div>
         <h1 className="font-display text-3xl uppercase tracking-tight text-ink mb-6">
           {mode === "nyPin" ? "Vælg din kode" : mode === "admin" ? "Systemadministrator" : "Velkommen"}
         </h1>
 
-        <form onSubmit={submit} className="grid gap-3" noValidate>
+        {hurtigtFaceId && (
+          <div className="grid gap-3">
+            <p className="text-sm text-muted">Log ind med Face ID, eller brug din kode.</p>
+            {error && <p role="alert" className="text-sm text-danger flex items-start gap-1.5"><AlertCircle size={14} className="shrink-0 mt-0.5" aria-hidden="true" /> {error}</p>}
+            <button
+              type="button" onClick={() => logIndMedBiometri(true)} disabled={busy}
+              className="w-full px-4 py-4 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {busy ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Fingerprint size={16} aria-hidden="true" />} Log ind med Face ID
+            </button>
+            <button type="button" onClick={brugKode} className="w-full text-xs text-muted hover:text-brand underline">Brug kode i stedet</button>
+            <button type="button" onClick={skiftBruger} className="w-full text-[11px] text-muted hover:text-brand underline">Ikke dig? Skift bruger</button>
+          </div>
+        )}
+
+        <form onSubmit={submit} className={hurtigtFaceId ? "hidden" : "grid gap-3"} noValidate>
           {mode === "pin" && (
             <>
               <div>
@@ -219,18 +248,18 @@ function LoginPage() {
           </button>
         </form>
 
-        {mode === "pin" && biometricAvailable && (
+        {mode === "pin" && biometricAvailable && !hurtigtFaceId && (
           <button
-            type="button" onClick={logIndMedBiometri} disabled={busy}
+            type="button" onClick={() => logIndMedBiometri(false)} disabled={busy}
             className="w-full mt-3 px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-ink border border-line hover:border-brand hover:text-brand transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
           >
             <Fingerprint size={14} aria-hidden="true" /> Log ind med Face ID
           </button>
         )}
 
-        {mode === "pin" && <p className="text-[11px] text-muted mt-4">Glemt din kode, eller er din bruger ny? Bed din butiks admin om en ny midlertidig kode.</p>}
+        {mode === "pin" && !hurtigtFaceId && <p className="text-[11px] text-muted mt-4">Glemt din kode, eller er din bruger ny? Bed din butiks admin om en ny midlertidig kode.</p>}
 
-        {mode === "pin" ? (
+        {hurtigtFaceId ? null : mode === "pin" ? (
           <button type="button" onClick={() => { setMode("admin"); setError(""); }} className="w-full mt-3 text-[11px] text-muted hover:text-brand underline">
             Systemadministrator-login
           </button>

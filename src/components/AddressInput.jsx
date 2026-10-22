@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Check, AlertTriangle, Loader2, MapPin } from "lucide-react";
 import { searchAdressevaelger, lookupAdressevaelgerCoordinates } from "../lib/geocodingAdressevaelger";
 import { hentAdresseKontekst } from "../lib/adresseKontekst";
+import { erSammeHusnummer, etageDoerForslag } from "../lib/adresseKoordinater";
 
 // ---------------------------------------------------------------------------
 // LIVE FØRSOG (september 2026): dette felt bruger nu Klimadatastyrelsens
@@ -153,13 +154,42 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, onKoor
         })
         .slice(0, MAX_FORSLAG);
 
-      setSuggestions(fund);
-      if (fund.length > 0) setShowSuggestions(true);
+      // ETAGE/DØR (oktober 2026): matcher det tastede præcis ét husnummer, søges der straks videre efter lejlighederne i bygningen, og de
+      // vises FØRST (indsnævret af det, der er tastet efter husnummeret: "4" -> kun etage/dør med 4). Før kom de kun frem efter et klik
+      // på husnummeret, så den, der skrev hele adressen, aldrig så "4. sal". Fejl/ingen svar -> listen er som før.
+      let liste = fund;
+      const husMatch = fund.find((f) => f.type === "husnummer" && erSammeHusnummer(value, f));
+      const matchPostnr = husMatch ? extractPostalCode(husMatch.titel) : null;
+      if (husMatch && matchPostnr) {
+        const adr = await searchAdressevaelger(`${husMatch.vejnavn} ${husMatch.husnummer} ${matchPostnr}`, undefined, "soeg-adresser", undefined, HUSNUMRE_MAKSIMUM);
+        if (cancelled) return;
+        const enheder = etageDoerForslag(value, husMatch, adr.fund || []);
+        if (enheder.length > 0) liste = [...enheder, ...fund].slice(0, MAX_FORSLAG);
+      }
+
+      setSuggestions(liste);
+      if (liste.length > 0) setShowSuggestions(true);
       // "gyldig" her betyder: mindst ét forslag er en KONKRET adgang, ikke
       // blot et gadenavn/postnummer-forslag man skal indsnævre yderligere.
       const newStatus = fund.some((f) => f.type === "husnummer" || f.type === "adresse") ? "gyldig" : "usikker";
       setStatus(newStatus);
       onValidationChange?.(newStatus);
+
+      // TASTET/INDSAT ADRESSE (oktober 2026): koordinater hentes ellers kun, når man trykker på et forslag. Skriver eller indsætter man en hel
+      // adresse med etage/dør ("Vej 39, 4. 1, 8000 Aarhus C"), står der et grønt flueben, men sagen havde ingen koordinater og blev blokeret.
+      // Passer teksten til et husnummer-forslag (samme vej, husnummer og postnummer), bruges husnummerets koordinater: etage/dør ændrer ikke,
+      // hvor bilen skal hen. Forælderen ignorerer koordinater, hvis teksten siden er ændret, så en forsinket/forældet respons gør ingen skade.
+      if (onKoordinater && newStatus === "gyldig") {
+        const match = fund.find((f) => f.type === "husnummer" && erSammeHusnummer(value, f));
+        if (match) {
+          try {
+            const k = await lookupAdressevaelgerCoordinates(match.id, "husnummer");
+            if (!cancelled) onKoordinater(k && Number.isFinite(k.lat) && Number.isFinite(k.lon) ? { lat: k.lat, lon: k.lon, adresseId: match.id, type: "husnummer", tekst: value } : null);
+          } catch {
+            if (!cancelled) onKoordinater(null);
+          }
+        }
+      }
     }, DEBOUNCE_MS);
 
     return () => {
@@ -241,8 +271,10 @@ function AddressInput({ value, onChange, placeholder, onValidationChange, onKoor
     setStatus("tjekker");
 
     const postnummer = extractPostalCode(f.titel);
-    const result = postnummer ? await searchAdressevaelger(`${f.vejnavn} ${f.husnummer} ${postnummer}`) : { ok: false, fund: [] };
-    const specific = (result.fund || []).filter((x) => x.type === "adresse");
+    // Op til 100 (før 10): en opgang med mange lejligheder blev ellers afkortet, så den rigtige etage ikke kom med. Kun adresser i SAMME
+    // bygning medtages (ikke 39A/39B), sorteret naturligt.
+    const result = postnummer ? await searchAdressevaelger(`${f.vejnavn} ${f.husnummer} ${postnummer}`, undefined, "soeg-adresser", undefined, HUSNUMRE_MAKSIMUM) : { ok: false, fund: [] };
+    const specific = etageDoerForslag("", f, result.fund || []);
 
     if (specific.length === 0) {
       setSuggestions([]);

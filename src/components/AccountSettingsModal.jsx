@@ -91,7 +91,7 @@ function AccountSettingsModal({ store, onClose }) {
             {simpelLoginAktiveret && !checkingBiometric && biometricAvailable && (
               <div className="mb-5 pb-5 border-b border-divider">
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1.5 flex items-center gap-1.5"><Fingerprint size={15} className="text-brand" aria-hidden="true" /> Face ID/fingeraftryk</h3>
-                <p className="text-xs text-muted mb-3">Log ind med telefonens egen Face ID eller fingeraftryk i stedet for at taste PIN. Du skal stadig skrive butiksnummer og brugernavn.</p>
+                <p className="text-xs text-muted mb-3">Log ind med telefonens egen Face ID eller fingeraftryk i stedet for at taste kode. Når det er slået til, åbner appen direkte med Face ID.</p>
                 <button
                   onClick={enableBiometric}
                   disabled={biometricBusy}
@@ -101,7 +101,7 @@ function AccountSettingsModal({ store, onClose }) {
                   {biometricBusy ? "Venter på telefonen..." : "Slå til på denne enhed"}
                 </button>
                 {biometricError && <p className="text-xs text-danger mt-2 flex items-center gap-1.5"><AlertCircle size={13} className="shrink-0" aria-hidden="true" /> {biometricError}</p>}
-                {biometricSaved && <p className="text-xs text-success mt-2 flex items-center gap-1.5"><Check size={13} className="shrink-0" aria-hidden="true" /> Slået til på denne enhed.</p>}
+                {biometricSaved && <p className="text-xs text-success mt-2 flex items-center gap-1.5"><Check size={13} className="shrink-0" aria-hidden="true" /> Slået til på denne enhed. Næste gang du åbner appen, logger du ind med Face ID.</p>}
               </div>
             )}
 
@@ -111,7 +111,7 @@ function AccountSettingsModal({ store, onClose }) {
             </p>
             <div className="grid gap-2 mb-3">
               <input
-                type="password" inputMode="text" autoComplete="new-password" autoCapitalize="off" autoCorrect="off" spellCheck={false} maxLength={MAX_LAENGDE}
+                type="password" inputMode="text" autoComplete="new-password" autoCapitalize="off" autoCorrect="off" spellCheck={false} maxLength={MAX_LAENGDE} autoFocus={!biometricAvailable}
                 value={pin}
                 onChange={(e) => setPin(e.target.value.replace(/\s/g, "").slice(0, MAX_LAENGDE))}
                 placeholder="Ny kode"

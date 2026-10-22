@@ -3,7 +3,7 @@ import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Ch
 import { buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel, dailyOrderCompare, canDo, missingLineItems } from "../data/domain";
 import { isTomgang, showsArrivalContact, followUpTypeLabel, TOMGANG_COLOR } from "../data/caseTypes";
 import { manualKeyAccessText, routeUrlViaCabinets } from "../data/keyCabinets";
-import { StatusBadge, DateSelector } from "../components/common";
+import { StatusBadge, DateSelector, ToMandBadge } from "../components/common";
 import { Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
 import { BookingEditor, DuplicatePanel, PosStatusBanner } from "../components/OrderView";
 import { AddressNotesPanel } from "../components/AddressNotes";
@@ -13,6 +13,7 @@ import { OpgaveTimer } from "../components/OpgaveTimer";
 import { erPauset } from "../lib/opgaveTid";
 import { DelvisPanel, DelvisBanner } from "../components/DelvisAfsluttet";
 import { kanMeldesDelvist } from "../lib/delvisAfsluttet";
+import { useFeature } from "../hooks/useStoreFeatures";
 
 // Universelt Google Maps-link: åbner Google Maps-appen hvis den er
 // installeret (iOS og Android), ellers i browseren. Vi bruger søge-linket
@@ -189,6 +190,9 @@ function ActionStack({ order, skabe }) {
 // NØGLESKAB UDELUKKER NØGLEBOKS (september 2026): en nøgleoplysning, der
 // blot er en kopi af skabet, vises ikke en gang til - se manualKeyAccessText.
 function OrderStopCard({ order: s, keyCabinets, onOpen, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
+  // Registrerede tider vises aldrig på rutekortet (kun systemadmin kan se dem, i fanen Tid);
+  // tidtageren vises kun, når butikken har slået tidsstempling til.
+  const medTid = useFeature("tid_stempling");
   const erAfsluttet = s.status === "afsluttet";
   const mangler = missingLineItems(s);
   const tomgang = isTomgang(s);
@@ -208,14 +212,15 @@ function OrderStopCard({ order: s, keyCabinets, onOpen, onMoveUp, onMoveDown, ca
         <button type="button" onClick={() => onOpen(s.id)} className="text-left min-w-0 flex-1 focus:outline-none focus:ring-2 focus:ring-brand rounded">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="font-mono text-sm font-semibold text-ink">{s.start}–{s.slut}</span>
-            {s.stemplerInd || erPauset(s) ? (
+            {medTid && (s.stemplerInd || erPauset(s)) ? (
               <OpgaveTimer order={s} />
             ) : (
-              <span className="font-mono text-[11px] text-muted flex items-center gap-1" title="Forventet/registreret tidsforbrug">
-                <Clock size={10} aria-hidden="true" /> {formatDuration(totalMinutes(s) > 0 ? totalMinutes(s) : orderExpectedMinutes(s))}
+              <span className="font-mono text-[11px] text-muted flex items-center gap-1" title="Forventet tidsforbrug">
+                <Clock size={10} aria-hidden="true" /> {formatDuration(orderExpectedMinutes(s))}
               </span>
             )}
             <span className="font-mono text-[10px] text-faint">#{s.nr}</span>
+            {s.toMand && <ToMandBadge />}
             {tomgang && <TomgangBadge />}
           </div>
           {/* Ingen sagsoverskrift: montøren har brug for KUNDEN og HVAD der skal i bilen, ikke en opsummering af sagen. Kundeinfo står øverst,
@@ -468,11 +473,15 @@ function ProblemPanel({ order, onSubmit, onCancel }) {
 // bygger på (se data/estimates.js). Det er derfor, den skal være en
 // handling, montøren udfører for sin egen skyld - så måling falder ud af
 // arbejdsgangen i stedet for at være en ekstra pligt.
-function FinishPanel({ order, onConfirm, onCancel, onGoToTab }) {
+function FinishPanel({ order, onConfirm, onCancel, onGoToTab, kanSeTider }) {
+  // Påmind kun om det, butikken har slået til (en skjult fane kan ikke udfyldes).
+  const medBilleder = useFeature("sag_billeder");
+  const medRapporter = useFeature("sag_rapporter");
+  const medMaterialer = useFeature("sag_materialer");
   const mangler = [];
-  if ((order.billeder || []).length === 0) mangler.push({ key: "billeder", tekst: "Ingen billeder på sagen" });
-  if ((order.rapporter || []).length === 0) mangler.push({ key: "rapporter", tekst: "Ingen rapport skrevet" });
-  if ((order.materialer || []).length === 0) mangler.push({ key: "materialer", tekst: "Intet ekstra materialeforbrug noteret" });
+  if (medBilleder && (order.billeder || []).length === 0) mangler.push({ key: "billeder", tekst: "Ingen billeder på sagen" });
+  if (medRapporter && (order.rapporter || []).length === 0) mangler.push({ key: "rapporter", tekst: "Ingen rapport skrevet" });
+  if (medMaterialer && (order.materialer || []).length === 0) mangler.push({ key: "materialer", tekst: "Intet ekstra materialeforbrug noteret" });
 
   const varighed = totalMinutes(order);
 
@@ -502,11 +511,11 @@ function FinishPanel({ order, onConfirm, onCancel, onGoToTab }) {
         </div>
       ) : (
         <p className="text-xs text-success mb-3 flex items-center gap-1.5">
-          <Check size={13} className="shrink-0" aria-hidden="true" /> Billeder, rapport og materialeforbrug er på plads.
+          <Check size={13} className="shrink-0" aria-hidden="true" /> Det, der skal dokumenteres, er på plads.
         </p>
       )}
 
-      {varighed > 0 && <p className="text-xs text-muted mb-3">Registreret tid på sagen: {formatDuration(varighed)}.</p>}
+      {kanSeTider && varighed > 0 && <p className="text-xs text-muted mb-3">Registreret tid på sagen: {formatDuration(varighed)}.</p>}
 
       <div className="flex gap-2 flex-wrap">
         <button onClick={onConfirm} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-success hover:bg-ink focus:outline-none focus:ring-2 focus:ring-ink transition-colors flex items-center gap-1.5">
@@ -538,7 +547,7 @@ function FinishPanel({ order, onConfirm, onCancel, onGoToTab }) {
 // REDIGÉR BOOKING (september 2026): kan nu også ændre, tilføje og fjerne
 // varelinjer og ydelser (catalog sendes med fra App.jsx) - se BookingEditor
 // i OrderView.jsx. Varesektionen kræver sag_feltarbejde, resten som før.
-function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBack, addNote, addPhoto, addReport, onStartOrder, onFinishOrder, onReopenOrder, onUpdateBooking, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem, onPartialFinish, onRetryPosSync, permissions, addressNotes }) {
+function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBack, addNote, addPhoto, addReport, onStartOrder, onFinishOrder, onReopenOrder, onUpdateBooking, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem, onPartialFinish, onRetryPosSync, permissions, addressNotes, kanSeTider }) {
   const [tab, setTab] = React.useState("noter");
   const [panel, setPanel] = React.useState(null); // "booking" | "dupliker" | "problem" | "delvis" | "faerdig"
   const canFieldwork = canDo(permissions, "sag_feltarbejde");
@@ -548,18 +557,24 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
   const tomgang = isTomgang(order);
   const skabe = useCabinetMatches(order, keyCabinets);
   const noegleTekst = manualKeyAccessText(order.noegle);
+  // Faner, systemadmin har slået fra for butikken, skjules (databasen blokerer også ændringer).
+  const visMaterialer = useFeature("sag_materialer");
+  const visBilleder = useFeature("sag_billeder");
+  const visRapporter = useFeature("sag_rapporter");
   const tabs = [
     { key: "noter", label: "Noter", count: order.noter.length },
-    { key: "materialer", label: "Materialer", count: (order.materialer || []).length },
-    { key: "billeder", label: "Billeder", count: order.billeder.length },
-    { key: "rapporter", label: "Rapporter", count: order.rapporter.length },
-    { key: "tid", label: "Tid", count: order.logs.length },
-  ];
+    visMaterialer && { key: "materialer", label: "Materialer", count: (order.materialer || []).length },
+    visBilleder && { key: "billeder", label: "Billeder", count: order.billeder.length },
+    visRapporter && { key: "rapporter", label: "Rapporter", count: order.rapporter.length },
+    // Tid-fanen (registrerede tider) er kun for systemadmin - sælgere og montører ser aldrig tiderne.
+    kanSeTider && { key: "tid", label: "Tid", count: order.logs.length },
+  ].filter(Boolean);
 
   const erAfsluttet = order.status === "afsluttet";
   const erIGang = order.status === "igang";
   // Sat på pause (fx markeret "kom ikke i mål"): i gang, men uden en kørende periode - se lib/opgaveTid.js.
-  const pauset = erPauset(order);
+  const medTid = useFeature("tid_stempling");
+  const pauset = medTid && erPauset(order);
 
   return (
     <div>
@@ -581,6 +596,7 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
       ) : panel === "faerdig" ? (
         <FinishPanel
           order={order}
+          kanSeTider={kanSeTider}
           onCancel={() => setPanel(null)}
           onGoToTab={(key) => { setTab(key); setPanel(null); }}
           onConfirm={() => { onFinishOrder?.(); setPanel(null); }}
@@ -593,6 +609,7 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
                 #{order.nr} · {formatLongDate(order.dato)} · {order.start}–{order.slut}
                 {order.ordrenummer && <span className="ml-2 inline-flex items-center gap-0.5"><Hash size={10} aria-hidden="true" /> {order.ordrenummer}</span>}
               </span>
+              {order.toMand && <ToMandBadge />}
               {tomgang && <TomgangBadge />}
             </p>
             <StatusBadge status={order.status} />
@@ -639,7 +656,7 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
             <div className="mt-3 pt-3 border-t border-divider">
               {erAfsluttet ? (
                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <p className="text-sm text-success font-semibold flex items-center gap-1.5"><CheckCheck size={15} aria-hidden="true" /> Sagen er færdigmeldt</p>
+                  <p className="text-sm text-success font-semibold flex items-center gap-1.5"><CheckCheck size={15} aria-hidden="true" /> Sagen er færdigmeldt{medTid && totalMinutes(order) > 0 ? ` · Tid: ${formatDuration(totalMinutes(order))}` : ""}</p>
                   {onReopenOrder && (
                     <button onClick={onReopenOrder} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-2 py-2">
                       Genåbn sagen
@@ -660,7 +677,7 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
                   )}
                 </div>
               )}
-              {erIGang && (
+              {erIGang && medTid && (
                 <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
                   <OpgaveTimer order={order} stor />
                   <p className="text-[11px] text-muted">{order.stemplerInd ? "Tiden tælles, indtil du færdigmelder eller markerer, at opgaven ikke kom i mål." : "Tiden står på pause, til du genoptager opgaven."}</p>
@@ -717,7 +734,7 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
       {tab === "materialer" && <Materials order={order} onAdd={canFieldwork ? (m) => onAddMaterial?.(m) : undefined} onRemove={canFieldwork ? (id) => onRemoveMaterial?.(id) : undefined} />}
       {tab === "billeder" && <Photos order={order} onAdd={canFieldwork ? addPhoto : undefined} />}
       {tab === "rapporter" && <Reports order={order} onAdd={canFieldwork ? addReport : undefined} />}
-      {tab === "tid" && <TimeLog order={order} />}
+      {kanSeTider && tab === "tid" && <TimeLog order={order} />}
     </div>
   );
 }

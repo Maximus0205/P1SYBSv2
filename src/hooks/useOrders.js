@@ -758,15 +758,18 @@ export function useOrders(storeId) {
   // GENOPTAGELSE FJERNER "KOM IKKE I MÅL" (oktober 2026): markeringen skal fortælle sælgeren, at sagen ikke kunne løses
   // på den aftalte dag. Bliver opgaven genoptaget, er den ikke længere en sag, der ikke kom i mål - så markeringen
   // fjernes, og sagen forsvinder fra "Uafsluttet / fejl". Tiden på pause genoptages samtidig (se markProblem).
-  const startOrder = (orderId) => {
+  //
+  // TIDSSTEMPLING ER VALGFRI (oktober 2026): kun med registrerTid (butiksfunktionen
+  // tid_stempling) gemmes startetTidspunkt/stemplerInd. Uden den skifter sagen blot status -
+  // ingen tid registreres. Allerede gemte tider røres ikke.
+  const startOrder = (orderId, { registrerTid = false } = {}) => {
     const s = findOrder(orders, orderId);
     if (!s) return;
     const nu = new Date().toISOString();
     saveOneOrder({
       ...s,
       status: "igang",
-      startetTidspunkt: s.startetTidspunkt || nu,
-      stemplerInd: s.stemplerInd || nu,
+      ...(registrerTid ? { startetTidspunkt: s.startetTidspunkt || nu, stemplerInd: s.stemplerInd || nu } : {}),
       afsluttetTidspunkt: null,
       problem: null,
     });

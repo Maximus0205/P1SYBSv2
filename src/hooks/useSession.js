@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { getOwnProfile, getStore, getMyPermissions } from "../lib/dataStore";
+import { butikKoordinat } from "../lib/butikKoordinat";
 
 // Al state for SESSION, PROFIL og BUTIK er samlet her (fase 4 af
 // arkitektur-oprydningen, august 2026) - den sidste og mest følsomme del,
@@ -46,6 +47,15 @@ export function useSession() {
       const [storeData, myPermissions] = await Promise.all([getStore(normalized.butikId), getMyPermissions()]);
       setStore(storeData);
       setPermissions(myPermissions);
+      // Mangler butikken koordinater i databasen, kan køretiden og forslagene ikke beregnes. Adressen slås derfor op i baggrunden
+      // og bruges i denne session (der skrives ikke til databasen).
+      if (storeData?.adresse && (!Number.isFinite(storeData.lat) || !Number.isFinite(storeData.lon))) {
+        butikKoordinat(storeData.adresse).then((k) => {
+          if (k && Number.isFinite(k.lat) && Number.isFinite(k.lon)) {
+            setStore((nu) => (nu && nu.id === storeData.id && !Number.isFinite(nu.lat) ? { ...nu, lat: k.lat, lon: k.lon } : nu));
+          }
+        }).catch(() => {});
+      }
     } else {
       setStore(null);
       setPermissions([]);

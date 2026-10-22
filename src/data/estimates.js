@@ -30,7 +30,7 @@
 //    næsten stille. Målinger over 10 timer kasseres helt - de er
 //    per definition en fejlregistrering, ikke en lang arbejdsdag.
 //
-// 3. MINDST 3 OBSERVATIONER. To målinger er en anekdote. Er der færre,
+// 3. MINDST 5 OBSERVATIONER (oktober 2026, før 3). Få målinger er en anekdote. Er der færre,
 //    returneres intet estimat, og UI'et falder tilbage på manuel
 //    indtastning. Et dårligt tal, der ser autoritativt ud, er værre end
 //    intet tal - sælgeren stoler på det og opdager først fejlen, når
@@ -51,8 +51,14 @@ import { buildingKey } from "./domain";
 // Samme værdi som OTHER_PRODUCT_TYPE_ID i domain.js ("Andet (skriv selv)").
 const ANDET_ID = "andet";
 
-const MIN_OBSERVATIONER = 3;
+// Oktober 2026: hævet fra 3 til 5 og med en nedre grænse. Tre målinger er stadig en anekdote,
+// og en "måling" på under 5 minutter er næsten altid en sag, der blev trykket i gang og
+// færdigmeldt i ét hug (fx en test), ikke en rigtig opgave.
+const MIN_OBSERVATIONER = 5;
+const MIN_MINUTTER = 5;
 const MAKS_MINUTTER = 10 * 60;
+// Hvor mange rene målinger butikken samlet skal have, før systemadmin kan slå forslaget til.
+export const MIN_MAALINGER_TIL_FORSLAG = 20;
 // Klynger større end dette behandles som én kategori. Forskellen mellem 6
 // og 9 enheder i samme opgang er lille sammenlignet med springet fra 1 til
 // 4, og at splitte dem yderligere ville bare gøre hver kategori for lille
@@ -84,10 +90,10 @@ function tillaegNoegle(v) {
     .join("+");
 }
 
-// To nøgler pr. varelinje, fra mest til mindst præcis. Slår vi op i
-// rækkefølge, får vi altid det bedste tilgængelige grundlag. Begge kræver
-// samme varetype OG ydelse (se valg 4); mangler en af dem, er der ingen
-// nøgler og dermed intet forslag.
+// To nøgler pr. varelinje, fra mest til mindst præcis. (Oktober 2026: den tredje, "kun ydelse",
+// er fjernet. Den blandede fx opvaskemaskiner med vaskemaskiner og tørretumblere under samme
+// ydelse "Montering" og gav et tal, der så målt ud, men ikke var det for DEN vare.) Slår vi op i
+// rækkefølge, får vi altid det bedste tilgængelige grundlag.
 //
 // Niveau 1 medtager ALTID tillægs-nøglen - også når der ingen tillæg er
 // ("ingen"). RETTET under test: uden det faldt en montering UDEN tillæg
@@ -129,7 +135,7 @@ export function buildEstimateIndex(orders) {
     const linjer = o.varelinjer || [];
     if (linjer.length !== 1) continue; // se valg 1 ovenfor
     const minutter = measuredMinutes(o);
-    if (minutter == null || minutter < 1 || minutter > MAKS_MINUTTER) continue;
+    if (minutter == null || minutter < MIN_MINUTTER || minutter > MAKS_MINUTTER) continue;
     for (const sig of signatures(linjer[0])) {
       if (!buckets.has(sig)) buckets.set(sig, []);
       buckets.get(sig).push(minutter);
@@ -152,6 +158,26 @@ const GRUNDLAG_TEKST = {
   "1": "af samme vare, ydelse og tillæg",
   "2": "af samme vare og ydelse",
 };
+
+// Status for systemadmin: er der målt nok til, at forslaget må slås til? Tæller de samme rene
+// sager som buildEstimateIndex (én varelinje, afsluttet, 5 min - 10 timer) og kræver både et
+// samlet minimum og mindst én vare/ydelse med nok målinger til selv at give et forslag.
+export function estimateDataStatus(orders) {
+  let antalMaalt = 0;
+  for (const o of orders || []) {
+    if (o.status !== "afsluttet" || (o.varelinjer || []).length !== 1) continue;
+    const m = measuredMinutes(o);
+    if (m != null && m >= MIN_MINUTTER && m <= MAKS_MINUTTER) antalMaalt++;
+  }
+  const antalKombinationer = [...buildEstimateIndex(orders).keys()].filter((k) => k.startsWith("2|")).length;
+  return {
+    antalMaalt,
+    antalKombinationer,
+    kraevetMaalinger: MIN_MAALINGER_TIL_FORSLAG,
+    kraevetPrKombination: MIN_OBSERVATIONER,
+    tilstraekkeligt: antalMaalt >= MIN_MAALINGER_TIL_FORSLAG && antalKombinationer > 0,
+  };
+}
 
 // Returnerer { minutter, antal, grundlag } eller NULL, hvis der ikke er
 // data nok. null betyder eksplicit "tast selv" - se noten om valg 3.
@@ -268,4 +294,123 @@ export function estimateForCluster(baseIndex, clusterIndex, lineItems) {
     antal: k.antal,
     enheder: grund.length,
   };
+}
+
+// ---------------------------------------------------------------------
+// MÅLINGSOVERSIGT (systemadmin, oktober 2026)
+// ---------------------------------------------------------------------
+// Én række pr. afsluttet sag med årsagen til, at den indgår i forslaget eller ej, så man kan kontrollere regnestykket
+// med øjnene før forslaget slås til. Bruger de samme grænser som buildEstimateIndex.
+//
+// SAGER MED FLERE VARELINJER tæller nu med (oktober 2026): tiden måles pr. sag, så de bruges ikke til grundtiderne, men til STORDRIFTSFAKTOREN
+// (faktisk tid / summen af grundtiderne, se buildClusterIndex). De tæller kun med, hvis grundtiden er kendt for ALLE varerne på sagen - ellers
+// er der ingen sum at sammenligne med, og sagen markeres "mangler grundtid".
+export function maalingsRaekker(orders) {
+  const rows = [];
+  const grundIndeks = buildEstimateIndex(orders);
+  for (const o of orders || []) {
+    if (o.status !== "afsluttet") continue;
+    const linjer = o.varelinjer || [];
+    const minutter = measuredMinutes(o);
+    const kilde = (o.logs || []).some((l) => Number(l.minutter) > 0) ? "stempling" : o.startetTidspunkt && o.afsluttetTidspunkt ? "start/slut" : "ingen";
+    let aarsag = null;
+    let faktor = null;
+    if (linjer.length === 0) aarsag = "ingen varelinje";
+    else if (minutter == null) aarsag = "ingen måling";
+    else if (minutter < MIN_MINUTTER) aarsag = `under ${MIN_MINUTTER} min`;
+    else if (minutter > MAKS_MINUTTER) aarsag = "over 10 timer";
+    else if (linjer.length > 1) {
+      const grund = linjer.map((v) => estimateForLineItem(grundIndeks, v));
+      if (grund.some((e) => !e)) aarsag = "mangler grundtid for en af varerne";
+      else faktor = Math.round((minutter / grund.reduce((s, e) => s + e.minutter, 0)) * 100) / 100;
+    }
+    rows.push({ order: o, minutter, kilde, aarsag, indgaar: !aarsag, flere: linjer.length > 1, faktor, noegle: linjer.length === 1 ? signatures(linjer[0])[1] : null });
+  }
+  return rows;
+}
+
+// Pr. vare/ydelse-kombination (niveau 2): antal, median, laveste/højeste og om der er nok til et forslag.
+export function maalingsGrupper(rows) {
+  const g = new Map();
+  for (const r of rows) {
+    if (!r.indgaar || !r.noegle) continue;
+    if (!g.has(r.noegle)) g.set(r.noegle, []);
+    g.get(r.noegle).push(r.minutter);
+  }
+  return [...g].map(([noegle, tal]) => ({
+    noegle, antal: tal.length, median: median(tal), min: Math.min(...tal), max: Math.max(...tal), klar: tal.length >= MIN_OBSERVATIONER,
+  })).sort((a, b) => b.antal - a.antal);
+}
+
+// Overblik over selve indsamlingen: hvor mange afsluttede sager, hvor mange tæller med, hvorfor resten ikke gør, og tempoet pr. uge
+// (mandagens dato). Sager uden dato springes over i ugetallene.
+export function maalingsOverblik(rows) {
+  const aarsager = new Map();
+  const uger = new Map();
+  let indgaar = 0;
+  for (const r of rows) {
+    if (r.indgaar) indgaar++; else aarsager.set(r.aarsag, (aarsager.get(r.aarsag) || 0) + 1);
+    const d = r.order.dato ? new Date(`${r.order.dato}T12:00:00Z`) : null;
+    if (!d || Number.isNaN(d.getTime())) continue;
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+    const uge = d.toISOString().slice(0, 10);
+    const u = uger.get(uge) || { uge, ialt: 0, indgaar: 0 };
+    u.ialt++; if (r.indgaar) u.indgaar++;
+    uger.set(uge, u);
+  }
+  return {
+    afsluttet: rows.length,
+    indgaar,
+    aarsager: [...aarsager].map(([aarsag, antal]) => ({ aarsag, antal })).sort((a, b) => b.antal - a.antal),
+    uger: [...uger.values()].sort((a, b) => b.uge.localeCompare(a.uge)).slice(0, 8),
+  };
+}
+
+// Prøv forslaget på historien ("leave-one-out"): for hver sag, der tæller med, laves forslaget kun ud fra ALLE ANDRE sager og sammenlignes med den
+// faktisk målte tid - og med den planlagte tid (planlagtFn(order)), som er det, forslaget skal slå. Giver ingen forslag, når der ikke er nok andre
+// målinger (det er netop det, forslaget ville gøre i virkeligheden).
+export function proeveForslag(orders, planlagtFn) {
+  const rows = maalingsRaekker(orders).filter((r) => r.indgaar);
+  const res = rows.map((r) => {
+    const andre = (orders || []).filter((o) => o.id !== r.order.id);
+    const grund = buildEstimateIndex(andre);
+    let forslag = null;
+    if (r.flere) {
+      // Som i bookingformularen: kun med en MÅLT stordriftsfaktor for den størrelse (ellers vises intet forslag).
+      const e = estimateForCluster(grund, buildClusterIndex(andre, grund), r.order.varelinjer);
+      forslag = e && e.maaltKlynge ? e.minutter : null;
+    } else {
+      const f = estimateForLineItem(grund, r.order.varelinjer[0]);
+      forslag = f ? f.minutter : null;
+    }
+    const planlagt = planlagtFn ? planlagtFn(r.order) : null;
+    return { order: r.order, flere: r.flere, maalt: r.minutter, forslag, planlagt };
+  });
+  const snit = (liste, fn) => (liste.length ? Math.round(liste.reduce((s, x) => s + fn(x), 0) / liste.length) : null);
+  const enkelt = res.filter((x) => !x.flere); // sager med én varelinje; flere-linje-sager opgøres for sig nedenfor
+  const medForslag = enkelt.filter((x) => x.forslag != null);
+  const medPlan = enkelt.filter((x) => x.planlagt > 0);
+  const medBegge = medForslag.filter((x) => x.planlagt > 0);
+  const flere = res.filter((x) => x.flere);
+  const flereBegge = flere.filter((x) => x.forslag != null && x.planlagt > 0);
+  return {
+    rows: res,
+    antalFlere: flere.length,
+    antalFlereMedForslag: flere.filter((x) => x.forslag != null).length,
+    flereForslagFejl: snit(flereBegge, (x) => Math.abs(x.forslag - x.maalt)),
+    flerePlanFejl: snit(flereBegge, (x) => Math.abs(x.planlagt - x.maalt)),
+    antal: enkelt.length,
+    antalMedForslag: medForslag.length,
+    forslagFejl: snit(medForslag, (x) => Math.abs(x.forslag - x.maalt)),
+    // Samme sager som forslaget dækker, så de to tal kan sammenlignes ligeud.
+    forslagFejlSammeSager: snit(medBegge, (x) => Math.abs(x.forslag - x.maalt)),
+    planFejlSammeSager: snit(medBegge, (x) => Math.abs(x.planlagt - x.maalt)),
+    planFejl: snit(medPlan, (x) => Math.abs(x.planlagt - x.maalt)),
+  };
+}
+
+// Lærte stordriftsfaktorer pr. antal enheder, til oversigten: [{ enheder, faktor, antal }]. Kun størrelser med nok målinger.
+export function stordriftsOversigt(orders) {
+  const grund = buildEstimateIndex(orders);
+  return [...buildClusterIndex(orders, grund)].map(([enheder, k]) => ({ enheder, faktor: k.faktor, antal: k.antal })).sort((a, b) => a.enheder - b.enheder);
 }

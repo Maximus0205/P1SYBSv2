@@ -2,7 +2,7 @@ import React from "react";
 import { Clock, CalendarCheck2, AlertTriangle, DoorOpen } from "lucide-react";
 import { TIME_SLOTS, buildTitle, formatDuration, orderExpectedMinutes, formatShortDate, isToday, missingLineItems } from "../data/domain";
 import { isTomgang, TOMGANG_COLOR } from "../data/caseTypes";
-import { StatusBadge, LineItemPills } from "../components/common";
+import { StatusBadge, LineItemPills, ToMandBadge } from "../components/common";
 import { DelvisBadge } from "../components/DelvisAfsluttet";
 import { harDelvis } from "../lib/delvisAfsluttet";
 
@@ -75,7 +75,7 @@ function OrderCardCompact({ order, technicians, onOpen, onAssign, onUpdateTimeSl
             <span className="font-mono text-sm text-ink">{order.start}–{order.slut}</span>
             <span className={`font-mono text-[11px] font-semibold ${isToday(order.dato) ? "text-brand" : "text-muted"}`}>{formatShortDate(order.dato)}</span>
             <span className="font-mono text-[10px] text-faint">#{order.nr}</span>
-            {order.toMand && <span className="inline-flex items-center text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md border border-brand text-brand" title="Kræver to mand">2 mand</span>}
+            {order.toMand && <ToMandBadge />}
             {harDelvis(order) && order.status !== "afsluttet" && <DelvisBadge />}
             {tomgang && (
               <span

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { AlertCircle, ArrowLeftRight, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, RefreshCw, KeyRound, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid, MapPin, Phone, Route, Stethoscope, CalendarX2, AlertTriangle } from "lucide-react";
 import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, dailyOrderCompare, needsPlanning, vehicleAbsences, vehicleHasCoverage, timeSlotById } from "../data/domain";
 import { koordinaterForKunde } from "../lib/adresseKoordinater";
-import { ordreTilStop, hentKapGrundlag, hentMotorMatrix, beregnDagMotor } from "../lib/motorStop";
+import { ordreTilStop, hentKapGrundlag, hentMotorMatrix, beregnDagMotor, lagerKoordinat, lagerKoordinatAsync } from "../lib/motorStop";
 import { motorForslag } from "../lib/forslagMotor";
 import { hentKapacitetsIndstillinger, hentArbejdstider, hentUaendringer } from "../lib/kapacitetStore";
 import { tilMin } from "../engine/kapacitet";
@@ -242,7 +242,7 @@ function ReplanTile({ items, orders, technicians, personnel, timeOff, vehicles, 
       if (items.length === 0) { setSuggestions({}); return; }
       setLoading(true);
       const grundlag = await hentKapGrundlag(store?.id);
-      const lager = store?.lat != null && store?.lon != null ? { lat: store.lat, lon: store.lon } : null;
+      const lager = await lagerKoordinatAsync(store, grundlag);
       const results = {};
       for (const order of items) {
         if (cancelled) return;
@@ -400,12 +400,13 @@ function shortDateLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateSt
 //   * sagen er IKKE tildelt nogen bil - dér ER vælgeren hele pointen
 //   * bilen mangler dækning den dag - sagen SKAL flyttes, og så må
 //     handlingen ikke være gemt bag et ekstra tryk
-function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnicianId, color, onLeave, onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
-  const [showAssign, setShowAssign] = useState(!currentTechnicianId || !!onLeave);
+function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnicianId, color, onLeave, onMoveUp, onMoveDown, canMoveUp, canMoveDown, afsluttet }) {
+  // afsluttet: sagen er kørt - vises stadig i oversigten, men kan ikke flyttes eller flyttes rundt (ingen pile, ingen bil-vælger).
+  const [showAssign, setShowAssign] = useState(!afsluttet && (!currentTechnicianId || !!onLeave));
 
   return (
     <div
-      className="rounded-lg bg-white border border-line hover:shadow-sm transition-shadow px-2.5 py-2 mb-1.5 last:mb-0"
+      className={`rounded-lg border border-line hover:shadow-sm transition-shadow px-2.5 py-2 mb-1.5 last:mb-0 ${afsluttet ? "bg-panel" : "bg-white"}`}
       style={{ borderLeftWidth: 3, borderLeftColor: color }}
     >
       <div className="flex items-start gap-1.5">
@@ -423,8 +424,9 @@ function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnician
           <div className="flex items-center justify-between gap-1">
             <span className="text-[11px] font-mono text-muted">{order.start}–{order.slut}</span>
             <div className="flex items-center gap-0.5 shrink-0">
+              {afsluttet && <span className="text-[10px] font-semibold uppercase tracking-wide text-success flex items-center gap-1"><CheckCircle2 size={11} aria-hidden="true" /> Afsluttet</span>}
               {order.noegle?.kraeves && <KeyRound size={10} className="text-brand shrink-0" aria-label="Nøgle/adgang kræves" />}
-              <button
+              {!afsluttet && <button
                 type="button"
                 onClick={() => setShowAssign((v) => !v)}
                 aria-expanded={showAssign}
@@ -433,7 +435,7 @@ function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnician
                 className={`w-9 h-9 -mr-1 -my-1 flex items-center justify-center rounded focus:outline-none focus:ring-2 focus:ring-brand ${showAssign ? "text-brand" : "text-muted hover:text-brand"}`}
               >
                 <ArrowLeftRight size={13} aria-hidden="true" />
-              </button>
+              </button>}
             </div>
           </div>
           <button
@@ -508,15 +510,17 @@ function DayTimeBadge({ info, loading }) {
 // undefined) og er fjernet igen efter ønske - listen er en almindelig,
 // tidssorteret liste (dailyOrderCompare) uden opdeling.
 function TechnicianDaySection({ row, day, dayOrders, technicians, onOpen, onAssign, onReorder, onSetVisitOrder, isOnLeave, timeInfo, optimizing, onOptimize }) {
-  const color = row.id ? technicianColor(row.id, technicians) : "#C8232E";
+  const color = row.id ? technicianColor(row.id, technicians) : "rgb(var(--color-brand))";
   const optKey = `${row.id}|${day}`;
+  const aktive = dayOrders.filter((o) => o.status !== "afsluttet");
+  const faerdige = dayOrders.filter((o) => o.status === "afsluttet");
   return (
     <div style={{ borderLeft: `3px solid ${color}` }} className="pl-2">
       <div className="flex items-center justify-between gap-1 mb-1">
         <p className="text-xs font-semibold truncate min-w-0" style={{ color }}>{row.navn}</p>
         <div className="flex items-center gap-1 shrink-0">
-          {row.id && dayOrders.length >= 2 && onSetVisitOrder && (
-            <button onClick={() => onOptimize(row.id, day, dayOrders)} disabled={optimizing[optKey]} aria-label={`Foreslå bedste besøgsrækkefølge for ${row.navn}`} className="p-2 rounded text-muted hover:text-brand disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brand" title="Foreslå bedste besøgsrækkefølge">
+          {row.id && aktive.length >= 2 && onSetVisitOrder && (
+            <button onClick={() => onOptimize(row.id, day, aktive)} disabled={optimizing[optKey]} aria-label={`Foreslå bedste besøgsrækkefølge for ${row.navn}`} className="p-2 rounded text-muted hover:text-brand disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brand" title="Foreslå bedste besøgsrækkefølge">
               {optimizing[optKey] ? <Loader2 size={11} className="animate-spin" aria-hidden="true" /> : <Route size={11} aria-hidden="true" />}
             </button>
           )}
@@ -524,7 +528,7 @@ function TechnicianDaySection({ row, day, dayOrders, technicians, onOpen, onAssi
         </div>
       </div>
       {isOnLeave && <p className="text-[10px] font-semibold uppercase tracking-wide text-danger mb-1 flex items-center gap-0.5"><AlertCircle size={9} aria-hidden="true" /> Ingen montør til rådighed</p>}
-      {dayOrders.map((o, i) => (
+      {aktive.map((o, i) => (
         <MiniOrderCard
           key={o.id}
           order={o}
@@ -537,8 +541,11 @@ function TechnicianDaySection({ row, day, dayOrders, technicians, onOpen, onAssi
           onMoveUp={row.id && onReorder ? () => onReorder(row.id, day, o.id, -1) : undefined}
           onMoveDown={row.id && onReorder ? () => onReorder(row.id, day, o.id, 1) : undefined}
           canMoveUp={i > 0}
-          canMoveDown={i < dayOrders.length - 1}
+          canMoveDown={i < aktive.length - 1}
         />
+      ))}
+      {faerdige.map((o) => (
+        <MiniOrderCard key={o.id} order={o} onOpen={onOpen} technicians={technicians} currentTechnicianId={row.id} color={color} afsluttet />
       ))}
     </div>
   );
@@ -577,19 +584,31 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekAnchor]);
 
-  const weekOrders = orders.filter((o) => weekdays5.includes(o.dato) && o.status !== "afsluttet");
-  const unassignedThisWeek = weekOrders.filter((o) => !o.bilId).length;
+  // AFSLUTTEDE SAGER BLIVER I OVERBLIKKET (oktober 2026): en sag, der markeres
+  // som afsluttet, forsvandt tidligere helt fra dagen - man kunne ikke se, hvad
+  // der var kørt. De vises nu stadig, men NEDERST i bilens dag og låst (ingen
+  // flyt/ryk). Rækkefølgen af de ÅBNE sager sorteres uændret for sig, fordi
+  // "ryk op/ned" (useOrders.reorderOrder) kun kender de åbne sager - blandes de
+  // afsluttede ind i sorteringen, rammer pilene det forkerte kort.
+  const weekOrders = orders.filter((o) => weekdays5.includes(o.dato));
+  const unassignedThisWeek = weekOrders.filter((o) => !o.bilId && o.status !== "afsluttet").length;
 
-  const ordersFor = (vehicleId, day) =>
-    orders.filter((o) => o.bilId === vehicleId && o.dato === day && o.status !== "afsluttet").sort(dailyOrderCompare);
+  const ordersFor = (vehicleId, day) => {
+    const dagens = orders.filter((o) => o.bilId === vehicleId && o.dato === day);
+    return [
+      ...dagens.filter((o) => o.status !== "afsluttet").sort(dailyOrderCompare),
+      ...dagens.filter((o) => o.status === "afsluttet").sort(dailyOrderCompare),
+    ];
+  };
 
   // Bilen mangler dækning netop DEN dag - se vehicleHasCoverage i
   // domain.js. "Ikke tildelt"-rækken (vehicleId null) har naturligt aldrig
   // en dækningsstatus.
   const manglerDaekning = (vehicleId, day) => !!vehicleId && !vehicleHasCoverage(vehicleId, day, personnel, timeOff);
 
-  const storeCoord = store?.lat != null && store?.lon != null ? { lat: store.lat, lon: store.lon } : null;
+  const storeCoord = lagerKoordinat(store, kapGrundlag);
 
+  // Kun ÅBNE sager går til kapacitetsmotoren (uændret) - de afsluttede vises i oversigten, men indgår ikke i dagens beregnede forløb.
   const dayGroups = useMemo(() => {
     const map = {};
     technicians.forEach((m) => {
@@ -632,7 +651,7 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
   // svigter motoren eller grundlaget, vises "kan ikke beregnes" - aldrig et stille 0.
   // Én bils dag gennem kapacitetsmotoren (lib/motorStop.js beregnDagMotor) - bruges af både badget og "foreslå rækkefølge" og af booking-ugevisningerne,
   // så de aldrig kan være uenige. Returnerer { res } eller { fejl } (se lib/dagsplan.js).
-  const beregnDag = (bilId, dato, list) => beregnDagMotor({ bilId, dato, list, vehicles, technicians, personnel, timeOff, crew, grundlag: kapGrundlag, lager: storeCoord });
+  const beregnDag = async (bilId, dato, list) => beregnDagMotor({ bilId, dato, list, vehicles, technicians, personnel, timeOff, crew, grundlag: kapGrundlag, lager: storeCoord || await lagerKoordinatAsync(store, kapGrundlag) });
 
   useEffect(() => {
     let cancelled = false;
@@ -664,9 +683,10 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
 
   // timeFor leverer nu KUN motorens resultat til badget (se effekten ovenfor) - ingen egen formel mere.
   const timeFor = (vehicleId, day, dayOrdersForCell) => {
+    const aktive = dayOrdersForCell.filter((o) => o.status !== "afsluttet"); // afsluttede indgår ikke i motorens dag
     const badge = vehicleId ? dagsResultat[`${vehicleId}|${day}`] : undefined;
-    const stillLoading = !!vehicleId && dayOrdersForCell.length > 0 && badge === undefined && (dagsLoading || !kapGrundlag);
-    return { antal: dayOrdersForCell.length, badge, stillLoading };
+    const stillLoading = !!vehicleId && aktive.length > 0 && badge === undefined && (dagsLoading || !kapGrundlag);
+    return { antal: aktive.length, badge, stillLoading };
   };
 
   // FORESLÅ BEDSTE BESØGSRÆKKEFØLGE = KAPACITETSMOTOREN (oktober 2026).
@@ -733,19 +753,9 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
             <span className="sm:hidden">Tal = dagens forløb fra start til hjemme. Rød = bryder et krav.</span>
           </p>
 
-          {/* Dagens medhjælpere pr. bil (oktober 2026) - for den valgte dag. Vises kun, hvis butikken har medhjælpere. */}
-          {crew && onSaveDayCrew && (
-            <>
-              <div className="flex gap-1.5 overflow-x-auto px-3 pt-2" role="group" aria-label="Vælg dag for medhjælpere">
-                {weekdays5.map((d) => (
-                  <button key={d} onClick={() => setSelectedDay(d)} aria-pressed={d === selectedDay} className={`shrink-0 px-3 h-9 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-brand ${d === selectedDay ? "bg-brand text-white" : "text-muted border border-line hover:bg-panel"}`}>{shortDayLabel(d)} {new Date(d + "T00:00:00").getDate()}.</button>
-                ))}
-              </div>
-              <DagensHold dato={selectedDay} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} kapGrundlag={kapGrundlag} crew={crew} onSave={onSaveDayCrew} />
-            </>
-          )}
-
-          {/* ------- MOBIL: dag-faner (man-fre) + stak af bil-sektioner ------- */}
+          {/* DAG-FANER PÅ MOBIL (oktober 2026): dagene stod før to gange. Nu er der KUN disse faner på mobil, øverst, og de styrer både
+              "Dagens hold" og kortene. PC/tablet har fem dag-kolonner med egen overskrift - den er klikbar og vælger dagen til "Dagens hold"
+              (ingen separat række af dag-piller ovenover, de gentog bare kolonnerne). */}
           <div className="md:hidden">
             <div className="flex gap-1.5 overflow-x-auto px-3 py-2 border-b border-divider" role="tablist" aria-label="Vælg ugedag">
               {weekdays5.map((d) => {
@@ -768,7 +778,17 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
                 );
               })}
             </div>
+          </div>
 
+          {/* Dagens medhjælpere pr. bil (oktober 2026) - for den valgte dag. Vises kun, hvis butikken har medhjælpere. */}
+          {crew && onSaveDayCrew && (
+            <>
+              <DagensHold dato={selectedDay} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} kapGrundlag={kapGrundlag} crew={crew} onSave={onSaveDayCrew} />
+            </>
+          )}
+
+          {/* ------- MOBIL: stak af bil-sektioner for den valgte dag (fanerne står øverst, se ovenfor) ------- */}
+          <div className="md:hidden">
             <div className="p-3 space-y-4">
               {rows.map((r) => {
                 const dayOrders = ordersFor(r.id, selectedDay);
@@ -795,10 +815,23 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
               const dayRows = rows.filter((r) => ordersFor(r.id, d).length > 0);
               return (
                 <div key={d} className={`rounded-xl border overflow-hidden ${d === today ? "border-brand" : "border-line"}`}>
-                  <div className={`p-2 text-center border-b ${d === today ? "bg-brand/10 border-brand" : "bg-panel border-line"}`}>
-                    <p className={`text-[10px] font-semibold uppercase tracking-wide ${d === today ? "text-brand" : "text-muted"}`}>{shortDayLabel(d)}</p>
-                    <p className={`text-sm font-semibold ${d === today ? "text-brand" : "text-ink"}`}>{shortDateLabel(d)}</p>
-                  </div>
+                  {(() => {
+                    // Valgt dag (til "Dagens hold" ovenfor) vises som fyldt overskrift. Kun klikbar, når butikken har medhjælpere.
+                    const kanVaelge = !!(crew && onSaveDayCrew);
+                    const valgt = kanVaelge && d === selectedDay;
+                    const cls = `block w-full p-2 text-center border-b ${valgt ? "bg-brand border-brand" : d === today ? "bg-brand/10 border-brand" : "bg-panel border-line"}`;
+                    const inner = (
+                      <>
+                        <p className={`text-[10px] font-semibold uppercase tracking-wide ${valgt ? "text-white" : d === today ? "text-brand" : "text-muted"}`}>{shortDayLabel(d)}</p>
+                        <p className={`text-sm font-semibold ${valgt ? "text-white" : d === today ? "text-brand" : "text-ink"}`}>{shortDateLabel(d)}</p>
+                      </>
+                    );
+                    return kanVaelge ? (
+                      <button type="button" onClick={() => setSelectedDay(d)} aria-pressed={valgt} aria-label={`Vælg ${shortDayLabel(d)} ${shortDateLabel(d)} til dagens hold`} className={`${cls} focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand`}>{inner}</button>
+                    ) : (
+                      <div className={cls}>{inner}</div>
+                    );
+                  })()}
                   <div className="p-2 space-y-3 max-h-[75vh] overflow-y-auto">
                     {dayRows.length === 0 ? (
                       <p className="text-[11px] text-line text-center py-8">Ingen sager</p>
@@ -824,12 +857,31 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
   );
 }
 
+// DATOEN EN SAG BLEV AFSLUTTET (oktober 2026): afsluttetTidspunkt er et tidspunkt (sættes af "Færdigmeld"), og datoen skal være den
+// LOKALE dag - ikke UTC-dagen, ellers ryger en sag færdigmeldt kl. 00:30 dansk tid på dagen før. Sager uden tidspunkt (ældre sager)
+// falder tilbage til den planlagte dato, så de ikke forsvinder fra listen.
+function afsluttetDato(order) {
+  const t = order.afsluttetTidspunkt ? new Date(order.afsluttetTidspunkt) : null;
+  if (t && !Number.isNaN(t.getTime())) {
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+  }
+  return order.dato || null;
+}
+
 function PlanningPage({ orders, technicians, personnel, vehicles, timeOff, store, crew, onSaveDayCrew, selectedDate, onDateChange, onOpen, onAssign, onReorder, onSetVisitOrder, onUpdateBooking, onClearProblem, onUpdateTechnician, onRefresh, refreshing }) {
   const [search, setSearch] = useState("");
   const [openTile, setOpenTile] = useState(null);
   const { fravaer, needsPlan, unresolved, inProgressToday, upcoming, done } = useMemo(
     () => classify(orders, technicians, personnel, vehicles, timeOff, store?.sygemeldingVindueTimer),
     [orders, technicians, personnel, vehicles, timeOff, store?.sygemeldingVindueTimer]
+  );
+
+  // "Afsluttet" viser kun sager afsluttet på den valgte dato i datovælgeren øverst (nyeste først).
+  const doneOnDate = useMemo(
+    () => done
+      .filter((o) => afsluttetDato(o) === selectedDate)
+      .sort((a, b) => (b.afsluttetTidspunkt || "").localeCompare(a.afsluttetTidspunkt || "")),
+    [done, selectedDate]
   );
 
   const searchResults = useMemo(() => {
@@ -887,7 +939,7 @@ function PlanningPage({ orders, technicians, personnel, vehicles, timeOff, store
           <div className="mb-4">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-ink mb-2 flex items-center gap-1.5"><AlertCircle size={15} className="text-danger" aria-hidden="true" /> Kræver handling</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
-              <TileButton icon={Stethoscope} color="#C8232E" count={fravaer.length} label="Sygemelding / feriefridag" selected={openTile === "fravaer"} onClick={() => setOpenTile(openTile === "fravaer" ? null : "fravaer")} />
+              <TileButton icon={Stethoscope} color="rgb(var(--color-brand))" count={fravaer.length} label="Sygemelding / feriefridag" selected={openTile === "fravaer"} onClick={() => setOpenTile(openTile === "fravaer" ? null : "fravaer")} />
               <TileButton icon={CalendarX2} color="#B36B1E" count={needsPlan.length} label="Skal planlægges" selected={openTile === "planlaeg"} onClick={() => setOpenTile(openTile === "planlaeg" ? null : "planlaeg")} />
               <TileButton icon={AlertTriangle} color="#8B5E3C" count={unresolved.length} label="Uafsluttet / fejl" selected={openTile === "problemer"} onClick={() => setOpenTile(openTile === "problemer" ? null : "problemer")} />
             </div>
@@ -934,7 +986,7 @@ function PlanningPage({ orders, technicians, personnel, vehicles, timeOff, store
 
           <div className="space-y-2">
             <CollapsibleSection title="Planlagt fremad" icon={CalendarClock} colorClass="text-muted" items={upcoming} technicians={technicians} onOpen={onOpen} emptyText="Ingen kommende planlagte sager." />
-            <CollapsibleSection title="Afsluttet" icon={CheckCircle2} colorClass="text-success" items={done} technicians={technicians} onOpen={onOpen} emptyText="Ingen afsluttede sager endnu." />
+            <CollapsibleSection title="Afsluttet" icon={CheckCircle2} colorClass="text-success" items={doneOnDate} technicians={technicians} onOpen={onOpen} emptyText="Ingen sager afsluttet på den valgte dato." />
           </div>
         </>
       )}

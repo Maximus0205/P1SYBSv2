@@ -64,7 +64,7 @@ export async function motorForslag({
     return { forslag: [], noter: [], fejl: "Adressen mangler koordinater - vælg adressen fra forslagene, så kan der beregnes forslag." };
   }
   if (!lager || !Number.isFinite(lager.lat) || !Number.isFinite(lager.lon)) {
-    return { forslag: [], noter: [], fejl: "Butikkens lageradresse mangler koordinater - forslag kan ikke beregnes." };
+    return { forslag: [], noter: [], fejl: "Lagerets placering kunne ikke findes. Skriv lagerets adresse under Admin → Kapacitet og tryk Gem." };
   }
   const kandStop = { id: "kandidat", navn: kandidat.navn || "Ny sag", varer: [], kraever2Mand: false, ...kandidat };
   const noter = [];

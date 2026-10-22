@@ -18,6 +18,7 @@ import { koordinaterTilSag } from "../lib/adresseKoordinater";
 import { AddressNotesPanel } from "../components/AddressNotes";
 import { KeyCabinetBookingHint } from "../components/KeyCabinetAlert";
 import { KapacitetsTjek } from "../components/KapacitetsTjek";
+import { useFeature } from "../hooks/useStoreFeatures";
 
 // Bookingflowet er delt op i 4 mindre "kort" (trin) i stedet for én lang
 // formular:
@@ -90,7 +91,7 @@ function CaseTypePicker({ value, onChange }) {
               className="rounded-xl border-2 p-3 text-left transition-colors bg-white hover:bg-panel focus:outline-none focus:ring-2 focus:ring-brand"
               style={{ borderColor: valgt ? farve : "#ECECEC" }}
             >
-              <p className="text-sm font-semibold" style={{ color: valgt ? farve : "#1A1A1A" }}>{t.label}</p>
+              <p className="text-sm font-semibold" style={{ color: valgt ? farve : "rgb(var(--color-ink))" }}>{t.label}</p>
               <p className="text-[11px] text-muted mt-0.5 leading-snug">{t.beskrivelse}</p>
             </button>
           );
@@ -246,13 +247,16 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
   // ændrer sig ikke undervejs i en booking) - ikke ved hvert tastetryk i
   // en linje, hvilket ville genberegne hele indekset for hver bogstav en
   // sælger skriver.
-  const estimateIndex = useMemo(() => buildEstimateIndex(orders), [orders]);
+  // Oktober 2026: forslaget er en butiksfunktion (tid_forslag), som systemadmin først kan slå til,
+  // når der er målt nok - ellers bygges indekset slet ikke, og intet forslag vises.
+  const visTidsforslag = useFeature("tid_forslag");
+  const estimateIndex = useMemo(() => (visTidsforslag ? buildEstimateIndex(orders) : null), [orders, visTidsforslag]);
 
   // Klyngeestimat: stordrift, når flere enheder er på ÉN sag (fx 4 enheder
   // til samme lejlighed). Se ClusterEstimateNote i OrderFormFields.jsx -
   // den viser bevidst intet, før mindst tre tidligere klynger af samme
   // størrelse er målt; indtil da samler systemet blot data i baggrunden.
-  const clusterIndex = useMemo(() => buildClusterIndex(orders, estimateIndex), [orders, estimateIndex]);
+  const clusterIndex = useMemo(() => (estimateIndex ? buildClusterIndex(orders, estimateIndex) : null), [orders, estimateIndex]);
 
   // Skifter man TIL tomgang, slås nøgle/adgang til med det samme. Det er
   // ikke en antagelse om, at nøglen er på plads - det er at åbne felterne,
@@ -322,7 +326,11 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
   // disponenten tæller på det til lager og bestilling. En sag kan derfor ikke bookes
   // med en varelinje uden modelnummer - kravet gælder alle varelinjer.
   const udenModel = linjerUdenModel(lineItems);
-  const stepValid = [!!customerName.trim(), true, udenModel.length === 0, true];
+  // Adressen skal være valgt fra Adressevælgeren, så sagen har koordinater. Uden dem kan køretid og forslag ikke beregnes.
+  // Kravet hører til LEVERING-trinnet (index 1), hvor adressen indtastes - ikke til Kunde-trinnet. Stod det på Kunde-trinnet, kunne man aldrig
+  // komme videre, fordi adressefeltet først kommer på næste trin (rettet 19. oktober 2026).
+  const harAdresseKoord = !!koordinaterTilSag(adresseKoord, address);
+  const stepValid = [!!customerName.trim(), harAdresseKoord, udenModel.length === 0, true];
   const canProceed = stepValid[step];
 
   const goNext = () => {
@@ -352,19 +360,25 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
 
   // KAPACITETSTJEK (oktober 2026): status fra KapacitetsTjek på trin 4. "blokeret" slår Book fra, medmindre brugeren
   // har retten til at overrule og har krydset det af ("overrulet"); så noteres reglernes NAVNE (ingen tal) på sagen.
-  const [kapStatus, setKapStatus] = useState({ blokeret: false, overrulet: false, regler: [] });
+  const [kapStatusRaa, setKapStatus] = useState({ blokeret: false, overrulet: false, regler: [] });
+  // Funktioner systemadmin har slået fra for butikken (se hooks/useStoreFeatures.jsx).
+  const medKvittering = useFeature("book_kvittering");
+  const medKoeber = useFeature("book_koeber");
+  const medKapacitet = useFeature("book_kapacitetstjek");
+  // Er kapacitetstjekket slået fra, må et gammelt resultat (fx fra en kladde) aldrig blokere en booking.
+  const kapStatus = medKapacitet ? kapStatusRaa : { blokeret: false, overrulet: false, regler: [] };
 
   // Kladden fjernes KUN, når sagen faktisk er oprettet (onAdd giver sagens id).
   // Fejler oprettelsen, bliver formularen stående med alt det tastede, og
   // kladden består - tidligere lukkede formularen uanset udfaldet, og alt var tabt.
   const submit = async () => {
-    if (!customerName.trim() || udenModel.length > 0 || (!udenFastDato && !date) || fristFejl || (!udenFastDato && kapStatus.blokeret)) return;
+    if (!customerName.trim() || !harAdresseKoord || udenModel.length > 0 || (!udenFastDato && !date) || fristFejl || (!udenFastDato && kapStatus.blokeret)) return;
     const t = timeSlotById(timeSlotId);
     setSaving(true);
     const nyId = await onAdd({
       sagstype: caseTypeId,
       kunde: { navn: customerName.trim(), telefon: phone.trim(), email: email.trim(), adresse: address.trim(), leveringsnote: deliveryNote.trim(), ...(koordinaterTilSag(adresseKoord, address) ? { adresseKoordinater: koordinaterTilSag(adresseKoord, address) } : {}) },
-      koeber: hasBuyer ? { navn: buyerName.trim(), telefon: buyerPhone.trim(), email: buyerEmail.trim(), adresse: buyerAddress.trim() } : null,
+      koeber: hasBuyer && medKoeber ? { navn: buyerName.trim(), telefon: buyerPhone.trim(), email: buyerEmail.trim(), adresse: buyerAddress.trim() } : null,
       // Dækker et nøgleskab adressen, gemmes ingen nøgleoplysning - se
       // skabDaekkerAdressen ovenfor.
       noegle: skabDaekkerAdressen ? emptyKeyAccess() : keyAccess,
@@ -421,7 +435,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
         <div>
           <CaseTypePicker value={caseTypeId} onChange={changeCaseType} />
 
-          {!erTomgang && <ReceiptUpload productTypes={productTypes} onFill={fillFromPdf} />}
+          {!erTomgang && medKvittering && <ReceiptUpload productTypes={productTypes} onFill={fillFromPdf} />}
           {!erTomgang && storeId && posAktiv && <PosLookupPanel storeId={storeId} onApply={applyPosResult} />}
 
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">
@@ -444,7 +458,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
 
           <CustomerHistory phone={phone} name={customerName} orders={orders} onOpen={onOpen} />
 
-          {!erTomgang && (
+          {!erTomgang && medKoeber && (
             <>
               <label className="flex items-center gap-2 cursor-pointer mb-3">
                 <input type="checkbox" checked={hasBuyer} onChange={(e) => setHasBuyer(e.target.checked)} className="w-5 h-5 accent-ink" />
@@ -461,7 +475,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
               )}
             </>
           )}
-          {attemptedNext && !stepValid[0] && (
+          {attemptedNext && !customerName.trim() && (
             <p className="text-xs text-danger mt-3">{erTomgang ? "Rekvirentens navn" : "Kundenavn"} skal udfyldes, før du kan gå videre.</p>
           )}
         </div>
@@ -478,6 +492,9 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
           </div>
           {addressStatus === "usikker" && (
             <p className="text-xs text-danger mb-4">Adressen kunne ikke bekræftes. Tjek den en ekstra gang.</p>
+          )}
+          {attemptedNext && !harAdresseKoord && (
+            <p role="alert" className="text-xs text-danger mb-4">Vælg adressen fra forslagene under adressefeltet, så køretiden kan beregnes.</p>
           )}
 
           {/* VIDENSDELING (september 2026, rettet): kun en ADVARSEL her, hvis
@@ -655,7 +672,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
               </select>
             </label>
           </div>
-          {vehicleId && date && (
+          {medKapacitet && vehicleId && date && (
             <KapacitetsTjek dato={date} bilId={vehicleId} adresse={address} koordinater={koordinaterTilSag(adresseKoord, address)} minutter={expectedMinutes} tidsrumId={timeSlotId} varelinjer={lineItems} onStatus={setKapStatus} />
           )}
           </>

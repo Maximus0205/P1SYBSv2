@@ -1,3 +1,4 @@
+import { butikKoordinat } from "./butikKoordinat";
 // Fælles omsætning fra app-data til kapacitetsmotorens input - brugt af Planlægning (badget) og forslagene (booking, "Kræver handling"),
 // så begge regner på præcis de samme stop (se lib/dagsplan.js og lib/forslagMotor.js). Hører til app-laget (importerer domænedata og ORS-adapteren).
 import { orderExpectedMinutes, buildTitle, timeSlotById, todayISO } from "../data/domain";
@@ -38,6 +39,17 @@ export async function hentKapGrundlag(storeId) {
   } catch (e) {
     return { fejl: `Kapacitetsindstillinger kunne ikke hentes: ${e?.message || e}` };
   }
+}
+
+// Lagerets position: lageradressen fra Admin -> Kapacitet, hvis den er udfyldt og slået op, ellers butikkens egen adresse. null = ukendt.
+export function lagerKoordinat(store, grundlag) {
+  const gyldig = (p) => { const lat = Number(p?.lat), lon = Number(p?.lon); return p?.lat != null && p?.lon != null && Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null; };
+  return gyldig(grundlag?.indstillinger?.lager) || gyldig(store) || null;
+}
+
+// Som lagerKoordinat, men slår butikkens adresse op, hvis ingen af dem har koordinater. Til steder, der alligevel er asynkrone.
+export async function lagerKoordinatAsync(store, grundlag) {
+  return lagerKoordinat(store, grundlag) || (store?.adresse ? await butikKoordinat(store.adresse) : null);
 }
 
 // Rigtig køretidsmatrix (ORS). null hvis den ikke kan hentes - motoren skønner så og melder det.

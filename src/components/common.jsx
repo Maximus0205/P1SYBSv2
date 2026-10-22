@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { ChevronLeft, ChevronRight, Calendar, KeyRound } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, KeyRound, Users } from "lucide-react";
 import { isToday, addDays, STATUS_META, todayISO, lineItemLabel, serviceIcon } from "../data/domain";
 import { manualKeyAccessText } from "../data/keyCabinets";
 
@@ -16,6 +16,15 @@ import { manualKeyAccessText } from "../data/keyCabinets";
 // kort, konsekvent i hele systemet - kun de helt små farvede prik-
 // indikatorer (fx statuspunktet inde i StatusBadge) er bevidst bevaret
 // runde, da de er indikatorer, ikke klikbare/valgbare knapper.
+
+// Tydeligt mærke på sager, der kræver to mand. Vises på sagskort, rutekort og i sagen, så både montør, sælger og planlægger ser det.
+function ToMandBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md bg-brand text-white" title="Kræver to mand">
+      <Users size={10} aria-hidden="true" /> 2 mand
+    </span>
+  );
+}
 
 function StatusBadge({ status }) {
   const m = STATUS_META[status];
@@ -153,4 +162,4 @@ function MinutesInput({ value, onChange, className, ...props }) {
   );
 }
 
-export { StatusBadge, AddOnPill, KeyAccessPill, LineItemPills, DateSelector, MinutesInput };
+export { ToMandBadge, StatusBadge, AddOnPill, KeyAccessPill, LineItemPills, DateSelector, MinutesInput };

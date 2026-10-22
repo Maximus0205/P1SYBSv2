@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { X, Plus, Lock, Loader2, ImageOff } from "lucide-react";
 import { formatTime, formatDuration, now, totalMinutes, lineItemLabel, serviceIcon } from "../data/domain";
-import { getAttachments, getAttachmentUrls, uploadAttachment, markAttachmentForDeletion } from "../lib/attachments";
+import { getAttachments, getAttachmentUrls, uploadAttachment } from "../lib/attachments";
 import ImageLightbox from "./ImageLightbox";
 
 // RETTET (august 2026): alle "tilføj/rediger"-handlinger herunder
@@ -249,10 +249,11 @@ function Photos({ order, onAdd }) {
     await load();
   };
 
-  const handleRemove = async (id) => {
-    const svar = await markAttachmentForDeletion(id);
-    if (svar.ok) setAttachments((prev) => prev.filter((a) => a.id !== id));
-  };
+  // BEVIDST INGEN SLET-FUNKTION (oktober 2026): uploadede billeder er
+  // dokumentation for udført arbejde og kan ikke fjernes fra sagen i
+  // appen - hverken af montør, sælger eller admin. NB: det er kun knappen, der
+  // er fjernet. Databasens RLS tillader stadig sletning (status = 'deleting')
+  // for alle med sag_feltarbejde, så en hård spærring kræver en migration.
 
   const trinTekst = { komprimerer: "Forbereder billedet...", starter: "Forbereder...", sender: "Sender...", bekraefter: "Gemmer..." };
   const intetAtVise = !loading && attachments.length === 0 && legacyPhotos.length === 0;
@@ -316,15 +317,6 @@ function Photos({ order, onAdd }) {
                   </div>
                 )}
                 <p className="text-[11px] text-muted px-2 py-1 truncate">{a.navn || "Billede"}</p>
-                {canEdit && (
-                  <button
-                    onClick={() => handleRemove(a.id)}
-                    aria-label={`Fjern billedet ${a.navn || ""}`}
-                    className={`absolute top-1 right-1 w-11 h-11 flex items-center justify-center rounded-lg bg-white/90 text-muted hover:text-danger border border-line focus:outline-none focus:ring-2 focus:ring-danger ${HOVER_ONLY_VISIBLE}`}
-                  >
-                    <X size={16} aria-hidden="true" />
-                  </button>
-                )}
               </div>
             );
           })}

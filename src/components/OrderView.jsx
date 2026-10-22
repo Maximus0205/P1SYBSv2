@@ -3,7 +3,7 @@ import { KeyRound, Building2, Hash, Pencil, X, Check, Copy, AlertTriangle, User,
 import { TIME_SLOTS, buildTitle, timeSlotById, timeSlotText, lineItemLabel, canDo, createLineItem, missingLineItems, OTHER_PRODUCT_TYPE_ID, availableAddOns, getDefaultEstimateMinutes, lineItemMinutes } from "../data/domain";
 import { manualKeyAccessText } from "../data/keyCabinets";
 import { FOLLOWUP_TYPES, followUpTypeLabel } from "../data/caseTypes";
-import { StatusBadge, MinutesInput } from "../components/common";
+import { StatusBadge, MinutesInput, ToMandBadge } from "../components/common";
 import { LineItemDetails, Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
 import { CustomerHistoryLookup, ModelNumberLookup, ToMandFelt } from "../components/OrderFormFields";
 import { KapacitetsTjek } from "../components/KapacitetsTjek";
@@ -15,6 +15,7 @@ import { kraeverBeskrivelse } from "../lib/ydelser";
 import { linjerUdenModel, manglerModel } from "../lib/varelinje";
 import { DelvisBanner } from "../components/DelvisAfsluttet";
 import { needsPlanning } from "../data/domain";
+import { useFeature } from "../hooks/useStoreFeatures";
 
 const cloneLineItems = (list) => (list || []).map((v) => ({ ...v, tillaeg: (v.tillaeg || []).map((y) => ({ ...y })) }));
 
@@ -646,7 +647,7 @@ function PosStatusBanner({ order, onRetry, canRetry }) {
 //
 // VARELINJER (september 2026): redigeres nu inde i "Redigér booking" - se
 // BookingEditor. Den separate "Redigér varelinjer"-knap er fjernet.
-function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addReport, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onClearMissingItem, onDeleteOrder, onReopenOrder, onRetryPosSync, addressNotes }) {
+function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addReport, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onClearMissingItem, onDeleteOrder, onReopenOrder, onRetryPosSync, addressNotes, kanSeTider }) {
   const [tab, setTab] = useState("noter");
   // Kun ÉT panel ad gangen - to åbne redigeringer på samme sag ville både
   // fylde skærmen og gøre det uklart, hvad "Gem" gemmer.
@@ -658,13 +659,18 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
   const canCreate = canDo(permissions, "sag_opret");
   const canDelete = canDo(permissions, "sag_slet");
   const keyText = manualKeyAccessText(order.noegle);
+  // Faner, systemadmin har slået fra for butikken, skjules (databasen blokerer også ændringer).
+  const visMaterialer = useFeature("sag_materialer");
+  const visBilleder = useFeature("sag_billeder");
+  const visRapporter = useFeature("sag_rapporter");
   const tabs = [
     { key: "noter", label: "Noter", count: order.noter.length },
-    { key: "materialer", label: "Materialer", count: (order.materialer || []).length },
-    { key: "billeder", label: "Billeder", count: order.billeder.length },
-    { key: "rapporter", label: "Rapporter", count: order.rapporter.length },
-    { key: "tid", label: "Tid", count: order.logs.length },
-  ];
+    visMaterialer && { key: "materialer", label: "Materialer", count: (order.materialer || []).length },
+    visBilleder && { key: "billeder", label: "Billeder", count: order.billeder.length },
+    visRapporter && { key: "rapporter", label: "Rapporter", count: order.rapporter.length },
+    // Tid-fanen (registrerede tider) er kun for systemadmin - sælgere og montører ser aldrig tiderne.
+    kanSeTider && { key: "tid", label: "Tid", count: order.logs.length },
+  ].filter(Boolean);
 
   return (
     <div>
@@ -748,6 +754,7 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
               {/* Status vises, men kan ikke klikkes - se noten over
                   komponenten. Skiftet sker i montørens flow. */}
               <StatusBadge status={order.status} />
+              {order.toMand && <ToMandBadge />}
               {order.status === "afsluttet" && onReopenOrder && canFieldwork && (
                 <button onClick={onReopenOrder} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-1 py-1.5 flex items-center gap-1" title="Sagen var ikke færdig alligevel">
                   <RotateCw size={13} aria-hidden="true" /> Genåbn sag
@@ -806,7 +813,7 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
       )}
       {tab === "billeder" && <Photos order={order} onAdd={canFieldwork ? addPhoto : undefined} />}
       {tab === "rapporter" && <Reports order={order} onAdd={canFieldwork ? addReport : undefined} />}
-      {tab === "tid" && <TimeLog order={order} />}
+      {kanSeTider && tab === "tid" && <TimeLog order={order} />}
     </div>
   );
 }

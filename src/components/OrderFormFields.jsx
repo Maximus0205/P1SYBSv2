@@ -5,7 +5,7 @@ import { estimateForLineItem, estimateForCluster } from "../data/estimates";
 import { lookupPunkt1Product } from "../lib/dataStore";
 import { motorForslag } from "../lib/forslagMotor";
 import { useMotorDage } from "../lib/useMotorDage";
-import { ordreTilStop, hentKapGrundlag, hentMotorMatrix } from "../lib/motorStop";
+import { ordreTilStop, hentKapGrundlag, hentMotorMatrix, lagerKoordinatAsync } from "../lib/motorStop";
 import { MinutesInput } from "../components/common";
 import { forslagsVindue, foersteArbejdsdagFra } from "../lib/arbejdsuge";
 import { kraeverBeskrivelse } from "../lib/ydelser";
@@ -85,6 +85,10 @@ function guessProductType(title, productTypes) {
 // skifte. Advarslen RÅDGIVER kun - intet ændres uden et tryk - og afledes ved hvert render, så den også dukker
 // op, når varetypen ændres EFTER at modelnummeret blev bekræftet.
 function ModelNumberLookup({ model, onSelectProduct, varetypeId, productTypes, onSuggestType }) {
+  // Søgningen er forsinket (500 ms + netværk). Kaldes onSelectProduct fra den render, hvor effekten startede, bruger den en GAMMEL
+  // varelinje og kan overskrive det, der er tastet i mellemtiden (fx varetype/mærke) - og varetypen skifter ikke. Derfor altid nyeste.
+  const onSelectRef = useRef(onSelectProduct);
+  onSelectRef.current = onSelectProduct;
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null); // { matchCount, products } | null
   const [error, setError] = useState(null);
@@ -118,7 +122,7 @@ function ModelNumberLookup({ model, onSelectProduct, varetypeId, productTypes, o
       });
       if (match) {
         confirmedRef.current = term;
-        onSelectProduct({ ...guessBrandAndModel(match.title), title: match.title, productId: match.productId });
+        onSelectRef.current({ ...guessBrandAndModel(match.title), title: match.title, productId: match.productId });
       }
     }, 500);
     return () => clearTimeout(timerRef.current);
@@ -304,6 +308,9 @@ function ProductTypeInput({ lineItem, productTypes, onSelectType, onFreeText }) 
   const currentText = isOther ? (lineItem.varetypeTekst || "") : (productTypes.find((v) => v.id === lineItem.varetypeId)?.navn || "");
   const [query, setQuery] = useState(currentText);
   const [open, setOpen] = useState(false);
+  // Listen filtreres KUN mens brugeren aktivt skriver. Åbnes den uden at skrive (fokus/pil), vises ALLE varetyper - ellers viste den kun
+  // den nuværende type (og lignende), og man kunne ikke skifte fx fra Køleskab til Emhætte uden at slette teksten først.
+  const [filtrerer, setFiltrerer] = useState(false);
   const blurTimerRef = useRef(null);
 
   // Synkroniserer feltets tekst, når varetypen ændres UDEFRA (fx et
@@ -316,13 +323,14 @@ function ProductTypeInput({ lineItem, productTypes, onSelectType, onFreeText }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentText]);
 
-  const filtered = query.trim()
+  const filtered = filtrerer && query.trim()
     ? productTypes.filter((v) => v.navn.toLowerCase().includes(query.trim().toLowerCase()))
     : productTypes;
 
   const handleInput = (text) => {
     setQuery(text);
     setOpen(true);
+    setFiltrerer(true);
     const exact = productTypes.find((v) => v.navn.toLowerCase() === text.trim().toLowerCase());
     if (exact) onSelectType(exact.id);
     else onFreeText(text);
@@ -331,6 +339,7 @@ function ProductTypeInput({ lineItem, productTypes, onSelectType, onFreeText }) 
   const selectOption = (v) => {
     setQuery(v.navn);
     setOpen(false);
+    setFiltrerer(false);
     onSelectType(v.id);
   };
 
@@ -339,12 +348,22 @@ function ProductTypeInput({ lineItem, productTypes, onSelectType, onFreeText }) 
       <input
         value={query}
         onChange={(e) => handleInput(e.target.value)}
-        onFocus={() => { if (blurTimerRef.current) { clearTimeout(blurTimerRef.current); blurTimerRef.current = null; } setOpen(true); }}
-        onBlur={() => { blurTimerRef.current = setTimeout(() => setOpen(false), 150); }}
+        onFocus={() => { if (blurTimerRef.current) { clearTimeout(blurTimerRef.current); blurTimerRef.current = null; } setFiltrerer(false); setOpen(true); }}
+        onBlur={() => { blurTimerRef.current = setTimeout(() => { setOpen(false); setFiltrerer(false); }, 150); }}
         placeholder="Skriv eller vælg varetype"
         aria-label="Varetype"
-        className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand"
+        className="w-full rounded-lg border border-line bg-white pl-2 pr-9 py-1.5 text-sm text-ink focus:outline-none focus:border-brand"
       />
+      <button
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => { setFiltrerer(false); setOpen((o) => !o); }}
+        aria-label={open ? "Skjul varetyper" : "Vis alle varetyper"}
+        aria-expanded={open}
+        className="absolute right-0 top-0 h-full w-9 flex items-center justify-center text-muted hover:text-brand"
+      >
+        <ChevronDown size={14} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
       {open && filtered.length > 0 && (
         <div className="absolute z-20 left-0 right-0 mt-1 rounded-xl bg-white border border-line shadow-lg max-h-56 overflow-auto">
           {filtered.map((v) => (
@@ -1051,7 +1070,7 @@ function SuggestedDates({ orders, technicians, personnel, timeOff, vehicles, cre
     const anchor = date || todayISO();
     const week = forslagsVindue({ idag: todayISO(), valgtDato: anchor });
     const grundlag = await hentKapGrundlag(store?.id);
-    const lager = store?.lat != null && store?.lon != null ? { lat: store.lat, lon: store.lon } : null;
+    const lager = await lagerKoordinatAsync(store, grundlag);
     const r = await motorForslag({
       kandidat: { id: "kandidat", navn: jobSummary || "Ny sag", adresse: address, lat: koordinater?.lat, lon: koordinater?.lon, minutter: Math.max(0, Number(minutter) || 0), kraever2Mand: !!toMand, varer: [] },
       dates: week, orders: orders || [], biler: technicians || [], vehicles, personnel, timeOff, crew, grundlag, lager,

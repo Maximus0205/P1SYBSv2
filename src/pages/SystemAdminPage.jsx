@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus, X, Bug, RefreshCw, Plug, HardDrive, ChevronLeft, Calculator, Receipt } from "lucide-react";
+import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus, X, Bug, RefreshCw, Plug, HardDrive, ChevronLeft, Calculator, Receipt, Palette } from "lucide-react";
 import { getAllStores, createStoreAsSystemAdmin, updateStoreAsSystemAdmin, deleteStoreAsSystemAdmin, getAllUsersAsSystemAdmin, updateProfile, resetPasswordAsAdmin, resetPinAsAdmin, createUserAsAdmin, deleteUserAsAdmin, getErrorLogs, deleteErrorLog, clearErrorLogs, getAllPosIntegrationsAsSystemAdmin, getAllStorageIntegrationsAsSystemAdmin } from "../lib/dataStore";
 import { sletBruger } from "../lib/sletBruger";
 import { getStorageUsage, formatBytes } from "../lib/attachments";
@@ -11,10 +11,14 @@ import { StorageIntegrationAdmin } from "../components/StorageIntegrationAdmin";
 import { KapacitetsLab } from "../components/KapacitetsLab";
 import { KapacitetsRegler } from "../components/KapacitetsRegler";
 import { LoginOplysninger } from "../components/AdminParts";
+import { BrandingAdmin } from "../components/BrandingAdmin";
+import { StoreFeaturesAdmin } from "../components/StoreFeaturesAdmin";
+import { TidsmaalingerAdmin } from "../components/TidsmaalingerAdmin";
 
 const ROLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montør", lager: "Lager", medhjaelper: "Medhjælper" };
 
-// Kun synlig for brugere med profiles.is_system_admin = true. Fire faner:
+// Kun synlig for brugere med profiles.is_system_admin = true. Faner (se også
+// "Kæder & branding", oktober 2026 - kædernes logo/farver/domæner):
 // "Butikker" (opret/redigér/slet butikker, opret/koble brugere), "Fejl-log"
 // (automatisk opsamlede fejl fra hele systemet), "POS-integrationer" og
 // "Lager (NAS)" (september 2026, ny) - overblik på tværs af ALLE butikker
@@ -25,7 +29,7 @@ const ROLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montø
 // vejen ned til SystemAdminUserRow, som skal kunne skelne "jeg kobler MIG
 // SELV til en butik" fra "jeg kobler en ANDEN bruger til en butik" - se
 // noten ved onOwnStoreLinked i App.jsx for selve fejlen, det retter.
-function SystemAdminPage({ currentUserId, onOwnStoreLinked }) {
+function SystemAdminPage({ currentUserId, onOwnStoreLinked, onBrandingChanged }) {
   const [tab, setTab] = useState("butikker");
   const [stores, setStores] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -48,6 +52,15 @@ function SystemAdminPage({ currentUserId, onOwnStoreLinked }) {
         <button onClick={() => setTab("kapacitet")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "kapacitet" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
           <Calculator size={15} /> Kapacitet
         </button>
+        <button onClick={() => setTab("branding")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "branding" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
+          <Palette size={15} /> Kæder & branding
+        </button>
+        <button onClick={() => setTab("funktioner")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "funktioner" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
+          <Check size={14} aria-hidden="true" /> Funktioner
+        </button>
+        <button onClick={() => setTab("tider")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "tider" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
+          <Calculator size={15} aria-hidden="true" /> Tidsmålinger
+        </button>
         <a href={`${import.meta.env.BASE_URL}backoffice/`} className="px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 text-muted hover:text-ink">
           <Receipt size={15} /> Backoffice
         </a>
@@ -60,6 +73,9 @@ function SystemAdminPage({ currentUserId, onOwnStoreLinked }) {
       {tab === "integrationer" && <PosIntegrationsTab stores={stores} />}
       {tab === "lager" && <StorageIntegrationsTab stores={stores} />}
       {tab === "kapacitet" && <><KapacitetsRegler stores={stores} /><KapacitetsLab stores={stores} /></>}
+      {tab === "branding" && <BrandingAdmin onBrandingChanged={onBrandingChanged} />}
+      {tab === "funktioner" && <StoreFeaturesAdmin stores={stores} />}
+      {tab === "tider" && <TidsmaalingerAdmin stores={stores} />}
       {tab === "fejl" && <ErrorLogTab stores={stores} />}
     </div>
   );

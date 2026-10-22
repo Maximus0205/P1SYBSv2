@@ -18,6 +18,8 @@ import { saetAdresseKontekst } from "./lib/adresseKontekst";
 import { TopNav } from "./components/TopNav";
 import { DateSelector } from "./components/common";
 import { LoginPage } from "./components/LoginPage";
+import { useBranding } from "./hooks/useBranding";
+import { StoreFeaturesProvider, useFeature } from "./hooks/useStoreFeatures";
 import { OrderView } from "./components/OrderView";
 import { AccountSettingsModal } from "./components/AccountSettingsModal";
 import { ErstatningPanel } from "./components/ErstatningPanel";
@@ -61,6 +63,9 @@ function OrderRoute({ profile, storeId, orders, technicians, personnel, crew, or
   const { id } = useParams();
   const navigate = useNavigate();
   const order = orders.find((o) => o.id === id);
+  // Oktober 2026: start-/sluttidspunkter og tidtagning gemmes kun, hvis systemadmin har slået
+  // "Tidsstempling" til for butikken (standard: fra). Registrerede tider kan kun ses af systemadmin.
+  const registrerTid = useFeature("tid_stempling");
 
   useEffect(() => {
     if (!order || order.oprettetAf?.id !== profile.id) return;
@@ -138,7 +143,8 @@ function OrderRoute({ profile, storeId, orders, technicians, personnel, crew, or
     // Erstatter status-skifteren. Status er nu en KONSEKVENS af to
     // handlinger, montøren foretager alligevel - og de to tidsstempler er
     // samtidig grundlaget for tidsestimaterne (se data/estimates.js).
-    onStartOrder: () => ordersStore.startOrder(order.id),
+    onStartOrder: () => ordersStore.startOrder(order.id, { registrerTid }),
+    kanSeTider: !!profile.erSystemadmin,
     onFinishOrder: () => ordersStore.finishOrder(order.id),
     onReopenOrder: () => ordersStore.reopenOrder(order.id),
 
@@ -278,6 +284,10 @@ export default function App() {
     if (!activeStoreId) { setActiveStore(null); return; }
     getStore(activeStoreId).then(setActiveStore);
   }, [activeStoreId]);
+
+  // Kædens/butikkens logo og farver - før login ud fra domænet, derefter
+  // for den viste butik. Se hooks/useBranding.js.
+  const { branding, reload: reloadBranding } = useBranding(session && activeStoreId ? activeStoreId : null);
 
   // KOMMUNEKODE - AUTOMATISK OPSLAG (september 2026, tilføjet)
   //
@@ -499,7 +509,7 @@ export default function App() {
   }
 
   if (!session) {
-    return <LoginPage />;
+    return <LoginPage branding={branding} />;
   }
 
   if (!profile || activeStoreId === undefined) {
@@ -528,7 +538,7 @@ export default function App() {
                 </select>
               </div>
             )}
-            <SystemAdminPage currentUserId={profile.id} onOwnStoreLinked={linkOwnProfileToStore} />
+            <SystemAdminPage currentUserId={profile.id} onOwnStoreLinked={linkOwnProfileToStore} onBrandingChanged={reloadBranding} />
           </div>
         </div>
       );
@@ -564,7 +574,9 @@ export default function App() {
   // kombination, så den kan ikke stå i PAGE_PERMISSION_KEYS.
   const kanKoereRute = koererSelv(profile);
   const kanSeAdresser = profile.erSystemadmin || permissions.includes("sag_feltarbejde") || permissions.includes("sag_opret");
-  const allowedPages = profile.erSystemadmin
+  // Montører og medhjælpere har ingen forside: de starter direkte på dagens rute (fanen "montor"), hvor de kan bladre mellem dage.
+  const udenForside = !profile.erSystemadmin && (profile.rolle === "montor" || profile.rolle === "medhjaelper");
+  const alleSider = profile.erSystemadmin
     ? ["dashboard", ...PAGE_PERMISSION_KEYS, ...(kanKoereRute ? ["montor"] : []), "adresser", "admin"]
     : [
         "dashboard",
@@ -573,6 +585,7 @@ export default function App() {
         ...(kanSeAdresser ? ["adresser"] : []),
         ...(permissions.some((p) => p.startsWith("admin_")) ? ["admin"] : []),
       ];
+  const allowedPages = udenForside ? ["montor", ...alleSider.filter((k) => k !== "dashboard" && k !== "montor")] : alleSider;
   // Sendes videre til sider der låser ENKELTE felter/knapper efter
   // finkornede sags-rettigheder. null for en systemadmin = "ubegrænset"
   // (se canDo() i domain.js).
@@ -586,6 +599,7 @@ export default function App() {
   const hideTopNav = currentPage === "sag" && kanKoereRute;
 
   return (
+    <StoreFeaturesProvider storeId={session && activeStoreId ? activeStoreId : null}>
     <div className="min-h-screen w-full bg-paper" style={{ fontFamily: "Inter, sans-serif" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -613,6 +627,7 @@ export default function App() {
 
       {!hideTopNav && (
         <TopNav
+          branding={branding}
           page={currentPage} onChange={(key) => navigate(`/${key}`)} user={profile} onLogOut={logOut}
           notifications={notifications} onOpenOrder={onOpen} allowedPages={allowedPages}
           store={effectiveStore} allStores={allStores} onSwitchStore={switchStore}
@@ -739,12 +754,13 @@ export default function App() {
               Systemadmins UDEN egen butik rammer aldrig ruten; de får
               SystemAdminPage vist direkte i "!activeStoreId"-grenen ovenfor. */}
           <Route path="/systemadmin" element={
-            profile.erSystemadmin ? <SystemAdminPage currentUserId={profile.id} onOwnStoreLinked={linkOwnProfileToStore} /> : <Navigate to={`/${allowedPages[0]}`} replace />
+            profile.erSystemadmin ? <SystemAdminPage currentUserId={profile.id} onOwnStoreLinked={linkOwnProfileToStore} onBrandingChanged={reloadBranding} /> : <Navigate to={`/${allowedPages[0]}`} replace />
           } />
 
           <Route path="*" element={<Navigate to={`/${allowedPages[0]}`} replace />} />
         </Routes>
       </div>
     </div>
+    </StoreFeaturesProvider>
   );
 }

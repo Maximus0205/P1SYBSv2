@@ -1,7 +1,7 @@
 // Tidsbadget for hver bil og dag i en uge - beregnet af kapacitetsmotoren (via lib/motorStop.js beregnDagMotor), til booking-ugevisningerne
 // (ugekapacitet og dato-vælger). Samme beregning som i Planlægning, så tallene aldrig er uenige.
 import { useEffect, useState } from "react";
-import { hentKapGrundlag, beregnDagMotor, dagSignatur } from "./motorStop";
+import { hentKapGrundlag, beregnDagMotor, dagSignatur, lagerKoordinatAsync } from "./motorStop";
 import { badgeFraMotor } from "./dagsplan";
 
 // dage: ["2026-11-09", ...]. Returnerer { badges: { "bilId|dato": badge }, loading }. badge = { minutter, overbelastet, fejl, titel } (se dagsplan.badgeFraMotor).
@@ -30,11 +30,12 @@ export function useMotorDage({ orders, dage, vehicles, technicians, personnel, t
     (async () => {
       setLoading(true);
       const grundlag = await hentKapGrundlag(store?.id);
+      const lagerPkt = await lagerKoordinatAsync(store, grundlag);
       const entries = await Promise.all(keys.map(async (key) => {
         if (grundlag.fejl) return [key, { minutter: null, overbelastet: false, fejl: grundlag.fejl, titel: grundlag.fejl }];
         try {
           const [bilId, dato] = key.split("|");
-          return [key, badgeFraMotor(await beregnDagMotor({ bilId, dato, list: grupper[key], vehicles, technicians, personnel, timeOff, crew, grundlag, lager }))];
+          return [key, badgeFraMotor(await beregnDagMotor({ bilId, dato, list: grupper[key], vehicles, technicians, personnel, timeOff, crew, grundlag, lager: lagerPkt }))];
         } catch (e) {
           const fejl = `Beregningen fejlede: ${e?.message || e}`;
           return [key, { minutter: null, overbelastet: false, fejl, titel: fejl }];

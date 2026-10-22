@@ -2,12 +2,15 @@
 // CENTRALT TEMA. Al farve/typografi-branding for hele appen defineres HER og
 // KUN her - resten af koden bruger semantiske Tailwind-klasser
 // (fx `bg-brand`, `text-ink`, `bg-paper`) i stedet for hardkodede hex-koder
-// som `bg-[#C8232E]`. Skal appen rebrandes til et andet kædenavn/andre
-// farver engang, er dette den ENESTE fil, der skal røres - alle
-// komponenter opdaterer sig selv, fordi de refererer til navnene, ikke til
-// de faktiske farveværdier.
+// som `bg-[#C8232E]`. Alle komponenter følger derfor automatisk med, når
+// en farve ændres, fordi de refererer til navnene, ikke til værdierne.
 //
-// Nuværende brand: Punkt1 (rød/sort/hvid/lysegrå).
+// KUNDE-BRANDING (oktober 2026): brand, brand-dark, ink og paper læses fra
+// CSS-variabler, så hver kæde/butik kan have sine egne farver uden nyt
+// build. Standardværdierne står i src/index.css (:root) og i
+// src/lib/brandingCore.js (DEFAULT_COLORS); kædens/butikkens egne farver
+// sættes fra systemadmin og lægges på ved kørsel (src/hooks/useBranding.js).
+// Øvrige farver er neutrale/funktionelle og følger ikke kundens brand.
 //
 // Semantik (brug disse i stedet for at gætte en ny hex-kode et nyt sted):
 //   brand      - primær accentfarve (knapper, aktive faner, links, fokus)
@@ -26,11 +29,11 @@ module.exports = {
     extend: {
       colors: {
         brand: {
-          DEFAULT: "#C8232E",
-          dark: "#A61B24",
+          DEFAULT: "rgb(var(--color-brand) / <alpha-value>)",
+          dark: "rgb(var(--color-brand-dark) / <alpha-value>)",
         },
-        ink: "#1A1A1A",
-        paper: "#F2F2F2",
+        ink: "rgb(var(--color-ink) / <alpha-value>)",
+        paper: "rgb(var(--color-paper) / <alpha-value>)",
         panel: "#F7F7F7",
         line: "#DDDDDD",
         divider: "#EEEEEE",

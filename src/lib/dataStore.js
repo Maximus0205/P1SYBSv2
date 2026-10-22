@@ -16,6 +16,7 @@ import { supabase } from "./supabaseClient";
 import { logError } from "./errorLog";
 import { reportSaveFailure } from "./saveStatus";
 import { opretBiometriskSvar, bekraeftBiometriskSvar } from "./webauthn";
+import { gemEnhedsLogin } from "./enhedsLogin";
 import { pos, sms, punkt1, lager } from "../adapters";
 
 // Fejl-logning (august 2026) VED SIDEN AF console.error (ikke i stedet
@@ -457,6 +458,16 @@ export async function changeInitialsAsAdmin(userId, initialer) {
 // Face ID/fingeraftryk -> send svaret til verificering) i ét kald, så
 // resten af appen kan bruge den som en almindelig { ok, fejl }-funktion.
 // Afvises ligeledes, hvis butikkens simple_login_enabled er slået fra.
+// Husker brugeren på denne enhed, så næste login kan starte direkte med Face ID (se lib/enhedsLogin.js).
+async function husk_enhedsbruger() {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    const profil = user ? await getOwnProfile(user.id) : null;
+    const butik = profil?.butik_id ? await getStore(profil.butik_id) : null;
+    if (profil?.brugernavn && butik?.butiksnummer) gemEnhedsLogin({ butik: String(butik.butiksnummer), brugernavn: profil.brugernavn });
+  } catch { /* ikke kritisk */ }
+}
+
 export async function registerBiometric(deviceLabel) {
   const { data, error } = await supabase.functions.invoke("webauthn-register-options", { body: {} });
   if (error || data?.fejl) {
@@ -466,12 +477,15 @@ export async function registerBiometric(deviceLabel) {
   try {
     response = await opretBiometriskSvar(data.options);
   } catch (e) {
+    // InvalidStateError = denne enhed er allerede sat op til brugeren. Så mangler der kun at huske brugeren på enheden.
+    if (e?.name === "InvalidStateError") { await husk_enhedsbruger(); return { ok: true, alleredeSat: true }; }
     return { ok: false, fejl: e?.message?.includes("NotAllowedError") || e?.name === "NotAllowedError" ? "Annulleret." : (e?.message || "Kunne ikke oprette biometrisk login.") };
   }
   const { data: verifyData, error: verifyError } = await supabase.functions.invoke("webauthn-register-verify", { body: { response, deviceLabel } });
   if (verifyError || verifyData?.fejl) {
     return { ok: false, fejl: await readEdgeFunctionError(verifyData, verifyError, "Kunne ikke gemme den biometriske login") };
   }
+  await husk_enhedsbruger();
   return { ok: true };
 }
 

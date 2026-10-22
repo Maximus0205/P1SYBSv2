@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { LogOut, Bell, Package, AlertTriangle, Copy, Building2, ArrowLeftRight, Truck, KeyRound, CalendarCheck2 } from "lucide-react";
 import { PAGES, missingLineItems, lineItemLabel } from "../data/domain";
-import { PUNKT1_LOGO_NEGATIV } from "../assets/logo";
+import { BrandLogo } from "./BrandLogo";
 
 // Notifikationsklokke: viser, for den INDLOGGEDE bruger, hvilke af DERES
 // EGNE bookede sager der har noget nyt siden sidst - materialeforbrug
@@ -133,8 +133,8 @@ function NotificationBell({ notifications, onOpenOrder, onReplaceItem }) {
                   ingen når at reagere i tide. */}
               <MissingGroup items={manglendeVarer} onOpen={openAndClose} onReplace={replaceAndClose} />
               <NotifGroup title={`${problemer.length} ${problemer.length === 1 ? "sag" : "sager"} kom ikke i mål`} icon={AlertTriangle} color="#B3261E" items={problemer} onOpen={openAndClose} />
-              <NotifGroup title={`${delvise.length} ${delvise.length === 1 ? "sag er" : "sager er"} delvist afsluttet — skal have ny dato`} icon={CalendarCheck2} color="#C8232E" items={delvise} onOpen={openAndClose} />
-              <NotifGroup title={`${materialer.length} ${materialer.length === 1 ? "sag har" : "sager har"} nyt materialeforbrug`} icon={Package} color="#C8232E" items={materialer} onOpen={openAndClose} />
+              <NotifGroup title={`${delvise.length} ${delvise.length === 1 ? "sag er" : "sager er"} delvist afsluttet — skal have ny dato`} icon={CalendarCheck2} color="rgb(var(--color-brand))" items={delvise} onOpen={openAndClose} />
+              <NotifGroup title={`${materialer.length} ${materialer.length === 1 ? "sag har" : "sager har"} nyt materialeforbrug`} icon={Package} color="rgb(var(--color-brand))" items={materialer} onOpen={openAndClose} />
               <NotifGroup title={`${opfoelgninger.length} ${opfoelgninger.length === 1 ? "sag har" : "sager har"} fået en opfølgning`} icon={Copy} color="#52697E" items={opfoelgninger} onOpen={openAndClose} />
             </div>
           )}
@@ -197,13 +197,13 @@ function StoreSwitcher({ store, isSystemAdmin, allStores, onSwitchStore, onExitS
 // én række, hvor der er plads. Løst med flex-wrap + order, så knapperne
 // kun findes ÉT sted i DOM'en - ikke to udgaver med hidden/visible, som
 // ville gentage hele navigationen for en skærmlæser.
-function TopNav({ page, onChange, user, onLogOut, notifications, onOpenOrder, allowedPages, store, allStores, onSwitchStore, onExitStoreView, onOpenAccountSettings, onReplaceItem }) {
+function TopNav({ branding, page, onChange, user, onLogOut, notifications, onOpenOrder, allowedPages, store, allStores, onSwitchStore, onExitStoreView, onOpenAccountSettings, onReplaceItem }) {
   const allowed = PAGES.filter((s) => allowedPages.includes(s.key) || (s.key === "systemadmin" && user.erSystemadmin));
   return (
     <div className="sticky top-0 z-20 bg-ink mb-6">
       <nav aria-label="Hovedmenu" className="max-w-6xl mx-auto flex flex-wrap items-center gap-2 px-3 py-2.5">
         <div className="shrink-0 flex items-center pr-1 order-1">
-          <img src={PUNKT1_LOGO_NEGATIV} alt="Punkt1" className="h-7 w-auto" />
+          <BrandLogo branding={branding} variant="dark" className="h-8 w-auto max-w-[160px] object-contain object-left" textClassName="font-display text-xl uppercase tracking-tight text-white whitespace-nowrap" />
         </div>
 
         {/* Kontroller: order-2 på mobil (samme række som logoet, skubbet

@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Standard-brandfarver som RGB-kanaler (se tailwind.config.js). Kædens/
+   butikkens egne farver overskriver dem ved kørsel - se useBranding. Skal
+   matche DEFAULT_COLORS i src/lib/brandingCore.js. */
+:root {
+  --color-brand: 200 35 46;
+  --color-brand-dark: 166 27 36;
+  --color-ink: 26 26 26;
+  --color-paper: 242 242 242;
+}
+
 /* Fakturaudskrift (Fakturering i systemadmin): kun fakturaen vises, når der udskrives / gemmes som PDF */
 @media print {
   body * { visibility: hidden; }

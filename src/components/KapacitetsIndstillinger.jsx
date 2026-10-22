@@ -53,7 +53,7 @@ function KapacitetsIndstillinger({ storeId, butikAdresse }) {
     // Lagerets koordinater slås op, når adressen er ændret. Er adressen tom, bruges butikkens.
     const adresse = ny.lager.adresse.trim();
     const foer = JSON.parse(gemt).lager;
-    if (adresse && adresse !== foer.adresse) {
+    if (adresse && (adresse !== foer.adresse || !Number.isFinite(foer.lat) || !Number.isFinite(foer.lon))) {
       const k = await geocodeAddress(adresse);
       if (!k) { setBusy(false); setFejl("Lagerets adresse kunne ikke findes. Tjek stavningen, eller lad feltet stå tomt for at bruge butikkens adresse."); return; }
       ny = { ...ny, lager: { adresse, lat: k.lat, lon: k.lon } };
