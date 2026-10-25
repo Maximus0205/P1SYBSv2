@@ -562,7 +562,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
           </h4>
           {skabDaekkerAdressen ? (
             <p className="text-xs text-ink rounded-lg border border-line bg-panel px-3 py-2.5">
-              Nøglen hentes i nøgleskabet ovenfor, så der skal ikke registreres en nøglebokS. Skal montøren også bruge en kode eller alarm, så skriv det i noten til adressen.
+              Nøglen hentes i nøgleskabet ovenfor, så der skal ikke registreres en nøgleboks. Skal montøren også bruge en kode eller alarm, så skriv det i noten til adressen.
             </p>
           ) : (
             <>
