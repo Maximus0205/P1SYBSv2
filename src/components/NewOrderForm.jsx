@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Plus, Building2, Clock, Hash, ChevronLeft, ChevronRight, Check, KeyRound, AlertTriangle, Search, Loader2, Sparkles } from "lucide-react";
-import { TIME_SLOTS, buildTitle, formatDuration, createLineItem, lineItemMinutes, timeSlotById, timeSlotText, todayISO, emptyKeyAccess, keyAccessText } from "../data/domain";
-import { CASE_TYPES, SAGSTYPE_KUNDE, SAGSTYPE_TOMGANG, tomgangWarnings, TOMGANG_COLOR } from "../data/caseTypes";
+import { TIME_SLOTS, buildTitle, formatDuration, createLineItem, lineItemMinutes, timeSlotById, timeSlotText, todayISO, emptyKeyAccess, keyAccessText, getDefaultEstimateMinutes } from "../data/domain";
+import { CASE_TYPES, SAGSTYPE_KUNDE, SAGSTYPE_TOMGANG, SAGSTYPE_SERVICETUR, SAGSTYPE_SPECIALTUR, tomgangWarnings, TOMGANG_COLOR, kraeverModelnummer, specialMinutter, specialturFejl } from "../data/caseTypes";
+import { kraeverBeskrivelse } from "../lib/ydelser";
+import { SpecialturFelter } from "../components/SpecialturFelter";
 import { buildEstimateIndex, buildClusterIndex } from "../data/estimates";
 import { findKeyCabinets } from "../data/keyCabinets";
 import { lookupPosOrder } from "../lib/dataStore";
@@ -81,7 +83,7 @@ function CaseTypePicker({ value, onChange }) {
       <div className="grid gap-2 sm:grid-cols-2">
         {CASE_TYPES.map((t) => {
           const valgt = value === t.id;
-          const farve = t.id === SAGSTYPE_TOMGANG ? TOMGANG_COLOR : "#E2621B";
+          const farve = t.farve;
           return (
             <button
               key={t.id}
@@ -158,6 +160,12 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
   const d = draft?.state || {};
   const [step, setStep] = useState(Math.min(Math.max(Number(draft?.step) || 0, 0), STEPS.length - 1));
   const [caseTypeId, setCaseTypeId] = useState(d.caseTypeId || SAGSTYPE_KUNDE);
+  // SPECIALTUR (oktober 2026): beskrivelse, krav til montør og manuel tid for hele turen. Se
+  // data/caseTypes.js og components/SpecialturFelter.jsx. Tiden holdes som tekst, så feltet kan
+  // stå tomt, mens man taster.
+  const [specialBeskrivelse, setSpecialBeskrivelse] = useState(d.specialBeskrivelse || "");
+  const [specialKrav, setSpecialKrav] = useState(d.specialKrav || "");
+  const [manuelTid, setManuelTid] = useState(d.manuelTid ? String(d.manuelTid) : "");
   const [customerName, setCustomerName] = useState(d.customerName || "");
   const [phone, setPhone] = useState(d.phone || "");
   const [email, setEmail] = useState(d.email || "");
@@ -210,16 +218,22 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const blank = useMemo(() => ({ lineItem: createLineItem(productTypes, primaryServices, undefined, "", defaultTimeEstimates), keyAccess: emptyKeyAccess() }), []);
   const snapshot = useMemo(
-    () => ({ caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, adresseKoord, deliveryNote, toMand, keyAccess, date, timeSlotId, vehicleId, lineItems, fleksibel, senestDato }),
-    [caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, adresseKoord, deliveryNote, toMand, keyAccess, date, timeSlotId, vehicleId, lineItems, fleksibel, senestDato]
+    () => ({ caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, adresseKoord, deliveryNote, toMand, keyAccess, date, timeSlotId, vehicleId, lineItems, fleksibel, senestDato, specialBeskrivelse, specialKrav, manuelTid }),
+    [caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, adresseKoord, deliveryNote, toMand, keyAccess, date, timeSlotId, vehicleId, lineItems, fleksibel, senestDato, specialBeskrivelse, specialKrav, manuelTid]
   );
   const kladde = useOrderDraft({ draftId, storeId, userId, state: snapshot, step, blank });
 
   const erTomgang = caseTypeId === SAGSTYPE_TOMGANG;
+  const erServicetur = caseTypeId === SAGSTYPE_SERVICETUR;
+  const erSpecialtur = caseTypeId === SAGSTYPE_SPECIALTUR;
   const udenFastDato = erTomgang && fleksibel;
   const fristFejl = beregnFristFejl({ erTomgang, fleksibel, senestDato, dato: date, idag: todayISO() });
   const titlePreview = buildTitle(lineItems);
-  const expectedMinutes = lineItems.reduce((sum, l) => sum + lineItemMinutes(l), 0);
+  // En specialtur har en manuelt sat tid for hele turen; ellers summen af varelinjerne.
+  const expectedMinutes = specialMinutter({ sagstype: caseTypeId, manuelTid }) ?? lineItems.reduce((sum, l) => sum + lineItemMinutes(l), 0);
+  // Servicetur: modelnummeret er ikke påkrævet (varen står allerede hos kunden). Se kraeverModelnummer.
+  const modelKraeves = kraeverModelnummer({ sagstype: caseTypeId });
+  const specialFejl = specialturFejl({ sagstype: caseTypeId, specialBeskrivelse, manuelTid });
 
   // NØGLESKAB (september 2026, rettet): ved en tomgang slås adressen op
   // mod butikkens nøgleskabe (se data/keyCabinets.js) - men FØRST når
@@ -266,6 +280,22 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
     setCaseTypeId(id);
     if (id === SAGSTYPE_TOMGANG && !keyAccess.kraeves) {
       setKeyAccess((prev) => ({ ...prev, kraeves: true }));
+    }
+    // Servicetur: den første varelinje starter på butikkens servicetur-ydelse (den, der kræver en
+    // opgavebeskrivelse, se lib/ydelser.js), så opgavefeltet står klar. Kun hvis linjen endnu er helt
+    // urørt (intet modelnummer, mærke, tillæg eller selvtastet tid) - et valg, sælgeren har truffet,
+    // overskrives aldrig. Findes der ingen sådan ydelse, ændres intet.
+    if (id === SAGSTYPE_SERVICETUR) {
+      const service = (primaryServices || []).find((p) => kraeverBeskrivelse(p));
+      if (service) {
+        setLineItems((prev) => prev.map((l, i) => {
+          const standardTid = getDefaultEstimateMinutes(defaultTimeEstimates, l.varetypeId, l.primaerYdelse?.id) ?? 0;
+          const urort = i === 0 && !l.model && !l.maerke && (l.tillaeg || []).length === 0 && (l.primaerYdelse?.minutter || 0) === standardTid;
+          if (!urort || l.primaerYdelse?.id === service.id) return l;
+          const minutter = getDefaultEstimateMinutes(defaultTimeEstimates, l.varetypeId, service.id) ?? 0;
+          return { ...l, primaerYdelse: { id: service.id, navn: service.navn, minutter } };
+        }));
+      }
     }
   };
 
@@ -325,12 +355,13 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
   // MODELNUMMER ER PÅKRÆVET (oktober 2026): modelnummeret er varenummeret, og
   // disponenten tæller på det til lager og bestilling. En sag kan derfor ikke bookes
   // med en varelinje uden modelnummer - kravet gælder alle varelinjer.
-  const udenModel = linjerUdenModel(lineItems);
+  // Ved en servicetur er modelnummeret ikke påkrævet (modelKraeves ovenfor).
+  const udenModel = modelKraeves ? linjerUdenModel(lineItems) : [];
   // Adressen skal være valgt fra Adressevælgeren, så sagen har koordinater. Uden dem kan køretid og forslag ikke beregnes.
   // Kravet hører til LEVERING-trinnet (index 1), hvor adressen indtastes - ikke til Kunde-trinnet. Stod det på Kunde-trinnet, kunne man aldrig
   // komme videre, fordi adressefeltet først kommer på næste trin (rettet 19. oktober 2026).
   const harAdresseKoord = !!koordinaterTilSag(adresseKoord, address);
-  const stepValid = [!!customerName.trim(), harAdresseKoord, udenModel.length === 0, true];
+  const stepValid = [!!customerName.trim(), harAdresseKoord, udenModel.length === 0 && specialFejl.length === 0, true];
   const canProceed = stepValid[step];
 
   const goNext = () => {
@@ -372,7 +403,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
   // Fejler oprettelsen, bliver formularen stående med alt det tastede, og
   // kladden består - tidligere lukkede formularen uanset udfaldet, og alt var tabt.
   const submit = async () => {
-    if (!customerName.trim() || !harAdresseKoord || udenModel.length > 0 || (!udenFastDato && !date) || fristFejl || (!udenFastDato && kapStatus.blokeret)) return;
+    if (!customerName.trim() || !harAdresseKoord || udenModel.length > 0 || specialFejl.length > 0 || (!udenFastDato && !date) || fristFejl || (!udenFastDato && kapStatus.blokeret)) return;
     const t = timeSlotById(timeSlotId);
     setSaving(true);
     const nyId = await onAdd({
@@ -389,6 +420,8 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
       senestDato: erTomgang && senestDato ? senestDato : null,
       varelinjer: lineItems,
       toMand,
+      // Specialtur: beskrivelse, krav til montør og manuel tid for hele turen (se data/caseTypes.js).
+      ...(erSpecialtur ? { specialBeskrivelse: specialBeskrivelse.trim(), specialKrav: specialKrav.trim(), manuelTid: Math.round(Number(manuelTid)) } : {}),
       // Revisionsspor: kun regelnavne, ingen mål/tal.
       kapacitetOverrulet: !udenFastDato && kapStatus.overrulet ? { regler: kapStatus.regler, tidspunkt: new Date().toISOString() } : null,
       ordrenummer: externalReference.trim(),
@@ -410,7 +443,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
     <div className="rounded-xl border border-line bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between gap-3 mb-1">
         <h3 className="font-display text-xl uppercase tracking-wide text-ink">
-          {erTomgang ? "Book tomgangskørsel" : "Book ny sag"}
+          {erTomgang ? "Book tomgangskørsel" : erServicetur ? "Book servicetur" : erSpecialtur ? "Book specialtur" : "Book ny sag"}
         </h3>
         <button onClick={onClose} className="min-h-[44px] text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-2 py-1">
           {kladde.harIndhold ? "Luk (gemmes som kladde)" : "Annuller"}
@@ -529,7 +562,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
           </h4>
           {skabDaekkerAdressen ? (
             <p className="text-xs text-ink rounded-lg border border-line bg-panel px-3 py-2.5">
-              Nøglen hentes i nøgleskabet ovenfor, så der skal ikke registreres en nøgleboks. Skal montøren også bruge en kode eller alarm, så skriv det i noten til adressen.
+              Nøglen hentes i nøgleskabet ovenfor, så der skal ikke registreres en nøglebokS. Skal montøren også bruge en kode eller alarm, så skriv det i noten til adressen.
             </p>
           ) : (
             <>
@@ -569,7 +602,22 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
             </div>
           </div>
 
-          <ClusterEstimateNote estimateIndex={estimateIndex} clusterIndex={clusterIndex} lineItems={lineItems} onApplyFactor={applyClusterFactor} />
+          {erSpecialtur ? (
+            <SpecialturFelter
+              beskrivelse={specialBeskrivelse}
+              krav={specialKrav}
+              minutter={manuelTid}
+              onBeskrivelse={setSpecialBeskrivelse}
+              onKrav={setSpecialKrav}
+              onMinutter={setManuelTid}
+              visFejl={attemptedNext}
+            />
+          ) : (
+            <ClusterEstimateNote estimateIndex={estimateIndex} clusterIndex={clusterIndex} lineItems={lineItems} onApplyFactor={applyClusterFactor} />
+          )}
+          {erServicetur && (
+            <p className="text-[11px] text-muted mb-2">Servicetur: modelnummeret er valgfrit, fordi varen allerede står hos kunden. Beskriv opgaven på varelinjen, så montøren ved, hvad der skal gøres.</p>
+          )}
 
           <div className="flex items-center justify-between mb-2 mt-2">
             <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">Varelinjer & ydelser</h4>
@@ -589,7 +637,8 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
                 onChange={(next) => updateLineItem(idx, next)}
                 onRemove={() => removeLineItem(idx)}
                 canRemove={lineItems.length > 1}
-                modelFejl={attemptedNext && manglerModel(l)}
+                modelFejl={attemptedNext && modelKraeves && manglerModel(l)}
+                modelPaakraevet={modelKraeves}
               />
             ))}
           </div>
@@ -687,6 +736,15 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
         </div>
       )}
 
+      {step === STEPS.length - 1 && specialFejl.length > 0 && (
+        <p role="alert" className="text-xs text-danger flex items-start gap-1.5 mt-4">
+          <AlertTriangle size={12} className="shrink-0 mt-0.5" aria-hidden="true" />
+          <span>
+            Specialturen mangler beskrivelse eller forventet tid, så den kan ikke bookes endnu.{" "}
+            <button type="button" onClick={() => { setAttemptedNext(true); setStep(2); }} className="underline font-semibold focus:outline-none focus:ring-2 focus:ring-brand rounded">Gå til varer og specialtur</button>
+          </span>
+        </p>
+      )}
       {step === STEPS.length - 1 && udenModel.length > 0 && (
         <p role="alert" className="text-xs text-danger flex items-start gap-1.5 mt-4">
           <AlertTriangle size={12} className="shrink-0 mt-0.5" aria-hidden="true" />
@@ -716,10 +774,10 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
         ) : (
           <button
             onClick={submit}
-            disabled={saving || udenModel.length > 0 || (!udenFastDato && !date) || !!fristFejl || (!udenFastDato && kapStatus.blokeret)}
+            disabled={saving || udenModel.length > 0 || specialFejl.length > 0 || (!udenFastDato && !date) || !!fristFejl || (!udenFastDato && kapStatus.blokeret)}
             className="px-5 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-60 flex items-center gap-1.5"
           >
-            <Check size={15} aria-hidden="true" /> {saving ? "Booker..." : udenFastDato ? "Opret tomgang" : erTomgang ? "Book tomgang" : "Book sag"}
+            <Check size={15} aria-hidden="true" /> {saving ? "Booker..." : udenFastDato ? "Opret tomgang" : erTomgang ? "Book tomgang" : erServicetur ? "Book servicetur" : erSpecialtur ? "Book specialtur" : "Book sag"}
           </button>
         )}
       </div>
