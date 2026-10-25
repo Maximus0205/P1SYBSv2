@@ -1059,3 +1059,25 @@ export async function clearErrorLogs() {
   }
   return true;
 }
+
+// ---------- Backup (kun systemadmin; selve arbejdet sker i edge-funktionen backup-koer) ----------
+export async function getBackupRuns(limit = 40) {
+  const { data, error } = await supabase.from("backup_runs").select("*").order("startet_at", { ascending: false }).limit(limit);
+  if (error) { logError("getBackupRuns", error); return { fejl: error.message, runs: [] }; }
+  return { fejl: null, runs: data || [] };
+}
+
+async function backupKald(body) {
+  const { data, error } = await supabase.functions.invoke("backup-koer", { body });
+  if (error) {
+    let besked = error.message;
+    try { const j = await error.context?.json?.(); if (j?.fejl) besked = j.fejl; } catch { /* behold standardbeskeden */ }
+    return { ok: false, fejl: besked };
+  }
+  if (data?.fejl) return { ok: false, fejl: data.fejl };
+  return { ok: true, ...data };
+}
+export const startBackup = () => backupKald({ action: "start", type: "manuel" });
+export const hentBackupDownload = (path) => backupKald({ action: "download", path });
+export const tjekBackupGendannelse = (runId, storeId) => backupKald({ action: "tjek", run_id: runId, store_id: storeId });
+export const gendanFraBackup = (runId, storeId) => backupKald({ action: "gendan", run_id: runId, store_id: storeId });

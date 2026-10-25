@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus, X, Bug, RefreshCw, Plug, HardDrive, ChevronLeft, Calculator, Receipt, Palette } from "lucide-react";
+import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus, X, Bug, RefreshCw, Plug, HardDrive, ChevronLeft, Calculator, Receipt, Palette, Archive } from "lucide-react";
 import { getAllStores, createStoreAsSystemAdmin, updateStoreAsSystemAdmin, deleteStoreAsSystemAdmin, getAllUsersAsSystemAdmin, updateProfile, resetPasswordAsAdmin, resetPinAsAdmin, createUserAsAdmin, deleteUserAsAdmin, getErrorLogs, deleteErrorLog, clearErrorLogs, getAllPosIntegrationsAsSystemAdmin, getAllStorageIntegrationsAsSystemAdmin, getStoreRoleKeys } from "../lib/dataStore";
 import { sletBruger } from "../lib/sletBruger";
 import { getStorageUsage, formatBytes } from "../lib/attachments";
@@ -15,6 +15,7 @@ import { BrandingAdmin } from "../components/BrandingAdmin";
 import { StoreFeaturesAdmin } from "../components/StoreFeaturesAdmin";
 import { TidsmaalingerAdmin } from "../components/TidsmaalingerAdmin";
 import { RollerAdmin } from "../components/RollerAdmin";
+import { BackupAdmin } from "../components/BackupAdmin";
 import { alleRoller, rollerForButik } from "../data/roller";
 
 // Kun synlig for brugere med profiles.is_system_admin = true. Faner (se også
@@ -61,6 +62,9 @@ function SystemAdminPage({ currentUserId, onOwnStoreLinked, onBrandingChanged })
         <button onClick={() => setTab("roller")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "roller" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
           <Users size={15} aria-hidden="true" /> Roller
         </button>
+        <button onClick={() => setTab("backup")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "backup" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
+          <Archive size={15} aria-hidden="true" /> Backup
+        </button>
         <button onClick={() => setTab("tider")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "tider" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
           <Calculator size={15} aria-hidden="true" /> Tidsmålinger
         </button>
@@ -79,6 +83,7 @@ function SystemAdminPage({ currentUserId, onOwnStoreLinked, onBrandingChanged })
       {tab === "branding" && <BrandingAdmin onBrandingChanged={onBrandingChanged} />}
       {tab === "funktioner" && <StoreFeaturesAdmin stores={stores} />}
       {tab === "roller" && <RollerAdmin stores={stores} />}
+      {tab === "backup" && <BackupAdmin stores={stores} />}
       {tab === "tider" && <TidsmaalingerAdmin stores={stores} />}
       {tab === "fejl" && <ErrorLogTab stores={stores} />}
     </div>
