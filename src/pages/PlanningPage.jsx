@@ -10,6 +10,7 @@ import { badgeFraMotor } from "../lib/dagsplan";
 import { DateSelector } from "../components/common";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 import { DagensHold } from "../components/DagensHold";
+import { KortTraekProvider, TraekHaandtag, useTraekZone, IndsaetLinje } from "../components/KortTraek";
 import { forslagsDatoer, fristStatus, urgensNoegle } from "../lib/frist";
 import { foersteArbejdsdagFra } from "../lib/arbejdsuge";
 import { samlFravaer } from "../lib/fravaer";
@@ -400,16 +401,18 @@ function shortDateLabel(iso) { return new Date(iso + "T00:00:00").toLocaleDateSt
 //   * sagen er IKKE tildelt nogen bil - dér ER vælgeren hele pointen
 //   * bilen mangler dækning den dag - sagen SKAL flyttes, og så må
 //     handlingen ikke være gemt bag et ekstra tryk
-function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnicianId, color, onLeave, onMoveUp, onMoveDown, canMoveUp, canMoveDown, afsluttet }) {
+function MiniOrderCard({ order, onOpen, onAssign, technicians, currentTechnicianId, color, onLeave, onMoveUp, onMoveDown, canMoveUp, canMoveDown, afsluttet, traekKilde }) {
   // afsluttet: sagen er kørt - vises stadig i oversigten, men kan ikke flyttes eller flyttes rundt (ingen pile, ingen bil-vælger).
   const [showAssign, setShowAssign] = useState(!afsluttet && (!currentTechnicianId || !!onLeave));
 
   return (
     <div
+      {...(!afsluttet ? { "data-traek-kort": "" } : {})}
       className={`rounded-lg border border-line hover:shadow-sm transition-shadow px-2.5 py-2 mb-1.5 last:mb-0 ${afsluttet ? "bg-panel" : "bg-white"}`}
       style={{ borderLeftWidth: 3, borderLeftColor: color }}
     >
       <div className="flex items-start gap-1.5">
+        {!afsluttet && traekKilde && <TraekHaandtag kilde={traekKilde} />}
         {(onMoveUp || onMoveDown) && (
           <div className="flex flex-col shrink-0 -ml-1 -mt-0.5">
             <button onClick={(e) => { e.stopPropagation(); onMoveUp(); }} disabled={!canMoveUp} aria-label="Flyt tidligere i ruten" className="p-2 rounded text-muted hover:text-brand disabled:opacity-20 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-brand" title="Flyt tidligere i ruten">
@@ -514,8 +517,15 @@ function TechnicianDaySection({ row, day, dayOrders, technicians, onOpen, onAssi
   const optKey = `${row.id}|${day}`;
   const aktive = dayOrders.filter((o) => o.status !== "afsluttet");
   const faerdige = dayOrders.filter((o) => o.status === "afsluttet");
+  const zone = useTraekZone(row.id, day);
+  const ids = aktive.map((o) => o.id);
+  const visLinje = zone.erOver && zone.traekkerHer;
   return (
-    <div style={{ borderLeft: `3px solid ${color}` }} className="pl-2">
+    <div
+      data-traek-zone="" data-row={row.id || ""} data-day={day}
+      style={{ borderLeft: `3px solid ${color}` }}
+      className={`pl-2 rounded-r-lg transition-colors ${zone.erOver ? "bg-brand/10 ring-1 ring-brand" : ""}`}
+    >
       <div className="flex items-center justify-between gap-1 mb-1">
         <p className="text-xs font-semibold truncate min-w-0" style={{ color }}>{row.navn}</p>
         <div className="flex items-center gap-1 shrink-0">
@@ -529,8 +539,9 @@ function TechnicianDaySection({ row, day, dayOrders, technicians, onOpen, onAssi
       </div>
       {isOnLeave && <p className="text-[10px] font-semibold uppercase tracking-wide text-danger mb-1 flex items-center gap-0.5"><AlertCircle size={9} aria-hidden="true" /> Ingen montør til rådighed</p>}
       {aktive.map((o, i) => (
+        <React.Fragment key={o.id}>
+        {visLinje && zone.index === i && <IndsaetLinje />}
         <MiniOrderCard
-          key={o.id}
           order={o}
           onOpen={onOpen}
           onAssign={onAssign}
@@ -542,8 +553,11 @@ function TechnicianDaySection({ row, day, dayOrders, technicians, onOpen, onAssi
           onMoveDown={row.id && onReorder ? () => onReorder(row.id, day, o.id, 1) : undefined}
           canMoveUp={i > 0}
           canMoveDown={i < aktive.length - 1}
+          traekKilde={{ orderId: o.id, rowId: row.id || null, day, ids, label: o.kunde?.navn || "Sag" }}
         />
+        </React.Fragment>
       ))}
+      {visLinje && zone.index >= aktive.length && <IndsaetLinje />}
       {faerdige.map((o) => (
         <MiniOrderCard key={o.id} order={o} onOpen={onOpen} technicians={technicians} currentTechnicianId={row.id} color={color} afsluttet />
       ))}
@@ -717,6 +731,7 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
   };
 
   return (
+    <KortTraekProvider onAssign={onAssign} onSetVisitOrder={onSetVisitOrder} bilNavn={(id) => technicians.find((t) => t.id === id)?.navn}>
     <div className="rounded-xl border border-brand bg-white mb-4 overflow-hidden">
       <button onClick={() => setOpen((v) => !v)} aria-expanded={open} className="w-full p-3 flex items-center gap-2 text-left focus:outline-none focus:ring-2 focus:ring-brand">
         <LayoutGrid size={15} className="text-brand shrink-0" aria-hidden="true" />
@@ -854,6 +869,7 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
         </div>
       )}
     </div>
+    </KortTraekProvider>
   );
 }
 
