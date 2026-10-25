@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import { test, beforeEach } from "node:test";
 import {
-  INDBYGGEDE_ROLLER, saetRoller, alleRoller, rolleLabel, rolleAdfaerd, erMontorRolle, erMedhjaelperRolle,
+  FALLBACK_ROLLER, saetRoller, alleRoller, rolleLabel, rolleAdfaerd, erMontorRolle, erMedhjaelperRolle,
   rollerForButik, standardWidgets, lavRolleNoegle, normaliserRoller,
 } from "../src/data/roller.js";
 
-beforeEach(() => saetRoller(INDBYGGEDE_ROLLER));
+beforeEach(() => saetRoller(FALLBACK_ROLLER));
 
-const TOEMRER = { key: "toemrer", label: "Tømrer", beskrivelse: "", adfaerd: "montor", indbygget: false, sortering: 100 };
-const KONTOR = { key: "kontor", label: "Kontor", beskrivelse: "", adfaerd: "standard", indbygget: false, sortering: 101 };
+const TOEMRER = { key: "toemrer", label: "Tømrer", beskrivelse: "", adfaerd: "montor", sortering: 100 };
+const KONTOR = { key: "kontor", label: "Kontor", beskrivelse: "", adfaerd: "standard", sortering: 101 };
 
-test("indbyggede roller opfører sig som før indlæsningen", () => {
+test("nødlisten opfører sig som de gamle roller, hvis databasen ikke svarer", () => {
   assert.equal(erMontorRolle("montor"), true);
   assert.equal(erMedhjaelperRolle("medhjaelper"), true);
   assert.equal(erMontorRolle("saelger"), false);
@@ -20,11 +20,11 @@ test("indbyggede roller opfører sig som før indlæsningen", () => {
 test("tom eller ugyldig liste falder tilbage til de indbyggede roller", () => {
   saetRoller([]); assert.equal(alleRoller().length, 5);
   saetRoller(null); assert.equal(alleRoller().length, 5);
-  assert.equal(normaliserRoller(undefined), INDBYGGEDE_ROLLER);
+  assert.equal(normaliserRoller(undefined), FALLBACK_ROLLER);
 });
 
 test("nye roller får adfærd fra databasen; ukendt adfærd bliver almindelig", () => {
-  saetRoller([...INDBYGGEDE_ROLLER, TOEMRER, { ...KONTOR, adfaerd: "noget-andet" }]);
+  saetRoller([...FALLBACK_ROLLER, TOEMRER, { ...KONTOR, adfaerd: "noget-andet" }]);
   assert.equal(erMontorRolle("toemrer"), true);
   assert.equal(rolleAdfaerd("kontor"), "standard");
   assert.equal(rolleLabel("toemrer"), "Tømrer");
@@ -36,30 +36,42 @@ test("ukendt rolle: nøglen vises som navn og opfører sig almindeligt", () => {
   assert.equal(erMedhjaelperRolle(undefined), false);
 });
 
-test("rettet navn på en indbygget rolle slår igennem", () => {
-  saetRoller(INDBYGGEDE_ROLLER.map((r) => (r.key === "montor" ? { ...r, label: "Tekniker" } : r)));
+test("rettet navn på en rolle slår igennem", () => {
+  saetRoller(FALLBACK_ROLLER.map((r) => (r.key === "montor" ? { ...r, label: "Tekniker" } : r)));
   assert.equal(rolleLabel("montor"), "Tekniker");
 });
 
-test("rollerForButik: indbyggede + tilvalgte + brugerens nuværende rolle", () => {
-  saetRoller([...INDBYGGEDE_ROLLER, TOEMRER, KONTOR]);
-  assert.deepEqual(rollerForButik([]).map((r) => r.key), ["admin", "saelger", "montor", "medhjaelper", "lager"]);
-  assert.ok(rollerForButik(["toemrer"]).some((r) => r.key === "toemrer"));
-  assert.ok(!rollerForButik(["toemrer"]).some((r) => r.key === "kontor"));
-  assert.ok(rollerForButik([], "kontor").some((r) => r.key === "kontor"));
+test("rollerForButik: kun tilvalgte roller + brugerens nuværende rolle", () => {
+  saetRoller([...FALLBACK_ROLLER, TOEMRER, KONTOR]);
+  assert.deepEqual(rollerForButik([]).map((r) => r.key), []);
+  assert.deepEqual(rollerForButik(["saelger", "toemrer"]).map((r) => r.key), ["saelger", "toemrer"]);
+  assert.ok(rollerForButik(["saelger"], "kontor").some((r) => r.key === "kontor"));
+  assert.ok(!rollerForButik(["saelger"]).some((r) => r.key === "kontor"));
 });
 
-test("standardWidgets: indbyggede har faste lister, nye roller afledes af rettigheder og adfærd", () => {
-  saetRoller([...INDBYGGEDE_ROLLER, TOEMRER, KONTOR]);
-  const defaults = { saelger: ["quick_booking"], montor: ["today_route", "notifications"], medhjaelper: ["today_route", "notifications"] };
-  const katalog = [
-    { key: "needs_action", requires: "planlaegning" }, { key: "today_route", requires: "montor" }, { key: "pick_list", requires: "lager" },
-    { key: "quick_booking", requires: "salg" }, { key: "notifications", requires: null }, { key: "upcoming_today", requires: null },
-  ];
-  assert.deepEqual(standardWidgets("saelger", [], defaults, katalog), ["quick_booking"]);
-  assert.deepEqual(standardWidgets("toemrer", ["salg"], defaults, katalog), ["today_route", "notifications"]);
-  assert.deepEqual(standardWidgets("kontor", ["salg", "planlaegning"], defaults, katalog), ["quick_booking", "needs_action", "upcoming_today", "notifications"]);
-  assert.deepEqual(standardWidgets("kontor", [], defaults, katalog), ["upcoming_today", "notifications"]);
+test("normaliserRoller læser databasens kolonner (forside_widgets, ny_butik_standard)", () => {
+  const [r] = normaliserRoller([{ key: "x", label: "X", adfaerd: "montor", sortering: 5, ny_butik_standard: true, forside_widgets: ["today_route"] }]);
+  assert.equal(r.nyButikStandard, true);
+  assert.deepEqual(r.forside, ["today_route"]);
+  assert.equal(normaliserRoller([{ key: "y", label: "Y" }])[0].forside, null);
+});
+
+const KATALOG = [
+  { key: "needs_action", requires: "planlaegning" }, { key: "today_route", requires: "montor" }, { key: "pick_list", requires: "lager" },
+  { key: "quick_booking", requires: "salg" }, { key: "notifications", requires: null }, { key: "upcoming_today", requires: null },
+];
+
+test("standardWidgets: rollens egen liste filtreres på rettigheder og kataloget", () => {
+  saetRoller([{ key: "kontor", label: "Kontor", forside_widgets: ["pick_list", "quick_booking", "findes_ikke", "notifications"] }]);
+  assert.deepEqual(standardWidgets("kontor", ["salg"], KATALOG), ["quick_booking", "notifications"]);
+  assert.deepEqual(standardWidgets("kontor", null, KATALOG), ["pick_list", "quick_booking", "notifications"]); // ubegrænset
+});
+
+test("standardWidgets: uden egen liste afledes den af rettighederne i fast rækkefølge", () => {
+  saetRoller([{ key: "kontor", label: "Kontor" }]);
+  assert.deepEqual(standardWidgets("kontor", ["salg", "planlaegning"], KATALOG), ["quick_booking", "needs_action", "upcoming_today", "notifications"]);
+  assert.deepEqual(standardWidgets("kontor", [], KATALOG), ["upcoming_today", "notifications"]);
+  assert.deepEqual(standardWidgets("ukendt", ["lager"], KATALOG), ["pick_list", "upcoming_today", "notifications"]);
 });
 
 test("lavRolleNoegle: danske tegn, specialtegn og grænser", () => {

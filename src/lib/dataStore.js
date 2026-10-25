@@ -686,7 +686,7 @@ export async function getRoleDefaultPermissions() {
 // Roller er fælles for alle butikker og vedligeholdes af systemadministratoren; hver butik tilvælger de roller, den vil bruge.
 // Ændringer går udelukkende gennem databasefunktioner, der selv kontrollerer, hvem der må hvad (se roller.js for overblikket).
 export async function getRoles() {
-  const { data, error } = await supabase.from("roles").select("key, label, beskrivelse, adfaerd, indbygget, sortering").order("sortering").order("label");
+  const { data, error } = await supabase.from("roles").select("key, label, beskrivelse, adfaerd, sortering, ny_butik_standard, forside_widgets").order("sortering").order("label");
   if (error) {
     logDbError("dataStore:getRoles", "Could not load roles", error);
     return [];
@@ -722,8 +722,11 @@ export async function getStoreIdsForRole(key) {
 }
 export const createRole = ({ key, label, beskrivelse, adfaerd, kopierFra }) =>
   rolleRpc("dataStore:createRole", "opret_rolle", { p_key: key, p_label: label, p_beskrivelse: beskrivelse || "", p_adfaerd: adfaerd, p_kopier_fra: kopierFra || null }, "Could not create role");
-export const updateRole = (key, { label, beskrivelse }) =>
-  rolleRpc("dataStore:updateRole", "ret_rolle", { p_key: key, p_label: label, p_beskrivelse: beskrivelse || "" }, "Could not update role");
+export const updateRole = (key, { label, beskrivelse, adfaerd, nyButikStandard, forside }) =>
+  rolleRpc("dataStore:updateRole", "ret_rolle", {
+    p_key: key, p_label: label, p_beskrivelse: beskrivelse || "", p_adfaerd: adfaerd,
+    p_ny_butik_standard: !!nyButikStandard, p_forside: Array.isArray(forside) ? forside : null,
+  }, "Could not update role");
 export const setRolePermissions = (key, rettigheder) =>
   rolleRpc("dataStore:setRolePermissions", "saet_rolle_rettigheder", { p_key: key, p_rettigheder: rettigheder }, "Could not set role permissions");
 export const deleteRole = (key) =>

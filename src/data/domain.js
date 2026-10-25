@@ -486,17 +486,6 @@ const DASHBOARD_WIDGET_CATALOG = [
   { key: "upcoming_today", label: "Sager i dag", icon: CalendarClock, requires: null },
 ];
 
-// Standard-widgets pr. rolle, indtil brugeren selv tilpasser sin forside.
-// "quick_booking" står højt for sælgere og admins: det er den handling,
-// de oftest kommer for.
-const DEFAULT_DASHBOARD_WIDGETS = {
-  admin: ["needs_action", "quick_booking", "upcoming_today", "notifications"],
-  saelger: ["quick_booking", "needs_action", "upcoming_today", "notifications"],
-  montor: ["today_route", "notifications"],
-  lager: ["pick_list"],
-  medhjaelper: ["today_route", "notifications"],
-};
-
 export {
   uid, now, todayISO, addDays, formatLongDate, formatShortDate, isToday, formatDuration, formatTime, totalMinutes, serviceIcon,
   DEFAULT_SERVICE_MINUTES, createAddOn, OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID,
@@ -507,7 +496,7 @@ export {
   weekDays, buildTitle, keyAccessText, TIME_SLOTS, timeSlotById, timeSlotText, KEY_ACCESS_TYPES, TECHNICIAN_COLORS, technicianColor,
   DEFAULT_VEHICLES, vehicleLabel, vehicleBlockedByTimeOff, isTechnicianAbsent, activeSickLeave, vehicleAbsences, vehicleHasCoverage, vehiclePaceFactor,
   emptyCustomer, emptyKeyAccess, STATUS_META,
-  dailyOrderCompare, needsPlanning, computeNotifications, PAGES, PAGES_FOR_ROLE, canDo, DASHBOARD_WIDGET_CATALOG, DEFAULT_DASHBOARD_WIDGETS,
+  dailyOrderCompare, needsPlanning, computeNotifications, PAGES, PAGES_FOR_ROLE, canDo, DASHBOARD_WIDGET_CATALOG,
 };
 
 // Beregner, for en given bruger, hvilke af DERES EGNE bookede sager der

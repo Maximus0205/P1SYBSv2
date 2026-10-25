@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from "react-router-dom";
 
-import { todayISO, computeNotifications, DEFAULT_DASHBOARD_WIDGETS, DASHBOARD_WIDGET_CATALOG } from "./data/domain";
+import { todayISO, computeNotifications, DASHBOARD_WIDGET_CATALOG } from "./data/domain";
 import { erMontorRolle, erMedhjaelperRolle, standardWidgets } from "./data/roller";
 import { useSession } from "./hooks/useSession";
 import { useCatalog } from "./hooks/useCatalog";
@@ -591,7 +591,7 @@ export default function App() {
   // finkornede sags-rettigheder. null for en systemadmin = "ubegrænset"
   // (se canDo() i domain.js).
   const effectivePermissions = profile.erSystemadmin ? null : permissions;
-  const dashboardWidgets = profile.dashboardWidgets || standardWidgets(profile.rolle, permissions, DEFAULT_DASHBOARD_WIDGETS, DASHBOARD_WIDGET_CATALOG);
+  const dashboardWidgets = profile.dashboardWidgets || standardWidgets(profile.rolle, effectivePermissions, DASHBOARD_WIDGET_CATALOG);
   const currentPage = location.pathname.replace(/^\//, "").split("/")[0] || allowedPages[0];
   const narrowPage = currentPage === "montor" || currentPage === "sag";
   // Topmenuen skjules, mens en KØRENDE person har en sag åben - skærmen

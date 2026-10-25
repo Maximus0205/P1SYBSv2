@@ -63,7 +63,7 @@ function AdminPage({
     getRoleDefaultPermissions().then(setRoleDefaults);
   }, []);
 
-  // Butikkens tilvalgte fælles roller (se ButikRollerValg). Rollelisten til udvælgelse = indbyggede + tilvalgte.
+  // Butikkens tilvalgte roller (se ButikRollerValg). Rollelisten til udvælgelse = dem butikken har tilvalgt.
   const [tilvalgteRoller, setTilvalgteRoller] = useState([]);
   const hentTilvalgte = () => { if (store?.id) getStoreRoleKeys(store.id).then(setTilvalgteRoller); };
   useEffect(() => { hentTilvalgte(); }, [store?.id]); // eslint-disable-line react-hooks/exhaustive-deps
