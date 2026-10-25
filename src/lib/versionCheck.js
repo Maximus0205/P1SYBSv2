@@ -20,10 +20,17 @@
 // Hentningen sker ALTID med { cache: "no-store" } + et tilfældigt
 // forespørgselsparameter - dobbelt sikring mod, at netop DENNE ene lille
 // fil selv bliver cachet væk.
+import { erNyUdgave } from "./versionCheckCore";
+
 const VERSION_URL = `${import.meta.env.BASE_URL}version.json`;
 const CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutter
 
-let bootBuild = null; // den udgivelse, DENNE side blev indlæst med
+// Den udgivelse, DENNE kode blev bygget som - indbygget ved bygning (vite.config.js
+// "define", sat fra deploy.yml). Den må IKKE hentes fra serveren ved opstart:
+// en telefon med en gammel, cachet index.html ville så få den nyeste id og aldrig
+// se beskeden (se versionCheckCore.js). Null i lokal udvikling = ingen besked.
+// eslint-disable-next-line no-undef
+let bootBuild = typeof __APP_BUILD__ === "string" && __APP_BUILD__ ? __APP_BUILD__ : null;
 let latestSeen = null; // den nyeste udgivelse, vi har set på serveren
 const listeners = new Set();
 
@@ -43,7 +50,7 @@ function notify() {
   // FORSKELLIGE - ellers ville en manglende/endnu-ikke-udgivet
   // version.json (fx lige efter denne funktion selv er udgivet) blive
   // fejltolket som "der er en ny version".
-  const nyVersionKlar = bootBuild != null && latestSeen != null && latestSeen !== bootBuild;
+  const nyVersionKlar = erNyUdgave(bootBuild, latestSeen);
   listeners.forEach((fn) => {
     try {
       fn(nyVersionKlar);
@@ -60,10 +67,6 @@ function notify() {
 // det er ofte HER, en opdatering reelt bliver synlig, ikke først efter
 // et helt 5-minutters interval.
 export function startVersionCheck() {
-  fetchBuild().then((build) => {
-    bootBuild = build;
-  });
-
   const check = async () => {
     const build = await fetchBuild();
     if (build) {
@@ -72,6 +75,9 @@ export function startVersionCheck() {
     }
   };
 
+  // Tjek med det samme ved opstart - ellers ville en forældet side først opdage
+  // det efter 5 minutter, eller når den næste gang får fokus.
+  check();
   setInterval(check, CHECK_INTERVAL_MS);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") check();
@@ -81,6 +87,6 @@ export function startVersionCheck() {
 
 export function subscribeNewVersion(fn) {
   listeners.add(fn);
-  fn(bootBuild != null && latestSeen != null && latestSeen !== bootBuild);
+  fn(erNyUdgave(bootBuild, latestSeen));
   return () => listeners.delete(fn);
 }
