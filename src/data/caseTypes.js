@@ -27,9 +27,28 @@
 // montørvisningen og planlægningen skal kunne spørge om, og den skal være
 // let at finde og udvide, hvis der senere kommer flere typer til (fx
 // serviceopgaver eller reklamationer).
+//
+// FIRE SAGSTYPER (oktober 2026): Kundesag, Tomgang, Servicetur og Specialtur.
+// Typerne svarer på HVEM der tager imod og HVAD slags tur det er. REKLAMATION er
+// bevidst IKKE en sagstype: en reklamation oprettes som en opfølgning direkte på
+// den oprindelige sag (se opfølgningstyperne nederst), så den er linket til sagen
+// og kan spores tilbage.
+//
+//   * SERVICETUR: kunden er hjemme og varen står der allerede (eftersyn, tjek,
+//     mindre fejl). Der er ofte intet nyt at pakke ud, og modelnummeret er ikke
+//     altid kendt - det er derfor ikke påkrævet. Bruges sammen med en ydelse med
+//     opgavebeskrivelse (se lib/ydelser.js), hvor sælgeren skriver, hvad der skal gøres.
+//   * SPECIALTUR: en særopgave, som ikke alle montører nødvendigvis kan (fx en
+//     lofthængt emhætte). Tiden for HELE turen sættes manuelt (manuelTid), der er en
+//     fri beskrivelse af opgaven (specialBeskrivelse, grundlag for senere
+//     sammenligning med tidligere specialture) og et valgfrit krav til montøren
+//     (specialKrav). Der er ingen automatisk kompetencestyring - kravet er en tekst,
+//     som planlæggeren og montøren kan se.
 
 export const SAGSTYPE_KUNDE = "kunde";
 export const SAGSTYPE_TOMGANG = "tomgang";
+export const SAGSTYPE_SERVICETUR = "servicetur";
+export const SAGSTYPE_SPECIALTUR = "specialtur";
 
 // Sager oprettet FØR typen blev indført har ingen sagstype-værdi. De
 // behandles som almindelige kundesager - hvilket de også var. Derfor
@@ -38,6 +57,19 @@ export const SAGSTYPE_TOMGANG = "tomgang";
 // fallbacken.
 export const caseType = (order) => order?.sagstype || SAGSTYPE_KUNDE;
 export const isTomgang = (order) => caseType(order) === SAGSTYPE_TOMGANG;
+export const isServicetur = (order) => caseType(order) === SAGSTYPE_SERVICETUR;
+export const isSpecialtur = (order) => caseType(order) === SAGSTYPE_SPECIALTUR;
+
+// Farve til markeringen i lister og på sagskort. Tomgang får en anden
+// farve end brandfarven, så den kan skelnes fra "nøgle kræves" på en
+// almindelig sag - de to ligner hinanden, men betyder noget forskelligt.
+// Servicetur og specialtur har hver deres farve af samme grund. Alle tre har
+// tilstrækkelig kontrast mod hvid til lille tekst, og typen står altid også som
+// tekst - farven er aldrig det eneste tegn.
+export const KUNDE_COLOR = "#E2621B";
+export const TOMGANG_COLOR = "#6B5B95";
+export const SERVICETUR_COLOR = "#1F7A8C";
+export const SPECIALTUR_COLOR = "#9A5B00";
 
 export const CASE_TYPES = [
   {
@@ -45,21 +77,79 @@ export const CASE_TYPES = [
     label: "Kundesag",
     kort: "Kunde",
     beskrivelse: "Kunden er hjemme og tager imod montøren.",
+    farve: KUNDE_COLOR,
   },
   {
     id: SAGSTYPE_TOMGANG,
     label: "Tomgang (tomt lejemål)",
     kort: "Tomgang",
     beskrivelse: "Tomt lejemål — montøren lukker sig selv ind med nøgle. Ingen er til stede.",
+    farve: TOMGANG_COLOR,
+  },
+  {
+    id: SAGSTYPE_SERVICETUR,
+    label: "Servicetur",
+    kort: "Servicetur",
+    beskrivelse: "Kunden er hjemme, og varen står allerede der. Eftersyn, tjek eller mindre fejl.",
+    farve: SERVICETUR_COLOR,
+  },
+  {
+    id: SAGSTYPE_SPECIALTUR,
+    label: "Specialtur",
+    kort: "Specialtur",
+    beskrivelse: "Særopgave, som ikke alle montører kan. Tiden sættes manuelt.",
+    farve: SPECIALTUR_COLOR,
   },
 ];
 
 export const caseTypeLabel = (order) => CASE_TYPES.find((t) => t.id === caseType(order))?.kort || "Kunde";
+export const caseTypeColor = (order) => CASE_TYPES.find((t) => t.id === caseType(order))?.farve || KUNDE_COLOR;
 
-// Farve til markeringen i lister og på sagskort. Tomgang får en anden
-// farve end brandfarven, så den kan skelnes fra "nøgle kræves" på en
-// almindelig sag - de to ligner hinanden, men betyder noget forskelligt.
-export const TOMGANG_COLOR = "#6B5B95";
+// Skal hver varelinje have et modelnummer, før sagen kan bookes? Ja på alle typer undtagen
+// servicetur: dér står varen allerede hos kunden, og modelnummeret er ikke altid kendt, når
+// turen bookes. Et angivet modelnummer bruges stadig som før. Tager en sag eller blot
+// { sagstype }, så formularen kan spørge, før sagen findes.
+export const kraeverModelnummer = (order) => caseType(order) !== SAGSTYPE_SERVICETUR;
+
+// ---------------------------------------------------------------------------
+// SPECIALTUR: manuel tid, beskrivelse og krav til montør.
+//
+// manuelTid er den forventede tid for HELE turen i minutter og erstatter summen af
+// varelinjernes tider (se orderExpectedMinutes i domain.js), så kapacitetstjek, forslag og
+// planlægning regner med den. Felterne er flade på sagen (ikke et indlejret objekt), så
+// sammenfletning af samtidige rettelser (lib/orderMerge.js) virker felt for felt.
+export const SPECIAL_MAKS_MINUTTER = 24 * 60;
+
+// Den manuelle tid i hele minutter, eller null når sagen ikke er en specialtur, eller tiden
+// ikke er sat til noget brugbart (tom, 0, negativ eller ikke et tal). Så falder
+// beregningen tilbage på varelinjerne, i stedet for at en tom værdi giver en tur på 0 minutter.
+export function specialMinutter(order) {
+  if (!isSpecialtur(order)) return null;
+  const raa = order?.manuelTid;
+  if (raa === null || raa === undefined || raa === "") return null;
+  const m = Math.round(Number(raa));
+  return Number.isFinite(m) && m > 0 ? m : null;
+}
+
+// Hvad mangler der på en specialtur? Tom liste = i orden (og altid tom for andre typer).
+// Bruges som krav i oprettelsen og i redigeringen: uden beskrivelse og tid giver en specialtur
+// ingen mening, og beskrivelsen er netop det, senere forslag til tid skal kunne bygge på.
+export function specialturFejl(order) {
+  if (!isSpecialtur(order)) return [];
+  const fejl = [];
+  if (!(order?.specialBeskrivelse ?? "").toString().trim()) {
+    fejl.push("Beskriv opgaven, så montøren og senere forslag til tid ved, hvad der skal gøres.");
+  }
+  const raa = order?.manuelTid;
+  const tom = raa === null || raa === undefined || raa === "";
+  const tal = Number(raa);
+  if (tom || !Number.isFinite(tal) || tal <= 0) {
+    fejl.push("Angiv den forventede tid for hele turen i minutter.");
+  } else if (tal > SPECIAL_MAKS_MINUTTER) {
+    fejl.push("Tiden kan højst være 24 timer (1440 minutter).");
+  }
+  return fejl;
+}
 
 // Skal der kunne sendes ankomst-SMS og ringes til kunden fra sagen?
 // Nej ved tomgang: der er ingen på adressen. Rekvirentens nummer står
