@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { getStoreFeatures } from "../lib/storeFeatures";
 import { featureStandard } from "../data/storeFeatures";
+import { ButikVarerProvider } from "./useButikVarer";
 
 // Hvilke funktioner er slået fra for den viste butik. Alt er TIL, indtil andet er hentet
 // (og hvis opslaget fejler): en hentefejl må ikke fjerne funktioner for en butik. Det
@@ -17,7 +18,9 @@ export function StoreFeaturesProvider({ storeId, children }) {
   }, [storeId]);
   useEffect(() => { setFeatures({}); reload(); }, [reload]);
   const value = useMemo(() => ({ features, reload }), [features, reload]);
-  return <FeaturesContext.Provider value={value}>{children}</FeaturesContext.Provider>;
+  // Butikkens varedatabase (hooks/useButikVarer.jsx) hører til samme butik og har samme levetid som butiksfunktionerne,
+  // så den monteres her i stedet for et ekstra lag i App.jsx.
+  return <FeaturesContext.Provider value={value}><ButikVarerProvider storeId={storeId}>{children}</ButikVarerProvider></FeaturesContext.Provider>;
 }
 
 export const useFeature = (noegle) => {

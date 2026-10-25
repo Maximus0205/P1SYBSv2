@@ -10,6 +10,7 @@ import { BilKapacitet } from "../components/BilKapacitet";
 import { MontoerKalender } from "../components/MontoerKalender";
 import { HoldIndstillinger } from "../components/HoldIndstillinger";
 import { YdelsesIndstillinger } from "../components/YdelsesIndstillinger";
+import { ButikVarerAdmin } from "../components/ButikVarerAdmin";
 import { getPermissionsCatalog, getRoleDefaultPermissions } from "../lib/dataStore";
 
 // RETTET (august 2026): Admin-sidens FANER vises nu ud fra brugerens
@@ -145,7 +146,7 @@ function AdminPage({
               </button>
             </div>
           </div>
-          <p className="text-xs text-muted mb-3">"Blokér" bruges fx når en bil er på værksted. Bilen kan ses, men kan ikke vælges til en montør, før den åbnes igen. Er montøren fraværende, blokeres bilen automatisk. Tempo justerer kun kapacitetsberegningen i Planlægning, ikke sagens tidsestimat.</p>
+          <p className="text-xs text-muted mb-3">"Blokerér" bruges fx når en bil er på værksted. Bilen kan ses, men kan ikke vælges til en montør, før den åbnes igen. Er montøren fraværende, blokeres bilen automatisk. Tempo justerer kun kapacitetsberegningen i Planlægning, ikke sagens tidsestimat.</p>
           <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Alle biler ({vehicles.length})</h3>
           {vehicles.length === 0 ? (
             <p className="text-sm text-muted italic">Ingen biler oprettet endnu.</p>
@@ -191,7 +192,7 @@ function AdminPage({
             Hver varelinje på en sag har en varetype, mærke/model, én primær ydelse (fx "Montering", som bestemmer grundtiden) og evt. tillægsydelser. Hvilke tillægsydelser der kan vælges, styres under "Tillægsydelser". Standardtider er kun et udgangspunkt og kan rettes pr. booking. Ændringer påvirker kun nye bookinger.
           </p>
           <div className="flex gap-1.5 mb-4 flex-wrap">
-            {[{ k: "kategorier", l: "Kategorier" }, { k: "varetyper", l: "Varetyper" }, { k: "primaer", l: "Primære ydelser" }, { k: "tillaeg", l: "Tillægsydelser" }, { k: "standardtider", l: "Standardtider" }].map((f) => (
+            {[{ k: "kategorier", l: "Kategorier" }, { k: "varetyper", l: "Varetyper" }, { k: "primaer", l: "Primære ydelser" }, { k: "tillaeg", l: "Tillægsydelser" }, { k: "standardtider", l: "Standardtider" }, { k: "butikvarer", l: "Butikkens varer" }].map((f) => (
               <button key={f.k} onClick={() => setProductTab(f.k)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide border transition-colors ${productTab === f.k ? "bg-ink text-white border-ink" : "text-muted border-line hover:border-brand hover:text-brand"}`}>{f.l}</button>
             ))}
           </div>
@@ -204,6 +205,7 @@ function AdminPage({
             </>
           )}
           {productTab === "tillaeg" && <AddOnServiceAdmin addOnServices={addOnServices} productTypes={productTypes} primaryServices={primaryServices} onAdd={onAddAddOnService} onUpdate={onUpdateAddOnService} onDelete={onDeleteAddOnService} />}
+          {productTab === "butikvarer" && <ButikVarerAdmin productTypes={productTypes} />}
           {productTab === "standardtider" && <DefaultTimeEstimateAdmin productTypes={productTypes} primaryServices={primaryServices} addOnServices={addOnServices} defaultTimeEstimates={defaultTimeEstimates || []} onSetEstimate={onSetDefaultTimeEstimate} />}
         </div>
       )}
