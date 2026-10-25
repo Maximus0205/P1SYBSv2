@@ -1,7 +1,8 @@
 import React from "react";
-import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash, X, Plus, User, Lock, PlayCircle, CheckCheck, Camera, CalendarCheck2, DoorOpen } from "lucide-react";
+import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash, X, Plus, User, Lock, PlayCircle, CheckCheck, Camera, CalendarCheck2, HardHat } from "lucide-react";
 import { buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel, dailyOrderCompare, canDo, missingLineItems } from "../data/domain";
-import { isTomgang, showsArrivalContact, followUpTypeLabel, TOMGANG_COLOR } from "../data/caseTypes";
+import { isTomgang, isSpecialtur, showsArrivalContact, followUpTypeLabel } from "../data/caseTypes";
+import { CaseTypeBadge } from "../components/CaseTypeBadge";
 import { manualKeyAccessText, routeUrlViaCabinets } from "../data/keyCabinets";
 import { StatusBadge, DateSelector, ToMandBadge } from "../components/common";
 import { Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
@@ -33,18 +34,9 @@ const mapsUrl = (address) => `https://www.google.com/maps/search/?api=1&query=${
 // uanset om nummeret er skrevet med mellemrum ("12 34 56 78").
 const telHref = (phone) => `tel:${(phone || "").replace(/[^\d+]/g, "")}`;
 
-// Lille TOMGANG-mærkat - genbruges på både rutekortet og sagsdetaljen, så
-// den ser ens ud begge steder og i oprettelsesformularen/sagslisten.
-function TomgangBadge() {
-  return (
-    <span
-      className="inline-flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md border"
-      style={{ color: TOMGANG_COLOR, borderColor: TOMGANG_COLOR }}
-    >
-      <DoorOpen size={9} aria-hidden="true" /> Tomgang
-    </span>
-  );
-}
+// Mærkaten for sagstypen (tomgang, servicetur, specialtur) er flyttet til
+// components/CaseTypeBadge.jsx, så den ser ens ud på rutekortet, sagsdetaljen,
+// sagslisterne og i oprettelsesformularen.
 
 // ArrivalSmsButton (SMS om forventet ankomst) ligger siden oktober 2026 i
 // components/ArrivalSmsButton.jsx. Valget af minutter åbnede før som en boks
@@ -195,14 +187,18 @@ function OrderStopCard({ order: s, keyCabinets, onOpen, onMoveUp, onMoveDown, ca
   const medTid = useFeature("tid_stempling");
   const erAfsluttet = s.status === "afsluttet";
   const mangler = missingLineItems(s);
-  const tomgang = isTomgang(s);
   const skabe = useCabinetMatches(s, keyCabinets);
   const synligeSkabe = erAfsluttet ? [] : skabe;
   const noegleTekst = manualKeyAccessText(s.noegle);
   // OPGAVEBESKRIVELSE (oktober 2026): hvad der skal gøres, fx ved en servicetur - vises her,
   // så montøren ser det allerede i ruteoversigten og ikke først, når sagen åbnes.
   const opgaver = (s.varelinjer || []).filter((v) => (v.opgavebeskrivelse || "").trim());
-  const hasAlerts = Boolean(synligeSkabe.length > 0 || noegleTekst || s.kunde.leveringsnote || s.problem || mangler.length > 0 || opgaver.length > 0);
+  // SPECIALTUR (oktober 2026): beskrivelsen af opgaven og kravet til montøren vises her, så montøren ser dem
+  // allerede i ruteoversigten.
+  const specialtur = isSpecialtur(s);
+  const specialBesk = specialtur ? (s.specialBeskrivelse || "").trim() : "";
+  const specialKrav = specialtur ? (s.specialKrav || "").trim() : "";
+  const hasAlerts = Boolean(synligeSkabe.length > 0 || noegleTekst || s.kunde.leveringsnote || s.problem || mangler.length > 0 || opgaver.length > 0 || specialBesk || specialKrav);
 
   return (
     <div className="rounded-xl bg-white border border-[#ECECEC] shadow-sm hover:shadow-md transition-shadow p-3.5">
@@ -221,7 +217,7 @@ function OrderStopCard({ order: s, keyCabinets, onOpen, onMoveUp, onMoveDown, ca
             )}
             <span className="font-mono text-[10px] text-faint">#{s.nr}</span>
             {s.toMand && <ToMandBadge />}
-            {tomgang && <TomgangBadge />}
+            <CaseTypeBadge order={s} />
           </div>
           {/* Ingen sagsoverskrift: montøren har brug for KUNDEN og HVAD der skal i bilen, ikke en opsummering af sagen. Kundeinfo står øverst,
               og hver varelinje er listet direkte på kortet, så bilen kan pakkes uden at åbne hver enkelt sag (oktober 2026). */}
@@ -266,6 +262,14 @@ function OrderStopCard({ order: s, keyCabinets, onOpen, onMoveUp, onMoveDown, ca
           )}
           {s.kunde.leveringsnote && (
             <p className="text-xs font-semibold text-brand flex items-start gap-1.5"><AlertTriangle size={13} className="shrink-0 mt-0.5" aria-hidden="true" /> {s.kunde.leveringsnote}</p>
+          )}
+          {specialKrav && (
+            <p className="text-xs font-semibold text-brand flex items-start gap-1.5"><HardHat size={13} className="shrink-0 mt-0.5" aria-hidden="true" /> <span>Krav til montør: {specialKrav}</span></p>
+          )}
+          {specialBesk && (
+            <p className="text-xs font-semibold text-brand flex items-start gap-1.5">
+              <Pencil size={13} className="shrink-0 mt-0.5" aria-hidden="true" /> <span className="line-clamp-3">Specialopgave: {specialBesk}</span>
+            </p>
           )}
           {opgaver.map((v) => (
             <p key={v.id} className="text-xs font-semibold text-brand flex items-start gap-1.5">
@@ -610,7 +614,7 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
                 {order.ordrenummer && <span className="ml-2 inline-flex items-center gap-0.5"><Hash size={10} aria-hidden="true" /> {order.ordrenummer}</span>}
               </span>
               {order.toMand && <ToMandBadge />}
-              {tomgang && <TomgangBadge />}
+              <CaseTypeBadge order={order} />
             </p>
             <StatusBadge status={order.status} />
           </div>
@@ -622,6 +626,16 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
           </p>
           {tomgang && (
             <p className="text-xs text-muted mt-0.5">Tomgang — ingen er på adressen. {order.kunde.navn} er rekvirenten, ikke en beboer.</p>
+          )}
+          {isSpecialtur(order) && ((order.specialBeskrivelse || "").trim() || (order.specialKrav || "").trim()) && (
+            <div className="mt-2 rounded-lg bg-brand/5 border border-brand/20 px-3 py-2 space-y-1">
+              {(order.specialKrav || "").trim() && (
+                <p className="text-sm font-semibold text-brand flex items-start gap-1.5"><HardHat size={14} className="shrink-0 mt-0.5" aria-hidden="true" /> <span>Krav til montør: {order.specialKrav}</span></p>
+              )}
+              {(order.specialBeskrivelse || "").trim() && (
+                <p className="text-sm text-ink"><span className="font-semibold text-brand">Specialopgave:</span> {order.specialBeskrivelse}</p>
+              )}
+            </div>
           )}
           {followUpTypeLabel(order) && (
             <p className="text-xs text-brand font-semibold mt-0.5 flex items-center gap-1"><Copy size={11} className="shrink-0" aria-hidden="true" /> Opfølgning: {followUpTypeLabel(order)}</p>
