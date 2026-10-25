@@ -424,7 +424,9 @@ function ProductTypeInput({ lineItem, productTypes, onSelectType, onFreeText }) 
 //     kombination af varetype og ydelse - præcis den fejl, der blev
 //     rapporteret (varetype+ydelse valgt korrekt, tid endte alligevel på
 //     0). Slår nu korrekt op i standardtider-matrixen i stedet.
-function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices, defaultTimeEstimates, estimateIndex, onChange, onRemove, canRemove, modelFejl }) {
+// modelPaakraevet (oktober 2026): false ved en servicetur, hvor varen allerede står hos kunden og
+// modelnummeret ikke altid er kendt. Standard er true, så alle andre kaldere er uændrede.
+function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices, defaultTimeEstimates, estimateIndex, onChange, onRemove, canRemove, modelFejl, modelPaakraevet = true }) {
   const available = availableAddOns(lineItem.varetypeId, lineItem.primaerYdelse?.id, addOnServices);
 
   // OPGAVEBESKRIVELSE (oktober 2026): nogle ydelser, typisk en servicetur, kan ikke
@@ -548,9 +550,9 @@ function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices
           <input
             value={lineItem.model}
             onChange={(e) => onChange({ ...lineItem, model: e.target.value })}
-            placeholder="Modelnummer"
+            placeholder={modelPaakraevet ? "Modelnummer" : "Modelnummer (valgfrit)"}
             aria-label="Modelnummer"
-            aria-required="true"
+            aria-required={modelPaakraevet ? "true" : undefined}
             aria-invalid={modelFejl ? "true" : undefined}
             aria-describedby={modelFejl ? `model-fejl-${lineItem.id}` : undefined}
             className={`w-full rounded-lg border bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:border-brand ${modelFejl ? "border-danger" : "border-line"}`}
@@ -840,7 +842,7 @@ function CustomerHistoryLookup({ orders, currentOrderId, phone, address, name, o
 }
 
 // Tidsbadget i booking-ugevisningerne = KAPACITETSMOTOREN (oktober 2026, se lib/useMotorDage.js): før en simpel sum af sagernes minutter mod en fast arbejdsdag
-// på 7,5 t, nu dagens tid fra start til bilen er hjemme (køretid, lager, arbejdstid) - samme tal som badgen i Planlægning.
+// på 7,5 t, nu dagens tid fra start til bilen er hjemme (køretîd, lager, arbejdstid) - samme tal som badgen i Planlægning.
 // Sager uden bil ("Ikke tildelt") kan motoren ikke regne på: de vises kun som antal.
 function cellFra(badges, r, d, orders) {
   const dayOrders = (orders || []).filter((o) => o.bilId === r.id && o.dato === d && o.status !== "afsluttet");
