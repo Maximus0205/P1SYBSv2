@@ -682,6 +682,55 @@ export async function getRoleDefaultPermissions() {
   return map;
 }
 
+// ---------- Roller (oktober 2026) ----------
+// Roller er fælles for alle butikker og vedligeholdes af systemadministratoren; hver butik tilvælger de roller, den vil bruge.
+// Ændringer går udelukkende gennem databasefunktioner, der selv kontrollerer, hvem der må hvad (se roller.js for overblikket).
+export async function getRoles() {
+  const { data, error } = await supabase.from("roles").select("key, label, beskrivelse, adfaerd, indbygget, sortering").order("sortering").order("label");
+  if (error) {
+    logDbError("dataStore:getRoles", "Could not load roles", error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function getStoreRoleKeys(storeId) {
+  if (!storeId) return [];
+  const { data, error } = await supabase.from("store_roles").select("role").eq("store_id", storeId);
+  if (error) {
+    logDbError("dataStore:getStoreRoleKeys", "Could not load store roles", error);
+    return [];
+  }
+  return (data || []).map((r) => r.role);
+}
+
+async function rolleRpc(source, navn, args, besked) {
+  const { error } = await supabase.rpc(navn, args);
+  if (error) {
+    logWriteError(source, besked, error, "Rollen blev ikke gemt:");
+    return { ok: false, fejl: error.message };
+  }
+  return { ok: true };
+}
+export async function getStoreIdsForRole(key) {
+  const { data, error } = await supabase.from("store_roles").select("store_id").eq("role", key);
+  if (error) {
+    logDbError("dataStore:getStoreIdsForRole", "Could not load stores for role", error);
+    return [];
+  }
+  return (data || []).map((r) => r.store_id);
+}
+export const createRole = ({ key, label, beskrivelse, adfaerd, kopierFra }) =>
+  rolleRpc("dataStore:createRole", "opret_rolle", { p_key: key, p_label: label, p_beskrivelse: beskrivelse || "", p_adfaerd: adfaerd, p_kopier_fra: kopierFra || null }, "Could not create role");
+export const updateRole = (key, { label, beskrivelse }) =>
+  rolleRpc("dataStore:updateRole", "ret_rolle", { p_key: key, p_label: label, p_beskrivelse: beskrivelse || "" }, "Could not update role");
+export const setRolePermissions = (key, rettigheder) =>
+  rolleRpc("dataStore:setRolePermissions", "saet_rolle_rettigheder", { p_key: key, p_rettigheder: rettigheder }, "Could not set role permissions");
+export const deleteRole = (key) =>
+  rolleRpc("dataStore:deleteRole", "slet_rolle", { p_key: key }, "Could not delete role");
+export const setStoreRole = (storeId, key, aktiv) =>
+  rolleRpc("dataStore:setStoreRole", "saet_butik_rolle", { p_store: storeId, p_role: key, p_aktiv: aktiv }, "Could not change store role");
+
 export async function updateUserPermissions(userId, { extraPermissions, revokedPermissions }) {
   const { error } = await supabase.from("profiles").update({
     extra_permissions: extraPermissions, revoked_permissions: revokedPermissions,

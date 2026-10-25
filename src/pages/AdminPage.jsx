@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Trash2, Plus } from "lucide-react";
 import { TechnicianRow, SickLeaveWindowSetting, LoginPolicySetting, VehicleRow, UserRow, NewUserForm, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin, DefaultTimeEstimateAdmin } from "../components/AdminParts";
+import { erMedhjaelperRolle, rollerForButik } from "../data/roller";
+import { ButikRollerValg } from "../components/ButikRollerValg";
 import { PosIntegrationAdmin } from "../components/PosIntegrationAdmin";
 import { StorageIntegrationAdmin } from "../components/StorageIntegrationAdmin";
 import { SmsSettingsAdmin } from "../components/SmsSettingsAdmin";
@@ -11,7 +13,7 @@ import { MontoerKalender } from "../components/MontoerKalender";
 import { HoldIndstillinger } from "../components/HoldIndstillinger";
 import { YdelsesIndstillinger } from "../components/YdelsesIndstillinger";
 import { ButikVarerAdmin } from "../components/ButikVarerAdmin";
-import { getPermissionsCatalog, getRoleDefaultPermissions } from "../lib/dataStore";
+import { getPermissionsCatalog, getRoleDefaultPermissions, getStoreRoleKeys } from "../lib/dataStore";
 
 // RETTET (august 2026): Admin-sidens FANER vises nu ud fra brugerens
 // faktiske admin_*-rettigheder (permissions), ikke længere ubetinget for
@@ -61,6 +63,12 @@ function AdminPage({
     getRoleDefaultPermissions().then(setRoleDefaults);
   }, []);
 
+  // Butikkens tilvalgte fælles roller (se ButikRollerValg). Rollelisten til udvælgelse = indbyggede + tilvalgte.
+  const [tilvalgteRoller, setTilvalgteRoller] = useState([]);
+  const hentTilvalgte = () => { if (store?.id) getStoreRoleKeys(store.id).then(setTilvalgteRoller); };
+  useEffect(() => { hentTilvalgte(); }, [store?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const butikRoller = rollerForButik(tilvalgteRoller);
+
   // Hvis brugerens rettigheder ændrer sig (fx en anden admin fjerner en
   // rettighed mens siden er åben) og den valgte fane ikke længere er
   // synlig, skift til den første tilgængelige - i en effect, ikke direkte
@@ -107,7 +115,7 @@ function AdminPage({
           </p>
           {hasPerm(permissions, "admin_butik") && <SickLeaveWindowSetting store={store} onUpdated={onSickLeaveWindowUpdated} />}
           {hasPerm(permissions, "admin_montorer") && crew && (
-            <HoldIndstillinger montoerer={technicians.filter((t) => t.rolle !== "medhjaelper")} medhjaelpere={technicians} crew={crew} onSetPair={onSetCrewPair} onSetSolo={onSetCrewSolo} />
+            <HoldIndstillinger montoerer={technicians.filter((t) => !erMedhjaelperRolle(t.rolle))} medhjaelpere={technicians} crew={crew} onSetPair={onSetCrewPair} onSetSolo={onSetCrewSolo} />
           )}
           <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Alle montører og medhjælpere ({technicians.length})</h3>
           {technicians.length === 0 ? (
@@ -118,7 +126,7 @@ function AdminPage({
                 <TechnicianRow
                   key={m.id}
                   technician={m}
-                  utenBil={m.rolle === "medhjaelper"}
+                  utenBil={erMedhjaelperRolle(m.rolle)}
                   vehicles={vehicles}
                   timeOff={timeOff}
                   onUpdateVehicle={onUpdateTechnicianVehicle}
@@ -167,7 +175,8 @@ function AdminPage({
           {hasPerm(permissions, "admin_butik") && (
             <LoginPolicySetting store={store} onPasswordUpdated={onPasswordPolicyUpdated} onLoginPolicyUpdated={onLoginPolicyUpdated} />
           )}
-          <NewUserForm onAdd={onAddUser} butiksnummer={store?.butiksnummer} />
+          {hasPerm(permissions, "admin_brugere") && <ButikRollerValg storeId={store?.id} tilvalgte={tilvalgteRoller} onChanged={hentTilvalgte} />}
+          <NewUserForm onAdd={onAddUser} butiksnummer={store?.butiksnummer} roller={butikRoller} />
           <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Alle brugere ({users.length})</h3>
           <div className="space-y-2">
             {users.map((b) => {
@@ -177,6 +186,7 @@ function AdminPage({
                   key={b.id} user={b} vehicle={vehicle} currentUserId={currentUserId}
                   onUpdate={onUpdateUser} onDelete={onDeleteUser} onResetPassword={onResetPassword} onResetPin={onResetPin} onChangeInitials={onChangeInitials}
                   permissionsCatalog={permissionsCatalog} roleDefaults={roleDefaults} onUpdatePermissions={onUpdatePermissions}
+                  roller={rollerForButik(tilvalgteRoller, b.rolle)}
                   passwordPolicy={passwordPolicy}
                 />
               );

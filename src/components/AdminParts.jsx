@@ -4,6 +4,7 @@ import { vehicleLabel, technicianColor, todayISO, activeSickLeave } from "../dat
 import { updateSickLeaveWindow, updatePasswordPolicy, updateLoginPolicy } from "../lib/dataStore";
 import { MinutesInput } from "../components/common";
 import { foreslaaInitialer, erGyldigeInitialer } from "../lib/username";
+import { rolleLabel, rollerForButik, erMontorRolle, erMedhjaelperRolle } from "../data/roller";
 
 // ---------------------------------------------------------------------------
 // FÆLLES AFKRYDSNINGSLISTE (september 2026)
@@ -471,7 +472,7 @@ function PermissionsEditor({ user, permissionsCatalog, roleDefaults, onUpdatePer
                   checked,
                   onChange: () => toggle(p.key),
                   note: afviger
-                    ? (checked ? "Tilføjet ud over rollen" : `Frataget (rollen ${ROLE_LABEL[user.rolle] || user.rolle} har den normalt)`)
+                    ? (checked ? "Tilføjet ud over rollen" : `Frataget (rollen ${rolleLabel(user.rolle)} har den normalt)`)
                     : null,
                   noteTone: checked ? "success" : "danger",
                 };
@@ -487,7 +488,7 @@ function PermissionsEditor({ user, permissionsCatalog, roleDefaults, onUpdatePer
   );
 }
 
-function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPin, onChangeInitials, permissionsCatalog, roleDefaults, onUpdatePermissions }) {
+function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPin, onChangeInitials, permissionsCatalog, roleDefaults, onUpdatePermissions, roller }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user.navn);
   const [pinInfo, setPinInfo] = useState(null); // { pin } | { fejl }
@@ -528,8 +529,8 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPin,
   // den forkerte af dem.
   // MEDHJÆLPER (oktober 2026): ekstra bemanding. Kører altid med (ser dagens tur), men har ingen fast bil - den sættes pr. dag i
   // Planlægning. Derfor ingen "Kører rute"-knap og ingen "mangler bil"-advarsel.
-  const erMedhjaelper = user.rolle === "medhjaelper";
-  const erFastMontor = user.rolle === "montor" || erMedhjaelper;
+  const erMedhjaelper = erMedhjaelperRolle(user.rolle);
+  const erFastMontor = erMontorRolle(user.rolle) || erMedhjaelper;
   const koerer = erFastMontor || user.kanKoere === true;
 
   return (
@@ -546,7 +547,7 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPin,
             <p className="font-semibold text-sm text-ink truncate">{user.navn}</p>
           )}
           <p className="text-xs text-muted truncate">
-            {ROLE_LABEL[user.rolle] || user.rolle}
+            {rolleLabel(user.rolle)}
             {user.brugernavn && !editingInitials && <span> · brugernavn "{user.brugernavn}"</span>}
             {erMedhjaelper ? <span> · bil sættes pr. dag i Planlægning</span> : koerer && <span> · {vehicle ? vehicleLabel(vehicle) : "kører rute, ingen bil endnu"}</span>}
             {(user.extraPermissions?.length > 0 || user.revokedPermissions?.length > 0) && <span> · rettigheder tilpasset</span>}
@@ -571,7 +572,7 @@ function UserRow({ user, vehicle, currentUserId, onUpdate, onDelete, onResetPin,
           )}
         </div>
         <select value={user.rolle} onChange={(e) => onUpdate(user.id, { rolle: e.target.value })} aria-label={`Rolle for ${user.navn}`} className="rounded-lg border border-line bg-panel px-2 py-2 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-brand">
-          {Object.entries(ROLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          {(roller || rollerForButik([], user.rolle)).map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
         </select>
         {!erFastMontor && (
           <button
@@ -648,7 +649,8 @@ function LoginOplysninger({ navn, butiksnummer, brugernavn, pin, onLuk }) {
   );
 }
 
-function NewUserForm({ onAdd, butiksnummer }) {
+function NewUserForm({ onAdd, butiksnummer, roller }) {
+  const valg = roller && roller.length > 0 ? roller : rollerForButik([]);
   const [name, setName] = useState("");
   const [initials, setInitials] = useState("");
   const [initialsEdited, setInitialsEdited] = useState(false);
@@ -684,16 +686,12 @@ function NewUserForm({ onAdd, butiksnummer }) {
         <input value={name} onChange={(e) => changeName(e.target.value)} placeholder="Navn" aria-label="Navn" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
         <input value={initials} onChange={(e) => { setInitials(e.target.value.toLowerCase().replace(/[^a-z]/g, "").slice(0, 5)); setInitialsEdited(true); }} placeholder="Initialer (foreslået, kan rettes)" aria-label="Brugernavn (initialer)" autoCapitalize="off" autoCorrect="off" spellCheck={false} className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
         <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Rolle" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand sm:col-span-2">
-          <option value="saelger">Sælger (opret sager, Planlægning, Lager, Arkiv)</option>
-          <option value="montor">Montør (kun sin egen rute)</option>
-          <option value="medhjaelper">Medhjælper (løfter og pakker ud, ser dagens tur)</option>
-          <option value="lager">Lager (kun Lager-siden)</option>
-          <option value="admin">Administrator (alt, inkl. Opsætning)</option>
+          {valg.map((r) => <option key={r.key} value={r.key}>{r.label}{r.beskrivelse ? ` (${r.beskrivelse})` : ""}</option>)}
         </select>
       </div>
-      {role === "montor" && <p className="text-[11px] text-muted mt-2">Bil tilknyttes bagefter under fanen "Montører".</p>}
-      {role === "medhjaelper" && <p className="text-[11px] text-muted mt-2">En medhjælper har ingen fast bil. Hvem der kører med hvilken bil, sættes pr. dag i Planlægning.</p>}
-      {role !== "montor" && role !== "medhjaelper" && (
+      {erMontorRolle(role) && <p className="text-[11px] text-muted mt-2">Bil tilknyttes bagefter under fanen "Montører".</p>}
+      {erMedhjaelperRolle(role) && <p className="text-[11px] text-muted mt-2">En medhjælper har ingen fast bil. Hvem der kører med hvilken bil, sættes pr. dag i Planlægning.</p>}
+      {!erMontorRolle(role) && !erMedhjaelperRolle(role) && (
         <p className="text-[11px] text-muted mt-2">
           Skal personen også kunne køre en rute en gang imellem, slås "Kører rute" til på brugeren i listen nedenfor. Det kræver ikke en ekstra konto.
         </p>
@@ -706,7 +704,6 @@ function NewUserForm({ onAdd, butiksnummer }) {
   );
 }
 
-const ROLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montør", lager: "Lager", medhjaelper: "Medhjælper" };
 
 // ---------- Varekategorier ----------
 
@@ -1056,4 +1053,4 @@ function DefaultTimeEstimateAdmin({ productTypes, primaryServices, addOnServices
   );
 }
 
-export { LoginOplysninger, TechnicianRow, SickLeaveWindowSetting, LoginPolicySetting, VehicleRow, UserRow, NewUserForm, ROLE_LABEL, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin, DefaultTimeEstimateAdmin };
+export { LoginOplysninger, TechnicianRow, SickLeaveWindowSetting, LoginPolicySetting, VehicleRow, UserRow, NewUserForm, ProductCategoryAdmin, ProductTypeAdmin, PrimaryServiceAdmin, AddOnServiceAdmin, DefaultTimeEstimateAdmin };

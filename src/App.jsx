@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation, useParams } from "react-router-dom";
 
-import { todayISO, computeNotifications, DEFAULT_DASHBOARD_WIDGETS } from "./data/domain";
+import { todayISO, computeNotifications, DEFAULT_DASHBOARD_WIDGETS, DASHBOARD_WIDGET_CATALOG } from "./data/domain";
+import { erMontorRolle, erMedhjaelperRolle, standardWidgets } from "./data/roller";
 import { useSession } from "./hooks/useSession";
 import { useCatalog } from "./hooks/useCatalog";
 import { useVehicles } from "./hooks/useVehicles";
@@ -52,7 +53,7 @@ import { SystemAdminPage } from "./pages/SystemAdminPage";
 //
 // MEDHJÆLPER (oktober 2026): ekstra bemanding uden montørevner. Ser dagens tur ligesom en montør, men bilen kommer fra dagens
 // hold (day_helpers), ikke fra en fast bil - se MontorRoute.
-const koererSelv = (bruger) => bruger?.rolle === "montor" || bruger?.rolle === "medhjaelper" || bruger?.kanKoere === true;
+const koererSelv = (bruger) => erMontorRolle(bruger?.rolle) || erMedhjaelperRolle(bruger?.rolle) || bruger?.kanKoere === true;
 
 function Gate({ allowed, page, children }) {
   if (!allowed.includes(page)) return <Navigate to={`/${allowed[0] || "dashboard"}`} replace />;
@@ -130,7 +131,7 @@ function OrderRoute({ profile, storeId, orders, technicians, personnel, crew, or
         // Fast tilknyttede montører + dagens medhjælpere på bilen (dagens hold), så også de forbliver synlige på sagen.
         montoerer: [
           // En montør, der den dag er sat som 2. mand på en ANDEN bil, hører ikke til denne bils faste montører.
-          ...(personnel || []).filter((p) => order.bilId && p.bilId === order.bilId && p.rolle !== "medhjaelper"
+          ...(personnel || []).filter((p) => order.bilId && p.bilId === order.bilId && !erMedhjaelperRolle(p.rolle)
             && !(crew?.helpers || []).some((h) => h.personId === p.id && h.dato === order.dato && h.vehicleId !== order.bilId)),
           ...(crew?.helpers || []).filter((h) => order.bilId && order.dato && h.vehicleId === order.bilId && h.dato === order.dato).map((h) => (personnel || []).find((p) => p.id === h.personId)).filter((p) => p && p.bilId !== order.bilId),
         ].map((p) => ({ id: p.id, navn: p.navn })),
@@ -211,7 +212,7 @@ function OrderRoute({ profile, storeId, orders, technicians, personnel, crew, or
 function MontorRoute({ profile, vehicles, orders, ordersStore, keyCabinets, crew, refresh, refreshing, selectedDate, onDateChange, onOpen }) {
   // En medhjælper har ingen fast bil: bilen er den, vedkommende er sat på den valgte dag (Planlægning -> 2. mand denne dag).
   // 2. MAND (oktober 2026): også en MONTØR kan være sat som 2. mand på en anden bil en given dag - dagens hold går da forud for egen bil.
-  const erMedhjaelper = profile.rolle === "medhjaelper";
+  const erMedhjaelper = erMedhjaelperRolle(profile.rolle);
   const holdBilId = crew?.helpers?.find((h) => h.personId === profile.id && h.dato === selectedDate)?.vehicleId;
   const dagensBilId = holdBilId || (erMedhjaelper ? undefined : profile.bilId);
   const koererSom2Mand = !!holdBilId && !erMedhjaelper && holdBilId !== profile.bilId;
@@ -446,7 +447,7 @@ export default function App() {
     .map((b) => ({ id: b.id, navn: b.navn, bilId: b.bilId || null, rolle: b.rolle }));
 
   const technicians = vehicles.map((v) => {
-    const drivere = personnel.filter((p) => p.bilId === v.id && p.rolle !== "medhjaelper");
+    const drivere = personnel.filter((p) => p.bilId === v.id && !erMedhjaelperRolle(p.rolle));
     const navn = drivere.length > 0 ? `${v.navn} (${drivere.map((d) => d.navn).join(", ")})` : `${v.navn} (ingen montør)`;
     return { id: v.id, navn, bil: v.nummerplade, lukket: v.lukket, tempo: v.tempo ?? 100 };
   });
@@ -575,7 +576,7 @@ export default function App() {
   const kanKoereRute = koererSelv(profile);
   const kanSeAdresser = profile.erSystemadmin || permissions.includes("sag_feltarbejde") || permissions.includes("sag_opret");
   // Montører og medhjælpere har ingen forside: de starter direkte på dagens rute (fanen "montor"), hvor de kan bladre mellem dage.
-  const udenForside = !profile.erSystemadmin && (profile.rolle === "montor" || profile.rolle === "medhjaelper");
+  const udenForside = !profile.erSystemadmin && (erMontorRolle(profile.rolle) || erMedhjaelperRolle(profile.rolle));
   const alleSider = profile.erSystemadmin
     ? ["dashboard", ...PAGE_PERMISSION_KEYS, ...(kanKoereRute ? ["montor"] : []), "adresser", "admin"]
     : [
@@ -590,7 +591,7 @@ export default function App() {
   // finkornede sags-rettigheder. null for en systemadmin = "ubegrænset"
   // (se canDo() i domain.js).
   const effectivePermissions = profile.erSystemadmin ? null : permissions;
-  const dashboardWidgets = profile.dashboardWidgets || DEFAULT_DASHBOARD_WIDGETS[profile.rolle] || [];
+  const dashboardWidgets = profile.dashboardWidgets || standardWidgets(profile.rolle, permissions, DEFAULT_DASHBOARD_WIDGETS, DASHBOARD_WIDGET_CATALOG);
   const currentPage = location.pathname.replace(/^\//, "").split("/")[0] || allowedPages[0];
   const narrowPage = currentPage === "montor" || currentPage === "sag";
   // Topmenuen skjules, mens en KØRENDE person har en sag åben - skærmen

@@ -5,6 +5,7 @@
 // tidsrum, og kunne derfor vise noget andet end motoren (Kapacitetslab / booking). Nu bygges motorens input her, og motoren (planlaegDag) er
 // den ENESTE kilde til dagens tid. Filen er ren logik uden netværk, så den kan testes (tests/dagsplan.test.mjs).
 import { planlaegDag, dagensTilgaengelighed } from "../engine/kapacitet/index.js";
+import { erMedhjaelperRolle } from "../data/roller.js";
 
 const tal = (v) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
 
@@ -41,7 +42,7 @@ export function arbejderDenDag({ dato, personId, timeOff, arbejdstider, uaendrin
 //    med som dens montør (ellers ville en montør tælle på to biler på én gang).
 export function personerTilMotor({ dato, bilId, personnel, timeOff, arbejdstider, uaendringer, indstillinger, hjaelperIds, bortePersonIds }) {
   const borte = new Set((bortePersonIds || []).map(String));
-  const fast = (personnel || []).filter((p) => p.bilId === bilId && p.rolle !== "medhjaelper" && !borte.has(String(p.id)));
+  const fast = (personnel || []).filter((p) => p.bilId === bilId && !erMedhjaelperRolle(p.rolle) && !borte.has(String(p.id)));
   const fastIds = new Set(fast.map((p) => String(p.id)));
   const hjaelpere = (hjaelperIds || []).map((id) => (personnel || []).find((p) => p.id === id)).filter((p) => p && !fastIds.has(String(p.id)));
   const ud = [];

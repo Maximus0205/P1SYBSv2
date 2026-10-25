@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { getStoreUsers, createUserAsAdmin, updateProfile, resetPasswordAsAdmin, resetPinAsAdmin, changeInitialsAsAdmin, updateUserPermissions, deleteUserAsAdmin } from "../lib/dataStore";
 import { sletBruger } from "../lib/sletBruger";
+import { erMedhjaelperRolle } from "../data/roller";
 
 // Al state og CRUD for BRUGERE (som "montører" udledes af, se koererSelv
 // i App.jsx) er samlet her.
@@ -50,7 +51,7 @@ export function useUsers(storeId) {
     if ("bilId" in fields) dbFields.bilId = fields.bilId;
     // En medhjælper har ingen fast bil (sættes pr. dag). Skifter en montør til medhjælper, ryddes den faste bil, så vedkommende
     // ikke både står som fast chauffør og som dagens medhjælper.
-    if (fields.rolle === "medhjaelper" && !("bilId" in fields)) dbFields.bilId = null;
+    if (erMedhjaelperRolle(fields.rolle) && !("bilId" in fields)) dbFields.bilId = null;
     if ("navn" in fields) dbFields.navn = fields.navn;
     if ("kanKoere" in fields) dbFields.kanKoere = fields.kanKoere;
     const ok = await updateProfile(id, dbFields);

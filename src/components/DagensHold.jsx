@@ -5,6 +5,7 @@ import React from "react";
 import { Users, Wand2, Check } from "lucide-react";
 import { foreslaaHold, manglerTekst } from "../lib/holdForslag";
 import { arbejderDenDag } from "../lib/dagsplan";
+import { erMedhjaelperRolle } from "../data/roller";
 
 const AARSAG = { fast: "fast makker", forslag: "forslag", laast: "godkendt" };
 
@@ -28,17 +29,17 @@ export function DagensHold({ dato, orders, technicians, personnel, timeOff, kapG
   const alleHjaelpere = personnel;
   const alleBiler = technicians.map((t) => {
     const dagensSager = orders.filter((o) => o.bilId === t.id && o.dato === dato && o.status !== "afsluttet");
-    const montoerIds = personnel.filter((p) => p.rolle !== "medhjaelper" && p.bilId === t.id).filter(arbejder).map((p) => p.id);
+    const montoerIds = personnel.filter((p) => !erMedhjaelperRolle(p.rolle) && p.bilId === t.id).filter(arbejder).map((p) => p.id);
     return { id: t.id, navn: t.navn, montoerIds, stop: dagensSager.length, toMandStop: dagensSager.filter((o) => o.toMand).length };
   });
   const biler = alleBiler.filter((b) => b.stop > 0 || kladde.some((k) => k.vehicleId === b.id));
   // En montør er BLOKERET som 2. mand, hvis vedkommende er den eneste der arbejder på en bil med sager i dag (ellers står bilen uden chauffør).
   // Er montøren allerede sat som 2. mand andre steder i kladden, tæller vedkommende ikke med som chauffør.
-  const blokeret = (p) => p.rolle !== "medhjaelper" && alleBiler.some((b) => b.stop > 0 && b.montoerIds.includes(p.id)
+  const blokeret = (p) => !erMedhjaelperRolle(p.rolle) && alleBiler.some((b) => b.stop > 0 && b.montoerIds.includes(p.id)
     && !b.montoerIds.some((id) => id !== p.id && !kladde.some((k) => k.personId === id && k.vehicleId !== b.id)));
   const ledigeHjaelpere = alleHjaelpere.filter((p) => arbejder(p) && !blokeret(p));
   // Vis kun sektionen, når der er en rigtig medhjælper, eller mindst to personer at vælge imellem.
-  if (biler.length === 0 || (!alleHjaelpere.some((p) => p.rolle === "medhjaelper") && ledigeHjaelpere.length < 1)) return null;
+  if (biler.length === 0 || (!alleHjaelpere.some((p) => erMedhjaelperRolle(p.rolle)) && ledigeHjaelpere.length < 1)) return null;
 
   const hjNavn = (id) => alleHjaelpere.find((h) => h.id === id)?.navn || "Ukendt";
   const paaBil = (bilId) => kladde.find((k) => k.vehicleId === bilId)?.personId || "";
@@ -52,7 +53,7 @@ export function DagensHold({ dato, orders, technicians, personnel, timeOff, kapG
     const alene = new Set(crew.solo);
     const r = foreslaaHold({
       biler,
-      hjaelpere: ledigeHjaelpere.map((h) => ({ id: h.id, navn: h.navn, reserve: h.rolle !== "medhjaelper" })),
+      hjaelpere: ledigeHjaelpere.map((h) => ({ id: h.id, navn: h.navn, reserve: !erMedhjaelperRolle(h.rolle) })),
       faste: crew.pairs, alene: [...alene],
       historik: crew.helpers.filter((h) => h.dato < dato),
     });
@@ -112,7 +113,7 @@ export function DagensHold({ dato, orders, technicians, personnel, timeOff, kapG
                   const ledig = ledigeHjaelpere.some((x) => x.id === h.id) && !egenBil;
                   const andenBil = kladde.some((k) => k.personId === h.id && k.vehicleId !== b.id);
                   const note = !paaArbejde ? " (ikke på arbejde)" : egenBil ? " (kører denne bil)" : !ledig ? " (kører egen bil)" : andenBil ? " (flyttes hertil)" : "";
-                  return <option key={h.id} value={h.id} disabled={!ledig && h.id !== valgt}>{h.navn}{h.rolle === "medhjaelper" ? "" : " (montør)"}{note}</option>;
+                  return <option key={h.id} value={h.id} disabled={!ledig && h.id !== valgt}>{h.navn}{erMedhjaelperRolle(h.rolle) ? "" : " (montør)"}{note}</option>;
                 })}
               </select>
             </div>

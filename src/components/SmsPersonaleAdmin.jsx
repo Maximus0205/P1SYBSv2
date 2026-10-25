@@ -2,6 +2,7 @@ import React from "react";
 import { Loader2, Check } from "lucide-react";
 import { getStaffSmsSettings, saveStaffSmsSettings, staffSmsOverview, personaleFejl } from "../lib/smsPersonale";
 import { minTilKl, klTilMin } from "../lib/smsAutomation";
+import { rolleLabel } from "../data/roller";
 
 // Hovedpunkt 3 i Admin -> SMS: Advisering af personale (oktober 2026).
 // Butikkens admin tænder funktionen og vælger, hvilke typer der KAN sendes. Hver medarbejder tilmelder sig selv med eget
@@ -15,7 +16,6 @@ const felt = "w-full min-h-[44px] rounded-lg border border-line bg-panel px-3 py
 const sekundaer = "min-h-[44px] px-4 rounded-lg text-xs font-semibold uppercase tracking-wide text-ink border border-line hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-50";
 const primaer = "min-h-[44px] px-5 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors disabled:opacity-40";
 
-const ROLLE = { admin: "Admin", saelger: "Sælger", montor: "Montør", lager: "Lager", medhjaelper: "Medhjælper" };
 
 const TYPER = [
   { nok: "manglendeVare", titel: "Manglende vare", hjaelp: "Lageret melder, at en vare ikke kan findes. Sendes til den sælger, der har booket sagen." },
@@ -121,7 +121,7 @@ function SmsPersonaleAdmin({ storeId }) {
                 {liste.map((p, i) => (
                   <li key={i} className="py-2 flex flex-wrap items-center gap-x-3 gap-y-1">
                     <span className="text-sm font-semibold text-ink">{p.navn}</span>
-                    <span className="text-xs text-muted">{ROLLE[p.rolle] || p.rolle}</span>
+                    <span className="text-xs text-muted">{rolleLabel(p.rolle)}</span>
                     <span className="text-xs font-mono text-muted">{p.nummer}</span>
                     <span className="text-xs text-ink">
                       {[p.manglendeVare && "Manglende vare", p.problem && "Problem", p.nytPluk && "Nyt pluk"].filter(Boolean).join(" · ") || "Ingen typer valgt"}

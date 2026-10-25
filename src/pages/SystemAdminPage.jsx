@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Building2, Loader2, AlertCircle, Check, Pencil, Users, Search, KeyRound, Trash2, UserPlus, X, Bug, RefreshCw, Plug, HardDrive, ChevronLeft, Calculator, Receipt, Palette } from "lucide-react";
-import { getAllStores, createStoreAsSystemAdmin, updateStoreAsSystemAdmin, deleteStoreAsSystemAdmin, getAllUsersAsSystemAdmin, updateProfile, resetPasswordAsAdmin, resetPinAsAdmin, createUserAsAdmin, deleteUserAsAdmin, getErrorLogs, deleteErrorLog, clearErrorLogs, getAllPosIntegrationsAsSystemAdmin, getAllStorageIntegrationsAsSystemAdmin } from "../lib/dataStore";
+import { getAllStores, createStoreAsSystemAdmin, updateStoreAsSystemAdmin, deleteStoreAsSystemAdmin, getAllUsersAsSystemAdmin, updateProfile, resetPasswordAsAdmin, resetPinAsAdmin, createUserAsAdmin, deleteUserAsAdmin, getErrorLogs, deleteErrorLog, clearErrorLogs, getAllPosIntegrationsAsSystemAdmin, getAllStorageIntegrationsAsSystemAdmin, getStoreRoleKeys } from "../lib/dataStore";
 import { sletBruger } from "../lib/sletBruger";
 import { getStorageUsage, formatBytes } from "../lib/attachments";
 import { geocodeAddresses } from "../lib/geocoding";
@@ -14,8 +14,8 @@ import { LoginOplysninger } from "../components/AdminParts";
 import { BrandingAdmin } from "../components/BrandingAdmin";
 import { StoreFeaturesAdmin } from "../components/StoreFeaturesAdmin";
 import { TidsmaalingerAdmin } from "../components/TidsmaalingerAdmin";
-
-const ROLE_LABEL = { admin: "Administrator", saelger: "Sælger", montor: "Montør", lager: "Lager", medhjaelper: "Medhjælper" };
+import { RollerAdmin } from "../components/RollerAdmin";
+import { alleRoller, rollerForButik } from "../data/roller";
 
 // Kun synlig for brugere med profiles.is_system_admin = true. Faner (se også
 // "Kæder & branding", oktober 2026 - kædernes logo/farver/domæner):
@@ -58,6 +58,9 @@ function SystemAdminPage({ currentUserId, onOwnStoreLinked, onBrandingChanged })
         <button onClick={() => setTab("funktioner")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "funktioner" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
           <Check size={14} aria-hidden="true" /> Funktioner
         </button>
+        <button onClick={() => setTab("roller")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "roller" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
+          <Users size={15} aria-hidden="true" /> Roller
+        </button>
         <button onClick={() => setTab("tider")} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors flex items-center gap-1.5 ${tab === "tider" ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
           <Calculator size={15} aria-hidden="true" /> Tidsmålinger
         </button>
@@ -75,6 +78,7 @@ function SystemAdminPage({ currentUserId, onOwnStoreLinked, onBrandingChanged })
       {tab === "kapacitet" && <><KapacitetsRegler stores={stores} /><KapacitetsLab stores={stores} /></>}
       {tab === "branding" && <BrandingAdmin onBrandingChanged={onBrandingChanged} />}
       {tab === "funktioner" && <StoreFeaturesAdmin stores={stores} />}
+      {tab === "roller" && <RollerAdmin stores={stores} />}
       {tab === "tider" && <TidsmaalingerAdmin stores={stores} />}
       {tab === "fejl" && <ErrorLogTab stores={stores} />}
     </div>
@@ -488,6 +492,12 @@ function CreateUserDirect({ stores }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [oprettet, setOprettet] = useState(null);
+  // Roller butikken har tilvalgt (de indbyggede er altid med) - hentes, når en butik vælges.
+  const [storeRoller, setStoreRoller] = useState([]);
+  useEffect(() => {
+    setStoreRoller([]); setRole("saelger");
+    if (storeId) getStoreRoleKeys(storeId).then(setStoreRoller);
+  }, [storeId]);
 
   const changeName = (val) => {
     setName(val);
@@ -521,9 +531,7 @@ function CreateUserDirect({ stores }) {
         <input value={name} onChange={(e) => changeName(e.target.value)} placeholder="Navn" aria-label="Navn" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
         <input value={initials} onChange={(e) => { setInitials(e.target.value.toLowerCase().replace(/[^a-z]/g, "").slice(0, 5)); setInitialsEdited(true); }} placeholder="Initialer (foreslået, kan rettes)" aria-label="Brugernavn (initialer)" autoCapitalize="off" autoCorrect="off" spellCheck={false} className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink font-mono focus:outline-none focus:border-brand" />
         <select value={role} onChange={(e) => setRole(e.target.value)} aria-label="Rolle" className="sm:col-span-2 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink">
-          <option value="saelger">Sælger</option>
-          <option value="montor">Montør</option>
-          <option value="admin">Administrator</option>
+          {rollerForButik(storeRoller).map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
         </select>
       </div>
       {error && <p role="alert" className="text-xs text-danger mt-2 flex items-center gap-1.5"><AlertCircle size={13} /> {error}</p>}
@@ -627,7 +635,7 @@ function SystemAdminUserRow({ user, stores, onUpdated, currentUserId, onOwnStore
           </p>
         </div>
         <select value={user.rolle} onChange={(e) => updateField({ rolle: e.target.value })} disabled={busy} className="rounded-lg border border-line bg-panel px-2 py-1.5 text-xs text-ink">
-          {Object.entries(ROLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          {alleRoller().map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
         </select>
         <select value={user.butikId || ""} onChange={(e) => updateField({ butik_id: e.target.value || null })} disabled={busy} className="rounded-lg border border-line bg-panel px-2 py-1.5 text-xs text-ink min-w-[160px]">
           <option value="">Ingen butik</option>

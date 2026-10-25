@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Settings2, Plus, ChevronUp, ChevronDown, Upload, AlertTriangle, Truck, Trash2, ClipboardList, CalendarCheck2, Bell } from "lucide-react";
 import { todayISO, dailyOrderCompare, canDo, DASHBOARD_WIDGET_CATALOG, missingLineItems, lineItemLabel } from "../data/domain";
+import { erMedhjaelperRolle } from "../data/roller";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 import { classify } from "./PlanningPage";
 import { isOrderPickable } from "./WarehousePage";
@@ -82,12 +83,12 @@ function TodayRouteWidget({ orders, technicians, vehicles, profile, crew, onOpen
   // En medhjælper har ingen fast bil: bilen er den, vedkommende er sat på i dag (dagens hold). En montør, der i dag er sat som 2. mand på
   // en anden bil, følger også dagens hold (oktober 2026).
   const holdBilId = crew?.helpers?.find((h) => h.personId === profile.id && h.dato === todayISO())?.vehicleId;
-  const bilId = holdBilId || (profile.rolle === "medhjaelper" ? undefined : profile.bilId);
+  const bilId = holdBilId || (erMedhjaelperRolle(profile.rolle) ? undefined : profile.bilId);
   const ownVehicle = (vehicles || []).find((v) => v.id === bilId);
   if (!ownVehicle) {
     return (
       <WidgetCard title={catalogEntry.label} icon={catalogEntry.icon}>
-        <p className="text-sm text-muted italic">{profile.rolle === "medhjaelper" ? "Du er ikke sat på en bil i dag endnu." : "Din bruger er ikke koblet til en bil endnu."}</p>
+        <p className="text-sm text-muted italic">{erMedhjaelperRolle(profile.rolle) ? "Du er ikke sat på en bil i dag endnu." : "Din bruger er ikke koblet til en bil endnu."}</p>
       </WidgetCard>
     );
   }

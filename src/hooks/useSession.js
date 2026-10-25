@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabaseClient";
-import { getOwnProfile, getStore, getMyPermissions } from "../lib/dataStore";
+import { getOwnProfile, getStore, getMyPermissions, getRoles } from "../lib/dataStore";
+import { saetRoller } from "../data/roller";
 import { butikKoordinat } from "../lib/butikKoordinat";
 
 // Al state for SESSION, PROFIL og BUTIK er samlet her (fase 4 af
@@ -34,7 +35,9 @@ export function useSession() {
   const [permissions, setPermissions] = useState([]); // string[]
 
   const reloadProfile = useCallback(async (userId) => {
-    const p = await getOwnProfile(userId);
+    // Rollelisten hentes sammen med profilen, så rollenavne og adfærd er klar, før noget tegnes. Fejler den, bruges de indbyggede roller.
+    const [p, roller] = await Promise.all([getOwnProfile(userId), getRoles()]);
+    saetRoller(roller);
     if (!p) { setProfile(null); setStore(null); setPermissions([]); return null; }
     const normalized = {
       id: p.id, navn: p.navn, rolle: p.rolle, bilId: p.bil_id, butikId: p.butik_id,
