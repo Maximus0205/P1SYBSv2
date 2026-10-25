@@ -1,11 +1,12 @@
 import React from "react";
-import { RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash, X, Plus, User, Lock, PlayCircle, CheckCheck, Camera, CalendarCheck2, HardHat } from "lucide-react";
+import { MapPin, RefreshCw, Truck, KeyRound, Clock, Navigation, Phone, MessageSquare, Check, AlertTriangle, ChevronUp, ChevronDown, Pencil, Copy, Hash, X, Plus, User, Lock, PlayCircle, CheckCheck, Camera, CalendarCheck2, HardHat } from "lucide-react";
 import { buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, orderExpectedMinutes, totalMinutes, STATUS_META, lineItemLabel, dailyOrderCompare, canDo, missingLineItems } from "../data/domain";
 import { isTomgang, isSpecialtur, showsArrivalContact, followUpTypeLabel } from "../data/caseTypes";
 import { CaseTypeBadge } from "../components/CaseTypeBadge";
 import { manualKeyAccessText, routeUrlViaCabinets } from "../data/keyCabinets";
 import { StatusBadge, DateSelector, ToMandBadge, MinutesInput } from "../components/common";
 import { maaltTidVurdering } from "../data/estimates";
+import { adgangTekst } from "../data/adgang";
 import { Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
 import { BookingEditor, DuplicatePanel, PosStatusBanner } from "../components/OrderView";
 import { AddressNotesPanel } from "../components/AddressNotes";
@@ -199,7 +200,8 @@ function OrderStopCard({ order: s, keyCabinets, onOpen, onMoveUp, onMoveDown, ca
   const specialtur = isSpecialtur(s);
   const specialBesk = specialtur ? (s.specialBeskrivelse || "").trim() : "";
   const specialKrav = specialtur ? (s.specialKrav || "").trim() : "";
-  const hasAlerts = Boolean(synligeSkabe.length > 0 || noegleTekst || s.kunde.leveringsnote || s.problem || mangler.length > 0 || opgaver.length > 0 || specialBesk || specialKrav);
+  const adgang = adgangTekst(s);
+  const hasAlerts = Boolean(synligeSkabe.length > 0 || noegleTekst || adgang || s.kunde.leveringsnote || s.problem || mangler.length > 0 || opgaver.length > 0 || specialBesk || specialKrav);
 
   return (
     <div className="rounded-xl bg-white border border-[#ECECEC] shadow-sm hover:shadow-md transition-shadow p-3.5">
@@ -260,6 +262,9 @@ function OrderStopCard({ order: s, keyCabinets, onOpen, onMoveUp, onMoveDown, ca
           <KeyCabinetLines matches={synligeSkabe} />
           {noegleTekst && (
             <p className="text-xs font-semibold text-brand flex items-start gap-1.5"><KeyRound size={13} className="shrink-0 mt-0.5" aria-hidden="true" /> {noegleTekst}</p>
+          )}
+          {adgang && (
+            <p className="text-xs font-semibold text-brand flex items-start gap-1.5"><MapPin size={13} className="shrink-0 mt-0.5" aria-hidden="true" /> {adgang}</p>
           )}
           {s.kunde.leveringsnote && (
             <p className="text-xs font-semibold text-brand flex items-start gap-1.5"><AlertTriangle size={13} className="shrink-0 mt-0.5" aria-hidden="true" /> {s.kunde.leveringsnote}</p>
@@ -699,6 +704,9 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
               nøgletekst er lige så let at overse som slet ingen. */}
           {!erAfsluttet && <KeyCabinetAlert matches={skabe} orderAddress={order.kunde?.adresse} />}
 
+          {adgangTekst(order) && (
+            <p className="text-sm text-brand font-semibold mt-1.5 flex items-center gap-1.5"><MapPin size={14} className="shrink-0" aria-hidden="true" /> {adgangTekst(order)}</p>
+          )}
           {order.kunde.leveringsnote && (
             <p className="text-sm text-brand font-semibold mt-1.5 flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" aria-hidden="true" /> {order.kunde.leveringsnote}</p>
           )}

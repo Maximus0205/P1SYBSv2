@@ -21,6 +21,8 @@ import { AddressNotesPanel } from "../components/AddressNotes";
 import { KeyCabinetBookingHint } from "../components/KeyCabinetAlert";
 import { KapacitetsTjek } from "../components/KapacitetsTjek";
 import { useFeature } from "../hooks/useStoreFeatures";
+import { AdgangsFelter } from "../components/AdgangsFelter";
+import { adgangsFelter } from "../data/adgang";
 
 // Bookingflowet er delt op i 4 mindre "kort" (trin) i stedet for én lang
 // formular:
@@ -180,6 +182,9 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
   // Skjulte koordinater fra Adressevælgeren (aldrig vist). Gælder kun så længe `address` stadig er den valgte tekst - se lib/adresseKoordinater.js.
   const [adresseKoord, setAdresseKoord] = useState(d.adresseKoord || null);
   const [deliveryNote, setDeliveryNote] = useState(d.deliveryNote || "");
+  // Adgangsforhold (oktober 2026, valgfrit): etage og besværlig parkering - se data/adgang.js.
+  const [etage, setEtage] = useState(d.etage || null);
+  const [parkeringBesvaerlig, setParkeringBesvaerlig] = useState(d.parkeringBesvaerlig === true);
   const [toMand, setToMand] = useState(!!d.toMand);
   const [keyAccess, setKeyAccess] = useState(() => ({ ...emptyKeyAccess(), ...(d.keyAccess || {}) }));
   // En gemt dato i fortiden giver ingen mening at genoptage - så bruges dagens valgte dato.
@@ -218,8 +223,8 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const blank = useMemo(() => ({ lineItem: createLineItem(productTypes, primaryServices, undefined, "", defaultTimeEstimates), keyAccess: emptyKeyAccess() }), []);
   const snapshot = useMemo(
-    () => ({ caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, adresseKoord, deliveryNote, toMand, keyAccess, date, timeSlotId, vehicleId, lineItems, fleksibel, senestDato, specialBeskrivelse, specialKrav, manuelTid }),
-    [caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, adresseKoord, deliveryNote, toMand, keyAccess, date, timeSlotId, vehicleId, lineItems, fleksibel, senestDato, specialBeskrivelse, specialKrav, manuelTid]
+    () => ({ caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, adresseKoord, deliveryNote, etage, parkeringBesvaerlig, toMand, keyAccess, date, timeSlotId, vehicleId, lineItems, fleksibel, senestDato, specialBeskrivelse, specialKrav, manuelTid }),
+    [caseTypeId, customerName, phone, email, externalReference, hasBuyer, buyerName, buyerPhone, buyerEmail, buyerAddress, address, adresseKoord, deliveryNote, etage, parkeringBesvaerlig, toMand, keyAccess, date, timeSlotId, vehicleId, lineItems, fleksibel, senestDato, specialBeskrivelse, specialKrav, manuelTid]
   );
   const kladde = useOrderDraft({ draftId, storeId, userId, state: snapshot, step, blank });
 
@@ -420,6 +425,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
       senestDato: erTomgang && senestDato ? senestDato : null,
       varelinjer: lineItems,
       toMand,
+      ...adgangsFelter({ etage, parkeringBesvaerlig }),
       // Specialtur: beskrivelse, krav til montør og manuel tid for hele turen (se data/caseTypes.js).
       ...(erSpecialtur ? { specialBeskrivelse: specialBeskrivelse.trim(), specialKrav: specialKrav.trim(), manuelTid: Math.round(Number(manuelTid)) } : {}),
       // Revisionsspor: kun regelnavne, ingen mål/tal.
@@ -522,6 +528,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
           <div className="grid gap-3 mb-4">
             <AddressInput value={address} onChange={setAddress} placeholder={erTomgang ? "Lejemålets adresse" : "Leveringsadresse"} onValidationChange={setAddressStatus} onKoordinater={setAdresseKoord} focus={storeFocus} kommunekode={storeKommuneKode} storePostnr={storePostnr} />
             <input value={deliveryNote} onChange={(e) => setDeliveryNote(e.target.value)} placeholder={erTomgang ? "Note, fx 'Opgang B, 3. sal th'" : "Leveringsnote, fx 'Ring før ankomst'"} aria-label="Note" className="rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand" />
+            <AdgangsFelter etage={etage} parkeringBesvaerlig={parkeringBesvaerlig} onEtage={setEtage} onParkering={setParkeringBesvaerlig} />
           </div>
           {addressStatus === "usikker" && (
             <p className="text-xs text-danger mb-4">Adressen kunne ikke bekræftes. Tjek den en ekstra gang.</p>
