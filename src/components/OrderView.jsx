@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { KeyRound, Building2, Hash, Pencil, X, Check, Copy, AlertTriangle, User, Lock, Trash2, Plus, RotateCw, Plug, RefreshCw } from "lucide-react";
-import { TIME_SLOTS, buildTitle, timeSlotById, timeSlotText, lineItemLabel, canDo, createLineItem, missingLineItems, OTHER_PRODUCT_TYPE_ID, availableAddOns, getDefaultEstimateMinutes, lineItemMinutes } from "../data/domain";
+import { TIME_SLOTS, buildTitle, timeSlotById, timeSlotText, lineItemLabel, canDo, createLineItem, missingLineItems, OTHER_PRODUCT_TYPE_ID, availableAddOns, getDefaultEstimateMinutes, lineItemMinutes, formatDuration } from "../data/domain";
 import { manualKeyAccessText } from "../data/keyCabinets";
-import { FOLLOWUP_TYPES, followUpTypeLabel } from "../data/caseTypes";
+import { FOLLOWUP_TYPES, followUpTypeLabel, isSpecialtur, specialMinutter, specialturFejl, kraeverModelnummer } from "../data/caseTypes";
+import { CaseTypeBadge } from "../components/CaseTypeBadge";
+import { SpecialturFelter } from "../components/SpecialturFelter";
 import { StatusBadge, MinutesInput, ToMandBadge } from "../components/common";
 import { LineItemDetails, Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
 import { CustomerHistoryLookup, ModelNumberLookup, ToMandFelt } from "../components/OrderFormFields";
@@ -62,26 +64,44 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
   const [idFundet, setIdFundet] = useState(false);
   // Kapacitetstjek (som ved ny booking): status fra KapacitetsTjek. Blokering gælder kun, når planen eller varerne er ændret.
   const [kapStatus, setKapStatus] = useState({ blokeret: false, overrulet: false, regler: [] });
+  // SPECIALTUR (oktober 2026): beskrivelse, krav til montør og manuel tid for hele turen kan rettes her af den,
+  // der må planlægge (sag_planlaegning). Se data/caseTypes.js og components/SpecialturFelter.jsx.
+  const erSpecial = isSpecialtur(order);
+  const [specialBeskrivelse, setSpecialBeskrivelse] = useState(order.specialBeskrivelse || "");
+  const [specialKrav, setSpecialKrav] = useState(order.specialKrav || "");
+  const [manuelTid, setManuelTid] = useState(order.manuelTid ? String(order.manuelTid) : "");
+  const [visSpecialFejl, setVisSpecialFejl] = useState(false);
+  const specialFejl = erSpecial && canPlan ? specialturFejl({ sagstype: order.sagstype, specialBeskrivelse, manuelTid }) : [];
+  const tidAendret = erSpecial && canPlan && (Math.round(Number(manuelTid)) || null) !== (order.manuelTid || null);
 
   const updateItems = (updater, meta) => {
     setItems(updater);
     if (meta?.stille) setIdFundet(true); else setItemsTouched(true);
   };
-  const planAendret = date !== order.dato || (vehicleId || "") !== (order.bilId || "") || (timeSlotId || "heldag") !== (order.tidsrumId || "heldag") || itemsTouched;
+  const planAendret = date !== order.dato || (vehicleId || "") !== (order.bilId || "") || (timeSlotId || "heldag") !== (order.tidsrumId || "heldag") || itemsTouched || tidAendret;
   const kapBlokeret = canPlan && planAendret && kapStatus.blokeret;
-  const forventetMinutter = items.reduce((sum, l) => sum + lineItemMinutes(l), 0);
+  // En specialtur har en manuelt sat tid for hele turen; ellers summen af varelinjerne.
+  const forventetMinutter = specialMinutter({ sagstype: order.sagstype, manuelTid }) ?? items.reduce((sum, l) => sum + lineItemMinutes(l), 0);
 
   // En sag uden varelinjer er ikke en sag - samme krav som den gamle editor.
   //
   // MODELNUMMER ER PÅKRÆVET (oktober 2026), når varerne ændres: en varelinje må ikke gemmes
   // uden modelnummer. Kravet gælder kun, når varerne er rørt - en ældre sag uden model på en
   // linje kan stadig flyttes til en ny dato eller bil uden at skulle rettes først.
-  const itemsUdenModel = canEditItems && itemsTouched ? linjerUdenModel(items) : [];
+  // Ved en servicetur er modelnummeret ikke påkrævet (se kraeverModelnummer i data/caseTypes.js).
+  const modelKraeves = kraeverModelnummer(order);
+  const itemsUdenModel = canEditItems && itemsTouched && modelKraeves ? linjerUdenModel(items) : [];
   const itemsInvalid = canEditItems && itemsTouched && (items.length === 0 || itemsUdenModel.length > 0);
 
   const save = () => {
+    if (specialFejl.length > 0) { setVisSpecialFejl(true); return; }
     if (itemsInvalid || kapBlokeret) return;
     const fields = {};
+    if (erSpecial && canPlan) {
+      fields.specialBeskrivelse = specialBeskrivelse.trim();
+      fields.specialKrav = specialKrav.trim();
+      fields.manuelTid = Math.round(Number(manuelTid));
+    }
     if (canPlan) {
       const t = timeSlotById(timeSlotId);
       Object.assign(fields, { dato: date, tidsrumId: timeSlotId, start: t.start, slut: t.slut, bilId: vehicleId || null });
@@ -137,6 +157,21 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
         </label>
       </div>
 
+      {erSpecial && (
+        <div className="mt-1">
+          <SpecialturFelter
+            beskrivelse={specialBeskrivelse}
+            krav={specialKrav}
+            minutter={manuelTid}
+            onBeskrivelse={setSpecialBeskrivelse}
+            onKrav={setSpecialKrav}
+            onMinutter={setManuelTid}
+            visFejl={visSpecialFejl}
+            disabled={!canPlan}
+          />
+        </div>
+      )}
+
       {date && vehicleId && (
         <KapacitetsTjek dato={date} bilId={vehicleId} adresse={address} koordinater={koordinaterTilSag(adresseKoord, address)} minutter={forventetMinutter} tidsrumId={timeSlotId || "heldag"} varelinjer={items} sagId={order.id} onStatus={setKapStatus} />
       )}
@@ -151,7 +186,7 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
       {canEditItems && (
         <div className="mt-4 pt-4 border-t border-divider">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Varer &amp; ydelser</h4>
-          <LineItemEditor embedded kraevModel={itemsTouched} order={order} catalog={catalog} items={items} onItemsChange={updateItems} />
+          <LineItemEditor embedded kraevModel={itemsTouched && modelKraeves} modelPaakraevet={modelKraeves} order={order} catalog={catalog} items={items} onItemsChange={updateItems} />
           {canEditItems && itemsTouched && items.length === 0 && <p role="alert" className="text-xs text-danger mb-3">Sagen skal have mindst én varelinje, før du kan gemme.</p>}
           {itemsUdenModel.length > 0 && <p role="alert" className="text-xs text-danger mb-3">{itemsUdenModel.length === 1 ? "En varelinje mangler" : `${itemsUdenModel.length} varelinjer mangler`} modelnummer. Alle varer skal have et modelnummer, før du kan gemme.</p>}
         </div>
@@ -174,7 +209,7 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
 // oversolgt og skal skiftes til en tilsvarende model, eller der skal noget
 // ekstra med.
 //
-// Redigeres LOKALT og gemmes først ved "Gem" - i modsætning til de fleste
+// Redigeres LOKALT og gemmes først ved "Gem" - i modsaetning til de fleste
 // andre handlinger i appen. Man laver ofte flere sammenhængende rettelser
 // (skift model OG ret tiden), og hvert tastetryk må ikke udløse en
 // skrivning og en genberegning af hele planlægningen.
@@ -198,7 +233,7 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
 // Kræver sag_feltarbejde. Lageret har den bevidst ikke: de må melde en
 // vare manglende, ikke omskrive hvad kunden har købt (håndhævet af
 // orders_guard_field_groups i databasen - UI'et er ikke sikkerhedsgrænsen).
-function LineItemEditor({ order, catalog, onSave, onCancel, embedded = false, items: controlledItems, onItemsChange, kraevModel = false }) {
+function LineItemEditor({ order, catalog, onSave, onCancel, embedded = false, items: controlledItems, onItemsChange, kraevModel = false, modelPaakraevet = true }) {
   const productTypes = catalog?.productTypes || [];
   const primaryServices = catalog?.primaryServices || [];
   const addOnServices = catalog?.addOnServices || [];
@@ -317,7 +352,7 @@ function LineItemEditor({ order, catalog, onSave, onCancel, embedded = false, it
                   </label>
                   <label className="text-xs text-muted">
                     Model
-                    <input value={v.model || ""} onChange={(e) => patch(v.id, { model: e.target.value, punkt1Id: undefined })} aria-required="true" aria-invalid={kraevModel && manglerModel(v) ? "true" : undefined} className={`w-full mt-1 rounded-lg border bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand ${kraevModel && manglerModel(v) ? "border-danger" : "border-line"}`} />
+                    <input value={v.model || ""} onChange={(e) => patch(v.id, { model: e.target.value, punkt1Id: undefined })} aria-required={modelPaakraevet ? "true" : undefined} aria-invalid={kraevModel && manglerModel(v) ? "true" : undefined} className={`w-full mt-1 rounded-lg border bg-panel px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand ${kraevModel && manglerModel(v) ? "border-danger" : "border-line"}`} />
                   </label>
                   {/* Samme punkt1-opslag som ved ny booking: bekræfter modelnummeret og husker den skjulte produktreference (ingen mål på klienten).
                       Et ændret modelnummer nulstiller referencen, så en gammel reference aldrig hører til en ny vare. */}
@@ -707,11 +742,19 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
               <p className="font-mono text-xs text-muted mb-1">
                 #{order.nr} · {order.dato || "ingen dato"} · {order.start}–{order.slut}{technician ? ` · ${technician.navn}` : " · ikke tildelt"}
                 {order.ordrenummer && <span className="ml-2 inline-flex items-center gap-0.5"><Hash size={10} aria-hidden="true" /> {order.ordrenummer}</span>}
+                <span className="ml-2 align-middle"><CaseTypeBadge order={order} /></span>
               </p>
               {order.oprettetAf?.navn && (
                 <p className="text-xs text-muted mb-1 flex items-center gap-1"><User size={11} className="shrink-0" aria-hidden="true" /> Booket af {order.oprettetAf.navn}</p>
               )}
               <h1 className="font-display text-3xl uppercase tracking-tight text-ink leading-none">{buildTitle(order.varelinjer)}</h1>
+              {isSpecialtur(order) && ((order.specialBeskrivelse || "").trim() || (order.specialKrav || "").trim() || specialMinutter(order)) && (
+                <div className="mt-2 rounded-lg bg-panel border border-line px-3 py-2 space-y-1">
+                  {(order.specialBeskrivelse || "").trim() && <p className="text-sm text-ink"><span className="font-semibold">Specialopgave:</span> {order.specialBeskrivelse}</p>}
+                  {(order.specialKrav || "").trim() && <p className="text-sm text-ink"><span className="font-semibold">Krav til montør:</span> {order.specialKrav}</p>}
+                  {specialMinutter(order) && <p className="text-sm text-ink"><span className="font-semibold">Forventet tid for hele turen:</span> {formatDuration(specialMinutter(order))}</p>}
+                </div>
+              )}
               {order.varelinjer.filter((v) => (v.opgavebeskrivelse || "").trim()).map((v) => (
                 <p key={v.id} className="text-sm text-ink mt-2 rounded-lg bg-panel border border-line px-3 py-2"><span className="font-semibold">{lineItemLabel(v)}:</span> {v.opgavebeskrivelse}</p>
               ))}
