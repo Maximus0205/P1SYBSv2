@@ -842,7 +842,7 @@ function CustomerHistoryLookup({ orders, currentOrderId, phone, address, name, o
 }
 
 // Tidsbadget i booking-ugevisningerne = KAPACITETSMOTOREN (oktober 2026, se lib/useMotorDage.js): før en simpel sum af sagernes minutter mod en fast arbejdsdag
-// på 7,5 t, nu dagens tid fra start til bilen er hjemme (køretîd, lager, arbejdstid) - samme tal som badgen i Planlægning.
+// på 7,5 t, nu dagens tid fra start til bilen er hjemme (køretid, lager, arbejdstid) - samme tal som badgen i Planlægning.
 // Sager uden bil ("Ikke tildelt") kan motoren ikke regne på: de vises kun som antal.
 function cellFra(badges, r, d, orders) {
   const dayOrders = (orders || []).filter((o) => o.bilId === r.id && o.dato === d && o.status !== "afsluttet");
