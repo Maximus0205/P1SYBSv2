@@ -146,7 +146,7 @@ function AdminPage({
               </button>
             </div>
           </div>
-          <p className="text-xs text-muted mb-3">"Blokerér" bruges fx når en bil er på værksted. Bilen kan ses, men kan ikke vælges til en montør, før den åbnes igen. Er montøren fraværende, blokeres bilen automatisk. Tempo justerer kun kapacitetsberegningen i Planlægning, ikke sagens tidsestimat.</p>
+          <p className="text-xs text-muted mb-3">"Blokér" bruges fx når en bil er på værksted. Bilen kan ses, men kan ikke vælges til en montør, før den åbnes igen. Er montøren fraværende, blokeres bilen automatisk. Tempo justerer kun kapacitetsberegningen i Planlægning, ikke sagens tidsestimat.</p>
           <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Alle biler ({vehicles.length})</h3>
           {vehicles.length === 0 ? (
             <p className="text-sm text-muted italic">Ingen biler oprettet endnu.</p>
