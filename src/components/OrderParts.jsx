@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { X, Plus, Lock, Loader2, ImageOff } from "lucide-react";
+import { X, Plus, Lock, Loader2, ImageOff, CloudOff, RefreshCw } from "lucide-react";
 import { formatTime, formatDuration, now, totalMinutes, lineItemLabel, serviceIcon } from "../data/domain";
 import { getAttachments, getAttachmentUrls, uploadAttachment } from "../lib/attachments";
 import ImageLightbox from "./ImageLightbox";
+import { billedKoe, hentEjerId, bedOmPermanentLager } from "../lib/billedKoe";
 
 // RETTET (august 2026): alle "tilføj/rediger"-handlinger herunder
 // (onAdd/onToggleAddOn/onSave osv.) kan nu være undefined - se
@@ -203,6 +204,27 @@ function Photos({ order, onAdd }) {
 
   const legacyPhotos = order.billeder || [];
 
+  // BILLEDKØ (oktober 2026): billeder, der er taget men endnu ikke bekræftet sendt, ligger på enheden
+  // og vises her med deres status - de forsvinder ikke, selv om der ingen dækning er, eller appen lukkes.
+  // Se lib/billedKoe.js. koe = kun denne sags billeder; koeUrls = midlertidige visnings-URL'er til dem.
+  const [koe, setKoe] = useState([]);
+  const [koeUrls, setKoeUrls] = useState({});
+  const koeUrlRef = useRef({});
+  useEffect(() => {
+    if (!billedKoe) return undefined;
+    return billedKoe.abonner((v) => setKoe(v.filter((p) => p.orderId === String(order.id))));
+  }, [order.id]);
+  useEffect(() => {
+    // Hold visnings-URL'erne i takt med køen: opret for nye, frigiv for dem, der er sendt.
+    const ref = koeUrlRef.current;
+    const ids = new Set(koe.map((p) => p.id));
+    let aendret = false;
+    for (const p of koe) if (!ref[p.id]) { try { ref[p.id] = URL.createObjectURL(p.blob); aendret = true; } catch (_) { /* ingen forhåndsvisning */ } }
+    for (const id of Object.keys(ref)) if (!ids.has(id)) { URL.revokeObjectURL(ref[id]); delete ref[id]; aendret = true; }
+    if (aendret) setKoeUrls({ ...ref });
+  }, [koe]);
+  useEffect(() => () => { Object.values(koeUrlRef.current).forEach((u) => URL.revokeObjectURL(u)); koeUrlRef.current = {}; }, []);
+
   // Forstørret visning: id på det billede, der er åbent (null = lukket).
   // Galleriet er ALLE billeder, der faktisk kan vises, i samme rækkefølge som
   // miniaturerne - nye fra lageret først, derefter de gamle base64-billeder -
@@ -226,15 +248,35 @@ function Photos({ order, onAdd }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Når et billede fra køen er bekræftet sendt, forsvinder det fra køen - hent så sagens billeder igen,
+  // så det står som et almindeligt billede.
+  const koeAntalRef = useRef(0);
+  useEffect(() => {
+    if (koe.length < koeAntalRef.current) load();
+    koeAntalRef.current = koe.length;
+  }, [koe, load]);
+
   const handleFiles = async (files) => {
     const liste = Array.from(files);
     if (liste.length === 0) return;
     // Sekventielt, ikke parallelt: en montør på mobildata får en
     // væsentligt mere pålidelig upload af fem billeder ét ad gangen end
     // fem samtidige, der konkurrerer om en dårlig forbindelse.
+    // FØRST gemmes billedet sikkert på enheden (billedkøen), og DEREFTER sendes det. Mister telefonen
+    // dækningen midt i, ligger billedet stadig der og sendes af sig selv, når nettet er tilbage - det
+    // går aldrig tabt. Kan enheden ikke gemme det (intet IndexedDB, fuldt lager), sendes det direkte
+    // som før.
+    const ejerId = billedKoe ? await hentEjerId() : null;
+    if (billedKoe) bedOmPermanentLager();
+    let laagIKoe = false;
     for (let i = 0; i < liste.length; i++) {
       setUploading({ antal: liste.length, faerdige: i, trin: "komprimerer" });
       const fil = await komprimerBillede(liste[i]);
+      if (billedKoe) {
+        const r = await billedKoe.laegIKoe({ orderId: order.id, blob: fil, navn: fil.name, mimeType: fil.type, kind: "billede", ejerId });
+        if (r.ok) { laagIKoe = true; continue; }
+        // Kunne ikke gemmes lokalt: send direkte i stedet (nedenfor). Fejlen er ikke brugerens sag endnu.
+      }
       await uploadAttachment({
         orderId: order.id,
         file: fil,
@@ -246,8 +288,11 @@ function Photos({ order, onAdd }) {
       // grund, de øvrige kan sagtens gå igennem.
     }
     setUploading(null);
+    if (laagIKoe) billedKoe.proev().catch(() => {});
     await load();
   };
+
+  const proevKoIgen = (id) => { billedKoe?.proevIgen(id).catch(() => {}); };
 
   // BEVIDST INGEN SLET-FUNKTION (oktober 2026): uploadede billeder er
   // dokumentation for udført arbejde og kan ikke fjernes fra sagen i
@@ -256,11 +301,12 @@ function Photos({ order, onAdd }) {
   // for alle med sag_feltarbejde, så en hård spærring kræver en migration.
 
   const trinTekst = { komprimerer: "Forbereder billedet...", starter: "Forbereder...", sender: "Sender...", bekraefter: "Gemmer..." };
-  const intetAtVise = !loading && attachments.length === 0 && legacyPhotos.length === 0;
+  const intetAtVise = !loading && attachments.length === 0 && legacyPhotos.length === 0 && koe.length === 0;
 
   const galleri = [
     ...attachments.filter((a) => urls[a.id]?.url).map((a) => ({ id: `a:${a.id}`, src: urls[a.id].url, navn: a.navn || "Billede" })),
     ...legacyPhotos.map((b) => ({ id: `l:${b.id}`, src: b.src, navn: b.navn || "Billede" })),
+    ...koe.filter((p) => koeUrls[p.id]).map((p) => ({ id: `q:${p.id}`, src: koeUrls[p.id], navn: `${p.navn || "Billede"} (sendes snart)` })),
   ];
   const forstoerretStart = galleri.findIndex((g) => g.id === forstoerretId);
 
@@ -334,6 +380,41 @@ function Photos({ order, onAdd }) {
               <p className="text-[11px] text-muted px-2 py-1 truncate">{b.navn}</p>
             </div>
           ))}
+          {/* Billeder fra billedkøen: taget, gemt på enheden, endnu ikke bekræftet sendt. */}
+          {koe.map((p) => {
+            const afvist = p.tilstand === "afvist";
+            const online = typeof navigator === "undefined" || navigator.onLine !== false;
+            const status = afvist ? "Kunne ikke sendes" : p.sender ? "Sender..." : online ? "Venter på at blive sendt" : "Venter på forbindelse";
+            return (
+              <div key={p.id} className={`rounded-xl overflow-hidden border bg-white shadow-sm ${afvist ? "border-danger" : "border-line"}`}>
+                {koeUrls[p.id] ? (
+                  <button
+                    type="button"
+                    onClick={() => setForstoerretId(`q:${p.id}`)}
+                    aria-label={`Forstør billedet ${p.navn || ""} (${status})`.trim()}
+                    className="block w-full focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand"
+                  >
+                    <img src={koeUrls[p.id]} alt={p.navn || "Billede, der sendes"} className="w-full h-32 object-cover cursor-zoom-in" />
+                  </button>
+                ) : (
+                  <div className="w-full h-32 flex items-center justify-center bg-panel text-muted"><ImageOff size={18} aria-hidden="true" /></div>
+                )}
+                <p role="status" className={`text-[11px] px-2 py-1 flex items-center gap-1.5 ${afvist ? "text-danger" : "text-muted"}`}>
+                  {p.sender ? <Loader2 size={12} className="animate-spin shrink-0" aria-hidden="true" /> : <CloudOff size={12} className="shrink-0" aria-hidden="true" />}
+                  <span className="truncate">{status}</span>
+                </p>
+                {afvist && (
+                  <button
+                    type="button"
+                    onClick={() => proevKoIgen(p.id)}
+                    className="w-full min-h-[44px] flex items-center justify-center gap-1.5 border-t border-line text-xs font-semibold uppercase tracking-wide text-brand hover:bg-panel focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand"
+                  >
+                    <RefreshCw size={13} aria-hidden="true" /> Prøv igen
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

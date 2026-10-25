@@ -340,7 +340,21 @@ handler = svarForHandling({ "start-upload": () => ({ data: { vedhaeftningId: "v3
 eq("upload: selve overførslen fejler -> ok:false, logges, og der bekræftes IKKE (sagen peger aldrig på en manglende fil)", [await lg.upload({ orderId: 1, file: fil }), logget.length, kald.some((k) => k.body.handling === "bekraeft-upload")], [{ ok: false, fejl: "Signaturen er udløbet" }, 1, false]);
 storageSvar = { error: null }; nulstil();
 handler = svarForHandling({ "start-upload": () => ({ data: { vedhaeftningId: "v4", lagerNoegle: "k", token: "t" }, error: null }), "bekraeft-upload": () => ({ data: { fejl: "Filen kom ikke frem" }, error: null }) });
-eq("upload: bekræftelsen fejler -> ok:false med serverens besked", await lg.upload({ orderId: 1, file: fil }), { ok: false, fejl: "Filen kom ikke frem" });
+eq("upload: bekræftelsen fejler -> ok:false med serverens besked, fase og vedhæftningens id (til genoptagelse)", await lg.upload({ orderId: 1, file: fil }), { ok: false, fejl: "Filen kom ikke frem", fase: "bekraeft", vedhaeftningId: "v4" });
+
+// --- upload: GENOPTAG (billedkøen) - filen er sendt, kun bekræftelsen mangler
+nulstil(); opladt.length = 0; hentKald.length = 0;
+handler = svarForHandling({ "bekraeft-upload": () => ({ data: { bytes: 4096 }, error: null }) });
+const g1 = await lg.upload({ orderId: 1, file: fil, genoptag: "v4" });
+eq("genoptag: kun bekræftelse - ingen ny start og ingen ny overførsel", [kald.map((k) => k.body.handling), opladt.length, hentKald.length], [["bekraeft-upload"], 0, 0]);
+eq("genoptag: bekræfter den samme vedhæftning og svarer ok med dens id", [kald[0].body.vedhaeftningId, g1], ["v4", { ok: true, id: "v4", bytes: 4096, pladsAdvarsel: null }]);
+nulstil();
+handler = svarForHandling({ "bekraeft-upload": () => ({ data: { fejl: "Filen blev ikke fundet på lageret - uploaden gik ikke igennem" }, error: null }) });
+eq("genoptag: bekræftelsen afvises -> fase 'genoptag' (køen sender så hele billedet forfra)", await lg.upload({ orderId: 1, file: fil, genoptag: "v4" }), { ok: false, fejl: "Filen blev ikke fundet på lageret - uploaden gik ikke igennem", fase: "genoptag" });
+nulstil();
+handler = () => ({ data: null, error: { message: "Failed to fetch" } });
+const g3 = await lg.upload({ orderId: 1, file: fil, genoptag: "v4" });
+eq("genoptag: netværksfejl markeres som netvaerk (kan vente)", [g3.ok, g3.netvaerk, g3.fase], [false, true, "genoptag"]);
 
 // --- upload, eget lager (almindelig PUT)
 nulstil(); opladt.length = 0; hentKald.length = 0; hentSvar = async () => ({ ok: true, status: 200 });
@@ -353,7 +367,7 @@ eq("upload (eget lager): uden mimetype bruges application/octet-stream", hentKal
 nulstil(); hentSvar = async () => ({ ok: false, status: 403 });
 eq("upload (eget lager): lageret afviser -> besked med status, og der bekræftes ikke", [await lg.upload({ orderId: 1, file: fil }), kald.some((k) => k.body.handling === "bekraeft-upload"), logget.length], [{ ok: false, fejl: "Lageret svarede med status 403" }, false, 1]);
 nulstil(); hentSvar = async () => { throw new Error("Failed to fetch"); };
-eq("upload (eget lager): netværksfejl -> ok:false med fejlen, intet oprydningskald og ingen bekræftelse", [await lg.upload({ orderId: 1, file: fil }), kald.map((k) => k.body.handling)], [{ ok: false, fejl: "Failed to fetch" }, ["start-upload"]]);
+eq("upload (eget lager): netværksfejl -> ok:false med fejlen, intet oprydningskald og ingen bekræftelse", [await lg.upload({ orderId: 1, file: fil }), kald.map((k) => k.body.handling)], [{ ok: false, fejl: "Failed to fetch", netvaerk: true }, ["start-upload"]]);
 hentSvar = async () => ({ ok: true, status: 200 });
 
 // --- sletning og forbrug

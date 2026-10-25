@@ -21,6 +21,14 @@ export function formatBytes(bytes) {
   return `${vaerdi.toFixed(1).replace(".", ",")} ${enheder[i]}`;
 }
 
+// Skyldes fejlen FORBINDELSEN (kan vente) frem for en afvisning? Samme kriterier som erNetvaerksfejl i
+// core/edgeTransport.js - bevidst gentaget her, fordi adapterne ikke må importere fra hinanden (se README.md).
+function erNetvaerksfejl(error) {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+  const besked = (error?.message || "").toLowerCase();
+  return ["failed to fetch", "networkerror", "network request failed", "load failed", "timeout", "aborted"].some((x) => besked.includes(x));
+}
+
 export function opretLagerAdapter({ transport, klient, log, hent } = {}) {
   if (!transport || typeof transport.kald !== "function") throw new Error("opretLagerAdapter: transport mangler");
   const logger = typeof log === "function" ? log : () => {};
@@ -34,7 +42,7 @@ export function opretLagerAdapter({ transport, klient, log, hent } = {}) {
   // Kald til sagsdokumentation. Svarer { ok:true, ...data } eller { ok:false, fejl }.
   async function kald(krop, standardFejl) {
     const r = await transport.kald(FUNKTION, krop, { standardFejl, kilde: `attachments:${krop.handling}` });
-    return r.ok ? { ok: true, ...r.data } : { ok: false, fejl: r.fejl };
+    return r.ok ? { ok: true, ...r.data } : { ok: false, fejl: r.fejl, ...(r.netvaerk ? { netvaerk: true } : {}) };
   }
 
   return {
@@ -77,51 +85,65 @@ export function opretLagerAdapter({ transport, klient, log, hent } = {}) {
     // EGET LAGER: start-upload svarer egetLager:true, hvis butikken har sit eget S3-kompatible lager. Så er
     // uploadUrl en allerede FÆRDIGSIGNERET PUT-URL (AWS Signature V4), brugt med en almindelig fetch() - IKKE
     // Supabase Storage's uploadToSignedUrl, som kun forstår Supabases eget token-skema.
-    async upload({ orderId, file, kind, onProgress }) {
+    //
+    // GENOPTAG (billedkøen, oktober 2026): faldt nettet lige EFTER filen var sendt, men før bekræftelsen, er filen
+    // på plads og mangler blot at blive aktiveret. Svaret indeholder da vedhaeftningId (fase 'bekraeft'), og et
+    // nyt kald med genoptag: <id> springer fase 1-2 over og bekræfter blot - ellers ville billedet komme to gange.
+    // Fejlsvar har netvaerk: true, når årsagen er forbindelsen (kan vente); mangler feltet, er det en afvisning.
+    async upload({ orderId, file, kind, onProgress, genoptag }) {
       if (!orderId || !file) return { ok: false, fejl: "Mangler sag eller fil" };
 
-      onProgress?.("starter");
-      const start = await kald({
-        handling: "start-upload", sagId: String(orderId), filnavn: file.name, mimeType: file.type, kind: kind || "billede",
-      }, "Kunne ikke starte uploaden");
-      if (!start.ok) return start;
+      let vedhaeftningId = genoptag;
+      let start = null;
+      if (!genoptag) {
+        onProgress?.("starter");
+        start = await kald({
+          handling: "start-upload", sagId: String(orderId), filnavn: file.name, mimeType: file.type, kind: kind || "billede",
+        }, "Kunne ikke starte uploaden");
+        if (!start.ok) return start;
+        vedhaeftningId = start.vedhaeftningId;
 
-      onProgress?.("sender");
-      if (start.egetLager) {
-        try {
-          const res = await fetchFn(start.uploadUrl, {
-            method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" },
-          });
-          if (!res.ok) {
-            const fejl = `Lageret svarede med status ${res.status}`;
+        onProgress?.("sender");
+        if (start.egetLager) {
+          try {
+            const res = await fetchFn(start.uploadUrl, {
+              method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" },
+            });
+            if (!res.ok) {
+              const fejl = `Lageret svarede med status ${res.status}`;
+              log_("attachments:upload", fejl);
+              return { ok: false, fejl, ...(res.status >= 500 ? { netvaerk: true } : {}) };
+            }
+          } catch (e) {
+            // Pending-rækken bliver stående og ryddes op automatisk: en fejl her skyldes typisk netværk/CORS, og et
+            // oprydningskald ville fejle af samme grund.
+            const fejl = e?.message || "Ukendt netværksfejl";
             log_("attachments:upload", fejl);
-            return { ok: false, fejl };
+            return { ok: false, fejl, ...(erNetvaerksfejl(e) ? { netvaerk: true } : {}) };
           }
-        } catch (e) {
-          // Pending-rækken bliver stående og ryddes op automatisk: en fejl her skyldes typisk netværk/CORS, og et
-          // oprydningskald ville fejle af samme grund.
-          const fejl = e?.message || "Ukendt netværksfejl";
-          log_("attachments:upload", fejl);
-          return { ok: false, fejl };
+        } else {
+          const { error } = await klient.storage.from(BUCKET).uploadToSignedUrl(start.lagerNoegle, start.token, file, {
+            contentType: file.type || "application/octet-stream",
+          });
+          if (error) { log_("attachments:upload", error.message); return { ok: false, fejl: error.message, ...(erNetvaerksfejl(error) ? { netvaerk: true } : {}) }; }
         }
-      } else {
-        const { error } = await klient.storage.from(BUCKET).uploadToSignedUrl(start.lagerNoegle, start.token, file, {
-          contentType: file.type || "application/octet-stream",
-        });
-        if (error) { log_("attachments:upload", error.message); return { ok: false, fejl: error.message }; }
       }
 
       onProgress?.("bekraefter");
-      const bekraeft = await kald({ handling: "bekraeft-upload", vedhaeftningId: start.vedhaeftningId }, "Filen blev sendt, men kunne ikke bekræftes");
-      if (!bekraeft.ok) return bekraeft;
+      const bekraeft = await kald({ handling: "bekraeft-upload", vedhaeftningId }, "Filen blev sendt, men kunne ikke bekræftes");
+      if (!bekraeft.ok) {
+        return genoptag
+          ? { ...bekraeft, fase: "genoptag" }
+          : { ...bekraeft, fase: "bekraeft", vedhaeftningId };
+      }
 
       return {
         ok: true,
-        id: start.vedhaeftningId,
+        id: vedhaeftningId,
         bytes: bekraeft.bytes,
         // Sat, når butikken nærmer sig sin kvote. Kun en ADVARSEL: en montør hos kunden må aldrig blokeres af en
         // kvote midt i en aflevering. Findes ikke ved eget lager (ingen kvote, vi kender).
-        pladsAdvarsel: start.pladsAdvarsel ?? null,
+        pladsAdvarsel: start?.pladsAdvarsel ?? null,
       };
     },
 

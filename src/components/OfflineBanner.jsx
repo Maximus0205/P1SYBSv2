@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { CloudOff, RefreshCw } from "lucide-react";
 import { subscribeQueue } from "../lib/offlineQueue";
+import { billedKoe } from "../lib/billedKoe";
 
 // Viser montøren, at ændringer venter på at blive sendt (august 2026).
 //
@@ -23,10 +24,14 @@ import { subscribeQueue } from "../lib/offlineQueue";
 // inden for tommelfingerens rækkevidde) er vigtigere at kunne trykke på
 // end denne, som ikke har nogen handling knyttet til sig.
 function OfflineBanner() {
-  const [antal, setAntal] = useState(0);
+  const [antalAendringer, setAntal] = useState(0);
+  const [antalBilleder, setAntalBilleder] = useState(0);
   const [offline, setOffline] = useState(typeof navigator !== "undefined" ? navigator.onLine === false : false);
 
   useEffect(() => subscribeQueue((k) => setAntal(k.length)), []);
+  // Billeder, der venter på forbindelse (billedkøen). Afviste billeder tælles ikke med her: de har deres
+  // egen markering ved billedet og en fejlbesked, fordi de ikke sendes af sig selv.
+  useEffect(() => (billedKoe ? billedKoe.abonner((v) => setAntalBilleder(v.filter((p) => p.tilstand !== "afvist").length)) : undefined), []);
 
   useEffect(() => {
     const opdater = () => setOffline(navigator.onLine === false);
@@ -39,11 +44,15 @@ function OfflineBanner() {
   }, []);
 
   // Intet at fortælle: der er dækning, og der venter ingenting.
+  const antal = antalAendringer + antalBilleder;
   if (antal === 0 && !offline) return null;
 
+  const dele = [];
+  if (antalAendringer > 0) dele.push(`${antalAendringer} ${antalAendringer === 1 ? "ændring" : "ændringer"}`);
+  if (antalBilleder > 0) dele.push(`${antalBilleder} ${antalBilleder === 1 ? "billede" : "billeder"}`);
   const tekst = antal === 0
     ? "Ingen forbindelse. Det du laver bliver gemt og sendt automatisk, når du har dækning igen."
-    : `${antal} ${antal === 1 ? "ændring venter" : "ændringer venter"} på at blive sendt. De sendes automatisk, når du har dækning.`;
+    : `${dele.join(" og ")} venter på at blive sendt. ${antal === 1 ? "Det sendes" : "De sendes"} automatisk, når du har dækning.`;
 
   return (
     <div

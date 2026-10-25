@@ -8,6 +8,7 @@ import { ConflictBanner } from "./components/ConflictBanner";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { UpdateAvailableBanner } from "./components/UpdateAvailableBanner";
 import { startVersionCheck } from "./lib/versionCheck";
+import { startBilledKoe } from "./lib/billedKoe";
 import { logError } from "./lib/errorLog";
 import "./index.css";
 import "./styles/globals.css";
@@ -31,6 +32,10 @@ window.addEventListener("unhandledrejection", (e) => {
 // Kaldes HER, uden for React, så det kører uafhængigt af hvilken side
 // brugeren er på, og fortsætter selv hvis noget går galt i selve appen.
 startVersionCheck();
+
+// Sender billeder, der ligger på enheden og venter på forbindelse (oktober 2026) - se lib/billedKoe.js.
+// Også her, uden for React, så køen kører uanset hvilken side brugeren er på.
+startBilledKoe();
 
 // HashRouter (ikke BrowserRouter): GitHub Pages serverer kun statiske filer
 // uden server-side rewrites - et refresh på en "rigtig" sti som
