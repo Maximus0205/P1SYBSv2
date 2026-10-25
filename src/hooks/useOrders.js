@@ -4,7 +4,7 @@ import { pausePatch } from "../lib/opgaveTid";
 import { delvisPatch } from "../lib/delvisAfsluttet";
 import { fetchAllOrders, fetchOrderVersions, fetchOrdersByIds, saveOrderVersioned, trashOrder, ORDERS_CHANGED_EVENT, MAKS_RAEKKER } from "../lib/orderStore";
 import { uid, dailyOrderCompare, lineItemFingerprint } from "../data/domain";
-import { SAGSTYPE_KUNDE } from "../data/caseTypes";
+import { SAGSTYPE_KUNDE, SAGSTYPE_SPECIALTUR } from "../data/caseTypes";
 import { enqueueOrder, flushQueue, queueLength, subscribeQueue, getQueuedPost, removeFromQueue } from "../lib/offlineQueue";
 import { reportSaveFailure } from "../lib/saveStatus";
 import { mergeOrder, applyMine, deepEqual } from "../lib/orderMerge";
@@ -509,11 +509,16 @@ export function useOrders(storeId) {
   //
   // senestDato (oktober 2026): en TOMGANG kan have en frist - den seneste dag, hvor den skal
   // være udført - i stedet for (eller ud over) en fast dato. Se lib/frist.js.
-  const addOrder = async ({ sagstype, kunde, koeber, noegle, dato, tidsrumId, start, slut, bilId, senestDato, varelinjer, ordrenummer, createdBy, kapacitetOverrulet, toMand }) => {
+  //
+  // sagstype er nu en af fire: kunde, tomgang, servicetur eller specialtur. En SPECIALTUR bærer desuden
+  // specialBeskrivelse, specialKrav og manuelTid (forventet tid for hele turen i minutter) - se
+  // data/caseTypes.js. De gemmes kun på en specialtur.
+  const addOrder = async ({ sagstype, kunde, koeber, noegle, dato, tidsrumId, start, slut, bilId, senestDato, varelinjer, ordrenummer, createdBy, kapacitetOverrulet, toMand, specialBeskrivelse, specialKrav, manuelTid }) => {
     if (!storeId) return;
     const newOrder = {
       id: uid(), nr: "...", ordrenummer: ordrenummer?.trim() || "",
       sagstype: sagstype || SAGSTYPE_KUNDE,
+      ...(sagstype === SAGSTYPE_SPECIALTUR ? { specialBeskrivelse: specialBeskrivelse || "", specialKrav: specialKrav || "", manuelTid: manuelTid || null } : {}),
       kunde, koeber: koeber || null, noegle: noegle || {},
       dato: dato || null, tidsrumId: dato ? tidsrumId : null, start: dato ? start : null, slut: dato ? slut : null,
       bilId: bilId || null,
@@ -601,6 +606,9 @@ export function useOrders(storeId) {
     const newOrder = {
       id: uid(), nr: "...", ordrenummer: "",
       sagstype: sourceOrder.sagstype || SAGSTYPE_KUNDE,
+      // En opfølgning på en specialtur er også en specialtur: beskrivelse, krav og tid følger med som
+      // udgangspunkt (og kan rettes i "Redigér booking"), ellers ville tiden falde tilbage på varelinjerne.
+      ...(sourceOrder.sagstype === SAGSTYPE_SPECIALTUR ? { specialBeskrivelse: sourceOrder.specialBeskrivelse || "", specialKrav: sourceOrder.specialKrav || "", manuelTid: sourceOrder.manuelTid || null } : {}),
       opfoelgningsType: followUpType || null,
       kunde: { ...sourceOrder.kunde },
       koeber: sourceOrder.koeber ? { ...sourceOrder.koeber } : null,
