@@ -91,3 +91,65 @@ test("flere varelinjer: tæller med når alle varer har grundtid, og stordriftsf
   const p = proeveForslag(alle, () => 100);
   assert.equal(p.antalFlere, 5);
 });
+
+// ---------------------------------------------------------------------------
+// RENE MÅLINGER (oktober 2026)
+// ---------------------------------------------------------------------------
+import { laeringsAarsag, maaltTidVurdering, measuredMinutes, maalingsRaekker } from "../src/data/estimates.js";
+
+const fem = (extra) => Array.from({ length: 5 }, () => sag("opvask", 60, extra));
+
+test("kun almindelige kundesager lærer: servicetur, tomgang, specialtur og opfølgninger tæller ikke", () => {
+  for (const extra of [{ sagstype: "servicetur" }, { sagstype: "tomgang" }, { sagstype: "specialtur", manuelTid: 90 }, { opfoelgningsType: "reklamation" }]) {
+    assert.equal(estimateForLineItem(buildEstimateIndex(fem(extra)), linje("opvask")), null, JSON.stringify(extra));
+    assert.equal(estimateDataStatus(fem(extra)).antalMaalt, 0, JSON.stringify(extra));
+  }
+  assert.equal(estimateForLineItem(buildEstimateIndex(fem({ sagstype: "kunde" })), linje("opvask")).minutter, 60);
+  assert.equal(estimateForLineItem(buildEstimateIndex(fem({})), linje("opvask")).minutter, 60); // ældre sager uden sagstype = kundesag
+});
+
+test("udenForLaering (testsager) holdes ude, og årsagen vises i målingsoversigten", () => {
+  const sager = fem({ udenForLaering: true });
+  assert.equal(buildEstimateIndex(sager).size, 0);
+  assert.equal(laeringsAarsag(sager[0]), "udelukket fra læring");
+  assert.deepEqual(maalingsRaekker(sager).map((r) => r.indgaar), [false, false, false, false, false]);
+  assert.equal(maalingsRaekker([sag("opvask", 60, { sagstype: "servicetur" })])[0].aarsag, "ikke en almindelig kundesag");
+});
+
+test("montørens rettelse går forud for den målte tid, og 'tæl ikke med' fjerner målingen", () => {
+  assert.equal(measuredMinutes(sag("opvask", 900, { maaltKorrigeret: 55 })), 55);
+  assert.equal(measuredMinutes(sag("opvask", 60, { maaltUdelad: true })), null);
+  const sager = Array.from({ length: 5 }, () => sag("opvask", 900, { maaltKorrigeret: 55 }));
+  assert.equal(estimateForLineItem(buildEstimateIndex(sager), linje("opvask")).minutter, 55);
+  assert.equal(buildEstimateIndex(fem({ maaltUdelad: true })).size, 0);
+  assert.equal(maalingsRaekker([sag("opvask", 900, { maaltKorrigeret: 55 })])[0].kilde, "rettet af montør");
+});
+
+test("ugyldig rettelse (0, negativ, tekst) ignoreres", () => {
+  for (const v of [0, -5, "abc", null, undefined]) assert.equal(measuredMinutes(sag("opvask", 60, { maaltKorrigeret: v })), 60);
+});
+
+test("tidsvurdering: urealistisk kort, lang og langt fra planlagt flagges", () => {
+  const nu = new Date("2026-10-01T12:00:00Z");
+  const start = (min) => new Date(nu - min * 60000).toISOString();
+  const med = (min, planlagt) => ({ varelinjer: [{ primaerYdelse: { minutter: planlagt }, tillaeg: [] }], logs: [], startetTidspunkt: start(min) });
+  assert.equal(maaltTidVurdering(med(2, 60), nu).retning, "kort");
+  assert.equal(maaltTidVurdering(med(700, 0), nu).retning, "lang");
+  assert.equal(maaltTidVurdering(med(10, 60), nu).retning, "kort");   // under en fjerdedel af planlagt
+  assert.equal(maaltTidVurdering(med(400, 60), nu).retning, "lang");  // over tre gange planlagt
+  assert.equal(maaltTidVurdering(med(60, 60), nu).mistaenkelig, false);
+  assert.equal(maaltTidVurdering(med(5, 20), nu).mistaenkelig, false); // kort opgave: ingen falsk alarm
+  assert.equal(maaltTidVurdering(med(110, 40), nu).mistaenkelig, false); // under 3x planlagt: en lang, men troværdig dag
+  assert.equal(maaltTidVurdering(med(150, 40), nu).retning, "lang");     // over 3x og over en times forskel
+});
+
+test("tidsvurdering: uden start eller stempling er der intet at vurdere", () => {
+  const v = maaltTidVurdering({ varelinjer: [], logs: [] }, new Date());
+  assert.deepEqual(v, { maalt: null, planlagt: null, mistaenkelig: false, retning: null });
+});
+
+test("tidsvurdering: åben stempling og tidligere logs lægges sammen", () => {
+  const nu = new Date("2026-10-01T12:00:00Z");
+  const o = { varelinjer: [], logs: [{ minutter: 20 }], stemplerInd: new Date(nu - 30 * 60000).toISOString() };
+  assert.equal(maaltTidVurdering(o, nu).maalt, 50);
+});

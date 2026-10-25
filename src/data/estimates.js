@@ -46,7 +46,8 @@
 //    gives intet forslag. "Andet (skriv selv)" er ikke én varetype: dér er
 //    den fritekst, sælgeren skrev, en del af nøglen.
 
-import { buildingKey } from "./domain";
+import { buildingKey, orderExpectedMinutes } from "./domain";
+import { caseType, SAGSTYPE_KUNDE } from "./caseTypes";
 
 // Samme værdi som OTHER_PRODUCT_TYPE_ID i domain.js ("Andet (skriv selv)").
 const ANDET_ID = "andet";
@@ -72,7 +73,14 @@ const MAKS_KLYNGE = 6;
 // startOrder/finishOrder i useOrders.js. Uden den fallback ville vi i
 // praksis aldrig få data nok: af de første 410 sager i systemet havde 3
 // en stempling.
+//
+// RENE MÅLINGER (oktober 2026): montøren kan ved færdigmelding rette tiden (maaltKorrigeret, hele minutter) eller
+// lade sagen udgå af læringen (maaltUdelad). En rettelse går forud for den målte tid, fordi den er et menneskes
+// svar på "tog det virkelig så lang tid?" - uret ved ikke, om der blev glemt at starte eller stoppe.
 export function measuredMinutes(order) {
+  if (order?.maaltUdelad) return null;
+  const rettet = Math.round(Number(order?.maaltKorrigeret));
+  if (Number.isFinite(rettet) && rettet > 0) return rettet;
   const fraLogs = (order?.logs || []).reduce((sum, l) => sum + (Number(l.minutter) || 0), 0);
   if (fraLogs > 0) return fraLogs;
   if (order?.startetTidspunkt && order?.afsluttetTidspunkt) {
@@ -80,6 +88,38 @@ export function measuredMinutes(order) {
     return min > 0 ? min : null;
   }
   return null;
+}
+
+// Må sagen overhovedet lære systemet noget? Returnerer null, hvis ja, ellers årsagen som tekst.
+// Kun almindelige kundesager lærer: tomgang (ingen kunde), servicetur og specialtur (anden slags opgave, specialturens tid er sat
+// manuelt) og opfølgninger (reklamation m.m. er fejlfinding, ikke en montering) ville ellers trække tallene skævt for de
+// almindelige monteringer, som forslaget er til. Systemadmin kan desuden udelukke enkelte sager (udenForLaering), fx testsager.
+export function laeringsAarsag(order) {
+  if (order?.udenForLaering) return "udelukket fra læring";
+  if (order?.maaltUdelad) return "tæller ikke med (valgt ved færdigmelding)";
+  if (caseType(order) !== SAGSTYPE_KUNDE) return "ikke en almindelig kundesag";
+  if (order?.opfoelgningsType) return "opfølgning";
+  return null;
+}
+
+// Ser den målte tid forkert ud? Bruges ved færdigmelding til at spørge montøren, mens vedkommende stadig kan svare.
+// Tid i minutter, målt som measuredMinutes vil gøre det, hvis sagen blev færdigmeldt NU. Mistænkelig er en tid, der
+// er urealistisk kort/lang i sig selv, eller langt fra den planlagte (mindre end en fjerdedel eller over tre gange så lang,
+// og med en forskel på mindst 15 / 60 minutter, så en kort opgave ikke giver falsk alarm).
+export function maaltTidVurdering(order, nu = new Date()) {
+  const slut = nu instanceof Date ? nu : new Date(nu);
+  const fraLogs = (order?.logs || []).reduce((sum, l) => sum + (Number(l.minutter) || 0), 0);
+  const aaben = order?.stemplerInd ? Math.max(0, Math.round((slut - new Date(order.stemplerInd)) / 60000)) : 0;
+  let maalt = fraLogs + aaben;
+  if (maalt <= 0 && order?.startetTidspunkt) maalt = Math.round((slut - new Date(order.startetTidspunkt)) / 60000);
+  if (!Number.isFinite(maalt) || maalt <= 0) return { maalt: null, planlagt: null, mistaenkelig: false, retning: null };
+  const planlagt = orderExpectedMinutes(order) || 0;
+  let retning = null;
+  if (maalt < MIN_MINUTTER) retning = "kort";
+  else if (maalt > MAKS_MINUTTER) retning = "lang";
+  else if (planlagt > 0 && maalt < planlagt * 0.25 && planlagt - maalt >= 15) retning = "kort";
+  else if (planlagt > 0 && maalt > planlagt * 3 && maalt - planlagt >= 60) retning = "lang";
+  return { maalt, planlagt: planlagt || null, mistaenkelig: retning !== null, retning };
 }
 
 function tillaegNoegle(v) {
@@ -131,7 +171,7 @@ function median(tal) {
 export function buildEstimateIndex(orders) {
   const buckets = new Map();
   for (const o of orders || []) {
-    if (o.status !== "afsluttet") continue;
+    if (o.status !== "afsluttet" || laeringsAarsag(o)) continue;
     const linjer = o.varelinjer || [];
     if (linjer.length !== 1) continue; // se valg 1 ovenfor
     const minutter = measuredMinutes(o);
@@ -165,7 +205,7 @@ const GRUNDLAG_TEKST = {
 export function estimateDataStatus(orders) {
   let antalMaalt = 0;
   for (const o of orders || []) {
-    if (o.status !== "afsluttet" || (o.varelinjer || []).length !== 1) continue;
+    if (o.status !== "afsluttet" || laeringsAarsag(o) || (o.varelinjer || []).length !== 1) continue;
     const m = measuredMinutes(o);
     if (m != null && m >= MIN_MINUTTER && m <= MAKS_MINUTTER) antalMaalt++;
   }
@@ -218,7 +258,7 @@ export function estimateForLineItem(index, lineItem) {
 export function buildClusterIndex(orders, baseIndex) {
   const grupper = new Map();
   for (const o of orders || []) {
-    if (o.status !== "afsluttet") continue;
+    if (o.status !== "afsluttet" || laeringsAarsag(o)) continue;
     const noegle = buildingKey(o.kunde?.adresse || "");
     if (!noegle || !o.dato) continue;
     // Samme dag + samme opgang + samme BIL (september 2026: sager
@@ -312,10 +352,12 @@ export function maalingsRaekker(orders) {
     if (o.status !== "afsluttet") continue;
     const linjer = o.varelinjer || [];
     const minutter = measuredMinutes(o);
-    const kilde = (o.logs || []).some((l) => Number(l.minutter) > 0) ? "stempling" : o.startetTidspunkt && o.afsluttetTidspunkt ? "start/slut" : "ingen";
-    let aarsag = null;
+    const rettet = Math.round(Number(o.maaltKorrigeret)) > 0;
+    const kilde = rettet ? "rettet af montør" : (o.logs || []).some((l) => Number(l.minutter) > 0) ? "stempling" : o.startetTidspunkt && o.afsluttetTidspunkt ? "start/slut" : "ingen";
+    let aarsag = laeringsAarsag(o);
     let faktor = null;
-    if (linjer.length === 0) aarsag = "ingen varelinje";
+    if (aarsag) { /* udelukket: årsagen står allerede */ }
+    else if (linjer.length === 0) aarsag = "ingen varelinje";
     else if (minutter == null) aarsag = "ingen måling";
     else if (minutter < MIN_MINUTTER) aarsag = `under ${MIN_MINUTTER} min`;
     else if (minutter > MAKS_MINUTTER) aarsag = "over 10 timer";

@@ -4,7 +4,8 @@ import { buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, t
 import { isTomgang, isSpecialtur, showsArrivalContact, followUpTypeLabel } from "../data/caseTypes";
 import { CaseTypeBadge } from "../components/CaseTypeBadge";
 import { manualKeyAccessText, routeUrlViaCabinets } from "../data/keyCabinets";
-import { StatusBadge, DateSelector, ToMandBadge } from "../components/common";
+import { StatusBadge, DateSelector, ToMandBadge, MinutesInput } from "../components/common";
+import { maaltTidVurdering } from "../data/estimates";
 import { Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
 import { BookingEditor, DuplicatePanel, PosStatusBanner } from "../components/OrderView";
 import { AddressNotesPanel } from "../components/AddressNotes";
@@ -489,6 +490,18 @@ function FinishPanel({ order, onConfirm, onCancel, onGoToTab, kanSeTider }) {
 
   const varighed = totalMinutes(order);
 
+  // RENE MÅLINGER (oktober 2026): ser den målte tid forkert ud (glemt at starte eller stoppe), spørges montøren, mens han stadig
+  // kan svare. Spørgsmålet blokerer aldrig færdigmeldingen. Uden et svar tæller tiden ikke med i estimaterne: en tid, ingen har
+  // stået inde for, skal ikke lære systemet noget. Tallene vises kun, hvis montøren må se tider (kanSeTider).
+  const medTid = useFeature("tid_stempling");
+  const [vurdering] = React.useState(() => (medTid ? maaltTidVurdering(order) : null));
+  const [tidsValg, setTidsValg] = React.useState(null); // "passer" | "ret" | "udelad" | null
+  const [rettetMin, setRettetMin] = React.useState(0);
+  const spoergTid = !!vurdering?.mistaenkelig;
+  const rettetGyldig = rettetMin >= 1 && rettetMin <= 600;
+  const svar = !spoergTid ? {} : tidsValg === "passer" ? {} : tidsValg === "ret" && rettetGyldig ? { maaltKorrigeret: rettetMin } : { maaltUdelad: true };
+  const kanBekraefte = !(spoergTid && tidsValg === "ret" && !rettetGyldig);
+
   return (
     <div className="rounded-xl bg-white border border-success p-4 mb-4 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-1.5">
@@ -521,8 +534,48 @@ function FinishPanel({ order, onConfirm, onCancel, onGoToTab, kanSeTider }) {
 
       {kanSeTider && varighed > 0 && <p className="text-xs text-muted mb-3">Registreret tid på sagen: {formatDuration(varighed)}.</p>}
 
+      {spoergTid && (
+        <fieldset className="rounded-lg bg-panel border border-brand p-3 mb-3">
+          <legend className="px-1 text-xs font-semibold text-ink flex items-center gap-1.5">
+            <Clock size={13} className="shrink-0 text-brand" aria-hidden="true" /> Passer tiden på opgaven?
+          </legend>
+          <p className="text-xs text-muted mb-2">
+            Tiden på sagen ser {vurdering.retning === "kort" ? "meget kort" : "meget lang"} ud
+            {kanSeTider ? ` (${formatDuration(vurdering.maalt)}${vurdering.planlagt ? `, planlagt ${formatDuration(vurdering.planlagt)}` : ""})` : ""}
+            , fx hvis opgaven først blev startet eller færdigmeldt senere eller tidligere end den burde.
+          </p>
+          <div className="space-y-1.5">
+            {[
+              { id: "passer", tekst: "Tiden passer" },
+              { id: "ret", tekst: "Ret tiden" },
+              { id: "udelad", tekst: "Tæl ikke tiden med" },
+            ].map((v) => (
+              <label key={v.id} className={`flex items-center gap-2 min-h-[44px] px-3 rounded-lg border cursor-pointer text-sm text-ink ${tidsValg === v.id ? "border-brand bg-white" : "border-line bg-white"}`}>
+                <input type="radio" name={`tid-${order.id}`} value={v.id} checked={tidsValg === v.id} onChange={() => setTidsValg(v.id)} className="w-4 h-4 accent-brand shrink-0" />
+                {v.tekst}
+              </label>
+            ))}
+          </div>
+          {tidsValg === "ret" && (
+            <label className="flex items-center gap-2 mt-2 text-xs text-muted">
+              Hvor lang tid tog opgaven i alt?
+              <MinutesInput
+                value={rettetMin}
+                onChange={setRettetMin}
+                aria-label="Opgavens tid i minutter"
+                aria-invalid={rettetGyldig ? undefined : "true"}
+                className="w-20 min-h-[44px] rounded-lg border border-line bg-white px-2 py-1 text-right text-sm text-ink focus:outline-none focus:border-brand"
+              />
+              min
+            </label>
+          )}
+          {tidsValg === "ret" && !rettetGyldig && <p role="alert" className="text-xs text-danger mt-1">Angiv et antal minutter mellem 1 og 600.</p>}
+          {tidsValg === null && <p className="text-[11px] text-muted mt-2">Svarer du ikke, tæller tiden ikke med i estimaterne. Du kan stadig færdigmelde.</p>}
+        </fieldset>
+      )}
+
       <div className="flex gap-2 flex-wrap">
-        <button onClick={onConfirm} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-success hover:bg-ink focus:outline-none focus:ring-2 focus:ring-ink transition-colors flex items-center gap-1.5">
+        <button onClick={() => onConfirm(svar)} disabled={!kanBekraefte} className="disabled:opacity-50 disabled:pointer-events-none px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-success hover:bg-ink focus:outline-none focus:ring-2 focus:ring-ink transition-colors flex items-center gap-1.5">
           <CheckCheck size={15} aria-hidden="true" /> Færdigmeld sagen
         </button>
         <button onClick={onCancel} className="px-4 py-3 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted focus:outline-none focus:ring-2 focus:ring-muted transition-colors flex items-center gap-1.5">
@@ -603,7 +656,7 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
           kanSeTider={kanSeTider}
           onCancel={() => setPanel(null)}
           onGoToTab={(key) => { setTab(key); setPanel(null); }}
-          onConfirm={() => { onFinishOrder?.(); setPanel(null); }}
+          onConfirm={(svar) => { onFinishOrder?.(svar); setPanel(null); }}
         />
       ) : (
         <div className="rounded-xl bg-white border border-line p-4 mb-4 shadow-sm">

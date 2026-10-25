@@ -145,7 +145,7 @@ function OrderRoute({ profile, storeId, orders, technicians, personnel, crew, or
     // samtidig grundlaget for tidsestimaterne (se data/estimates.js).
     onStartOrder: () => ordersStore.startOrder(order.id, { registrerTid }),
     kanSeTider: !!profile.erSystemadmin,
-    onFinishOrder: () => ordersStore.finishOrder(order.id),
+    onFinishOrder: (svar) => ordersStore.finishOrder(order.id, svar),
     onReopenOrder: () => ordersStore.reopenOrder(order.id),
 
     // POS-synkronisering (september 2026): finishOrder udløser den

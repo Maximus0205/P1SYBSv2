@@ -793,7 +793,11 @@ export function useOrders(storeId) {
   // Har sagen aldrig været startet, sættes startetTidspunkt IKKE
   // bagudrettet til noget opfundet. Så står sagen uden varighed og indgår
   // ikke i estimaterne - bedre end at fodre modellen med et gæt.
-  const finishOrder = (orderId) => {
+  //
+  // RENE MÅLINGER (oktober 2026): ser den målte tid forkert ud (glemt start/stop), spørger færdigmeldingen montøren, og svaret
+  // kommer hertil: { maaltKorrigeret: hele minutter } erstatter den målte tid, { maaltUdelad: true } lader sagen udgå af
+  // estimaterne. Uden svar røres målingen ikke. Selve sagens tid (logs) ændres aldrig - rettelsen ligger ved siden af.
+  const finishOrder = (orderId, svar = {}) => {
     const s = findOrder(orders, orderId);
     if (!s) return;
     const nu = new Date().toISOString();
@@ -802,7 +806,12 @@ export function useOrders(storeId) {
       const minutter = Math.max(1, Math.round((new Date(nu) - new Date(s.stemplerInd)) / 60000));
       logs.push({ id: uid(), ind: s.stemplerInd, ud: nu, minutter });
     }
-    saveOneOrder({ ...s, status: "afsluttet", afsluttetTidspunkt: nu, stemplerInd: null, logs });
+    const rettet = Math.round(Number(svar?.maaltKorrigeret));
+    const maaling = {
+      maaltKorrigeret: Number.isFinite(rettet) && rettet > 0 && rettet <= 600 ? rettet : null,
+      maaltUdelad: svar?.maaltUdelad === true,
+    };
+    saveOneOrder({ ...s, status: "afsluttet", afsluttetTidspunkt: nu, stemplerInd: null, logs, ...maaling });
     runPosSync(orderId);
   };
 
@@ -811,7 +820,7 @@ export function useOrders(storeId) {
   const reopenOrder = (orderId) => {
     const s = findOrder(orders, orderId);
     if (!s) return;
-    saveOneOrder({ ...s, status: "igang", afsluttetTidspunkt: null });
+    saveOneOrder({ ...s, status: "igang", afsluttetTidspunkt: null, maaltKorrigeret: null, maaltUdelad: false });
   };
 
   // Ændrer besøgs-RÆKKEFØLGEN for sager hos samme BIL, samme dag.
