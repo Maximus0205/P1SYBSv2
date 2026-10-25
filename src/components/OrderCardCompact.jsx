@@ -1,7 +1,8 @@
 import React from "react";
-import { Clock, CalendarCheck2, AlertTriangle, DoorOpen } from "lucide-react";
+import { Clock, CalendarCheck2, AlertTriangle, HardHat } from "lucide-react";
 import { TIME_SLOTS, buildTitle, formatDuration, orderExpectedMinutes, formatShortDate, isToday, missingLineItems } from "../data/domain";
-import { isTomgang, TOMGANG_COLOR } from "../data/caseTypes";
+import { isSpecialtur } from "../data/caseTypes";
+import { CaseTypeBadge } from "../components/CaseTypeBadge";
 import { StatusBadge, LineItemPills, ToMandBadge } from "../components/common";
 import { DelvisBadge } from "../components/DelvisAfsluttet";
 import { harDelvis } from "../lib/delvisAfsluttet";
@@ -57,7 +58,6 @@ import { harDelvis } from "../lib/delvisAfsluttet";
 // ombryde/krympe som forventet. Sættes eksplicit her og på select-rækken.
 function OrderCardCompact({ order, technicians, onOpen, onAssign, onUpdateTimeSlot, reason, accent, minimal }) {
   const mangler = missingLineItems(order);
-  const tomgang = isTomgang(order);
 
   return (
     <div
@@ -77,17 +77,13 @@ function OrderCardCompact({ order, technicians, onOpen, onAssign, onUpdateTimeSl
             <span className="font-mono text-[10px] text-faint">#{order.nr}</span>
             {order.toMand && <ToMandBadge />}
             {harDelvis(order) && order.status !== "afsluttet" && <DelvisBadge />}
-            {tomgang && (
-              <span
-                className="inline-flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md border"
-                style={{ color: TOMGANG_COLOR, borderColor: TOMGANG_COLOR }}
-              >
-                <DoorOpen size={9} aria-hidden="true" /> Tomgang
-              </span>
-            )}
+            <CaseTypeBadge order={order} />
           </div>
           <p className="font-semibold text-sm text-ink truncate">{buildTitle(order.varelinjer)}</p>
           <p className="text-xs text-muted truncate">{order.kunde.navn} · {order.kunde.adresse}{order.kunde.telefon ? ` · ${order.kunde.telefon}` : ""}</p>
+          {isSpecialtur(order) && (order.specialKrav || "").trim() && (
+            <p className="text-[11px] text-ink font-semibold flex items-center gap-1 mt-0.5"><HardHat size={11} className="shrink-0" aria-hidden="true" /> <span className="truncate">Krav: {order.specialKrav}</span></p>
+          )}
           {mangler.length > 0 && (
             <p className="text-[11px] text-danger font-semibold flex items-center gap-1 mt-0.5">
               <AlertTriangle size={11} className="shrink-0" aria-hidden="true" />

@@ -1,5 +1,6 @@
 import { RotateCw, Trash2, Cable, Wifi, Wrench, Tag, ShoppingCart, Route, Truck, Package, Settings2, Building2, Archive, Home, Bell, AlertCircle, CalendarClock, MapPin } from "lucide-react";
 import { standardYdelse } from "../lib/ydelser";
+import { specialMinutter } from "./caseTypes";
 
 // Core domain helpers and default data for the app. Function/constant names
 // are English (part of the codebase's English rename); the actual STRING
@@ -198,7 +199,9 @@ const lineItemLabel = (v) => {
 };
 
 const lineItemMinutes = (line) => (Number(line.primaerYdelse?.minutter) || 0) + (line.tillaeg || []).reduce((sum, y) => sum + (Number(y.minutter) || 0), 0);
-const orderExpectedMinutes = (order) => (order.varelinjer || []).reduce((sum, l) => sum + lineItemMinutes(l), 0);
+// En SPECIALTUR har en manuelt sat tid for hele turen (manuelTid, se data/caseTypes.js), som
+// erstatter summen af varelinjerne. Er den ikke sat, eller er sagen en anden type, regnes som før.
+const orderExpectedMinutes = (order) => specialMinutter(order) ?? (order.varelinjer || []).reduce((sum, l) => sum + lineItemMinutes(l), 0);
 
 // ---------------- Manglende varer (august 2026) ----------------
 // Lageret kan ved pluk melde, at en vare IKKE kan findes - typisk fordi
