@@ -209,7 +209,7 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
 // oversolgt og skal skiftes til en tilsvarende model, eller der skal noget
 // ekstra med.
 //
-// Redigeres LOKALT og gemmes først ved "Gem" - i modsaetning til de fleste
+// Redigeres LOKALT og gemmes først ved "Gem" - i modsætning til de fleste
 // andre handlinger i appen. Man laver ofte flere sammenhængende rettelser
 // (skift model OG ret tiden), og hvert tastetryk må ikke udløse en
 // skrivning og en genberegning af hele planlægningen.
