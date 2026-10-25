@@ -28,3 +28,13 @@ export function varighed(run) {
   const s = Math.max(0, Math.round((Date.parse(run.faerdig_at) - Date.parse(run.startet_at)) / 1000));
   return s < 60 ? `${s} sek.` : `${Math.floor(s / 60)} min. ${s % 60} sek.`;
 }
+
+// Er backup'en hentet til den eksterne computer for nylig? (null = alt vel)
+export function hentningAdvarsel(hentninger, nu = Date.now()) {
+  const ok = (hentninger || []).find((h) => !h.fejl);
+  if (!ok) return "Backup er endnu ikke hentet til en ekstern computer – så ligger den kun i Supabase.";
+  const alderT = (nu - Date.parse(ok.hentet_at)) / 3_600_000;
+  if (alderT > BACKUP_ADVARSEL_TIMER) return `Backup er sidst hentet til den eksterne computer for ${Math.floor(alderT)} timer siden.`;
+  if (hentninger[0] && hentninger[0].fejl) return "Seneste hentning til den eksterne computer havde fejl.";
+  return null;
+}

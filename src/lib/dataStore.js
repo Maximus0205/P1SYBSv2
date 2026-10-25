@@ -1081,3 +1081,9 @@ export const startBackup = () => backupKald({ action: "start", type: "manuel" })
 export const hentBackupDownload = (path) => backupKald({ action: "download", path });
 export const tjekBackupGendannelse = (runId, storeId) => backupKald({ action: "tjek", run_id: runId, store_id: storeId });
 export const gendanFraBackup = (runId, storeId) => backupKald({ action: "gendan", run_id: runId, store_id: storeId });
+
+export async function getBackupHentninger(limit = 5) {
+  const { data, error } = await supabase.from("backup_hentninger").select("*").order("hentet_at", { ascending: false }).limit(limit);
+  if (error) { logError("getBackupHentninger", error); return { fejl: error.message, hentninger: [] }; }
+  return { fejl: null, hentninger: data || [] };
+}

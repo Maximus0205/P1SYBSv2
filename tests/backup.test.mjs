@@ -27,3 +27,11 @@ test("formatering", () => {
   assert.equal(varighed({ startet_at: h(0), faerdig_at: new Date(nu + 75_000).toISOString() }), "1 min. 15 sek.");
   assert.equal(varighed({ startet_at: h(0) }), null);
 });
+
+import { hentningAdvarsel } from "../src/data/backup.js";
+test("hentning til ekstern computer", () => {
+  assert.match(hentningAdvarsel([], nu), /endnu ikke hentet/);
+  assert.equal(hentningAdvarsel([{ hentet_at: h(3) }], nu), null);
+  assert.match(hentningAdvarsel([{ hentet_at: h(50) }], nu), /50 timer/);
+  assert.match(hentningAdvarsel([{ hentet_at: h(1), fejl: "x" }, { hentet_at: h(5) }], nu), /fejl/);
+});

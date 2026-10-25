@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Archive, Download, AlertCircle, Check, RefreshCw, ShieldCheck } from "lucide-react";
-import { getBackupRuns, startBackup, hentBackupDownload, tjekBackupGendannelse, gendanFraBackup } from "../lib/dataStore";
-import { backupAdvarsel, formatBytes, varighed } from "../data/backup";
+import { getBackupRuns, getBackupHentninger, startBackup, hentBackupDownload, tjekBackupGendannelse, gendanFraBackup } from "../lib/dataStore";
+import { backupAdvarsel, hentningAdvarsel, formatBytes, varighed } from "../data/backup";
 
 // SYSTEMADMIN: backup. Selve backup'en kører automatisk to gange i døgnet (se databasens cron-job "backup-planlagt").
 // Her ses historikken, en backup kan startes med det samme, filer kan hentes, og manglende rækker i en butik kan
@@ -87,6 +87,7 @@ function Gendannelse({ run, stores }) {
 
 function BackupAdmin({ stores = [] }) {
   const [runs, setRuns] = useState(null);
+  const [hentninger, setHentninger] = useState(null);
   const [indlaesFejl, setIndlaesFejl] = useState("");
   const [starter, setStarter] = useState(false);
   const [fejl, setFejl] = useState("");
@@ -94,7 +95,8 @@ function BackupAdmin({ stores = [] }) {
   const timer = useRef(null);
 
   const hent = useCallback(async () => {
-    const r = await getBackupRuns();
+    const [r, h] = await Promise.all([getBackupRuns(), getBackupHentninger()]);
+    setHentninger(h.fejl ? null : h.hentninger);
     setIndlaesFejl(r.fejl || "");
     setRuns(r.runs);
     return r.runs;
@@ -126,6 +128,8 @@ function BackupAdmin({ stores = [] }) {
 
   if (runs === null) return <p className="text-sm text-muted flex items-center gap-2" role="status"><Loader2 size={14} className="animate-spin" aria-hidden="true" /> Henter backups…</p>;
   const advarsel = indlaesFejl ? null : backupAdvarsel(runs);
+  const hentAdv = hentninger ? hentningAdvarsel(hentninger) : null;
+  const sidsteHentning = hentninger?.find((h) => !h.fejl);
   const igang = runs.some((r) => r.status === "koerer");
 
   return (
@@ -134,7 +138,7 @@ function BackupAdmin({ stores = [] }) {
         <h2 id="backup-titel" className="text-lg font-bold flex items-center gap-2"><Archive size={18} aria-hidden="true" /> Backup</h2>
         <p className="text-sm text-muted mt-1">
           Tages automatisk to gange i døgnet (ca. kl. 4 og 14) og gemmes i 30 dage. Hver backup har én fil pr. butik plus en fælles fil.
-          Nye sagsbilleder og -filer kopieres med. Backup'en ligger i samme Supabase-projekt – hent jævnligt en kopi og gem den et andet sted.
+          Nye sagsbilleder og -filer kopieres med. En ekstern computer henter backup'en til sig selv; her ses, hvornår det sidst skete.
         </p>
       </div>
 
@@ -149,6 +153,16 @@ function BackupAdmin({ stores = [] }) {
           <ShieldCheck size={16} aria-hidden="true" /> Seneste backup: {dato(runs.find((r) => r.status === "ok" || r.status === "delvis")?.faerdig_at)}.
         </p>
       )}
+
+      {hentninger && (hentAdv ? (
+        <p className="text-sm text-red-800 bg-red-50 border border-red-200 rounded p-3 flex items-center gap-2" role="alert">
+          <AlertCircle size={16} aria-hidden="true" /> {hentAdv}
+        </p>
+      ) : (
+        <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded p-3 flex items-center gap-2" role="status">
+          <ShieldCheck size={16} aria-hidden="true" /> Hentet til ekstern computer: {dato(sidsteHentning?.hentet_at)}{sidsteHentning?.klient ? ` (${sidsteHentning.klient})` : ""}.
+        </p>
+      ))}
 
       <div className="flex flex-wrap gap-2">
         <button type="button" onClick={start} disabled={starter || igang} className="min-h-[44px] px-4 text-sm font-semibold bg-brand text-white rounded disabled:opacity-50 flex items-center gap-2">
