@@ -81,10 +81,10 @@ function TechnicianPicker({ technicians, onSelect }) {
 function ReorderButtons({ onMoveUp, onMoveDown, canMoveUp, canMoveDown }) {
   return (
     <div className="flex flex-col shrink-0 -ml-1" onClick={(e) => e.stopPropagation()}>
-      <button onClick={onMoveUp} disabled={!canMoveUp} aria-label="Flyt tidligere i ruten" className="p-1.5 rounded-md text-muted hover:text-brand hover:bg-panel disabled:opacity-20 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-brand transition-colors" title="Flyt tidligere i ruten">
+      <button onClick={onMoveUp} disabled={!canMoveUp} aria-label="Flyt tidligere i ruten" className="w-11 h-10 flex items-center justify-center rounded-md text-muted hover:text-brand hover:bg-panel disabled:opacity-20 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-brand transition-colors" title="Flyt tidligere i ruten">
         <ChevronUp size={15} aria-hidden="true" />
       </button>
-      <button onClick={onMoveDown} disabled={!canMoveDown} aria-label="Flyt senere i ruten" className="p-1.5 rounded-md text-muted hover:text-brand hover:bg-panel disabled:opacity-20 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-brand transition-colors" title="Flyt senere i ruten">
+      <button onClick={onMoveDown} disabled={!canMoveDown} aria-label="Flyt senere i ruten" className="w-11 h-10 flex items-center justify-center rounded-md text-muted hover:text-brand hover:bg-panel disabled:opacity-20 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-brand transition-colors" title="Flyt senere i ruten">
         <ChevronDown size={15} aria-hidden="true" />
       </button>
     </div>
@@ -139,7 +139,7 @@ function ActionStack({ order, skabe }) {
         className="w-full h-[46px] flex flex-col items-center justify-center gap-0.5 text-ink hover:bg-panel focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand transition-colors"
       >
         <Navigation size={15} aria-hidden="true" />
-        <span className="text-[9px] font-semibold uppercase tracking-wide">Naviger</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wide">Naviger</span>
       </a>
 
       {kontaktRelevant && (
@@ -148,7 +148,7 @@ function ActionStack({ order, skabe }) {
         ) : (
           <div className="w-full h-[46px] flex flex-col items-center justify-center gap-0.5 text-line" title="Kunden har intet telefonnummer på sagen">
             <MessageSquare size={15} aria-hidden="true" />
-            <span className="text-[9px] font-semibold uppercase tracking-wide">SMS</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide">SMS</span>
           </div>
         )
       )}
@@ -163,12 +163,12 @@ function ActionStack({ order, skabe }) {
             className="w-full h-[46px] flex flex-col items-center justify-center gap-0.5 text-ink hover:bg-panel focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand transition-colors"
           >
             <Phone size={15} aria-hidden="true" />
-            <span className="text-[9px] font-semibold uppercase tracking-wide">Ring</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide">Ring</span>
           </a>
         ) : (
           <div className="w-full h-[46px] flex flex-col items-center justify-center gap-0.5 text-line" title="Kunden har intet telefonnummer på sagen">
             <Phone size={15} aria-hidden="true" />
-            <span className="text-[9px] font-semibold uppercase tracking-wide">Ring</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide">Ring</span>
           </div>
         )
       )}
@@ -720,7 +720,7 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
             <div className="mt-2.5 rounded-lg bg-danger/10 border border-danger px-3 py-2">
               <p className="text-sm font-semibold text-danger flex items-center gap-1.5"><AlertTriangle size={14} className="shrink-0" aria-hidden="true" /> Markeret: kom ikke i mål</p>
               <p className="text-xs text-danger mt-0.5">{order.problem.note} · {order.problem.tid}</p>
-              {onClearProblem && canFieldwork && <button onClick={onClearProblem} className="text-[11px] text-danger underline hover:no-underline mt-1 py-1">Fjern markering</button>}
+              {onClearProblem && canFieldwork && <button onClick={onClearProblem} className="text-xs text-danger underline hover:no-underline mt-1 py-3">Fjern markering</button>}
             </div>
           )}
 
@@ -777,16 +777,16 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
 
           <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-divider">
             {(canPlan || canEditCustomer || canFieldwork) && (
-              <button onClick={() => setPanel("booking")} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-1 py-1.5 flex items-center gap-1"><Pencil size={13} aria-hidden="true" /> Redigér booking</button>
+              <button onClick={() => setPanel("booking")} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-2 py-2.5 min-h-[44px] flex items-center gap-1"><Pencil size={13} aria-hidden="true" /> Redigér booking</button>
             )}
             {onDuplicate && canCreate && (
-              <button onClick={() => setPanel("dupliker")} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-1 py-1.5 flex items-center gap-1"><Copy size={13} aria-hidden="true" /> Dupliker / opfølgning</button>
+              <button onClick={() => setPanel("dupliker")} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-2 py-2.5 min-h-[44px] flex items-center gap-1"><Copy size={13} aria-hidden="true" /> Dupliker / opfølgning</button>
             )}
             {onPartialFinish && canFieldwork && kanMeldesDelvist(order) && (
-              <button onClick={() => setPanel("delvis")} className="text-xs font-semibold uppercase tracking-wide text-brand hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-brand rounded px-1 py-1.5 flex items-center gap-1"><CalendarCheck2 size={13} aria-hidden="true" /> Delvist afsluttet</button>
+              <button onClick={() => setPanel("delvis")} className="text-xs font-semibold uppercase tracking-wide text-brand hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-brand rounded px-2 py-2.5 min-h-[44px] flex items-center gap-1"><CalendarCheck2 size={13} aria-hidden="true" /> Delvist afsluttet</button>
             )}
             {onMarkProblem && canFieldwork && !order.problem && (
-              <button onClick={() => setPanel("problem")} className="text-xs font-semibold uppercase tracking-wide text-danger hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-danger rounded px-1 py-1.5 flex items-center gap-1"><AlertTriangle size={13} aria-hidden="true" /> Marker: kom ikke i mål</button>
+              <button onClick={() => setPanel("problem")} className="text-xs font-semibold uppercase tracking-wide text-danger hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-danger rounded px-2 py-2.5 min-h-[44px] flex items-center gap-1"><AlertTriangle size={13} aria-hidden="true" /> Marker: kom ikke i mål</button>
             )}
           </div>
 
@@ -800,7 +800,7 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
 
       <div className="flex border-b border-line mb-5 overflow-x-auto">
         {tabs.map((t) => (
-          <button key={t.key} onClick={() => setTab(t.key)} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors shrink-0 focus:outline-none focus:ring-2 focus:ring-brand ${tab === t.key ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
+          <button key={t.key} onClick={() => setTab(t.key)} className={`px-4 py-3 min-h-[44px] text-sm font-semibold uppercase tracking-wide transition-colors shrink-0 focus:outline-none focus:ring-2 focus:ring-brand ${tab === t.key ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>
             {t.label} <span className="font-mono text-xs">({t.count})</span>
           </button>
         ))}

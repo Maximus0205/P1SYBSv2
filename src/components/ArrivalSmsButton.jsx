@@ -265,7 +265,7 @@ function ArrivalSmsButton({ phone, customerName, variant }) {
         title="Send SMS om forventet ankomst"
       >
         {ikon}
-        <span className={erStak ? "text-[9px] font-semibold uppercase tracking-wide" : ""}>
+        <span className={erStak ? "text-[10px] font-semibold uppercase tracking-wide" : ""}>
           {status.state === "sent" ? "Sendt" : "SMS"}
         </span>
       </button>
