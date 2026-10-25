@@ -5,21 +5,14 @@
 // billedKoe er null, hvis enheden ikke har IndexedDB (fx visse private vinduer). Kalderen sender
 // da billedet direkte som før - uden offline-beskyttelse, men uden at noget går i stykker.
 import { lager } from "../adapters";
-import { supabase } from "./supabaseClient";
+import { hentEjerId } from "./aktuelBruger";
 import { reportSaveFailure } from "./saveStatus";
 import { opretBilledKoe } from "./billedKoeCore";
 import { opretIndexedDbStore } from "./billedKoeStore";
 
 const INTERVAL_MS = 30 * 1000; // et ekstra forsøg hvert halve minut - også uden at nettet "melder" sig
 
-export async function hentEjerId() {
-  try {
-    const { data } = await supabase.auth.getSession();
-    return data?.session?.user?.id || null;
-  } catch (_) {
-    return null;
-  }
-}
+export { hentEjerId };
 
 // Kun én fane sender ad gangen. Web Locks findes i alle nyere browsere; mangler de, kører vi uden lås
 // (to faner kan så i værste fald sende samme billede - to ens billeder, men ingen tab).

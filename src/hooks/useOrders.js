@@ -5,7 +5,10 @@ import { delvisPatch } from "../lib/delvisAfsluttet";
 import { fetchAllOrders, fetchOrderVersions, fetchOrdersByIds, saveOrderVersioned, trashOrder, ORDERS_CHANGED_EVENT, MAKS_RAEKKER } from "../lib/orderStore";
 import { uid, dailyOrderCompare, lineItemFingerprint } from "../data/domain";
 import { SAGSTYPE_KUNDE, SAGSTYPE_SPECIALTUR } from "../data/caseTypes";
-import { enqueueOrder, flushQueue, queueLength, subscribeQueue, getQueuedPost, removeFromQueue } from "../lib/offlineQueue";
+import { enqueueOrder, flushQueue, queueLength, subscribeQueue, getQueuedPost, getQueue, removeFromQueue } from "../lib/offlineQueue";
+import { laeseCache, saetViserCache } from "../lib/laeseCache";
+import { sagsNoegle, raekkerTilCache, visningFraCache } from "../lib/sagsCache";
+import { hentEjerId } from "../lib/aktuelBruger";
 import { reportSaveFailure } from "../lib/saveStatus";
 import { adgangsFelter } from "../data/adgang";
 import { mergeOrder, applyMine, deepEqual } from "../lib/orderMerge";
@@ -114,6 +117,37 @@ export function useOrders(storeId) {
 
   // ---------------- Hentning ----------------
 
+  // OFFLINE-CACHE (oktober 2026, se lib/laeseCache.js): serverens seneste kendte udgave af sagerne gemmes, så en
+  // montør kan åbne appen og se dagens sager uden net. Cachen bruges KUN, når hentningen fejler på grund af
+  // forbindelsen - og aldrig til at skrive: ændringer lægges i offline-køen, som før. Gemmes med lidt forsinkelse
+  // (en række hurtige ændringer giver én skrivning).
+  const gemTimerRef = useRef(null);
+  const gemSagsCache = useCallback(() => {
+    clearTimeout(gemTimerRef.current);
+    gemTimerRef.current = setTimeout(async () => {
+      const sid = storeRef.current;
+      if (!sid) return;
+      const ejer = await hentEjerId();
+      if (!ejer || storeRef.current !== sid) return;
+      laeseCache.gem(sagsNoegle(ejer, sid), { rows: raekkerTilCache(versionsRef.current, baseRef.current) });
+    }, 3000);
+  }, []);
+  useEffect(() => () => clearTimeout(gemTimerRef.current), []);
+
+  const hydrerFraCache = useCallback(async (id) => {
+    const ejer = await hentEjerId();
+    if (!ejer) return;
+    const gemt = await laeseCache.hent(sagsNoegle(ejer, id));
+    if (!gemt || storeRef.current !== id || versionsRef.current.size > 0) return;   // der kom data imens
+    const v = visningFraCache(gemt.vaerdi?.rows, getQueue(), id);
+    // Versionerne og grundlaget er det, brugeren så sidst - en ændring uden net bygger dermed på den rigtige
+    // udgave, og databasen opdager en konflikt, når den sendes (lib/orderMerge.js).
+    v.versions.forEach((ver, oid) => versionsRef.current.set(oid, ver));
+    v.bases.forEach((data, oid) => baseRef.current.set(oid, data));
+    setOrders(v.orders);
+    saetViserCache("sager", gemt.gemt);
+  }, []);
+
   const load = useCallback(async (id) => {
     if (!id) {
       versionsRef.current.clear();
@@ -125,7 +159,11 @@ export function useOrders(storeId) {
     // Kunne vi ikke hente, beholder vi det vi har - en tom skærm ved en
     // netværksfejl ville se ud som om alle sager var væk. Fejlen er logget,
     // og den løbende opdatering prøver igen.
-    if (!res.ok || storeRef.current !== id) return;
+    if (!res.ok || storeRef.current !== id) {
+      // Ingen forbindelse og intet vist endnu (appen lige åbnet): vis de gemte sager i stedet for en tom skærm.
+      if (!res.ok && res.netvaerk && storeRef.current === id && versionsRef.current.size === 0) await hydrerFraCache(id);
+      return;
+    }
     res.rows.forEach((r) => {
       if (pendingRef.current.get(r.id) > 0) return;
       versionsRef.current.set(r.id, r.version);
@@ -140,7 +178,9 @@ export function useOrders(storeId) {
       });
       return next;
     });
-  }, []);
+    saetViserCache("sager", null);   // friske data fra databasen
+    gemSagsCache();
+  }, [hydrerFraCache, gemSagsCache]);
 
   useEffect(() => {
     versionsRef.current.clear();
@@ -175,6 +215,7 @@ export function useOrders(storeId) {
         nye = f.rows.filter((r) => !isPending(r.id));
       }
       const fjernSet = new Set(fjernede.filter((id) => !isPending(id)));
+      saetViserCache("sager", null);   // databasen svarede, og vi har det nyeste
       if (nye.length === 0 && fjernSet.size === 0) return;
 
       nye.forEach((r) => { versionsRef.current.set(r.id, r.version); baseRef.current.set(r.id, r.data); });
@@ -185,10 +226,11 @@ export function useOrders(storeId) {
         nyMap.forEach((data, id) => { if (!next.some((o) => o.id === id)) next.push(data); });
         return next;
       });
+      gemSagsCache();
     } finally {
       refreshingRef.current = false;
     }
-  }, [isPending]);
+  }, [isPending, gemSagsCache]);
 
   useEffect(() => {
     if (!storeId) return undefined;

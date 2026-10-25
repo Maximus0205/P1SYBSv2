@@ -9,6 +9,7 @@ import { OfflineBanner } from "./components/OfflineBanner";
 import { UpdateAvailableBanner } from "./components/UpdateAvailableBanner";
 import { startVersionCheck } from "./lib/versionCheck";
 import { startBilledKoe } from "./lib/billedKoe";
+import { registrerOfflineSkal } from "./lib/offlineSkal";
 import { logError } from "./lib/errorLog";
 import "./index.css";
 import "./styles/globals.css";
@@ -36,6 +37,9 @@ startVersionCheck();
 // Sender billeder, der ligger på enheden og venter på forbindelse (oktober 2026) - se lib/billedKoe.js.
 // Også her, uden for React, så køen kører uanset hvilken side brugeren er på.
 startBilledKoe();
+
+// Lader selve appen åbne uden net (oktober 2026) - se lib/offlineSkal.js og sw/sw.template.js.
+registrerOfflineSkal();
 
 // HashRouter (ikke BrowserRouter): GitHub Pages serverer kun statiske filer
 // uden server-side rewrites - et refresh på en "rigtig" sti som

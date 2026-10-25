@@ -808,19 +808,28 @@ export async function deleteUserAsAdmin(userId, { tjekKun } = {}) {
 // der tager en montørrute en gang imellem, ikke skal have en ekstra
 // brugerkonto. To konti for samme menneske spreder sagerne over to navne
 // og sender notifikationer til den forkerte af dem.
-export async function getOwnProfile(userId) {
+// Som getOwnProfile, men fortæller også, OM en manglende profil skyldes forbindelsen (netvaerk: true) - så
+// opstarten kan falde tilbage på de gemte data (lib/laeseCache.js) i stedet for at tro, at brugeren ingen profil har.
+export async function getOwnProfileMedStatus(userId) {
   const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
   if (error) {
     logDbError("dataStore:getOwnProfile", "Could not load profile", error);
-    return null;
+    return { profile: null, netvaerk: erNetvaerksfejl(error) };
   }
-  if (!data) return null;
+  if (!data) return { profile: null, netvaerk: false };
   return {
-    id: data.id, navn: data.name, butik_id: data.store_id, rolle: data.role,
-    bil_id: data.vehicle_id, er_systemadmin: data.is_system_admin,
-    brugernavn: data.username, dashboard_widgets: data.dashboard_widgets,
-    kan_koere: data.can_drive === true,
+    profile: {
+      id: data.id, navn: data.name, butik_id: data.store_id, rolle: data.role,
+      bil_id: data.vehicle_id, er_systemadmin: data.is_system_admin,
+      brugernavn: data.username, dashboard_widgets: data.dashboard_widgets,
+      kan_koere: data.can_drive === true,
+    },
+    netvaerk: false,
   };
+}
+
+export async function getOwnProfile(userId) {
+  return (await getOwnProfileMedStatus(userId)).profile;
 }
 
 // Alle brugere i samme butik (til Admin-sidens faner). Inkluderer

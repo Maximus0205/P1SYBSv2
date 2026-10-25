@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { CloudOff, RefreshCw } from "lucide-react";
 import { subscribeQueue } from "../lib/offlineQueue";
 import { billedKoe } from "../lib/billedKoe";
+import { subscribeViserCache } from "../lib/laeseCache";
 
 // Viser montøren, at ændringer venter på at blive sendt (august 2026).
 //
@@ -26,9 +27,12 @@ import { billedKoe } from "../lib/billedKoe";
 function OfflineBanner() {
   const [antalAendringer, setAntal] = useState(0);
   const [antalBilleder, setAntalBilleder] = useState(0);
+  // Tidspunkt (ms), hvis skærmen viser GEMTE data fra sidste gang, der var net - ellers null.
+  const [gemtTid, setGemtTid] = useState(null);
   const [offline, setOffline] = useState(typeof navigator !== "undefined" ? navigator.onLine === false : false);
 
   useEffect(() => subscribeQueue((k) => setAntal(k.length)), []);
+  useEffect(() => subscribeViserCache(setGemtTid), []);
   // Billeder, der venter på forbindelse (billedkøen). Afviste billeder tælles ikke med her: de har deres
   // egen markering ved billedet og en fejlbesked, fordi de ikke sendes af sig selv.
   useEffect(() => (billedKoe ? billedKoe.abonner((v) => setAntalBilleder(v.filter((p) => p.tilstand !== "afvist").length)) : undefined), []);
@@ -45,13 +49,21 @@ function OfflineBanner() {
 
   // Intet at fortælle: der er dækning, og der venter ingenting.
   const antal = antalAendringer + antalBilleder;
-  if (antal === 0 && !offline) return null;
+  if (antal === 0 && !offline && gemtTid == null) return null;
+
+  // Skærmen viser de data, der blev hentet sidst, der var net (offline-cachen). Det SIGES, så ingen tror, at
+  // en sag er frisk, og så en montør ved, at kollegaernes nyeste ændringer endnu ikke er med.
+  const gemtTekst = gemtTid == null ? null : `Du ser de data, der blev hentet ${
+    new Date(gemtTid).toDateString() === new Date().toDateString()
+      ? `i dag kl. ${new Date(gemtTid).toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" })}`
+      : new Date(gemtTid).toLocaleString("da-DK", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+  }.`;
 
   const dele = [];
   if (antalAendringer > 0) dele.push(`${antalAendringer} ${antalAendringer === 1 ? "ændring" : "ændringer"}`);
   if (antalBilleder > 0) dele.push(`${antalBilleder} ${antalBilleder === 1 ? "billede" : "billeder"}`);
   const tekst = antal === 0
-    ? "Ingen forbindelse. Det du laver bliver gemt og sendt automatisk, når du har dækning igen."
+    ? (gemtTekst && !offline ? "Forbindelsen er dårlig." : "Ingen forbindelse. Det du laver bliver gemt og sendt automatisk, når du har dækning igen.")
     : `${dele.join(" og ")} venter på at blive sendt. ${antal === 1 ? "Det sendes" : "De sendes"} automatisk, når du har dækning.`;
 
   return (
@@ -64,7 +76,7 @@ function OfflineBanner() {
         {antal > 0 && !offline
           ? <RefreshCw size={14} className="shrink-0 text-muted animate-spin" aria-hidden="true" />
           : <CloudOff size={14} className="shrink-0 text-muted" aria-hidden="true" />}
-        <span>{tekst}</span>
+        <span>{tekst}{gemtTekst && ` ${gemtTekst}`}</span>
       </p>
     </div>
   );
