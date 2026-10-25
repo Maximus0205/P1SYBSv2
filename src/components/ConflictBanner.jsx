@@ -28,6 +28,7 @@ const FELT_NAVNE = {
   ordrenummer: "Ordrenummer", raekkefolge: "Rækkefølge i dagen", stemplerInd: "Stemplet ind",
   startetTidspunkt: "Startet", afsluttetTidspunkt: "Færdigmeldt", notifikationSet: "Læste beskeder",
   harOpfoelgning: "Opfølgning", delvisAfsluttet: "Delvist afsluttet", toMand: "Kræver to mand", posStatus: "POS-status", sagstype: "Sagstype", opfoelgningsType: "Opfølgningstype",
+  specialBeskrivelse: "Beskrivelse af specialtur", specialKrav: "Krav til montør", manuelTid: "Forventet tid (manuel)",
 };
 
 const feltNavn = (k) => FELT_NAVNE[k] || k;
