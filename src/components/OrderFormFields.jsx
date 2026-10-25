@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin, Sparkles, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Check, Loader2, CheckCircle2, XCircle, Search, Phone } from "lucide-react";
+import { Trash2, X, Plus, AlertCircle, History, KeyRound, Clock, Truck, MapPin, Sparkles, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Check, Loader2, CheckCircle2, Search, Phone } from "lucide-react";
 import { OTHER_PRODUCT_TYPE, OTHER_PRODUCT_TYPE_ID, KEY_ACCESS_TYPES, buildingKey, formatLongDate, formatDuration, lineItemMinutes, availableAddOns, serviceIcon, todayISO, addDays, weekDays, orderExpectedMinutes, buildTitle, getDefaultEstimateMinutes } from "../data/domain";
 import { estimateForLineItem, estimateForCluster } from "../data/estimates";
 import { lookupPunkt1Product } from "../lib/dataStore";
@@ -9,6 +9,9 @@ import { ordreTilStop, hentKapGrundlag, hentMotorMatrix, lagerKoordinatAsync } f
 import { MinutesInput } from "../components/common";
 import { forslagsVindue, foersteArbejdsdagFra } from "../lib/arbejdsuge";
 import { kraeverBeskrivelse } from "../lib/ydelser";
+import { useButikVarer } from "../hooks/useButikVarer";
+import { findButikVare, lignendeButikVarer } from "../lib/butikVarer";
+import { ButikVareForslag } from "../components/ButikVareForslag";
 
 // Forøger at splitte en punkt1.dk-produkttitel (fx "Point 5-Series
 // PODW56042W opvaskemaskine") op i mærke + modelnummer. Mærket antages at
@@ -54,8 +57,10 @@ function guessProductType(title, productTypes) {
 //  - GRØNT flueben: det indtastede modelnummer matcher PRÆCIS ét kendt
 //    produkt på punkt1.dk (uanset om det blev skrevet i hånden, indsat, eller
 //    valgt fra et forslag).
-//  - RØDT kryds: søgningen gav slet ingen træffere - modelnummeret findes
-//    formentlig ikke (eller er stavet forkert).
+//  - Ingen træffere på punkt1.dk: modellen slås op i butikkens egen varedatabase
+//    (se components/ButikVareForslag.jsx). Findes den heller ikke dér, vises en
+//    neutral påmindelse om at tjekke stavningen - IKKE en fejl, og bookingen kan
+//    stadig gemmes (oktober 2026, i stedet for det tidligere røde kryds).
 //  - Hverken/eller (kun forslagsliste, intet ikon): der ER træffere, men
 //    ingen af dem matcher PRÆCIS det indtastede - typisk fordi man er ved
 //    at skrive, eller har fat i den forkerte variant. Her vises forslagene
@@ -95,6 +100,8 @@ function ModelNumberLookup({ model, onSelectProduct, varetypeId, productTypes, o
   const [checkedTerm, setCheckedTerm] = useState("");
   const timerRef = useRef(null);
   const confirmedRef = useRef(""); // sidst bekræftede modelnummer (klik ELLER automatisk match) - undgår unødvendigt/gentaget genopslag
+  // Butikkens egen varedatabase (Gram, Silverline m.fl.): bruges, når punkt1.dk ikke kender modellen. Rådgivende - blokerer aldrig.
+  const { varer: butikVarer } = useButikVarer();
 
   useEffect(() => {
     const term = (model || "").trim();
@@ -146,6 +153,18 @@ function ModelNumberLookup({ model, onSelectProduct, varetypeId, productTypes, o
     return guess.model && checkedTerm && guess.model.toUpperCase() === checkedTerm.toUpperCase();
   });
 
+  // BUTIKKENS VAREDATABASE (oktober 2026): findes modellen ikke på punkt1.dk, slås den op i butikkens egen liste.
+  // Varetypen "Andet (skriv selv)" er frit tekstfelt: dér gives hverken "mente du"-forslag eller advarsel om ukendt model.
+  const erAndet = varetypeId === OTHER_PRODUCT_TYPE_ID;
+  const termNu = model.trim();
+  const butikExact = !exactMatch ? findButikVare(butikVarer, termNu) : null;
+  const butikLignende = !exactMatch && !butikExact && !erAndet ? lignendeButikVarer(butikVarer, termNu) : [];
+  const butikType = butikExact?.varetypeId ? (productTypes || []).find((t) => t.id === butikExact.varetypeId) : null;
+  const butikTypeForslag = butikType && butikType.id !== varetypeId ? butikType : null;
+  // "Ukendt" kræves kun, når punkt1.dk faktisk har svaret for DET tastede modelnummer og intet fandt (ikke ved en netværksfejl).
+  const ukendtModel = !erAndet && !loading && !error && !!result && result.matchCount === 0 && !exactMatch && !butikExact && butikLignende.length === 0
+    && checkedTerm.toUpperCase() === termNu.toUpperCase();
+
   return (
     <div className="mt-1">
       {loading && <p className="text-[10px] text-muted flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Tjekker punkt1.dk...</p>}
@@ -173,10 +192,16 @@ function ModelNumberLookup({ model, onSelectProduct, varetypeId, productTypes, o
         );
       })()}
 
-      {!loading && !error && result && !exactMatch && result.matchCount === 0 && (
-        <p className="text-[11px] text-danger font-semibold flex items-center gap-1.5">
-          <XCircle size={13} className="shrink-0" /> Intet fundet på punkt1.dk for "{checkedTerm}". Tjek stavningen.
-        </p>
+      {!loading && (butikExact || butikLignende.length > 0 || ukendtModel) && (
+        <ButikVareForslag
+          exact={butikExact}
+          lignende={butikLignende}
+          ukendt={ukendtModel}
+          model={model}
+          onVaelg={onSelectProduct}
+          foreslaaetType={butikTypeForslag}
+          onSkiftType={onSuggestType}
+        />
       )}
 
       {!loading && !error && result && !exactMatch && result.matchCount > 0 && (
@@ -562,7 +587,7 @@ function LineItemEditor({ lineItem, productTypes, primaryServices, addOnServices
         </div>
         {canRemove && <button onClick={onRemove} className="p-1.5 text-muted hover:text-danger shrink-0" title="Fjern varelinje"><Trash2 size={15} /></button>}
       </div>
-      <p className="text-[10px] text-muted mb-2">Modelnummer tjekkes automatisk mod punkt1.dk's varekartotek. Grønt flueben = bekræftet, rødt kryds = ikke fundet.</p>
+      <p className="text-[10px] text-muted mb-2">Modelnummer tjekkes automatisk mod punkt1.dk's varekartotek og butikkens egen varedatabase. Grønt flueben = bekræftet. Findes modellen ingen steder, kan den stadig bookes - tjek bare stavningen.</p>
 
       <input
         value={lineItem.maerke}
