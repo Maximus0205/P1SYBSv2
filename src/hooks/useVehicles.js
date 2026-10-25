@@ -1,6 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
-import { getVehicles, saveVehicle, deleteVehicle as deleteVehicleApi } from "../lib/dataStore";
+import { getVehiclesMedStatus, saveVehicle, deleteVehicle as deleteVehicleApi } from "../lib/dataStore";
 import { uid } from "../data/domain";
+import { hentListeMedCache, listeNoegle } from "../lib/listeCacheCore";
+import { laeseCache, saetViserCache } from "../lib/laeseCache";
+import { hentEjerId } from "../lib/aktuelBruger";
+
+// Henter listen; uden net vises den sidst hentede (lib/listeCacheCore.js). null = behold det, der vises.
+const hentListe = (navn, storeId, hentMedStatus) => hentListeMedCache({
+  noegle: listeNoegle(navn, storeId), hentMedStatus: () => hentMedStatus(storeId), cache: laeseCache, ejer: hentEjerId, saetVis: saetViserCache, kilde: navn,
+});
+
 
 // FASE 2 af arkitektur-oprydningen (august 2026) - se hooks/useCatalog.js
 // for den fulde begrundelse. Al state og CRUD for BILER er samlet her.
@@ -25,11 +34,11 @@ export function useVehicles(storeId) {
 
   const load = useCallback(async (id) => {
     if (!id) { setVehicles([]); return; }
-    const v = await getVehicles(id);
-    setVehicles(v);
+    const r = await hentListe("biler", id, getVehiclesMedStatus);
+    if (r) setVehicles(r.vaerdi);
   }, []);
 
-  useEffect(() => { load(storeId); }, [storeId, load]);
+  useEffect(() => { setVehicles([]); load(storeId); }, [storeId, load]);
 
   const saveOneVehicle = (vehicle) => { setVehicles((prev) => (prev.some((b) => b.id === vehicle.id) ? prev.map((b) => (b.id === vehicle.id ? vehicle : b)) : [...prev, vehicle])); if (storeId) saveVehicle(storeId, vehicle); };
   const removeOneVehicle = (id) => { setVehicles((prev) => prev.filter((b) => b.id !== id)); if (storeId) deleteVehicleApi(storeId, id); };

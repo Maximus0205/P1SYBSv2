@@ -1,5 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
-import { getKeyCabinets, addKeyCabinet as addKeyCabinetApi, updateKeyCabinet as updateKeyCabinetApi, deleteKeyCabinet as deleteKeyCabinetApi } from "../lib/dataStore";
+import { getKeyCabinetsMedStatus, addKeyCabinet as addKeyCabinetApi, updateKeyCabinet as updateKeyCabinetApi, deleteKeyCabinet as deleteKeyCabinetApi } from "../lib/dataStore";
+import { hentListeMedCache, listeNoegle } from "../lib/listeCacheCore";
+import { laeseCache, saetViserCache } from "../lib/laeseCache";
+import { hentEjerId } from "../lib/aktuelBruger";
+
+// Henter listen; uden net vises den sidst hentede (lib/listeCacheCore.js). null = behold det, der vises.
+const hentListe = (navn, storeId, hentMedStatus) => hentListeMedCache({
+  noegle: listeNoegle(navn, storeId), hentMedStatus: () => hentMedStatus(storeId), cache: laeseCache, ejer: hentEjerId, saetVis: saetViserCache, kilde: navn,
+});
+
 
 // Samme mønster som hooks/useAddressNotes.js: al state og CRUD for
 // nøgleskabe (se dataStore.js: key_cabinets) samlet ét sted.
@@ -14,10 +23,11 @@ export function useKeyCabinets(storeId) {
 
   const load = useCallback(async (id) => {
     if (!id) { setKeyCabinets([]); return; }
-    setKeyCabinets(await getKeyCabinets(id));
+    const r = await hentListe("nøgleskabe", id, getKeyCabinetsMedStatus);
+    if (r) setKeyCabinets(r.vaerdi);
   }, []);
 
-  useEffect(() => { load(storeId); }, [storeId, load]);
+  useEffect(() => { setKeyCabinets([]); load(storeId); }, [storeId, load]);
 
   const addKeyCabinet = async (fields, createdBy) => {
     if (!storeId) return { ok: false, fejl: "Ingen butik valgt" };

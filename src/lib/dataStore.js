@@ -65,14 +65,21 @@ function logWriteError(source, message, error, brugerBesked) {
   reportSaveFailure(brugerBesked ? `${brugerBesked} ${error?.message || ""}`.trim() : (error?.message || message));
 }
 
-async function getList(table, storeId) {
-  if (!storeId) return [];
+// Som getList, men fortæller også, OM en manglende liste skyldes forbindelsen (netvaerk: true) - så sidst hentede udgave
+// kan vises offline (lib/listeCacheCore.js) i stedet for en tom liste, der ligner "ingen biler".
+async function getListMedStatus(table, storeId) {
+  if (!storeId) return { ok: true, netvaerk: false, vaerdi: [] };
   const { data, error } = await supabase.from(table).select("data").eq("store_id", storeId);
   if (error) {
     logDbError(`dataStore:getList:${table}`, `Could not load ${table}`, error);
-    return [];
+    return { ok: false, netvaerk: erNetvaerksfejl(error), vaerdi: null };
   }
-  return (data || []).map((r) => r.data);
+  return { ok: true, netvaerk: false, vaerdi: (data || []).map((r) => r.data) };
+}
+
+async function getList(table, storeId) {
+  const r = await getListMedStatus(table, storeId);
+  return r.ok ? r.vaerdi : [];
 }
 
 // Creates or updates ONE specific row. Returnerer { ok, netvaerk, fejl },
@@ -153,6 +160,7 @@ export const saveOrderResult = (storeId, order) => saveRowResult("orders", store
 export const deleteOrder = (storeId, id) => deleteRow("orders", storeId, id);
 
 export const getVehicles = (storeId) => getList("vehicles", storeId);
+export const getVehiclesMedStatus = (storeId) => getListMedStatus("vehicles", storeId);
 export const saveVehicle = (storeId, vehicle) => saveRow("vehicles", storeId, vehicle);
 export const deleteVehicle = (storeId, id) => deleteRow("vehicles", storeId, id);
 export const seedDefaultVehicles = (storeId, vehicles) => seedDefaults("vehicles", storeId, vehicles);
@@ -305,8 +313,8 @@ export async function deleteAddressNote(id) {
 //
 // Samme henteform som address_notes: hele butikkens liste i ét hug,
 // filtrering/søgning sker klient-side i AddressesPage.jsx.
-export async function getKeyCabinets(storeId) {
-  if (!storeId) return [];
+export async function getKeyCabinetsMedStatus(storeId) {
+  if (!storeId) return { ok: true, netvaerk: false, vaerdi: [] };
   const { data, error } = await supabase
     .from("key_cabinets")
     .select("id, navn, skab_placering, omraade, postnummer, note, created_by_id, created_by_name, created_at")
@@ -314,12 +322,17 @@ export async function getKeyCabinets(storeId) {
     .order("navn", { ascending: true });
   if (error) {
     logDbError("dataStore:getKeyCabinets", "Could not load key cabinets", error);
-    return [];
+    return { ok: false, netvaerk: erNetvaerksfejl(error), vaerdi: null };
   }
-  return (data || []).map((r) => ({
+  return { ok: true, netvaerk: false, vaerdi: (data || []).map((r) => ({
     id: r.id, navn: r.navn, skabPlacering: r.skab_placering, omraade: r.omraade, postnummer: r.postnummer || "", note: r.note || "",
     createdBy: { id: r.created_by_id, navn: r.created_by_name }, createdAt: r.created_at,
-  }));
+  })) };
+}
+
+export async function getKeyCabinets(storeId) {
+  const r = await getKeyCabinetsMedStatus(storeId);
+  return r.ok ? r.vaerdi : [];
 }
 
 export async function addKeyCabinet(storeId, { navn, skabPlacering, omraade, postnummer, note, createdBy }) {
@@ -919,9 +932,9 @@ export async function endSickLeave(timeOffId) {
 // RLS: alle i butikken læser; skrivning kræver planlægning/montør-administration (se databasen).
 // day_helpers hentes fra 90 dage tilbage og frem: historikken bruges til at fordele retfærdigt (lib/holdForslag.js).
 
-export async function getCrew(storeId) {
+export async function getCrewMedStatus(storeId) {
   const tom = { pairs: [], solo: [], helpers: [] };
-  if (!storeId) return tom;
+  if (!storeId) return { ok: true, netvaerk: false, vaerdi: tom };
   const fra = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
   const [p, a, h] = await Promise.all([
     supabase.from("crew_pairs").select("montor_id, helper_id").eq("store_id", storeId),
@@ -931,13 +944,18 @@ export async function getCrew(storeId) {
   const fejl = p.error || a.error || h.error;
   if (fejl) {
     logDbError("dataStore:getCrew", "Could not load crew", fejl);
-    return tom;
+    return { ok: false, netvaerk: erNetvaerksfejl(fejl), vaerdi: null };
   }
-  return {
+  return { ok: true, netvaerk: false, vaerdi: {
     pairs: (p.data || []).map((r) => ({ montorId: r.montor_id, helperId: r.helper_id })),
     solo: (a.data || []).map((r) => r.person_id),
     helpers: (h.data || []).map((r) => ({ dato: r.dato, personId: r.person_id, vehicleId: r.vehicle_id })),
-  };
+  } };
+}
+
+export async function getCrew(storeId) {
+  const r = await getCrewMedStatus(storeId);
+  return r.ok ? r.vaerdi : { pairs: [], solo: [], helpers: [] };
 }
 
 // Sætter (eller fjerner, hvis helperId er null) montørens faste makker. En medhjælper har højst én fast montør, så en evt.
