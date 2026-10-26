@@ -153,10 +153,11 @@ function Notes({ order, onAdd }) {
 // KOMPRIMERING (august 2026): et moderne mobilkamera leverer 4-8 MB pr.
 // billede. Fem billeder fra en kælder på 4G er 30 MB - det tager
 // evigheder, fejler ofte undervejs, og butikken betaler for lagerplads,
-// den ikke har brug for. Billedet skaleres derfor ned til maks. 1600 px
-// og gemmes som JPEG (kvalitet 0,8), før det sendes. Det giver typisk
-// 300-500 KB uden synligt tab på et dokumentationsbillede, hvor pointen
-// er "sådan så installationen ud", ikke trykklar opløsning.
+// den ikke har brug for. Billedet skaleres derfor ned til maks. 2560 px
+// og gemmes som JPEG (kvalitet 0,9), før det sendes. Det giver typisk
+// 1-1,5 MB. Oktober 2026: hævet fra 1600 px/kvalitet 0,8 - ved forstørrelse
+// på pc var typepladerne og stregkoderne på dokumentationsbillederne for
+// bløde, og det er netop dem, billedet skal kunne bruges til.
 //
 // onAdd bruges IKKE længere til at gemme (det gør uploadAttachment), men
 // bevares som det SIGNAL fra OrderView/TechnicianPage om, hvorvidt den
@@ -164,8 +165,8 @@ function Notes({ order, onAdd }) {
 // rettighedslogikken ét sted, og de to kaldende sider behøver ikke ændres.
 // Serveren tjekker selv rettigheden igen ved upload - UI'et er ikke en
 // sikkerhedsgrænse.
-const MAKS_BILLEDKANT = 1600;
-const JPEG_KVALITET = 0.8;
+const MAKS_BILLEDKANT = 2560;
+const JPEG_KVALITET = 0.9;
 
 async function komprimerBillede(file) {
   // Kun rigtige billeder. En PDF eller en HEIC, browseren ikke kan tegne,
@@ -176,7 +177,7 @@ async function komprimerBillede(file) {
     const skala = Math.min(1, MAKS_BILLEDKANT / Math.max(bitmap.width, bitmap.height));
     // Er billedet allerede lille nok, er der intet at vinde ved at tegne
     // det om - og en omkodning ville kun forringe det.
-    if (skala === 1 && file.size < 800 * 1024) { bitmap.close?.(); return file; }
+    if (skala === 1 && file.size < 1500 * 1024) { bitmap.close?.(); return file; }
 
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(bitmap.width * skala);
