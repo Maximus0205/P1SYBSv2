@@ -782,7 +782,7 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
                     aria-selected={d === selectedDay}
                     aria-label={`${shortDayLabel(d)} ${new Date(d + "T00:00:00").getDate()}. — ${antal} ${antal === 1 ? "sag" : "sager"}`}
                     onClick={() => setSelectedDay(d)}
-                    className={`shrink-0 flex flex-col items-center px-3 py-2 rounded-lg text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-brand ${d === selectedDay ? "bg-brand text-white" : d === today ? "bg-panel text-brand" : "text-muted hover:bg-panel"}`}
+                    className={`flex-1 min-w-[56px] flex flex-col items-center px-2 py-2 rounded-lg text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-brand ${d === selectedDay ? "bg-brand text-white" : d === today ? "bg-panel text-brand" : "text-muted hover:bg-panel"}`}
                   >
                     <span className="text-[9px] uppercase">{shortDayLabel(d)}</span>
                     <span>{new Date(d + "T00:00:00").getDate()}</span>
