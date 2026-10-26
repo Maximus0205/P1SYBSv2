@@ -10,15 +10,11 @@ import {
 // fane. Hvilke varer er booket i et valgt tidsrum, og hvor mange af en bestemt
 // vare (søg på varenummer) kører i perioden - så der er styr på lager og bestilling.
 //
-// To visninger af SAMME vindue:
-//   - DISPONENT (canSeeAll): alle sælgeres bookinger, filter på sælger. Standard er
-//     en SAMLET optælling pr. vare ("30 x PODW5620W, 10 x POWM58MKA") - til at
-//     disponere og bestille hjem. Hver vare kan foldes ud og vise sagerne bag
-//     tallet, og et skift viser i stedet de enkelte sagskort.
-//   - SÆLGER: kun de varer, de selv har booket (sagens oprettetAf = dem selv), som
-//     sagskort. Afgrænsningen er en VISNINGSAFGRÆNSNING - se noten i
-//     lib/bookingOversigt.js.
-function BookingOverviewModal({ orders, technicians, profile, canSeeAll, onOpen, onClose }) {
+// Alle med rettigheden 'bookinger' (som standard admin, sælger og lager) ser ALLE sælgeres bookinger, uanset hvem der har booket.
+// Standard er en SAMLET optælling pr. vare ("30 x PODW5620W, 10 x POWM58MKA") - til at disponere og bestille hjem. Hver vare kan
+// foldes ud og vise sagerne bag tallet, og et skift viser i stedet de enkelte sagskort. Sælger-filteret indsnævrer til fx kun
+// Kims bookinger. (canSeeAll = false giver den gamle "kun egne"-visning og bruges ikke længere af forsiden.)
+function BookingOverviewModal({ orders, technicians, profile, canSeeAll = true, onOpen, onClose }) {
   const [fra, setFra] = useState(todayISO());
   const [til, setTil] = useState(addDays(todayISO(), 6));
   const [saelgerId, setSaelgerId] = useState("");

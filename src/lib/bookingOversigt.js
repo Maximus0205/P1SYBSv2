@@ -13,7 +13,7 @@
 // i data/domain.js). Det er en VISNINGSAFGRÆNSNING, ikke en sikkerhedsgrænse:
 // databasens RLS giver alle i butikken læseadgang til butikkens sager (det er
 // nødvendigt for fx Planlægning og Lager). Adgangen til selve fanen styres af
-// rettighederne 'disponent' (se alt) og 'salg' (se egne).
+// rettigheden 'bookinger' (ser alle sælgeres bookinger; sælger-filteret indsnævrer).
 
 import { erVarenummer, modelkode, modelNoegle } from "./varelinje.js";
 

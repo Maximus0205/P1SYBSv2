@@ -365,11 +365,11 @@ function DashboardPage({ profile, permissions, crew, orders, technicians, person
   // man trykker, og kun for dem der må slette/gendanne sager (sag_slet).
   const [visPapirkurv, setVisPapirkurv] = useState(false);
   const maaSePapirkurv = canDo(permissions, "sag_slet");
-  // BOOKEDE VARER (oktober 2026): en knap, ikke en fane - åbner et vindue. 'disponent'
-  // ser alle sælgeres bookinger, 'salg' kun egne. permissions === null (systemadmin) = alt.
+  // BOOKEDE VARER (oktober 2026): en knap, ikke en fane - åbner et vindue. Rettigheden 'bookinger' giver adgang og viser ALLE
+  // sælgeres bookinger (sælger-filteret i vinduet indsnævrer efter behov). Som standard har admin, sælger og lager den; andre
+  // roller og enkelte brugere kan få den under Admin -> Brugere. permissions === null (systemadmin) = alt.
   const [visBookinger, setVisBookinger] = useState(false);
-  const maaSeBookinger = canDo(permissions, "disponent") || canDo(permissions, "salg");
-  const maaSeAlleBookinger = canDo(permissions, "disponent");
+  const maaSeBookinger = canDo(permissions, "bookinger");
 
   const availableCatalog = DASHBOARD_WIDGET_CATALOG.filter((w) => canDo(permissions, w.requires));
   const activeKeys = dashboardWidgets.filter((k) => availableCatalog.some((w) => w.key === k));
@@ -405,7 +405,7 @@ function DashboardPage({ profile, permissions, crew, orders, technicians, person
       )}
 
       {visBookinger && maaSeBookinger && (
-        <BookingOverviewModal orders={orders} technicians={technicians} profile={profile} canSeeAll={maaSeAlleBookinger} onOpen={onOpen} onClose={() => setVisBookinger(false)} />
+        <BookingOverviewModal orders={orders} technicians={technicians} profile={profile} onOpen={onOpen} onClose={() => setVisBookinger(false)} />
       )}
 
       {visPapirkurv && maaSePapirkurv && <TrashPanel storeId={store?.id} onClose={() => setVisPapirkurv(false)} />}
