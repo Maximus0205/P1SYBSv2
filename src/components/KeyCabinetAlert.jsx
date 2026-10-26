@@ -139,7 +139,7 @@ export function KeyCabinetBookingHint({ matches, hasCabinets, addressTyped }) {
     return (
       <p className="mb-4 text-[11px] text-muted flex items-start gap-1.5">
         <HelpCircle size={12} className="shrink-0 mt-0.5" aria-hidden="true" />
-        Ingen af butikkens nøgleskabe dækker denne adresse. Ligger nøglen i et skab, så tilføj det under Adresser → Nøgleskabe, så montøren får det vist automatisk.
+        Ingen af butikkens nøgleskabe dækker denne adresse. Ligger nøglen i et skab, så tilføj det under Viden → Nøgleskabe, så montøren får det vist automatisk.
       </p>
     );
   }

@@ -554,7 +554,7 @@ const PAGES = [
   { key: "montor", label: "Montør", icon: Truck },
   { key: "lager", label: "Lager", icon: Package },
   { key: "arkiv", label: "Arkiv", icon: Archive },
-  { key: "adresser", label: "Adresser", icon: MapPin },
+  { key: "adresser", label: "Viden", icon: MapPin },
   { key: "admin", label: "Admin", icon: Settings2 },
   { key: "systemadmin", label: "System", icon: Building2 },
 ];
