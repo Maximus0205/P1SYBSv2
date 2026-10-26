@@ -321,7 +321,7 @@ function AddressesPage({ addressNotes, onAdd, onDelete, canManage, storeFocus, s
   return (
     <div>
       <p className="font-mono text-[11px] tracking-widest uppercase text-brand mb-1">Vidensdeling</p>
-      <h1 className="font-display text-4xl uppercase tracking-tight text-ink mb-2">Viden</h1>
+      <h1 className="font-display text-4xl uppercase tracking-tight text-ink mb-2">Adresser og nøgleskabe</h1>
       <p className="text-sm text-muted mb-6 max-w-2xl">
         Praktisk viden om en konkret adresse - fx hvor nøgleboksen sidder, en adgangskode, eller at opgangen er så smal at der altid kræves 2 mand. Uafhængig af den enkelte sag: gælder stedet, ikke en bestemt ordre. Vises automatisk som en advarsel, både når der bookes en ny sag, og på en eksisterende sag på adressen.
       </p>
