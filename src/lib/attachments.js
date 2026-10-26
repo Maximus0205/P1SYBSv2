@@ -9,6 +9,7 @@ import { reportSaveFailure } from "./saveStatus";
 export { formatBytes } from "../adapters/lager";
 
 export const getAttachments = (orderId, storeId) => lager.hentVedhaeftninger(orderId, storeId);
+export const getAttachmentsResult = (orderId, storeId) => lager.hentVedhaeftningerResultat(orderId, storeId);
 export const getAttachmentUrl = (attachmentId) => lager.hentUrl(attachmentId);
 export const getAttachmentUrls = (attachmentIds) => lager.hentUrls(attachmentIds);
 export const getStorageUsage = (storeId) => lager.hentForbrug(storeId);

@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { X, Plus, Lock, Loader2, ImageOff, CloudOff, RefreshCw } from "lucide-react";
 import { formatTime, formatDuration, now, totalMinutes, lineItemLabel, serviceIcon } from "../data/domain";
-import { getAttachments, getAttachmentUrls, uploadAttachment } from "../lib/attachments";
+import { getAttachmentsResult, getAttachmentUrls, uploadAttachment } from "../lib/attachments";
+import { meldBilledAntal } from "../lib/billedAntal";
 import ImageLightbox from "./ImageLightbox";
 import { billedKoe, hentEjerId, bedOmPermanentLager } from "../lib/billedKoe";
 
@@ -234,9 +235,11 @@ function Photos({ order, onAdd }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const liste = await getAttachments(order.id);
-    const billeder = liste.filter((a) => a.kind === "billede");
+    const hentet = await getAttachmentsResult(order.id);
+    if (!hentet.ok) { setLoading(false); return; }   // ingen forbindelse: behold det, der vises, i stedet for at vise "ingen billeder"
+    const billeder = hentet.rows.filter((a) => a.kind === "billede");
     setAttachments(billeder);
+    meldBilledAntal(order.id, billeder.length);
     if (billeder.length > 0) {
       const svar = await getAttachmentUrls(billeder.map((a) => a.id));
       setUrls(svar.ok ? svar.urls || {} : {});

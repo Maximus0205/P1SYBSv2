@@ -17,6 +17,7 @@ import { erPauset } from "../lib/opgaveTid";
 import { DelvisPanel, DelvisBanner } from "../components/DelvisAfsluttet";
 import { kanMeldesDelvist } from "../lib/delvisAfsluttet";
 import { useFeature } from "../hooks/useStoreFeatures";
+import { useBilledAntal } from "../lib/billedAntal";
 
 // Universelt Google Maps-link: åbner Google Maps-appen hvis den er
 // installeret (iOS og Android), ellers i browseren. Vi bruger søge-linket
@@ -488,8 +489,10 @@ function FinishPanel({ order, onConfirm, onCancel, onGoToTab, kanSeTider }) {
   const medBilleder = useFeature("sag_billeder");
   const medRapporter = useFeature("sag_rapporter");
   const medMaterialer = useFeature("sag_materialer");
+  const billedAntal = useBilledAntal(order);
   const mangler = [];
-  if (medBilleder && (order.billeder || []).length === 0) mangler.push({ key: "billeder", tekst: "Ingen billeder på sagen" });
+  // Kun når antallet er BEKRÆFTET nul: kunne fillageret ikke spørges (ingen net), påstår vi ikke, at der mangler billeder.
+  if (medBilleder && billedAntal.antal === 0 && billedAntal.kendt) mangler.push({ key: "billeder", tekst: "Ingen billeder på sagen" });
   if (medRapporter && (order.rapporter || []).length === 0) mangler.push({ key: "rapporter", tekst: "Ingen rapport skrevet" });
   if (medMaterialer && (order.materialer || []).length === 0) mangler.push({ key: "materialer", tekst: "Intet ekstra materialeforbrug noteret" });
 
@@ -623,10 +626,11 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
   const visMaterialer = useFeature("sag_materialer");
   const visBilleder = useFeature("sag_billeder");
   const visRapporter = useFeature("sag_rapporter");
+  const billedAntal = useBilledAntal(order);
   const tabs = [
     { key: "noter", label: "Noter", count: order.noter.length },
     visMaterialer && { key: "materialer", label: "Materialer", count: (order.materialer || []).length },
-    visBilleder && { key: "billeder", label: "Billeder", count: order.billeder.length },
+    visBilleder && { key: "billeder", label: "Billeder", count: billedAntal.antal },
     visRapporter && { key: "rapporter", label: "Rapporter", count: order.rapporter.length },
     // Tid-fanen (registrerede tider) er kun for systemadmin - sælgere og montører ser aldrig tiderne.
     kanSeTider && { key: "tid", label: "Tid", count: order.logs.length },

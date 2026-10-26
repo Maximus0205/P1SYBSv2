@@ -45,22 +45,30 @@ export function opretLagerAdapter({ transport, klient, log, hent } = {}) {
     return r.ok ? { ok: true, ...r.data } : { ok: false, fejl: r.fejl, ...(r.netvaerk ? { netvaerk: true } : {}) };
   }
 
+  async function hentVedhaeftningerResultat(orderId, storeId) {
+    if (!orderId || !klient?.from) return { ok: true, rows: [] };
+    let q = klient
+      .from("attachments")
+      .select("id, kind, navn, mime_type, bytes, created_at, created_by")
+      .eq("order_id", String(orderId))
+      .eq("status", "active")
+      .order("created_at", { ascending: true });
+    if (storeId) q = q.eq("store_id", storeId);
+    const { data, error } = await q;
+    if (error) { log_("attachments:getAttachments", error.message); return { ok: false, rows: [] }; }
+    return { ok: true, rows: data || [] };
+  }
+
   return {
     // En sags vedhæftninger. Kun 'active': en afbrudt upload skal ikke vises som et billede, der ikke kan
     // hentes. storeId er valgfri (rækkesikkerheden afgrænser allerede til den indloggedes butik).
     async hentVedhaeftninger(orderId, storeId) {
-      if (!orderId || !klient?.from) return [];
-      let q = klient
-        .from("attachments")
-        .select("id, kind, navn, mime_type, bytes, created_at, created_by")
-        .eq("order_id", String(orderId))
-        .eq("status", "active")
-        .order("created_at", { ascending: true });
-      if (storeId) q = q.eq("store_id", storeId);
-      const { data, error } = await q;
-      if (error) { log_("attachments:getAttachments", error.message); return []; }
-      return data || [];
+      return (await hentVedhaeftningerResultat(orderId, storeId)).rows;
     },
+
+    // Som hentVedhaeftninger, men fortæller OM hentningen lykkedes ({ ok, rows }). En tom liste fra en mislykket hentning
+    // (ingen forbindelse) ligner ellers "ingen billeder" - og så ville en sag med billeder vise 0 og advare om manglende billeder.
+    hentVedhaeftningerResultat,
 
     // Signeret URL til at VISE én vedhæftning. Kortlivet med vilje, og må ikke gemmes: en URL, der virker for
     // evigt, er reelt en offentlig fil (billeder fra kundens hjem og deres underskrift).

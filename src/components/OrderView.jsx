@@ -18,6 +18,7 @@ import { linjerUdenModel, manglerModel } from "../lib/varelinje";
 import { DelvisBanner } from "../components/DelvisAfsluttet";
 import { needsPlanning } from "../data/domain";
 import { useFeature } from "../hooks/useStoreFeatures";
+import { useBilledAntal } from "../lib/billedAntal";
 import { AdgangsFelter } from "../components/AdgangsFelter";
 import { gyldigEtage, adgangTekst } from "../data/adgang";
 
@@ -474,9 +475,10 @@ function LineItemEditor({ order, catalog, onSave, onCancel, embedded = false, it
 // kolleger, billeder fra installationen og registreret tid.
 function DeleteOrderPanel({ order, onConfirm, onCancel }) {
   const [busy, setBusy] = useState(false);
+  const billedAntal = useBilledAntal(order);
   const foelgerMed = [
     order.noter?.length ? `${order.noter.length} ${order.noter.length === 1 ? "note" : "noter"}` : null,
-    order.billeder?.length ? `${order.billeder.length} ${order.billeder.length === 1 ? "billede" : "billeder"}` : null,
+    billedAntal.antal ? `${billedAntal.antal} ${billedAntal.antal === 1 ? "billede" : "billeder"}` : null,
     order.rapporter?.length ? `${order.rapporter.length} ${order.rapporter.length === 1 ? "rapport" : "rapporter"}` : null,
     order.logs?.length ? "registreret tid" : null,
   ].filter(Boolean);
@@ -708,10 +710,11 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
   const visMaterialer = useFeature("sag_materialer");
   const visBilleder = useFeature("sag_billeder");
   const visRapporter = useFeature("sag_rapporter");
+  const billedAntal = useBilledAntal(order);
   const tabs = [
     { key: "noter", label: "Noter", count: order.noter.length },
     visMaterialer && { key: "materialer", label: "Materialer", count: (order.materialer || []).length },
-    visBilleder && { key: "billeder", label: "Billeder", count: order.billeder.length },
+    visBilleder && { key: "billeder", label: "Billeder", count: billedAntal.antal },
     visRapporter && { key: "rapporter", label: "Rapporter", count: order.rapporter.length },
     // Tid-fanen (registrerede tider) er kun for systemadmin - sælgere og montører ser aldrig tiderne.
     kanSeTider && { key: "tid", label: "Tid", count: order.logs.length },
