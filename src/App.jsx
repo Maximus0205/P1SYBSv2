@@ -17,6 +17,7 @@ import { resolveStoreKommuneKode } from "./lib/geocodingAdressevaelger";
 import { saetAdresseKontekst } from "./lib/adresseKontekst";
 
 import { TopNav } from "./components/TopNav";
+import { RundvisningProvider } from "./components/Rundvisning";
 import { DateSelector } from "./components/common";
 import { LoginPage } from "./components/LoginPage";
 import { useBranding } from "./hooks/useBranding";
@@ -601,6 +602,11 @@ export default function App() {
 
   return (
     <StoreFeaturesProvider storeId={session && activeStoreId ? activeStoreId : null}>
+    <RundvisningProvider
+      brugerId={profile.id} rolle={profile.rolle} erSystemadmin={!!profile.erSystemadmin} tilladteSider={allowedPages}
+      kanOpretteSager={allowedPages.includes("salg")}
+      aktuelSide={currentPage} onNavigate={(key) => navigate(`/${key}`)}
+    >
     <div className="min-h-screen w-full bg-paper" style={{ fontFamily: "Inter, sans-serif" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -762,6 +768,7 @@ export default function App() {
         </Routes>
       </div>
     </div>
+    </RundvisningProvider>
     </StoreFeaturesProvider>
   );
 }

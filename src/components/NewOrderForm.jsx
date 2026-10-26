@@ -62,7 +62,7 @@ const STEPS = [
 
 function StepProgress({ step }) {
   return (
-    <div className="mb-5">
+    <div className="mb-5" data-rundvisning="ny-sag-trin">
       <div className="flex items-center justify-between mb-1.5">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Trin {step + 1} af {STEPS.length}</p>
         <p className="text-[11px] font-semibold uppercase tracking-wide text-brand">{STEPS[step].label}</p>
@@ -80,7 +80,7 @@ function StepProgress({ step }) {
 // gemt bag et sammenklappet felt, man kan have overset.
 function CaseTypePicker({ value, onChange }) {
   return (
-    <div className="mb-4">
+    <div className="mb-4" data-rundvisning="ny-sag-type">
       <h4 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Hvad er det for en kørsel?</h4>
       <div className="grid gap-2 sm:grid-cols-2">
         {CASE_TYPES.map((t) => {
@@ -446,12 +446,12 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
   };
 
   return (
-    <div className="rounded-xl border border-line bg-white p-5 shadow-sm">
+    <div className="rounded-xl border border-line bg-white p-5 shadow-sm" data-rundvisning="ny-sag">
       <div className="flex items-center justify-between gap-3 mb-1">
         <h3 className="font-display text-xl uppercase tracking-wide text-ink">
           {erTomgang ? "Book tomgangskørsel" : erServicetur ? "Book servicetur" : erSpecialtur ? "Book specialtur" : "Book ny sag"}
         </h3>
-        <button onClick={onClose} className="min-h-[44px] text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-2 py-1">
+        <button onClick={onClose} data-rundvisning="ny-sag-luk" className="min-h-[44px] text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-2 py-1">
           {kladde.harIndhold ? "Luk (gemmes som kladde)" : "Annuller"}
         </button>
       </div>
@@ -762,7 +762,7 @@ function NewOrderForm({ storeId, technicians, personnel, timeOff, vehicles, crew
         </p>
       )}
 
-      <div className="flex items-center justify-between gap-2 mt-5 pt-4 border-t border-divider">
+      <div className="flex items-center justify-between gap-2 mt-5 pt-4 border-t border-divider" data-rundvisning="ny-sag-knapper">
         <button
           onClick={goBack}
           disabled={step === 0}

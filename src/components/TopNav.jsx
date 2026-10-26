@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { LogOut, Bell, Package, AlertTriangle, Copy, Building2, ArrowLeftRight, Truck, KeyRound, CalendarCheck2 } from "lucide-react";
 import { PAGES, missingLineItems, lineItemLabel } from "../data/domain";
 import { BrandLogo } from "./BrandLogo";
+import { HjaelpKnap } from "./Rundvisning";
 
 // Notifikationsklokke: viser, for den INDLOGGEDE bruger, hvilke af DERES
 // EGNE bookede sager der har noget nyt siden sidst - materialeforbrug
@@ -107,7 +108,7 @@ function NotificationBell({ notifications, onOpenOrder, onReplaceItem }) {
   const replaceAndClose = onReplaceItem ? (orderId, lineId) => { setOpen(false); onReplaceItem(orderId, lineId); } : undefined;
 
   return (
-    <div ref={ref} className="relative shrink-0">
+    <div ref={ref} className="relative shrink-0" data-rundvisning="klokke">
       <button
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
@@ -215,6 +216,7 @@ function TopNav({ branding, page, onChange, user, onLogOut, notifications, onOpe
           {onOpenAccountSettings && (
             <button
               onClick={onOpenAccountSettings}
+              data-rundvisning="konto"
               aria-label="Din konto (PIN-login m.v.)"
               className="w-10 h-10 rounded-lg bg-black border border-[#333] flex items-center justify-center text-brand hover:text-white hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors"
               title="Din konto"
@@ -222,6 +224,7 @@ function TopNav({ branding, page, onChange, user, onLogOut, notifications, onOpe
               <KeyRound size={16} aria-hidden="true" />
             </button>
           )}
+          <HjaelpKnap />
           <button
             onClick={onLogOut}
             aria-label="Log ud"
@@ -237,13 +240,14 @@ function TopNav({ branding, page, onChange, user, onLogOut, notifications, onOpe
             flex-barn overhovedet MÅ blive smallere end sit indhold - uden
             den ville overflow-x-auto aldrig træde i kraft, og indholdet
             ville skubbe naboerne ud i stedet for at rulle. */}
-        <div className="w-full sm:w-auto sm:flex-1 min-w-0 overflow-x-auto flex gap-1.5 py-0.5 order-3 sm:order-2">
+        <div data-rundvisning="menu" className="w-full sm:w-auto sm:flex-1 min-w-0 overflow-x-auto flex gap-1.5 py-0.5 order-3 sm:order-2">
           {allowed.map((s) => {
             const Icon = s.icon;
             const active = page === s.key;
             return (
               <button
                 key={s.key}
+                data-rundvisning={`fane-${s.key}`}
                 onClick={() => onChange(s.key)}
                 aria-current={active ? "page" : undefined}
                 className={`flex items-center gap-1.5 px-3.5 py-2 shrink-0 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors focus:outline-none focus:ring-2 focus:ring-brand ${
