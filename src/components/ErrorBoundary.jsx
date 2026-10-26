@@ -1,5 +1,6 @@
 import React from "react";
 import { logError } from "../lib/errorLog";
+import { helbredVedFejl } from "../lib/selvhelbredelse";
 
 // Fanger UVENTEDE render-fejl (crashes) i hele komponenttræet under den -
 // se main.jsx, hvor hele appen pakkes ind i denne. Uden en Error Boundary
@@ -22,6 +23,9 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, info) {
     logError("react-error-boundary", error, { componentStack: info?.componentStack });
+    // Styrer offline-skallen siden, kan en fejl i den være årsagen: fjern den og genindlæs én gang (se index.html).
+    // Er skallen ikke årsagen, kommer fejlsiden igen efter genindlæsningen, og der gøres ikke mere (højst hvert 10. minut).
+    helbredVedFejl(error);
   }
 
   render() {

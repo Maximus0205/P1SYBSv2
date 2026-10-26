@@ -14,6 +14,37 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- SELVHELBREDELSE (oktober 2026): kommer appen ikke op, eller går den ned, mens offline-skallen (sw.js) styrer siden, fjerner siden
+         selv skallen og dens gemte filer og genindlæser én gang - så en fejl i den ikke kan holde en telefon fast i en ødelagt udgave.
+         Ligger HER, som almindeligt script, så det virker, selv hvis selve appens filer er det, der er i stykker. Kun med net (uden net
+         er den gemte kopi det eneste, der kan åbne appen), højst hvert 10. minut, og rører ikke køen af ændringer/billeder, der venter.
+         Se lib/selvhelbredelse.js (melder det til fejl-loggen) og tests/selvhelbredelse.test.mjs. -->
+    <script>
+      (function () {
+        var NOEGLE = "p1sybs-helbredt", PAUSE = 10 * 60 * 1000, VAGT = 20000, PRAEFIKS = "p1sybs-skal-";
+        function tryg(fn, standard) { try { return fn(); } catch (e) { return standard; } }
+        function maaHelbrede() {
+          if (!(navigator.serviceWorker && navigator.serviceWorker.controller) || navigator.onLine === false) return false;
+          var sidst = Number(tryg(function () { return JSON.parse(localStorage.getItem(NOEGLE)).tid; }, 0)) || 0;
+          return Date.now() - sidst > PAUSE;
+        }
+        function helbred(grund) {
+          if (!maaHelbrede()) return false;
+          tryg(function () { localStorage.setItem(NOEGLE, JSON.stringify({ tid: Date.now(), grund: String(grund).slice(0, 200) })); });
+          var arbejde = [
+            navigator.serviceWorker.getRegistration().then(function (r) { return r && r.unregister(); }),
+            window.caches ? caches.keys().then(function (nav) {
+              return Promise.all(nav.filter(function (n) { return n.indexOf(PRAEFIKS) === 0; }).map(function (n) { return caches.delete(n); }));
+            }) : Promise.resolve()
+          ].map(function (p) { return Promise.resolve(p).catch(function () {}); });
+          Promise.all(arbejde).then(function () { location.reload(); });
+          return true;
+        }
+        window.__p1Helbred = helbred;
+        window.__p1Startet = false;
+        setTimeout(function () { if (!window.__p1Startet) helbred("Appen kom ikke op inden for " + VAGT / 1000 + " sekunder"); }, VAGT);
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

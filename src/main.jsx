@@ -11,6 +11,7 @@ import { startVersionCheck } from "./lib/versionCheck";
 import { startBilledKoe } from "./lib/billedKoe";
 import { registrerOfflineSkal } from "./lib/offlineSkal";
 import { logError } from "./lib/errorLog";
+import { meldAppStartet, meldTidligereHelbredelse } from "./lib/selvhelbredelse";
 import "./index.css";
 import "./styles/globals.css";
 
@@ -41,6 +42,12 @@ startBilledKoe();
 // Lader selve appen åbne uden net (oktober 2026) - se lib/offlineSkal.js og sw/sw.template.js.
 registrerOfflineSkal();
 
+// Har offline-skallen lige fjernet sig selv fordi noget gik galt (se index.html), meldes det til fejl-loggen.
+meldTidligereHelbredelse();
+
+// Fortæller selvhelbredelsen, at appen er kommet op. Står UDEN FOR ErrorBoundary: også en app, der viser fejlsiden, er "kommet op".
+function AppStartet() { React.useEffect(() => { meldAppStartet(); }, []); return null; }
+
 // HashRouter (ikke BrowserRouter): GitHub Pages serverer kun statiske filer
 // uden server-side rewrites - et refresh på en "rigtig" sti som
 // /P1SYBSv2/planlaegning ville give en 404, medmindre der er sat en
@@ -66,6 +73,7 @@ registrerOfflineSkal();
 // lib/conflictStore.js og lib/versionCheck.js for baggrunden på hver af dem.
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
+    <AppStartet />
     <OfflineBanner />
     <UpdateAvailableBanner />
     <ErrorBoundary>
