@@ -10,7 +10,6 @@ import { laeseCache, saetViserCache } from "../lib/laeseCache";
 import { sagsNoegle, raekkerTilCache, visningFraCache } from "../lib/sagsCache";
 import { hentEjerId } from "../lib/aktuelBruger";
 import { reportSaveFailure } from "../lib/saveStatus";
-import { adgangsFelter } from "../data/adgang";
 import { mergeOrder, applyMine, deepEqual } from "../lib/orderMerge";
 import { addConflict, getConflicts, removeConflict, updateConflict, subscribeResolve } from "../lib/conflictStore";
 
@@ -556,7 +555,7 @@ export function useOrders(storeId) {
   // sagstype er nu en af fire: kunde, tomgang, servicetur eller specialtur. En SPECIALTUR bærer desuden
   // specialBeskrivelse, specialKrav og manuelTid (forventet tid for hele turen i minutter) - se
   // data/caseTypes.js. De gemmes kun på en specialtur.
-  const addOrder = async ({ sagstype, kunde, koeber, noegle, dato, tidsrumId, start, slut, bilId, senestDato, varelinjer, ordrenummer, createdBy, kapacitetOverrulet, toMand, specialBeskrivelse, specialKrav, manuelTid, etage, parkeringBesvaerlig }) => {
+  const addOrder = async ({ sagstype, kunde, koeber, noegle, dato, tidsrumId, start, slut, bilId, senestDato, varelinjer, ordrenummer, createdBy, kapacitetOverrulet, toMand, specialBeskrivelse, specialKrav, manuelTid }) => {
     if (!storeId) return;
     const newOrder = {
       id: uid(), nr: "...", ordrenummer: ordrenummer?.trim() || "",
@@ -568,7 +567,6 @@ export function useOrders(storeId) {
       senestDato: senestDato || null,
       ...(kapacitetOverrulet ? { kapacitetOverrulet } : {}),
       ...(toMand ? { toMand: true } : {}),
-      ...adgangsFelter({ etage, parkeringBesvaerlig }),
       status: "planlagt", plukket: false, varelinjer, noter: [], billeder: [], rapporter: [], materialer: [], stemplerInd: null, logs: [],
       oprettetAf: createdBy || null,
     };
@@ -658,7 +656,6 @@ export function useOrders(storeId) {
       koeber: sourceOrder.koeber ? { ...sourceOrder.koeber } : null,
       noegle: sourceOrder.noegle ? { ...sourceOrder.noegle } : {},
       ...(sourceOrder.toMand ? { toMand: true } : {}),
-      ...adgangsFelter(sourceOrder), // samme adresse, samme adgangsforhold
       dato: null, tidsrumId: null, start: null, slut: null, bilId: null,
       status: "planlagt", plukket: false, varelinjer: clonedLineItems,
       noter: [], billeder: [], rapporter: [], materialer: [], stemplerInd: null, logs: [],

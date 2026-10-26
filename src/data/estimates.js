@@ -48,7 +48,6 @@
 
 import { buildingKey, orderExpectedMinutes } from "./domain";
 import { caseType, SAGSTYPE_KUNDE } from "./caseTypes";
-import { adgangTekst } from "./adgang";
 
 // Samme værdi som OTHER_PRODUCT_TYPE_ID i domain.js ("Andet (skriv selv)").
 const ANDET_ID = "andet";
@@ -367,7 +366,7 @@ export function maalingsRaekker(orders) {
       if (grund.some((e) => !e)) aarsag = "mangler grundtid for en af varerne";
       else faktor = Math.round((minutter / grund.reduce((s, e) => s + e.minutter, 0)) * 100) / 100;
     }
-    rows.push({ order: o, minutter, kilde, aarsag, indgaar: !aarsag, adgang: adgangTekst(o), flere: linjer.length > 1, faktor, noegle: linjer.length === 1 ? signatures(linjer[0])[1] : null });
+    rows.push({ order: o, minutter, kilde, aarsag, indgaar: !aarsag, flere: linjer.length > 1, faktor, noegle: linjer.length === 1 ? signatures(linjer[0])[1] : null });
   }
   return rows;
 }

@@ -19,8 +19,6 @@ import { DelvisBanner } from "../components/DelvisAfsluttet";
 import { needsPlanning } from "../data/domain";
 import { useFeature } from "../hooks/useStoreFeatures";
 import { useBilledAntal } from "../lib/billedAntal";
-import { AdgangsFelter } from "../components/AdgangsFelter";
-import { gyldigEtage, adgangTekst } from "../data/adgang";
 
 const cloneLineItems = (list) => (list || []).map((v) => ({ ...v, tillaeg: (v.tillaeg || []).map((y) => ({ ...y })) }));
 
@@ -74,9 +72,6 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
   const [specialKrav, setSpecialKrav] = useState(order.specialKrav || "");
   const [manuelTid, setManuelTid] = useState(order.manuelTid ? String(order.manuelTid) : "");
   const [visSpecialFejl, setVisSpecialFejl] = useState(false);
-  // Adgangsforhold (oktober 2026): etage og besværlig parkering, rettes sammen med adressen (sag_kunde).
-  const [etage, setEtage] = useState(order.etage || null);
-  const [parkeringBesvaerlig, setParkeringBesvaerlig] = useState(order.parkeringBesvaerlig === true);
   const specialFejl = erSpecial && canPlan ? specialturFejl({ sagstype: order.sagstype, specialBeskrivelse, manuelTid }) : [];
   const tidAendret = erSpecial && canPlan && (Math.round(Number(manuelTid)) || null) !== (order.manuelTid || null);
 
@@ -117,8 +112,6 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
       const { adresseKoordinater: _gamle, ...kundeUdenKoord } = order.kunde;
       const nyeKoord = koordinaterTilSag(adresseKoord, address);
       fields.kunde = { ...kundeUdenKoord, adresse: address.trim(), ...(nyeKoord ? { adresseKoordinater: nyeKoord } : {}) };
-      if (gyldigEtage(etage) !== (order.etage || null)) fields.etage = gyldigEtage(etage);
-      if (parkeringBesvaerlig !== (order.parkeringBesvaerlig === true)) fields.parkeringBesvaerlig = parkeringBesvaerlig;
     }
     if (canPlan && planAendret && kapStatus.overrulet) {
       // Kun reglernes NAVNE noteres (aldrig mål eller vægt), samme som ved ny booking.
@@ -163,9 +156,6 @@ function BookingEditor({ order, technicians, onSave, onCancel, permissions, cata
             <div className="mt-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-muted flex items-center gap-1.5"><Lock size={12} className="shrink-0" aria-hidden="true" /> {address || "Ingen adresse"}</div>
           )}
         </label>
-        <div className="sm:col-span-2">
-          <AdgangsFelter etage={etage} parkeringBesvaerlig={parkeringBesvaerlig} onEtage={setEtage} onParkering={setParkeringBesvaerlig} disabled={!canEditCustomer} />
-        </div>
       </div>
 
       {erSpecial && (
@@ -795,7 +785,6 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
               <p className="text-sm text-muted">{order.kunde.navn}{order.kunde.telefon ? ` · ${order.kunde.telefon}` : ""}{order.kunde.email ? ` · ${order.kunde.email}` : ""}</p>
               <p className="text-sm text-muted">{order.kunde.adresse}</p>
               {order.kunde.leveringsnote && <p className="text-sm text-brand font-medium mt-1">⚠ {order.kunde.leveringsnote}</p>}
-              {adgangTekst(order) && <p className="text-sm text-muted">Adgang: {adgangTekst(order)}</p>}
               {order.koeber && (
                 <div className="mt-3 pt-3 border-t border-divider">
                   <p className="text-sm text-muted font-semibold flex items-center gap-1.5"><Building2 size={13} aria-hidden="true" /> Køber (afviger fra kunden)</p>
