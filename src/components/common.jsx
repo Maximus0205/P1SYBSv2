@@ -36,10 +36,12 @@ function StatusBadge({ status }) {
   );
 }
 
-function AddOnPill({ addOn }) {
+// daempet: bruges på afsluttede sager, hvor tillægget ikke længere kræver handling - så ligner det ikke en knap.
+function AddOnPill({ addOn, daempet }) {
   const Icon = serviceIcon(addOn.navn);
+  const farver = daempet ? "border-line text-muted bg-transparent" : addOn.udfoert ? "border-success text-success bg-success/10 line-through" : "border-brand text-brand bg-brand/10";
   return (
-    <span className={`inline-flex items-center text-[11px] px-2.5 py-1 gap-1 border rounded-lg font-medium ${addOn.udfoert ? "border-success text-success bg-success/10 line-through" : "border-brand text-brand bg-brand/10"}`}>
+    <span className={`inline-flex items-center text-[11px] px-2.5 py-1 gap-1 border rounded-lg font-medium ${farver}`}>
       <Icon size={11} strokeWidth={2.5} />
       {addOn.navn}
     </span>
@@ -63,18 +65,19 @@ function KeyAccessPill({ keyAccess }) {
 // FLERE varelinjer giver et separat mærke pr. linje reel ekstra klarhed (så
 // man kan se hvilke tillæg der hører til hvilken vare). Ved én enkelt linje
 // er mærket ren gentagelse af overskriften og udelades derfor.
-function LineItemPills({ order }) {
+// daempet: afsluttede sager vises roligt - nøgleoplysningen skjules, og tillæg er grå i stedet for røde.
+function LineItemPills({ order, daempet }) {
   if (!order.varelinjer || order.varelinjer.length === 0) return null;
   const showLineLabel = order.varelinjer.length > 1;
   return (
     <div className="space-y-1">
-      {manualKeyAccessText(order.noegle) && (
+      {!daempet && manualKeyAccessText(order.noegle) && (
         <div className="flex flex-wrap items-center gap-1.5"><KeyAccessPill keyAccess={order.noegle} /></div>
       )}
       {order.varelinjer.map((v) => (
         <div key={v.id} className="flex flex-wrap items-center gap-1.5">
           {showLineLabel && <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-lg border border-muted text-muted">{lineItemLabel(v)}</span>}
-          {(v.tillaeg || []).map((y) => <AddOnPill key={y.id} addOn={y} />)}
+          {(v.tillaeg || []).map((y) => <AddOnPill key={y.id} addOn={y} daempet={daempet} />)}
         </div>
       ))}
     </div>

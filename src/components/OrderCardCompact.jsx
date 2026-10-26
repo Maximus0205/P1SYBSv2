@@ -79,8 +79,8 @@ function OrderCardCompact({ order, technicians, onOpen, onAssign, onUpdateTimeSl
             {harDelvis(order) && order.status !== "afsluttet" && <DelvisBadge />}
             <CaseTypeBadge order={order} />
           </div>
-          <p className="font-semibold text-sm text-ink truncate">{buildTitle(order.varelinjer)}</p>
-          <p className="text-xs text-muted truncate">{order.kunde.navn} · {order.kunde.adresse}{order.kunde.telefon ? ` · ${order.kunde.telefon}` : ""}</p>
+          <p className="font-semibold text-sm text-ink line-clamp-2 break-words">{buildTitle(order.varelinjer)}</p>
+          <p className="text-xs text-muted line-clamp-2 break-words">{order.kunde.navn} · {order.kunde.adresse}{order.kunde.telefon ? ` · ${order.kunde.telefon}` : ""}</p>
           {isSpecialtur(order) && (order.specialKrav || "").trim() && (
             <p className="text-[11px] text-ink font-semibold flex items-center gap-1 mt-0.5"><HardHat size={11} className="shrink-0" aria-hidden="true" /> <span className="truncate">Krav: {order.specialKrav}</span></p>
           )}
@@ -98,7 +98,7 @@ function OrderCardCompact({ order, technicians, onOpen, onAssign, onUpdateTimeSl
         {/* Ren visning - se noten om status-skifteren ovenfor. */}
         <div className="shrink-0"><StatusBadge status={order.status} /></div>
       </div>
-      {!minimal && <div className="mt-2"><LineItemPills order={order} /></div>}
+      {!minimal && <div className="mt-2"><LineItemPills order={order} daempet={order.status === "afsluttet"} /></div>}
       {(onAssign || onUpdateTimeSlot) && (
         <div className="flex flex-col sm:flex-row gap-2 mt-2 pt-2 border-t border-divider min-w-0">
           {onUpdateTimeSlot && (
