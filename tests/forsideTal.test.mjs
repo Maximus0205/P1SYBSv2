@@ -1,5 +1,5 @@
 // Kør med: node tests/forsideTal.test.mjs
-import { haster, bilFremdrift, plukFremdrift, mineSager, dagensTal, holdForBil, bilNavnUdenHold } from "../src/lib/forsideTal.js";
+import { haster, bilFremdrift, plukFremdrift, dagensTal, holdForBil, bilNavnUdenHold } from "../src/lib/forsideTal.js";
 let pass = 0, fail = 0;
 const eq = (n, g, w) => { if (JSON.stringify(g) === JSON.stringify(w)) pass++; else { fail++; console.log("FAIL:", n, "\n  got: ", JSON.stringify(g), "\n  want:", JSON.stringify(w)); } };
 const I = "2026-10-27";
@@ -23,10 +23,6 @@ const pl = [o("p", { bilId: "b1", dato: I, raekkefolge: 0 })];
 const pts = [{ order: pl[0], lineItem: { id: "x", plukket: true } }, { order: pl[0], lineItem: { id: "y" } }];
 eq("plukFremdrift", plukFremdrift({ orders: pl, points: pts, vehicles: biler, dato: I, sammenlign: sm, erManglende: () => false }).map((x) => [x.bil.id, x.linjer, x.plukket, x.manglende]), [["b1", 2, 1, 0]]);
 eq("bil uden pluklinjer udelades", plukFremdrift({ orders: pl, points: [], vehicles: biler, dato: I, sammenlign: sm }), []);
-
-// mineSager
-const ms = mineSager({ orders: [o("a", { oprettetAf: { id: "u1" } }), o("b", { oprettetAf: { id: "u1" }, dato: "2026-11-03", bilId: "b1" }), o("c", { oprettetAf: { id: "u1" }, dato: "2026-10-30", bilId: "b1" }), o("d", { oprettetAf: { id: "u2" } }), o("e", { oprettetAf: { id: "u1" }, status: "afsluttet", dato: I, bilId: "b1" })], profilId: "u1", skalPlanlaegges: skal });
-eq("mineSager", [ms.venter.map((x) => x.id), ms.planlagte.map((x) => x.id), ms.alle], [["a"], ["c", "b"], 3]);
 
 // dagensTal
 const t1 = dagensTal({ orders: os, idag: I, skalPlanlaegges: skal, kanPlan: false, kanLager: false });

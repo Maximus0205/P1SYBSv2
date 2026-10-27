@@ -156,13 +156,13 @@ function NotificationBell({ notifications, onOpenOrder, onReplaceItem }) {
 function StoreSwitcher({ store, isSystemAdmin, allStores, onSwitchStore, onExitStoreView }) {
   if (isSystemAdmin) {
     return (
-      <div className="flex items-center gap-1 shrink-0">
-        <Building2 size={13} className="text-[#C9C9C9] hidden sm:inline" aria-hidden="true" />
+      <div className="flex items-center gap-1.5 w-full sm:w-auto sm:shrink-0">
+        <Building2 size={14} className="text-[#C9C9C9] shrink-0" aria-hidden="true" />
         <select
           value={store?.id || ""}
           onChange={(e) => e.target.value && onSwitchStore(e.target.value)}
           aria-label="Skift butik"
-          className="bg-black border border-[#333] text-[#C9C9C9] text-xs rounded-lg px-2 py-2 max-w-[100px] sm:max-w-[140px] focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand"
+          className="bg-black border border-[#333] text-[#C9C9C9] text-xs rounded-lg px-2 py-2 min-h-[40px] flex-1 min-w-0 sm:flex-none sm:max-w-[140px] focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand"
           title="Skift butik"
         >
           {!store && <option value="">Vælg butik...</option>}
@@ -203,14 +203,18 @@ function TopNav({ branding, page, onChange, user, onLogOut, notifications, onOpe
   return (
     <div className="sticky top-0 z-20 bg-ink mb-6">
       <nav aria-label="Hovedmenu" className="max-w-6xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto flex flex-wrap items-center gap-2 px-3 py-2.5">
-        <div className="shrink-0 flex items-center pr-1 order-1">
-          <BrandLogo branding={branding} variant="dark" className="h-8 w-auto max-w-[160px] object-contain object-left" textClassName="font-display text-xl uppercase tracking-tight text-white whitespace-nowrap" />
+        <div className="min-w-0 flex items-center pr-1 order-1 sm:shrink-0">
+          <BrandLogo branding={branding} variant="dark" className="h-8 w-auto max-w-[160px] object-contain object-left" textClassName="font-display text-lg sm:text-xl uppercase tracking-tight text-white whitespace-nowrap truncate" />
         </div>
 
-        {/* Kontroller: order-2 på mobil (samme række som logoet, skubbet
-            helt til højre), order-3 på pc (efter fanerne). */}
-        <div className="flex items-center gap-2 shrink-0 ml-auto order-2 sm:order-3 sm:ml-0">
+        {/* Butiksvælger (kun systemadmin): på mobil en egen række i fuld bredde under logoet, så butiksnavnet kan læses og knapperne
+            ikke vælter logoet ned på en ny linje. På pc står den i samme række, efter fanerne. */}
+        <div className="order-3 w-full sm:w-auto sm:order-3 empty:hidden">
           <StoreSwitcher store={store} isSystemAdmin={user.erSystemadmin} allStores={allStores} onSwitchStore={onSwitchStore} onExitStoreView={onExitStoreView} />
+        </div>
+
+        {/* Kontroller: order-2 på mobil (samme række som logoet, skubbet helt til højre), order-4 på pc (efter fanerne og butiksvælgeren). */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-auto order-2 sm:order-4 sm:ml-0">
           <span className="text-xs text-[#C9C9C9] hidden sm:inline pr-1">{user.navn}</span>
           {notifications && onOpenOrder && <NotificationBell notifications={notifications} onOpenOrder={onOpenOrder} onReplaceItem={onReplaceItem} />}
           {onOpenAccountSettings && (
@@ -240,7 +244,7 @@ function TopNav({ branding, page, onChange, user, onLogOut, notifications, onOpe
             flex-barn overhovedet MÅ blive smallere end sit indhold - uden
             den ville overflow-x-auto aldrig træde i kraft, og indholdet
             ville skubbe naboerne ud i stedet for at rulle. */}
-        <div data-rundvisning="menu" style={{ scrollbarWidth: "none" }} className="w-full sm:w-auto sm:flex-1 min-w-0 overflow-x-auto [&::-webkit-scrollbar]:hidden flex gap-1.5 py-0.5 order-3 sm:order-2">
+        <div data-rundvisning="menu" style={{ scrollbarWidth: "none" }} className="w-full sm:w-auto sm:flex-1 min-w-0 overflow-x-auto [&::-webkit-scrollbar]:hidden flex gap-1.5 py-0.5 order-4 sm:order-2">
           {allowed.map((s) => {
             const Icon = s.icon;
             const active = page === s.key;

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Settings2, Plus, ChevronUp, ChevronDown, Upload, AlertTriangle, Truck, Trash2, ClipboardList, CalendarCheck2, Bell } from "lucide-react";
 import { todayISO, dailyOrderCompare, canDo, DASHBOARD_WIDGET_CATALOG, missingLineItems, lineItemLabel, needsPlanning, isMissingActive, formatShortDate, STATUS_META, isTechnicianAbsent, timeSlotById } from "../data/domain";
-import { haster, bilFremdrift, plukFremdrift, mineSager, dagensTal, holdForBil, bilNavnUdenHold } from "../lib/forsideTal";
+import { haster, bilFremdrift, plukFremdrift, dagensTal, holdForBil, bilNavnUdenHold } from "../lib/forsideTal";
 import { erMedhjaelperRolle } from "../data/roller";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 import { classify } from "./PlanningPage";
@@ -397,35 +397,6 @@ function HasterWidget({ orders, onOpen, onNavigate }) {
   );
 }
 
-// "Mine sager": sælgerens egne åbne sager - hvad venter på en dato, og hvad er planlagt.
-function MineSagerWidget({ orders, technicians, profile, onOpen }) {
-  const catalogEntry = DASHBOARD_WIDGET_CATALOG.find((w) => w.key === "mine_sager");
-  const m = useMemo(() => mineSager({ orders, profilId: profile.id, skalPlanlaegges: needsPlanning }), [orders, profile.id]);
-  return (
-    <WidgetCard title={catalogEntry.label} icon={catalogEntry.icon}>
-      <div className="grid grid-cols-2 gap-2 mb-3">
-        <Stat label="Venter på dato" value={m.venter.length} color="#B36B1E" />
-        <Stat label="Planlagt" value={m.planlagte.length} color="#52697E" />
-      </div>
-      {m.alle === 0 ? <p className="text-sm text-muted italic">Du har ingen åbne sager lige nu.</p> : (
-        <ul className="space-y-1">
-          {m.planlagte.slice(0, 5).map((o) => (
-            <li key={o.id}>
-              <button type="button" onClick={() => onOpen(o.id)} className="w-full text-left rounded-lg hover:bg-panel px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand min-h-[44px]">
-                <span className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-ink truncate">{o.kunde?.navn || "Ukendt kunde"}</span>
-                  <span className="text-[11px] text-muted shrink-0">{o.dato ? formatShortDate(o.dato) : ""}</span>
-                </span>
-                <span className="block text-[11px] text-muted truncate">#{o.nr} · {STATUS_META[o.status]?.label || o.status}{planBil(o, technicians) ? ` · ${planBil(o, technicians)}` : ""}{(o.varelinjer || []).some((l) => isMissingActive(o, l)) ? " · vare mangler" : ""}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </WidgetCard>
-  );
-}
-
 // "Pluk pr. bil": fremdrift i pluk for hver bil i dag.
 function PlukBilerWidget({ orders, vehicles, primaryServices, technicians, onNavigate }) {
   const catalogEntry = DASHBOARD_WIDGET_CATALOG.find((w) => w.key === "pluk_biler");
@@ -459,7 +430,6 @@ const WIDGET_COMPONENTS = {
   dagen_i_tal: DagenITalWidget,
   bil_status: BilStatusWidget,
   haster: HasterWidget,
-  mine_sager: MineSagerWidget,
   pluk_biler: PlukBilerWidget,
   needs_action: NeedsActionWidget,
   today_route: TodayRouteWidget,

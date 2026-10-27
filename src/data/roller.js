@@ -69,7 +69,7 @@ const WIDGET_RAEKKEFOELGE = ["dagen_i_tal", "quick_booking", "needs_action", "to
 // alle andre roller får den almindelige rækkefølge ovenfor. Kun kasser, brugeren har rettighed til, vises (se standardWidgets).
 const STANDARD_PR_ROLLE = {
   admin: ["dagen_i_tal", "bil_status", "haster", "needs_action", "pluk_biler", "notifications", "quick_booking"],
-  saelger: ["dagen_i_tal", "mine_sager", "quick_booking", "haster", "notifications"],
+  saelger: ["dagen_i_tal", "haster", "quick_booking", "notifications"],
   lager: ["dagen_i_tal", "pluk_biler", "pick_list", "upcoming_today", "notifications"],
 };
 export function standardWidgets(rolle, rettigheder, katalog) {

@@ -1,4 +1,4 @@
-import { RotateCw, Trash2, Cable, Wifi, Wrench, Tag, ShoppingCart, Route, Truck, Package, Settings2, Building2, Archive, Home, Bell, AlertCircle, CalendarClock, MapPin, Gauge, Flame, ClipboardList, PackageCheck } from "lucide-react";
+import { RotateCw, Trash2, Cable, Wifi, Wrench, Tag, ShoppingCart, Route, Truck, Package, Settings2, Building2, Archive, Home, Bell, AlertCircle, CalendarClock, MapPin, Gauge, Flame, PackageCheck } from "lucide-react";
 import { standardYdelse } from "../lib/ydelser";
 import { specialMinutter } from "./caseTypes";
 
@@ -488,7 +488,6 @@ const DASHBOARD_WIDGET_CATALOG = [
   { key: "dagen_i_tal", label: "Dagen i tal", icon: Gauge, requires: null, bred: true },
   { key: "bil_status", label: "Bilerne i dag", icon: Truck, requires: "planlaegning" },
   { key: "haster", label: "Haster", icon: Flame, requires: "planlaegning" },
-  { key: "mine_sager", label: "Mine sager", icon: ClipboardList, requires: "salg" },
   { key: "pluk_biler", label: "Pluk pr. bil", icon: PackageCheck, requires: "lager" },
 ];
 

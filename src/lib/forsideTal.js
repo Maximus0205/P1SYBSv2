@@ -44,14 +44,6 @@ export function plukFremdrift({ orders, points, vehicles, dato, sammenlign, erMa
     .filter((x) => x.linjer > 0);
 }
 
-// En sælgers egne åbne sager, delt i "venter på dato/bil" og "planlagt". Planlagte sorteres efter dato, og dem i fortiden (ikke afsluttet) først.
-export function mineSager({ orders, profilId, skalPlanlaegges }) {
-  const mine = (orders || []).filter((o) => o.oprettetAf?.id === profilId && aaben(o));
-  const venter = mine.filter(skalPlanlaegges);
-  const planlagte = mine.filter((o) => !skalPlanlaegges(o)).sort((a, b) => (a.dato || "").localeCompare(b.dato || "") || (a.start || "").localeCompare(b.start || ""));
-  return { venter, planlagte, alle: mine.length };
-}
-
 // Tal til "Dagen i tal": kun de felter, brugeren har adgang til, afgør hvilke tal der vises (kanPlan, kanLager).
 export function dagensTal({ orders, idag, skalPlanlaegges, kanPlan, kanLager, pluk }) {
   const idagSager = (orders || []).filter((o) => o.dato === idag);
