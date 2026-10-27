@@ -12,6 +12,7 @@ import { kraeverBeskrivelse } from "../lib/ydelser";
 import { useButikVarer } from "../hooks/useButikVarer";
 import { findButikVare, lignendeButikVarer } from "../lib/butikVarer";
 import { ButikVareForslag } from "../components/ButikVareForslag";
+import { nyesteFoerst } from "../lib/sagsRaekkefolge";
 
 // Forøger at splitte en punkt1.dk-produkttitel (fx "Point 5-Series
 // PODW56042W opvaskemaskine") op i mærke + modelnummer. Mærket antages at
@@ -702,7 +703,7 @@ function CustomerHistory({ phone, orders, onOpen }) {
 
   const matches = (orders || [])
     .filter((o) => (o.kunde?.telefon || "").replace(/\D/g, "") === normPhone)
-    .sort((a, b) => (b.dato + b.start).localeCompare(a.dato + a.start));
+    .sort(nyesteFoerst);
 
   if (matches.length === 0) return null;
   const shown = matches.slice(0, 3);
@@ -795,7 +796,7 @@ function CustomerHistoryLookup({ orders, currentOrderId, phone, address, name, o
       const addressMatch = searchKey && buildingKey(o.kunde?.adresse) === searchKey;
       return phoneMatch || addressMatch;
     })
-    .sort((a, b) => (b.dato + b.start).localeCompare(a.dato + a.start));
+    .sort(nyesteFoerst);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-ink/40 p-3" role="dialog" aria-modal="true" aria-label="Slå kunde op i arkivet">

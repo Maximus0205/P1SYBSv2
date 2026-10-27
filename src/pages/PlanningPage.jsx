@@ -15,6 +15,7 @@ import { KortTraekProvider, TraekHaandtag, useTraekZone, IndsaetLinje } from "..
 import { forslagsDatoer, fristStatus, urgensNoegle } from "../lib/frist";
 import { foersteArbejdsdagFra } from "../lib/arbejdsuge";
 import { samlFravaer } from "../lib/fravaer";
+import { nyesteFoerst } from "../lib/sagsRaekkefolge";
 
 // ---------------------------------------------------------------------------
 // Planlægning + Kørsel er fusioneret til ÉN fane (august 2026). Siden er
@@ -934,7 +935,7 @@ function PlanningPage({ orders, technicians, personnel, vehicles, timeOff, store
 
   const searchResults = useMemo(() => {
     if (!search.trim()) return null;
-    return [...orders].filter((s) => matchesSearch(s, search)).sort((a, b) => (b.dato + b.start).localeCompare(a.dato + a.start));
+    return [...orders].filter((s) => matchesSearch(s, search)).sort(nyesteFoerst);
   }, [orders, search]);
 
   const totalNeedsAction = fravaer.length + needsPlan.length + unresolved.length;

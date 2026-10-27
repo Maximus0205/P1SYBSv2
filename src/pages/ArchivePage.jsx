@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Search, X, MapPin, Phone, Calendar, Truck } from "lucide-react";
 import { OrderCardCompact } from "../components/OrderCardCompact";
+import { nyesteFoerst } from "../lib/sagsRaekkefolge";
 
 const norm = (s) => (s || "").toString().toLowerCase();
 const normPhone = (s) => (s || "").replace(/\D/g, "");
@@ -46,7 +47,7 @@ function ArchivePage({ orders, technicians, onOpen }) {
     if (!hasFilter) return [];
     return [...orders]
       .filter((o) => matchesFilters(o, { text, address, phone, vehicleId, fromDate, toDate }))
-      .sort((a, b) => (b.dato + b.start).localeCompare(a.dato + a.start));
+      .sort(nyesteFoerst);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders, text, address, phone, vehicleId, fromDate, toDate, hasFilter]);
 
