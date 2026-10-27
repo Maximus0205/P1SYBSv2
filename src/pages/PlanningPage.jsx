@@ -230,35 +230,57 @@ function ReplanCard({ order, technicians, suggestion, loadingSuggestion, onApply
 }
 
 // ---------------- Fliens indhold: liste + automatisk beregnede forslag ----------------
+// FORSLAG TIL DE SYNLIGE KORT (oktober 2026): før blev forslaget regnet ud for ALLE sager i fanen, én ad gangen og med netværkskald pr. sag - med
+// hundredvis af sager stod alle kort på "Beregner forslag..." i minutter. Nu vises sagerne 15 ad gangen ("Vis flere"), forslag beregnes kun for de
+// viste (mest hastende først), tre ad gangen, og hvert kort udfyldes, så snart dets forslag er klar. Rutetider hentes for højst tre datoer pr. sag.
+const FORSLAG_SIDE = 15;
+const FORSLAG_PARALLELT = 3;
+const FORSLAG_RAFFINER = 3;
+const pause = () => new Promise((r) => setTimeout(r, 0));
+
 function ReplanTile({ items, orders, technicians, personnel, timeOff, vehicles, crew, store, onUpdateBooking, onOpen }) {
   const [suggestions, setSuggestions] = useState({});
-  const [loading, setLoading] = useState(false);
-  const key = items.map((o) => o.id).join(",");
+  const [afventer, setAfventer] = useState({});
+  const [visible, setVisible] = useState(FORSLAG_SIDE);
+  const shownItems = items.slice(0, visible);
+  const remaining = items.length - shownItems.length;
+  const key = shownItems.map((o) => o.id).join(",");
 
   // FORSLAG = KAPACITETSMOTOREN (oktober 2026): samme motor og samme input som badget i ugevisningen (lib/forslagMotor.js) - ikke længere en egen
   // pointmodel. Mangler sagen koordinater (adressen er ikke valgt fra Adressevælgeren), kan der ikke beregnes forslag, og det siges ligeud.
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      if (items.length === 0) { setSuggestions({}); return; }
-      setLoading(true);
+      if (shownItems.length === 0) { setSuggestions({}); setAfventer({}); return; }
+      setAfventer(Object.fromEntries(shownItems.map((o) => [o.id, true])));
       const grundlag = await hentKapGrundlag(store?.id);
       const lager = await lagerKoordinatAsync(store, grundlag);
-      const results = {};
-      for (const order of items) {
-        if (cancelled) return;
-        // FRIST (oktober 2026): en tomgang med frist foreslås kun dage til og med fristen (højst
-        // seks uger frem); uden frist som før de næste 14 dage. Se lib/frist.js.
-        const dates = forslagsDatoer(order, todayISO());
-        const kandidat = ordreTilStop(order);
-        const r = await motorForslag({
-          kandidat: { ...kandidat, id: "kandidat" }, dates, orders, biler: technicians, vehicles, personnel, timeOff, crew, grundlag, lager,
-          hentMatrix: hentMotorMatrix, ordreTilStop, idag: todayISO(), originalDate: order.dato || null, ekskluderSagId: order.id,
-        });
-        if (r.fejl) results[order.id] = { fejl: r.fejl };
-        else if (r.forslag[0]) results[order.id] = r.forslag[0];
-      }
-      if (!cancelled) { setSuggestions(results); setLoading(false); }
+      const koe = [...shownItems];
+      const arbejder = async () => {
+        while (koe.length && !cancelled) {
+          const order = koe.shift();
+          await pause(); // giver siden luft mellem to beregninger
+          if (cancelled) return;
+          // FRIST (oktober 2026): en tomgang med frist foreslås kun dage til og med fristen (højst
+          // seks uger frem); uden frist som før de næste 14 dage. Se lib/frist.js.
+          const dates = forslagsDatoer(order, todayISO());
+          const kandidat = ordreTilStop(order);
+          let svar;
+          try {
+            const r = await motorForslag({
+              kandidat: { ...kandidat, id: "kandidat" }, dates, orders, biler: technicians, vehicles, personnel, timeOff, crew, grundlag, lager,
+              hentMatrix: hentMotorMatrix, ordreTilStop, idag: todayISO(), originalDate: order.dato || null, ekskluderSagId: order.id, raffiner: FORSLAG_RAFFINER,
+            });
+            svar = r.fejl ? { fejl: r.fejl } : (r.forslag[0] || null);
+          } catch (e) {
+            svar = { fejl: "Forslaget kunne ikke beregnes lige nu." };
+          }
+          if (cancelled) return;
+          setSuggestions((prev) => { const n = { ...prev }; if (svar) n[order.id] = svar; else delete n[order.id]; return n; });
+          setAfventer((prev) => { const n = { ...prev }; delete n[order.id]; return n; });
+        }
+      };
+      await Promise.all(Array.from({ length: FORSLAG_PARALLELT }, arbejder));
     };
     run();
     return () => { cancelled = true; };
@@ -272,18 +294,26 @@ function ReplanTile({ items, orders, technicians, personnel, timeOff, vehicles, 
 
   return (
     <div>
-      {items.map((o) => (
+      {shownItems.map((o) => (
         <ReplanCard
           key={o.id}
           order={o}
           technicians={technicians}
           suggestion={suggestions[o.id]}
-          loadingSuggestion={loading && !suggestions[o.id]}
+          loadingSuggestion={!!afventer[o.id] && !suggestions[o.id]}
           onApplySuggestion={applySuggestion}
           onManualChange={onUpdateBooking}
           onOpen={onOpen}
         />
       ))}
+      {remaining > 0 && (
+        <button
+          onClick={() => setVisible((v) => v + FORSLAG_SIDE)}
+          className="w-full mt-3 py-3 rounded-lg border border-line text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors"
+        >
+          Vis {Math.min(FORSLAG_SIDE, remaining)} flere · {remaining} tilbage
+        </button>
+      )}
     </div>
   );
 }

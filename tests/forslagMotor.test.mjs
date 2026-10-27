@@ -67,5 +67,14 @@ eq("omplanlægning: uændret dato i begrundelsen", r.forslag.find((f) => f.dato 
 r = await motorForslag({ ...base, biler: [{ id: "b1", navn: "Bil 1", lukket: true }, { id: "b3", navn: "Bil 3" }, biler[1]] });
 eq("lukket bil og bil uden personer udelades", [...new Set(r.forslag.map((f) => f.bilId))], ["b2"]);
 
+// Tidlig afbrydelse: at stoppe, når de tidligste datoer er fundet, giver SAMME forslag som at vurdere alle datoer (raffiner stort = ingen afbrydelse)
+{
+  const lang = Array.from({ length: 30 }, (_, i) => { const d = new Date(Date.parse("2026-11-09T12:00:00Z") + i * 864e5); return d.toISOString().slice(0, 10); });
+  const optaget = Array.from({ length: 3 }, (_, i) => ordre(`x${i}`, "2026-11-10", "b1", 55.41 + i * 0.01, 10.41, 120));
+  const hurtig = await motorForslag({ ...base, dates: [...lang].reverse(), orders: optaget });
+  const fuld = await motorForslag({ ...base, dates: lang, orders: optaget, raffiner: 100 });
+  eq("tidlig afbrydelse giver samme forslag som fuld gennemgang", hurtig.forslag.map((f) => [f.dato, f.bilId]), fuld.forslag.map((f) => [f.dato, f.bilId]));
+}
+
 console.log(`${pass} bestået, ${fail} fejlet`);
 if (fail) process.exit(1);

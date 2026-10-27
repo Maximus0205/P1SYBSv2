@@ -68,10 +68,26 @@ export async function motorForslag({
   }
   const kandStop = { id: "kandidat", navn: kandidat.navn || "Ny sag", varer: [], kraever2Mand: false, ...kandidat };
   const noter = [];
-  const kombinationer = [];
+  const input = (k, matrix) => ({ dato: k.dato, indstillinger: grundlag.indstillinger, lager: { lat: lager.lat, lon: lager.lon }, bil: k.bil, personer: k.personer, pauseMin: k.pauseMin, stop: k.stop, matrix });
+  const punkterFor = (k) => [{ id: "lager", lat: lager.lat, lon: lager.lon }, ...[...k.stop, kandStop].map((s) => ({ id: s.id, lat: s.lat, lon: s.lon }))];
 
-  for (const dato of dates || []) {
+  // Datoerne gennemgås TIDLIGSTE FØRST, og gennemgangen stopper, så snart der er fundet nok datoer med en mulig bil (de, der raffineres/vises nedenfor).
+  // Senere datoer kan aldrig komme med i resultatet, så det giver samme forslag som at vurdere alle - men er meget hurtigere på en lang frist.
+  const behov = Math.max(raffiner, max);
+  const vurderet = [];
+  const datoerMedBil = new Set();
+  const sorteredeDatoer = [...new Set(dates || [])].sort();
+
+  for (const dato of sorteredeDatoer) {
+    if (datoerMedBil.size >= behov) break;
     if (dato < idag || erWeekend(dato)) continue;
+    // Dagens sager grupperes pr. bil én gang pr. dato (i stedet for at gennemsøge alle sager for hver bil).
+    const dagensPrBil = new Map();
+    for (const o of orders || []) {
+      if (o.dato !== dato || !o.bilId || o.status === "afsluttet" || o.id === ekskluderSagId) continue;
+      if (!dagensPrBil.has(o.bilId)) dagensPrBil.set(o.bilId, []);
+      dagensPrBil.get(o.bilId).push(o);
+    }
     for (const t of (biler || []).filter((b) => !b.lukket)) {
       const vRow = (vehicles || []).find((v) => v.id === t.id);
       const bil = bilTilMotor(vRow, t);
@@ -79,23 +95,15 @@ export async function motorForslag({
       const bortePersonIds = (crew?.helpers || []).filter((h) => h.dato === dato && h.vehicleId !== t.id).map((h) => h.personId);
       const { personer, pauseMin } = personerTilMotor({ dato, bilId: t.id, personnel, timeOff, arbejdstider: grundlag.arbejdstider, uaendringer: grundlag.uaendringer, indstillinger: grundlag.indstillinger, hjaelperIds, bortePersonIds });
       if (personer.length === 0) continue; // ingen på bilen den dag
-      const dagensOrdrer = (orders || []).filter((o) => o.dato === dato && o.bilId === t.id && o.status !== "afsluttet" && o.id !== ekskluderSagId);
-      const stop = dagensOrdrer.map(ordreTilStop);
+      const stop = (dagensPrBil.get(t.id) || []).map(ordreTilStop);
       const uden = stop.filter((s) => !Number.isFinite(s.lat) || !Number.isFinite(s.lon));
       if (uden.length > 0) { noter.push(`${bil.navn} ${dato}: kan ikke vurderes - koordinater mangler på ${uden.length} ${uden.length === 1 ? "sag" : "sager"}.`); continue; }
-      kombinationer.push({ dato, bil, personer, pauseMin, stop });
+      const k = { dato, bil, personer, pauseMin, stop };
+      // 1. Screening med skønnet matrix.
+      const v = vurderTilfoejelse(input(k, skoenMatrix(punkterFor(k))), kandStop);
+      // Forrang: en bil med fast kørselsområde vælges frem for en anden bil på samme dag, når sagen ligger i området og begge kan tage den. Den udelukker ingen.
+      if (v.mulig) { vurderet.push({ k, v, s: score(v), forrang: harForrang(k.bil, kandStop.adresse, grundlag.indstillinger?.omraader) }); datoerMedBil.add(dato); }
     }
-  }
-
-  const input = (k, matrix) => ({ dato: k.dato, indstillinger: grundlag.indstillinger, lager: { lat: lager.lat, lon: lager.lon }, bil: k.bil, personer: k.personer, pauseMin: k.pauseMin, stop: k.stop, matrix });
-  const punkterFor = (k) => [{ id: "lager", lat: lager.lat, lon: lager.lon }, ...[...k.stop, kandStop].map((s) => ({ id: s.id, lat: s.lat, lon: s.lon }))];
-
-  // 1. Screening med skønnet matrix.
-  const vurderet = [];
-  for (const k of kombinationer) {
-    const v = vurderTilfoejelse(input(k, skoenMatrix(punkterFor(k))), kandStop);
-    // Forrang: en bil med fast kørselsområde vælges frem for en anden bil på samme dag, når sagen ligger i området og begge kan tage den. Den udelukker ingen.
-    if (v.mulig) vurderet.push({ k, v, s: score(v), forrang: harForrang(k.bil, kandStop.adresse, grundlag.indstillinger?.omraader) });
   }
   vurderet.sort((a, b) => (b.forrang - a.forrang) || (a.s - b.s));
 
