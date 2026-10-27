@@ -100,9 +100,9 @@ function AdminPage({
   return (
     <div>
       <p className="font-mono text-[11px] tracking-widest uppercase text-brand mb-1">Administration</p>
-      <h1 className="font-display text-4xl uppercase tracking-tight text-ink mb-6">Opsætning</h1>
+      <h1 data-rundvisning="admin-top" className="font-display text-4xl uppercase tracking-tight text-ink mb-6">Opsætning</h1>
 
-      <div className="flex border-b border-line mb-6 flex-wrap">
+      <div data-rundvisning="admin-faner" className="flex border-b border-line mb-6 flex-wrap">
         {visibleTabs.map((f) => (
           <button key={f.k} onClick={() => setTab(f.k)} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors ${tab === f.k ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>{f.l}</button>
         ))}

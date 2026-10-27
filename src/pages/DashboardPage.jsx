@@ -379,11 +379,11 @@ function DashboardPage({ profile, permissions, crew, orders, technicians, person
   return (
     <div>
       <div className="flex items-end justify-between mb-6 flex-wrap gap-3">
-        <div>
+        <div data-rundvisning="forside-top">
           <p className="font-mono text-[11px] tracking-widest uppercase text-brand mb-1">Forside</p>
           <h1 className="font-display text-4xl uppercase tracking-tight text-ink">Hej, {profile.navn?.split(" ")[0] || "der"}</h1>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap" data-rundvisning="forside-knapper">
           {maaSeBookinger && (
             <button onClick={() => setVisBookinger(true)} aria-haspopup="dialog" className="px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide text-muted border border-line hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors flex items-center gap-1.5">
               <ClipboardList size={15} aria-hidden="true" /> Bookede varer
@@ -413,7 +413,7 @@ function DashboardPage({ profile, permissions, crew, orders, technicians, person
       {activeKeys.length === 0 ? (
         <p className="text-sm text-muted italic">Ingen widgets valgt endnu. Tryk "Tilpas" for at sætte din forside op.</p>
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4" data-rundvisning="forside-kasser">
           {activeKeys.map((key) => {
             const Widget = WIDGET_COMPONENTS[key];
             if (!Widget) return null;

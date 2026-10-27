@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { HelpCircle } from "lucide-react";
-import { guidesForBruger, laesSet, markerSet, skalStarteAutomatisk, naesteIndex, forrigeIndex, erSidsteTrin, placerKort } from "../lib/rundvisningCore";
+import { HelpCircle, Check, X } from "lucide-react";
+import { guidesForBruger, laesSet, markerSet, skalStarteAutomatisk, naesteIndex, forrigeIndex, erSidsteTrin, placerKort, grupperGuides, guideForSide, tilbudForSide } from "../lib/rundvisningCore";
 
 // RUNDVISNING (oktober 2026) - guidede rundture for sælger, admin og lager. Reglerne (hvem ser hvad, hvad er set, hvor ligger kortet)
 // står i lib/rundvisningCore.js. Her er selve visningen:
@@ -28,11 +28,16 @@ export function RundvisningProvider({ brugerId, rolle, erSystemadmin, tilladteSi
   const [aktiv, setAktiv] = useState(null);   // { guideId, index }
   const aktivRef = useRef(null);
   aktivRef.current = aktiv;
+  // Hvad brugeren har set (pr. bruger i browseren). Holdes i state, så Hjælp-menuen og tilbuddet opdateres med det samme.
+  const [set, setSet] = useState(() => { try { return laesSet(window.localStorage, brugerId); } catch (_) { return {}; } });
+  useEffect(() => { try { setSet(laesSet(window.localStorage, brugerId)); } catch (_) { setSet({}); } }, [brugerId]);
+  const [afvist, setAfvist] = useState({});    // tilbud afvist i denne session, hvis browseren ikke kan huske det
 
   const start = useCallback((guideId) => {
     const g = guides.find((x) => x.id === guideId);
     if (!g) return;
     try { markerSet(window.localStorage, brugerId, g.id); } catch (_) { /* ikke kritisk */ }
+    setSet((s) => ({ ...s, [g.id]: Date.now() }));
     if (g.side && g.side !== aktuelSide) onNavigate?.(g.side);
     setAktiv({ guideId: g.id, index: 0 });
   }, [guides, brugerId, aktuelSide, onNavigate]);
@@ -40,22 +45,53 @@ export function RundvisningProvider({ brugerId, rolle, erSystemadmin, tilladteSi
   // Første login: den automatiske guide starter af sig selv, én gang. Ikke mens en sag er åben, og ikke over en anden rundtur.
   useEffect(() => {
     if (!brugerId || aktivRef.current || aktuelSide === "sag") return undefined;
-    let set = {};
-    try { set = laesSet(window.localStorage, brugerId); } catch (_) { /* tom */ }
-    const kandidat = skalStarteAutomatisk(guides, set);
+    let sat = {};
+    try { sat = laesSet(window.localStorage, brugerId); } catch (_) { sat = set; }
+    const kandidat = skalStarteAutomatisk(guides, sat);
     if (!kandidat) return undefined;
     const t = setTimeout(() => { if (!aktivRef.current && document.visibilityState !== "hidden") start(kandidat.id); }, 1500);
     return () => clearTimeout(t);
-  }, [brugerId, guides, aktuelSide, start]);
+  }, [brugerId, guides, aktuelSide, start]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Første besøg på en side med sin egen rundtur: tilbyd den (aldrig tving). Først når den automatiske velkomst er set.
+  const tilbud = (!aktiv && !skalStarteAutomatisk(guides, set)) ? tilbudForSide(guides, set, aktuelSide) : null;
+  const afvisTilbud = useCallback((g) => {
+    setAfvist((a) => ({ ...a, [g.id]: true }));
+    try { markerSet(window.localStorage, brugerId, g.id); } catch (_) { /* ikke kritisk */ }
+    setSet((s) => ({ ...s, [g.id]: Date.now() }));
+  }, [brugerId]);
 
   const luk = useCallback(() => setAktiv(null), []);
   const guide = aktiv ? guides.find((g) => g.id === aktiv.guideId) : null;
 
   return (
-    <RundvisningContext.Provider value={{ guides, start }}>
+    <RundvisningContext.Provider value={{ guides, start, set, aktuelSide }}>
       {children}
+      {tilbud && !afvist[tilbud.id] && aktuelSide !== "sag" && <TilbudKort guide={tilbud} onStart={() => start(tilbud.id)} onAfvis={() => afvisTilbud(tilbud)} />}
       {guide && <Overlay guide={guide} index={aktiv.index} setIndex={(i) => setAktiv((a) => (a ? { ...a, index: i } : a))} onLuk={luk} />}
     </RundvisningContext.Provider>
+  );
+}
+
+// Et lille, ikke-blokerende kort nederst: "Ny her? Se en kort rundtur". Vises kun første gang, og "Ikke nu" gør, at det ikke kommer igen.
+function TilbudKort({ guide, onStart, onAfvis }) {
+  const [synlig, setSynlig] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setSynlig(true), 1200); return () => clearTimeout(t); }, [guide.id]);
+  if (!synlig) return null;
+  return (
+    <div role="region" aria-label="Tilbud om rundtur" className="fixed z-[70] bottom-3 left-3 right-3 sm:right-auto sm:max-w-sm rounded-xl bg-white border border-brand shadow-xl p-3" style={{ marginBottom: "env(safe-area-inset-bottom)" }}>
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-ink">Ny her? Se en kort rundtur af {guide.titel.toLowerCase()}</p>
+          <p className="text-xs text-muted">{guide.beskrivelse} Du kan altid finde den igen under Hjælp.</p>
+        </div>
+        <button type="button" onClick={onAfvis} aria-label="Luk tilbuddet" className="w-9 h-9 -m-1 shrink-0 flex items-center justify-center rounded-lg text-muted hover:text-ink focus:outline-none focus:ring-2 focus:ring-brand"><X size={16} aria-hidden="true" /></button>
+      </div>
+      <div className="flex gap-2 mt-2">
+        <button type="button" onClick={onStart} className="min-h-[44px] px-4 rounded-lg text-xs font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand">Vis mig rundt</button>
+        <button type="button" onClick={onAfvis} className="min-h-[44px] px-4 rounded-lg text-xs font-semibold uppercase tracking-wide text-muted border border-line hover:border-muted focus:outline-none focus:ring-2 focus:ring-muted">Ikke nu</button>
+      </div>
+    </div>
   );
 }
 
@@ -192,25 +228,50 @@ export function HjaelpKnap() {
     return () => { document.removeEventListener("mousedown", udenfor); document.removeEventListener("touchstart", udenfor); window.removeEventListener("keydown", taste); };
   }, [open]);
   if (!ctx || ctx.guides.length === 0) return null;
+  const herGuide = guideForSide(ctx.guides, ctx.aktuelSide);
+  const grupper = grupperGuides(ctx.guides);
+  const vaelg = (id) => { setOpen(false); ctx.start(id); };
+  const antalNye = ctx.guides.filter((g) => !ctx.set?.[g.id]).length;
   return (
     <div ref={ref} className="relative shrink-0" data-rundvisning="hjaelp">
       <button
         onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label="Hjælp og rundvisning" title="Hjælp"
-        className="w-10 h-10 rounded-lg bg-black border border-[#333] flex items-center justify-center text-brand hover:text-white hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors"
+        className="relative w-10 h-10 rounded-lg bg-black border border-[#333] flex items-center justify-center text-brand hover:text-white hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors"
       >
         <HelpCircle size={16} aria-hidden="true" />
+        {antalNye > 0 && <span aria-hidden="true" className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-brand border border-black" />}
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-72 max-w-[90vw] bg-white rounded-lg border border-line shadow-lg z-30 text-left p-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted px-2 py-1.5">Rundvisninger</p>
-          {ctx.guides.map((g) => (
-            <button key={g.id} onClick={() => { setOpen(false); ctx.start(g.id); }} className="w-full text-left rounded-lg hover:bg-panel px-2 py-2.5 min-h-[44px] transition-colors focus:outline-none focus:ring-2 focus:ring-brand">
-              <span className="block text-sm font-semibold text-ink">{g.titel}</span>
-              <span className="block text-xs text-muted">{g.beskrivelse}</span>
-            </button>
+        <div className="absolute right-0 top-full mt-2 w-80 max-w-[92vw] max-h-[75vh] overflow-y-auto bg-white rounded-lg border border-line shadow-lg z-30 text-left p-2">
+          {herGuide && (
+            <div className="mb-1 pb-2 border-b border-divider">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-brand px-2 py-1.5">Til denne side</p>
+              <GuideKnap g={herGuide} set={ctx.set} onVaelg={vaelg} fremhaev />
+            </div>
+          )}
+          {grupper.map((gr) => (
+            <div key={gr.navn} className="mb-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted px-2 py-1.5">{gr.navn}</p>
+              {gr.guides.map((g) => <GuideKnap key={g.id} g={g} set={ctx.set} onVaelg={vaelg} />)}
+            </div>
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+function GuideKnap({ g, set, onVaelg, fremhaev }) {
+  const set_ = !!set?.[g.id];
+  return (
+    <button onClick={() => onVaelg(g.id)} className={`w-full text-left rounded-lg hover:bg-panel px-2 py-2.5 min-h-[44px] transition-colors focus:outline-none focus:ring-2 focus:ring-brand ${fremhaev ? "bg-panel" : ""}`}>
+      <span className="flex items-center gap-2">
+        <span className="text-sm font-semibold text-ink flex-1">{g.titel}</span>
+        {set_
+          ? <span className="inline-flex items-center gap-1 text-[11px] text-muted"><Check size={12} aria-hidden="true" /> Set · se igen</span>
+          : <span className="rounded bg-brand px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Ny</span>}
+      </span>
+      <span className="block text-xs text-muted">{g.beskrivelse}</span>
+    </button>
   );
 }

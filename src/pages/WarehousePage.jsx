@@ -210,11 +210,13 @@ function WarehousePage({ orders, vehicles, primaryServices, selectedDate, onDate
 
   return (
     <div>
+      <div data-rundvisning="lager-top">
       <p className="font-mono text-[11px] tracking-widest uppercase text-brand mb-1">{formatLongDate(selectedDate)}</p>
       <h1 className="font-display text-4xl uppercase tracking-tight text-ink mb-1">Lager & ordrepluk</h1>
       <div className="flex items-center gap-3 mb-2 flex-wrap">
         <p className="text-sm text-muted">{toPick.length} varer mangler at blive plukket · {ready.length} klar til afhentning</p>
         <DateSelector date={selectedDate} onChange={onDateChange} />
+      </div>
       </div>
       {!canPick && (
         <p className="text-xs text-muted italic mb-4 flex items-center gap-1.5"><Lock size={12} className="shrink-0" aria-hidden="true" /> Du kan se pluklisten, men ikke afkrydse punkter — du mangler rettigheden "Afkrydse plukket".</p>
@@ -246,7 +248,7 @@ function WarehousePage({ orders, vehicles, primaryServices, selectedDate, onDate
         </div>
       )}
 
-      <div role="group" aria-label="Visning" className="inline-flex rounded-lg border border-line overflow-hidden mb-4">
+      <div role="group" aria-label="Visning" data-rundvisning="lager-visning" className="inline-flex rounded-lg border border-line overflow-hidden mb-4">
         {[["bil", "Pr. bil (læsserækkefølge)"], ["alle", "Alle varer"]].map(([k, l]) => (
           <button key={k} type="button" onClick={() => skiftVisning(k)} aria-pressed={visning === k}
             className={`min-h-[44px] px-4 text-xs font-semibold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-brand ${visning === k ? "bg-brand text-white" : "bg-white text-muted hover:text-brand"}`}>{l}</button>
@@ -256,7 +258,7 @@ function WarehousePage({ orders, vehicles, primaryServices, selectedDate, onDate
       {visning === "bil" ? (
         <>
           {ture.length === 0 && <p className="text-sm text-muted italic">Ingen biler med sager denne dag.</p>}
-          {ture.map((t) => (
+          {ture.map((t, ti) => (
             <section key={t.bil.id} aria-label={t.bil.navn} className="mb-8">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-brand" /> {t.bil.navn}
@@ -264,8 +266,8 @@ function WarehousePage({ orders, vehicles, primaryServices, selectedDate, onDate
               </h2>
               <p className="text-[11px] text-muted mb-2">Plukkes i den rækkefølge, bilen læsses: stop 1 herunder læsses først og står længst inde. Montøren kører stoppene i omvendt rækkefølge.</p>
               <ol className="space-y-3">
-                {t.stops.map((st) => (
-                  <li key={st.order.id} className="rounded-xl border border-line bg-panel p-2">
+                {t.stops.map((st, si) => (
+                  <li key={st.order.id} data-rundvisning={ti === 0 && si === 0 ? "lager-stop" : undefined} className="rounded-xl border border-line bg-panel p-2">
                     <div className="flex items-center gap-2 mb-2 px-1">
                       <span className="shrink-0 w-8 h-8 rounded-full bg-ink text-white text-sm font-semibold flex items-center justify-center" aria-label={`Læsses som nummer ${st.laesNr}`}>{st.laesNr}</span>
                       <div className="min-w-0 flex-1">
@@ -273,7 +275,7 @@ function WarehousePage({ orders, vehicles, primaryServices, selectedDate, onDate
                         <p className="text-[11px] text-muted truncate">Kører som stop {st.koerselNr} af {t.antalStop}{st.order.start ? ` · ${st.order.start}` : ""}{st.antalManglende > 0 ? ` · ${st.antalManglende} mangler` : ""}</p>
                       </div>
                       {canReorder && t.antalStop > 1 && (
-                        <div className="shrink-0 flex gap-1">
+                        <div className="shrink-0 flex gap-1" data-rundvisning={ti === 0 && si === 0 ? "lager-pile" : undefined}>
                           <button type="button" onClick={() => onReorder(t.bil.id, selectedDate, st.order.id, 1)} disabled={st.laesNr === 1}
                             aria-label={`Læs ${st.order.kunde?.navn || "stoppet"} tidligere (kører senere)`} title="Læs tidligere"
                             className="w-11 h-11 flex items-center justify-center rounded-lg border border-line bg-white text-muted hover:text-brand hover:border-brand disabled:opacity-30 focus:outline-none focus:ring-2 focus:ring-brand"><ChevronUp size={18} aria-hidden="true" /></button>

@@ -342,9 +342,9 @@ function UnresolvedTile({ items, onClearProblem, onOpen }) {
 }
 
 // ---------------- Selve flise-knappen (lukket tilstand) ----------------
-function TileButton({ icon: Icon, color, count, label, selected, onClick }) {
+function TileButton({ icon: Icon, color, count, label, selected, onClick, rundvisning }) {
   return (
-    <button onClick={onClick} aria-pressed={selected} className="rounded-xl border-2 p-3 text-left transition-colors bg-white hover:bg-panel focus:outline-none focus:ring-2 focus:ring-brand" style={{ borderColor: selected ? color : "#ECECEC" }}>
+    <button onClick={onClick} data-rundvisning={rundvisning} aria-pressed={selected} className="rounded-xl border-2 p-3 text-left transition-colors bg-white hover:bg-panel focus:outline-none focus:ring-2 focus:ring-brand" style={{ borderColor: selected ? color : "#ECECEC" }}>
       <div className="flex items-center justify-between mb-1.5">
         <Icon size={16} style={{ color }} className="shrink-0" aria-hidden="true" />
         <span className="text-2xl font-display leading-none" style={{ color: count > 0 ? color : "#C9C2AE" }}>{count}</span>
@@ -942,7 +942,7 @@ function PlanningPage({ orders, technicians, personnel, vehicles, timeOff, store
   return (
     <div>
       <div className="flex items-end justify-between mb-4 flex-wrap gap-3">
-        <div>
+        <div data-rundvisning="plan-top">
           <p className="font-mono text-[11px] tracking-widest uppercase text-brand mb-1">Overblik</p>
           <h1 className="font-display text-4xl uppercase tracking-tight text-ink">Planlægning</h1>
           <div className="flex items-center gap-3 mt-1">
@@ -955,7 +955,7 @@ function PlanningPage({ orders, technicians, personnel, vehicles, timeOff, store
         </button>
       </div>
 
-      <div className="relative mb-4">
+      <div className="relative mb-4" data-rundvisning="plan-soeg">
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
         <input
           value={search}
@@ -982,13 +982,13 @@ function PlanningPage({ orders, technicians, personnel, vehicles, timeOff, store
         </div>
       ) : (
         <>
-          <WeekOverview orders={orders} technicians={technicians} personnel={personnel} vehicles={vehicles} timeOff={timeOff} store={store} crew={crew} onSaveDayCrew={onSaveDayCrew} onAssign={onAssign} onReorder={onReorder} onSetVisitOrder={onSetVisitOrder} onOpen={onOpen} />
+          <div data-rundvisning="plan-uge"><WeekOverview orders={orders} technicians={technicians} personnel={personnel} vehicles={vehicles} timeOff={timeOff} store={store} crew={crew} onSaveDayCrew={onSaveDayCrew} onAssign={onAssign} onReorder={onReorder} onSetVisitOrder={onSetVisitOrder} onOpen={onOpen} /></div>
 
-          <div className="mb-4">
+          <div className="mb-4" data-rundvisning="plan-handling">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-ink mb-2 flex items-center gap-1.5"><AlertCircle size={15} className="text-danger" aria-hidden="true" /> Kræver handling</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
               <TileButton icon={Stethoscope} color="rgb(var(--color-brand))" count={fravaer.length} label="Sygemelding / feriefridag" selected={openTile === "fravaer"} onClick={() => setOpenTile(openTile === "fravaer" ? null : "fravaer")} />
-              <TileButton icon={CalendarX2} color="#B36B1E" count={needsPlan.length} label="Skal planlægges" selected={openTile === "planlaeg"} onClick={() => setOpenTile(openTile === "planlaeg" ? null : "planlaeg")} />
+              <TileButton icon={CalendarX2} color="#B36B1E" count={needsPlan.length} label="Skal planlægges" rundvisning="plan-skal-planlaegges" selected={openTile === "planlaeg"} onClick={() => setOpenTile(openTile === "planlaeg" ? null : "planlaeg")} />
               <TileButton icon={AlertTriangle} color="#8B5E3C" count={unresolved.length} label="Uafsluttet / fejl" selected={openTile === "problemer"} onClick={() => setOpenTile(openTile === "problemer" ? null : "problemer")} />
             </div>
 

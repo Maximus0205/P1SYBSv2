@@ -304,7 +304,7 @@ function TechnicianRouteView({ orders, technician, keyCabinets, selectedDate, on
   return (
     <div>
       <div className="flex items-end justify-between mb-6 flex-wrap gap-3">
-        <div>
+        <div data-rundvisning="montor-top">
           <p className="font-mono text-[11px] tracking-widest uppercase text-brand mb-1">{formatLongDate(selectedDate)}</p>
           <h1 className="font-display text-4xl uppercase tracking-tight text-ink">{isToday(selectedDate) ? "Dagens rute" : "Rute"}</h1>
           <p className="text-sm text-muted mt-1">{technician.navn} · {technician.bil}</p>
@@ -332,7 +332,7 @@ function TechnicianRouteView({ orders, technician, keyCabinets, selectedDate, on
           {myOrders.length > 1 && onReorder && (
             <p className="text-[11px] text-muted mb-3 flex items-center gap-1.5"><ChevronUp size={11} aria-hidden="true" /><ChevronDown size={11} aria-hidden="true" /> Brug pilene på et kort til at ændre besøgsrækkefølgen.</p>
           )}
-          <div className="relative pl-8">
+          <div className="relative pl-8" data-rundvisning="montor-stop">
             <div className="absolute left-[7px] top-2 bottom-2 w-[2px] bg-line" />
             {myOrders.map((s, i) => (
               <div key={s.id} className="relative mb-3">
