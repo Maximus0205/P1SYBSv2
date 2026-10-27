@@ -1,4 +1,4 @@
-import { RotateCw, Trash2, Cable, Wifi, Wrench, Tag, ShoppingCart, Route, Truck, Package, Settings2, Building2, Archive, Home, Bell, AlertCircle, CalendarClock, MapPin } from "lucide-react";
+import { RotateCw, Trash2, Cable, Wifi, Wrench, Tag, ShoppingCart, Route, Truck, Package, Settings2, Building2, Archive, Home, Bell, AlertCircle, CalendarClock, MapPin, Gauge, Flame, ClipboardList, PackageCheck } from "lucide-react";
 import { standardYdelse } from "../lib/ydelser";
 import { specialMinutter } from "./caseTypes";
 
@@ -484,6 +484,12 @@ const DASHBOARD_WIDGET_CATALOG = [
   { key: "quick_booking", label: "Opret sag", icon: ShoppingCart, requires: "salg" },
   { key: "notifications", label: "Notifikationer", icon: Bell, requires: null },
   { key: "upcoming_today", label: "Sager i dag", icon: CalendarClock, requires: null },
+  // Oktober 2026: forsiden som dashboard. "bred" = kassen fylder hele rækken.
+  { key: "dagen_i_tal", label: "Dagen i tal", icon: Gauge, requires: null, bred: true },
+  { key: "bil_status", label: "Bilerne i dag", icon: Truck, requires: "planlaegning" },
+  { key: "haster", label: "Haster", icon: Flame, requires: "planlaegning" },
+  { key: "mine_sager", label: "Mine sager", icon: ClipboardList, requires: "salg" },
+  { key: "pluk_biler", label: "Pluk pr. bil", icon: PackageCheck, requires: "lager" },
 ];
 
 export {

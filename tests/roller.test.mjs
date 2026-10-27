@@ -74,6 +74,16 @@ test("standardWidgets: uden egen liste afledes den af rettighederne i fast rækk
   assert.deepEqual(standardWidgets("ukendt", ["lager"], KATALOG), ["pick_list", "upcoming_today", "notifications"]);
 });
 
+const KATALOG_NY = [...KATALOG, { key: "dagen_i_tal", requires: null }, { key: "bil_status", requires: "planlaegning" }, { key: "haster", requires: "planlaegning" }, { key: "mine_sager", requires: "salg" }, { key: "pluk_biler", requires: "lager" }];
+test("standardWidgets: indbyggede roller får hver sin forside (oktober 2026)", () => {
+  saetRoller([{ key: "admin", label: "A" }, { key: "saelger", label: "S" }, { key: "lager", label: "L" }, { key: "kontor", label: "K" }]);
+  const alle = ["salg", "planlaegning", "lager", "montor"];
+  assert.deepEqual(standardWidgets("admin", alle, KATALOG_NY), ["dagen_i_tal", "bil_status", "haster", "needs_action", "pluk_biler", "notifications", "quick_booking"]);
+  assert.deepEqual(standardWidgets("saelger", ["salg", "planlaegning"], KATALOG_NY), ["dagen_i_tal", "mine_sager", "quick_booking", "haster", "notifications"]);
+  assert.deepEqual(standardWidgets("lager", ["lager"], KATALOG_NY), ["dagen_i_tal", "pluk_biler", "pick_list", "upcoming_today", "notifications"]);
+  assert.deepEqual(standardWidgets("kontor", ["salg"], KATALOG_NY), ["dagen_i_tal", "quick_booking", "upcoming_today", "notifications"]);
+});
+
 test("lavRolleNoegle: danske tegn, specialtegn og grænser", () => {
   assert.equal(lavRolleNoegle("Tømrer-svend"), "toemrer_svend");
   assert.equal(lavRolleNoegle("  Å  Æ Ø "), "aa_ae_oe");

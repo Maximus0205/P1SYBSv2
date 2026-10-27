@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Settings2, Plus, ChevronUp, ChevronDown, Upload, AlertTriangle, Truck, Trash2, ClipboardList, CalendarCheck2, Bell } from "lucide-react";
-import { todayISO, dailyOrderCompare, canDo, DASHBOARD_WIDGET_CATALOG, missingLineItems, lineItemLabel } from "../data/domain";
+import { todayISO, dailyOrderCompare, canDo, DASHBOARD_WIDGET_CATALOG, missingLineItems, lineItemLabel, needsPlanning, isMissingActive, formatShortDate, STATUS_META } from "../data/domain";
+import { haster, bilFremdrift, plukFremdrift, mineSager, dagensTal } from "../lib/forsideTal";
 import { erMedhjaelperRolle } from "../data/roller";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 import { classify } from "./PlanningPage";
@@ -284,7 +285,174 @@ function UpcomingTodayWidget({ orders, technicians, onOpen, onNavigate }) {
   );
 }
 
+
+// ---- Dashboard-kasserne (oktober 2026). Tallene beregnes i lib/forsideTal.js (testet); her er kun visningen.
+function Fremdrift({ vaerdi, max, label, farve = "bg-success" }) {
+  const pct = max > 0 ? Math.round((vaerdi / max) * 100) : 0;
+  return (
+    <div role="progressbar" aria-valuemin={0} aria-valuemax={max} aria-valuenow={vaerdi} aria-label={label} className="h-2 rounded-full bg-panel overflow-hidden">
+      <div className={`h-full rounded-full ${farve} transition-all`} style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+const fristTekst = (dage) => (dage < 0 ? `${-dage} ${-dage === 1 ? "dag" : "dage"} over` : dage === 0 ? "i dag" : dage === 1 ? "i morgen" : `om ${dage} dage`);
+const planBil = (o, technicians) => technicians.find((t) => t.id === o.bilId)?.navn;
+
+// "Dagen i tal": et bånd med dagens vigtigste tal. Hvert tal er en knap til den side, tallet hører til.
+function DagenITalWidget({ orders, vehicles, primaryServices, permissions, onNavigate }) {
+  const idag = todayISO();
+  const kanPlan = canDo(permissions, "planlaegning"), kanLager = canDo(permissions, "lager");
+  const tal = useMemo(() => {
+    let pluk = null;
+    if (kanLager) {
+      const punkter = orders.filter((o) => o.dato === idag && isOrderPickable(o, vehicles)).flatMap((order) => (order.varelinjer || []).map((lineItem) => ({ order, lineItem }))).filter((p) => linjeSkalPlukkes(p.lineItem, primaryServices));
+      pluk = { mangler: punkter.filter((p) => !p.lineItem.plukket && !isMissingActive(p.order, p.lineItem)).length, kanIkkeFindes: punkter.filter((p) => isMissingActive(p.order, p.lineItem)).length };
+    }
+    return dagensTal({ orders, idag, skalPlanlaegges: needsPlanning, kanPlan, kanLager, pluk });
+  }, [orders, vehicles, primaryServices, idag, kanPlan, kanLager]);
+  return (
+    <section aria-label="Dagen i tal" className="rounded-xl border border-line bg-white shadow-sm p-3 sm:p-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+        {tal.map((t) => {
+          const farve = t.advarsel && t.vaerdi > 0 ? "#B3261E" : "rgb(var(--color-brand))";
+          const indhold = (
+            <>
+              <p className="text-3xl font-display leading-none" style={{ color: t.vaerdi > 0 ? farve : "#C9C2AE" }}>{t.vaerdi}{t.af !== undefined && t.af > 0 && <span className="text-base text-muted"> / {t.af}</span>}</p>
+              <p className="text-[11px] text-muted uppercase tracking-wide mt-1">{t.label}</p>
+            </>
+          );
+          return t.side ? (
+            <button key={t.id} type="button" onClick={() => onNavigate(t.side)} className="rounded-lg bg-panel px-3 py-3 text-left hover:ring-1 hover:ring-brand focus:outline-none focus:ring-2 focus:ring-brand min-h-[44px]">{indhold}</button>
+          ) : <div key={t.id} className="rounded-lg bg-panel px-3 py-3">{indhold}</div>;
+        })}
+      </div>
+    </section>
+  );
+}
+
+// "Bilerne i dag": ét kort pr. bil med fremdrift, næste stop og advarsler.
+function BilStatusWidget({ orders, technicians, vehicles, onOpen, onNavigate }) {
+  const catalogEntry = DASHBOARD_WIDGET_CATALOG.find((w) => w.key === "bil_status");
+  const biler = useMemo(() => bilFremdrift({ orders, biler: technicians.map((t) => ({ ...t, lukket: (vehicles || []).find((v) => v.id === t.id)?.lukket })), dato: todayISO(), sammenlign: dailyOrderCompare, erManglende: isMissingActive }), [orders, technicians, vehicles]);
+  return (
+    <WidgetCard title={catalogEntry.label} icon={catalogEntry.icon} onTitleClick={() => onNavigate("planlaegning")}>
+      {biler.length === 0 ? <p className="text-sm text-muted italic">Ingen bil har sager i dag.</p> : (
+        <ul className="space-y-3">
+          {biler.map((b) => (
+            <li key={b.bil.id}>
+              <div className="flex items-baseline justify-between gap-2 mb-1">
+                <span className="text-sm font-semibold text-ink truncate">{b.bil.navn}</span>
+                <span className="text-xs text-muted shrink-0">{b.faerdige} af {b.total} færdige{b.igang > 0 ? " · 1 i gang" : ""}</span>
+              </div>
+              <Fremdrift vaerdi={b.faerdige} max={b.total} label={`${b.bil.navn}: ${b.faerdige} af ${b.total} sager færdige`} />
+              {b.naeste ? (
+                <button type="button" onClick={() => onOpen(b.naeste.id)} className="mt-1 w-full text-left text-xs text-muted truncate hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded">
+                  Næste: <span className="text-ink font-medium">{b.naeste.start ? `${b.naeste.start} · ` : ""}{b.naeste.kunde?.navn || "Ukendt kunde"}</span>
+                </button>
+              ) : <p className="mt-1 text-xs text-success">Alle sager er afsluttet.</p>}
+              {(b.problemer > 0 || b.manglende > 0) && (
+                <p className="mt-0.5 text-xs text-danger flex items-center gap-1"><AlertTriangle size={11} aria-hidden="true" />{[b.problemer > 0 && `${b.problemer} med problem`, b.manglende > 0 && `${b.manglende} mangler en vare`].filter(Boolean).join(" · ")}</p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </WidgetCard>
+  );
+}
+
+// "Haster": ikke-planlagte sager, der skal være kørt inden for en uge.
+function HasterWidget({ orders, onOpen, onNavigate }) {
+  const catalogEntry = DASHBOARD_WIDGET_CATALOG.find((w) => w.key === "haster");
+  const liste = useMemo(() => haster({ orders, idag: todayISO(), skalPlanlaegges: needsPlanning }), [orders]);
+  const farve = { overskredet: "#B3261E", snart: "#B36B1E", ok: "#6B6B6B" };
+  return (
+    <WidgetCard title={catalogEntry.label} icon={catalogEntry.icon} onTitleClick={() => onNavigate("planlaegning")}>
+      {liste.length === 0 ? <p className="text-sm text-success italic">Ingen uplanlagte sager har frist inden for en uge.</p> : (
+        <ul className="space-y-1">
+          {liste.slice(0, 6).map((x) => (
+            <li key={x.order.id}>
+              <button type="button" onClick={() => onOpen(x.order.id)} className="w-full text-left rounded-lg hover:bg-panel px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand min-h-[44px]">
+                <span className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-ink truncate">{x.order.kunde?.navn || "Ukendt kunde"}</span>
+                  <span className="text-[11px] font-semibold shrink-0" style={{ color: farve[x.niveau] }}>{fristTekst(x.dage)}</span>
+                </span>
+                <span className="block text-[11px] text-muted truncate">#{x.order.nr} · {x.order.senestDato ? "senest " : ""}{formatShortDate(x.dato)}</span>
+              </button>
+            </li>
+          ))}
+          {liste.length > 6 && <li><button type="button" onClick={() => onNavigate("planlaegning")} className="text-xs font-semibold uppercase tracking-wide text-brand hover:underline px-2 min-h-[44px]">Se alle {liste.length}</button></li>}
+        </ul>
+      )}
+    </WidgetCard>
+  );
+}
+
+// "Mine sager": sælgerens egne åbne sager - hvad venter på en dato, og hvad er planlagt.
+function MineSagerWidget({ orders, technicians, profile, onOpen }) {
+  const catalogEntry = DASHBOARD_WIDGET_CATALOG.find((w) => w.key === "mine_sager");
+  const m = useMemo(() => mineSager({ orders, profilId: profile.id, skalPlanlaegges: needsPlanning }), [orders, profile.id]);
+  return (
+    <WidgetCard title={catalogEntry.label} icon={catalogEntry.icon}>
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <Stat label="Venter på dato" value={m.venter.length} color="#B36B1E" />
+        <Stat label="Planlagt" value={m.planlagte.length} color="#52697E" />
+      </div>
+      {m.alle === 0 ? <p className="text-sm text-muted italic">Du har ingen åbne sager lige nu.</p> : (
+        <ul className="space-y-1">
+          {m.planlagte.slice(0, 5).map((o) => (
+            <li key={o.id}>
+              <button type="button" onClick={() => onOpen(o.id)} className="w-full text-left rounded-lg hover:bg-panel px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand min-h-[44px]">
+                <span className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-ink truncate">{o.kunde?.navn || "Ukendt kunde"}</span>
+                  <span className="text-[11px] text-muted shrink-0">{o.dato ? formatShortDate(o.dato) : ""}</span>
+                </span>
+                <span className="block text-[11px] text-muted truncate">#{o.nr} · {STATUS_META[o.status]?.label || o.status}{planBil(o, technicians) ? ` · ${planBil(o, technicians)}` : ""}{(o.varelinjer || []).some((l) => isMissingActive(o, l)) ? " · vare mangler" : ""}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </WidgetCard>
+  );
+}
+
+// "Pluk pr. bil": fremdrift i pluk for hver bil i dag.
+function PlukBilerWidget({ orders, vehicles, primaryServices, technicians, onNavigate }) {
+  const catalogEntry = DASHBOARD_WIDGET_CATALOG.find((w) => w.key === "pluk_biler");
+  const liste = useMemo(() => {
+    const idag = todayISO();
+    const bilerMedNavn = (vehicles || []).map((v) => ({ ...v, navn: technicians.find((t) => t.id === v.id)?.navn || v.navn }));
+    const points = orders.filter((o) => o.dato === idag && isOrderPickable(o, vehicles)).flatMap((order) => (order.varelinjer || []).map((lineItem) => ({ order, lineItem }))).filter((p) => linjeSkalPlukkes(p.lineItem, primaryServices));
+    return plukFremdrift({ orders, points, vehicles: bilerMedNavn, dato: idag, sammenlign: dailyOrderCompare, erManglende: isMissingActive });
+  }, [orders, vehicles, primaryServices, technicians]);
+  return (
+    <WidgetCard title={catalogEntry.label} icon={catalogEntry.icon} onTitleClick={() => onNavigate("lager")}>
+      {liste.length === 0 ? <p className="text-sm text-muted italic">Intet at plukke til i dag.</p> : (
+        <ul className="space-y-3">
+          {liste.map((b) => (
+            <li key={b.bil.id}>
+              <div className="flex items-baseline justify-between gap-2 mb-1">
+                <span className="text-sm font-semibold text-ink truncate">{b.bil.navn || b.bil.id}</span>
+                <span className="text-xs text-muted shrink-0">{b.plukket} af {b.linjer} varer plukket</span>
+              </div>
+              <Fremdrift vaerdi={b.plukket} max={b.linjer} label={`${b.bil.navn}: ${b.plukket} af ${b.linjer} varer plukket`} farve={b.plukket === b.linjer ? "bg-success" : "bg-brand"} />
+              {b.manglende > 0 && <p className="mt-0.5 text-xs text-danger flex items-center gap-1"><AlertTriangle size={11} aria-hidden="true" />{b.manglende} {b.manglende === 1 ? "vare kan" : "varer kan"} ikke findes</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </WidgetCard>
+  );
+}
+
 const WIDGET_COMPONENTS = {
+  dagen_i_tal: DagenITalWidget,
+  bil_status: BilStatusWidget,
+  haster: HasterWidget,
+  mine_sager: MineSagerWidget,
+  pluk_biler: PlukBilerWidget,
   needs_action: NeedsActionWidget,
   today_route: TodayRouteWidget,
   pick_list: PickListWidget,
@@ -339,6 +507,7 @@ function CustomizePanel({ activeKeys, availableCatalog, onSave }) {
           </div>
         )}
       </div>
+      <button type="button" onClick={() => onSave(null)} className="text-xs font-semibold uppercase tracking-wide text-muted border border-line rounded-lg px-3 min-h-[44px] hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand">Nulstil til standard for min rolle</button>
       {inactiveKeys.length > 0 && (
         <div>
           <p className="text-[10px] uppercase tracking-wide text-muted mb-1.5">Tilføj</p>
@@ -374,7 +543,7 @@ function DashboardPage({ profile, permissions, crew, orders, technicians, person
   const availableCatalog = DASHBOARD_WIDGET_CATALOG.filter((w) => canDo(permissions, w.requires));
   const activeKeys = dashboardWidgets.filter((k) => availableCatalog.some((w) => w.key === k));
 
-  const widgetProps = { orders, technicians, personnel, vehicles, primaryServices, timeOff, store, profile, crew, notifications, onOpen, onNavigate };
+  const widgetProps = { permissions, orders, technicians, personnel, vehicles, primaryServices, timeOff, store, profile, crew, notifications, onOpen, onNavigate };
 
   return (
     <div>
@@ -417,7 +586,8 @@ function DashboardPage({ profile, permissions, crew, orders, technicians, person
           {activeKeys.map((key) => {
             const Widget = WIDGET_COMPONENTS[key];
             if (!Widget) return null;
-            return <Widget key={key} {...widgetProps} />;
+            const bred = availableCatalog.find((w) => w.key === key)?.bred;
+            return bred ? <div key={key} className="sm:col-span-2 lg:col-span-3"><Widget {...widgetProps} /></div> : <Widget key={key} {...widgetProps} />;
           })}
         </div>
       )}
