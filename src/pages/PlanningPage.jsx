@@ -10,6 +10,7 @@ import { badgeFraMotor } from "../lib/dagsplan";
 import { DateSelector } from "../components/common";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 import { DagensHold } from "../components/DagensHold";
+import { SamletPlanPanel } from "../components/SamletPlanPanel";
 import { KortTraekProvider, TraekHaandtag, useTraekZone, IndsaetLinje } from "../components/KortTraek";
 import { forslagsDatoer, fristStatus, urgensNoegle } from "../lib/frist";
 import { foersteArbejdsdagFra } from "../lib/arbejdsuge";
@@ -238,7 +239,7 @@ const FORSLAG_PARALLELT = 3;
 const FORSLAG_RAFFINER = 3;
 const pause = () => new Promise((r) => setTimeout(r, 0));
 
-function ReplanTile({ items, orders, technicians, personnel, timeOff, vehicles, crew, store, onUpdateBooking, onOpen }) {
+function ReplanTile({ items, orders, technicians, personnel, timeOff, vehicles, crew, store, onUpdateBooking, onOpen, samletPlan = false }) {
   const [suggestions, setSuggestions] = useState({});
   const [afventer, setAfventer] = useState({});
   const [visible, setVisible] = useState(FORSLAG_SIDE);
@@ -294,6 +295,7 @@ function ReplanTile({ items, orders, technicians, personnel, timeOff, vehicles, 
 
   return (
     <div>
+      {samletPlan && <SamletPlanPanel items={items} orders={orders} technicians={technicians} vehicles={vehicles} personnel={personnel} timeOff={timeOff} crew={crew} store={store} onUpdateBooking={onUpdateBooking} />}
       {shownItems.map((o) => (
         <ReplanCard
           key={o.id}
@@ -1004,7 +1006,7 @@ function PlanningPage({ orders, technicians, personnel, vehicles, timeOff, store
                   needsPlan.length === 0 ? <p className="text-sm text-success italic flex items-center gap-1.5"><Sparkles size={14} aria-hidden="true" /> Alle sager er planlagt.</p> : (
                     <ReplanTile
                       items={needsPlan} orders={orders} technicians={technicians} personnel={personnel} timeOff={timeOff} vehicles={vehicles} crew={crew} store={store}
-                      onUpdateBooking={onUpdateBooking} onOpen={onOpen}
+                      onUpdateBooking={onUpdateBooking} onOpen={onOpen} samletPlan
                     />
                   )
                 )}
