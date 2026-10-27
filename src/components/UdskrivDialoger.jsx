@@ -3,12 +3,14 @@ import { Printer, X } from "lucide-react";
 import { lineItemLabel, formatLongDate, isMissingActive, isTechnicianAbsent, dailyOrderCompare } from "../data/domain";
 import { linjeSkalPlukkes } from "../lib/ydelser";
 import { pakkelisteData, sagerPaaTuren } from "../lib/pakkeliste";
-import { bilNavnUdenHold } from "../lib/forsideTal";
+import { bilNavnUdenHold, holdForBil } from "../lib/forsideTal";
 import { rmaLabelsTilSager } from "../lib/rma";
 import { erMedhjaelperRolle } from "../data/roller";
 import { ETIKET_FORMATER, findFormat, tilpasFormat, sideCss, labelNiveau, labelsPrSide, laesLabelIndstillinger, gemLabelIndstillinger } from "../lib/udskrift";
 import { udskriv } from "./Udskriv";
-import { RmaLabel, LabelSider, PakkelisteDokument } from "./UdskriftDokumenter";
+import { RmaLabel, LabelSider, PakkelisteDokument, PlukseddelDokument } from "./UdskriftDokumenter";
+import { soegSager, plukseddelLinjer, sagsLabels } from "../lib/sagsplukseddel";
+import { todayISO } from "../data/domain";
 
 // UDSKRIFTSDIALOGER (oktober 2026): pakkeliste (komplet eller pr. bil) og RMA-labels. Udskrift sker via browserens print-dialog (components/Udskriv.jsx).
 
@@ -183,6 +185,87 @@ export function UdskrivDialog({ erPlukbar, orders, vehicles, technicians, person
         <LabelValg vaerdi={v} onChange={sæt} />
         <button type="button" onClick={printLabels} disabled={!format || labels.length === 0} className={`${knap} mt-3 w-full text-white bg-brand hover:bg-brand-dark disabled:opacity-50`}>Udskriv {labels.length} {labels.length === 1 ? "label" : "labels"}</button>
       </div>
+    </Ramme>
+  );
+}
+
+// Lager-siden: find en bestemt sag (også en, der først skal leveres om uger) og udskriv plukkeseddel eller labels for kun den sag.
+export function SagsPlukseddelDialog({ orders, vehicles, technicians, personnel, crew, timeOff, primaryServices, store, onClose }) {
+  const [soeg, setSoeg] = useState("");
+  const [inklAfsluttede, setInklAfsluttede] = useState(false);
+  const [valgte, setValgte] = useState([]);
+  const [notat, setNotat] = useState("");
+  const [medRma, setMedRma] = useState(true);
+  const [v, sæt, format] = useLabelIndstillinger();
+  const butik = store?.navn || "";
+  const idag = todayISO();
+  const bilFra = (o) => {
+    const x = (vehicles || []).find((b) => b.id === o.bilId);
+    return x ? { ...x, navn: technicians?.find((t) => t.id === x.id)?.navn || x.navn } : null;
+  };
+  const resultat = useMemo(() => soegSager(orders, soeg, { idag, inklAfsluttede, varenavn: lineItemLabel }), [orders, soeg, inklAfsluttede, idag]);
+  const valgteSager = valgte.map((id) => (orders || []).find((o) => o.id === id)).filter(Boolean);
+  const skiftValg = (id) => setValgte((l) => (l.includes(id) ? l.filter((x) => x !== id) : [...l, id]));
+  const datoTekst = (o) => (o.dato ? formatLongDate(o.dato) : "Ikke planlagt endnu");
+  const ydelseTekst = (l) => [l.primaerYdelse?.navn, ...(l.tillaeg || []).map((y) => y.navn)].filter(Boolean).join(" · ");
+
+  const sager = valgteSager.map((order) => {
+    const bil = bilFra(order);
+    const hold = bil && order.dato ? holdForBil({ bilId: bil.id, dato: order.dato, personnel, helpers: crew?.helpers, erMedhjaelper: erMedhjaelperRolle, fraværende: (id, d) => isTechnicianAbsent(id, d, timeOff) }) : null;
+    return { order, ...plukseddelLinjer(order, primaryServices), bilNavn: bil ? bilNavnUdenHold(bil.navn) : "", hold };
+  });
+  const labels = valgteSager.flatMap((order) => sagsLabels({ order, primaryServices, butik, varenavn: lineItemLabel, leveringTekst: order.dato ? `Levering ${order.dato.slice(8, 10)}.${order.dato.slice(5, 7)}` : "", kopier: v.kopier }));
+  const printSeddel = () => udskriv({ css: sideCss(null), element: <PlukseddelDokument sager={sager} butik={butik} notat={notat} datoTekst={datoTekst} varenavn={lineItemLabel} ydelseTekst={ydelseTekst} medRma={medRma} /> });
+  const printLabels = () => { if (format && labels.length) udskriv({ css: sideCss(format), element: <LabelSider format={format} labels={labels} start={v.start} rammer={v.rammer} /> }); };
+
+  return (
+    <Ramme titel="Find sag og udskriv plukkeseddel" onClose={onClose}>
+      <label className="block text-xs text-muted mb-2">Søg på sagsnummer, kunde, adresse, telefon eller vare
+        <input type="search" autoFocus value={soeg} onChange={(e) => setSoeg(e.target.value)} placeholder="Fx 26-223 eller Hansen Vejle" className={`${felt} mt-1 min-h-[44px]`} />
+      </label>
+      <label className="flex items-center gap-2 text-xs text-muted min-h-[44px]"><input type="checkbox" checked={inklAfsluttede} onChange={(e) => setInklAfsluttede(e.target.checked)} className="w-5 h-5 accent-brand" /> Vis også afsluttede sager</label>
+
+      {soeg.trim() && (
+        <div className="mb-3" aria-live="polite">
+          {resultat.length === 0 ? <p className="text-sm text-muted italic">Ingen sager matcher.</p> : (
+            <ul className="space-y-1.5 max-h-56 overflow-y-auto" aria-label="Fundne sager">
+              {resultat.map((o) => {
+                const valgt = valgte.includes(o.id);
+                const antal = plukseddelLinjer(o, primaryServices).linjer.length;
+                return (
+                  <li key={o.id}>
+                    <label className={`flex items-start gap-3 rounded-lg border p-2.5 min-h-[44px] cursor-pointer ${valgt ? "border-brand bg-brand/5" : "border-line bg-white"}`}>
+                      <input type="checkbox" checked={valgt} onChange={() => skiftValg(o.id)} className="w-5 h-5 mt-0.5 accent-brand shrink-0" />
+                      <span className="min-w-0 text-sm">
+                        <span className="font-semibold text-ink">#{o.nr} · {o.kunde?.navn || "Ukendt kunde"}</span>
+                        <span className="block text-xs text-muted truncate">{o.kunde?.adresse || "Ingen adresse"}</span>
+                        <span className="block text-xs text-muted">{o.dato ? formatLongDate(o.dato) : "Ikke planlagt"} · {bilFra(o) ? bilNavnUdenHold(bilFra(o).navn) : "ingen bil"} · {antal} {antal === 1 ? "vare" : "varer"}{o.status === "afsluttet" ? " · afsluttet" : ""}</span>
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {valgte.length > 0 && (
+        <div className="border-t border-divider pt-3 space-y-3">
+          <p className="text-xs font-semibold text-ink">{valgte.length} {valgte.length === 1 ? "sag valgt" : "sager valgt"}</p>
+          <label className="block text-xs text-muted">Notat til lageret (valgfrit, trykkes på sedlen)
+            <textarea value={notat} maxLength={200} rows={2} onChange={(e) => setNotat(e.target.value)} placeholder="Fx Sat til side til levering d. 17/11 - må ikke udleveres" className={`${felt} mt-1`} />
+          </label>
+          <label className="flex items-center gap-2 text-sm text-ink min-h-[44px]"><input type="checkbox" checked={medRma} onChange={(e) => setMedRma(e.target.checked)} className="w-5 h-5 accent-brand" /> Vis RMA-varer, der skal hentes retur</label>
+          <button type="button" onClick={printSeddel} className={`${knap} w-full text-white bg-brand hover:bg-brand-dark`}>Udskriv plukkeseddel (A4, {valgte.length} {valgte.length === 1 ? "side" : "sider"})</button>
+          <div className="border-t border-divider pt-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-ink mb-1">Labels til varerne</h3>
+            <p className="text-xs text-muted mb-3">{labels.length === 0 ? "Ingen varer, der skal plukkes, på de valgte sager." : `${labels.length} ${labels.length === 1 ? "label" : "labels"} - én pr. vare - til at klistre på varerne.`}</p>
+            <LabelValg vaerdi={v} onChange={sæt} />
+            <button type="button" onClick={printLabels} disabled={!format || labels.length === 0} className={`${knap} mt-3 w-full border border-brand text-brand hover:bg-brand/5 disabled:opacity-50`}>Udskriv {labels.length} {labels.length === 1 ? "label" : "labels"}</button>
+          </div>
+        </div>
+      )}
     </Ramme>
   );
 }

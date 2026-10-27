@@ -151,3 +151,84 @@ export function PakkelisteDokument({ ture, dato, butik, varenavn, bilNavn, ydels
     </div>
   );
 }
+
+// Plukkeseddel for ÉN sag (oktober 2026): én A4-side pr. sag, til at lægge/tape på de varer, der er sat til side. Stort banner øverst, så ingen udleverer varerne ved en fejl.
+// props: sager = [{ order, linjer, rma, bilNavn, hold }]; datoTekst(order) -> tekst; notat = fri tekst fra lageret; butik; varenavn(linje); ydelseTekst(linje).
+export function PlukseddelDokument({ sager, butik, notat = "", datoTekst, varenavn, ydelseTekst, medRma = true }) {
+  const felt = { fontSize: "7.5pt", textTransform: "uppercase", letterSpacing: "0.05em" };
+  return (
+    <div style={{ color: INK, fontFamily: "Arial, Helvetica, sans-serif", fontSize: "11pt", lineHeight: 1.3 }}>
+      {sager.map((s, i) => {
+        const o = s.order;
+        const montoer = s.hold?.montoerer?.length ? s.hold.montoerer.join(", ") : "";
+        const anden = s.hold?.andenMand?.length ? s.hold.andenMand.join(", ") : "";
+        return (
+          <section key={o.id} style={{ pageBreakAfter: i < sager.length - 1 ? "always" : "auto", breakAfter: i < sager.length - 1 ? "page" : "auto" }}>
+            <div style={{ background: "#000", color: "#fff", padding: "4mm 5mm", marginBottom: "4mm" }}>
+              <div style={{ ...felt, fontSize: "9pt" }}>Sat til side · må ikke udleveres</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "6mm" }}>
+                <span style={{ fontSize: "30pt", fontWeight: 800, lineHeight: 1.1 }}>Sag #{o.nr}</span>
+                <span style={{ fontSize: "16pt", fontWeight: 700, textAlign: "right" }}>{datoTekst(o)}</span>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "6mm", alignItems: "flex-start", marginBottom: "4mm" }}>
+              <div style={{ flex: 1 }}>
+                <div style={felt}>Kunde</div>
+                <div style={{ fontSize: "15pt", fontWeight: 800 }}>{o.kunde?.navn || "Ukendt kunde"}</div>
+                {o.kunde?.adresse && <div>{o.kunde.adresse}</div>}
+                {o.kunde?.telefon && <div>Tlf. {o.kunde.telefon}</div>}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={felt}>Levering</div>
+                <div><strong>{s.bilNavn || "Bil ikke valgt endnu"}</strong>{o.start ? ` · kl. ${o.start}` : ""}</div>
+                {montoer && <div>Montør: {montoer}</div>}
+                {anden && <div>2. mand: {anden}</div>}
+                {o.sagstype && <div style={{ fontSize: "9pt" }}>Sagstype: {o.sagstype}</div>}
+              </div>
+              {kanKodes(`SAG-${o.nr}`) && (
+                <div style={{ width: "48mm" }}>
+                  <Stregkode tekst={`SAG-${o.nr}`} hoejdeMm={14} />
+                  <div style={{ fontSize: "8pt", textAlign: "center" }}>SAG-{o.nr}</div>
+                </div>
+              )}
+            </div>
+
+            {notat.trim() && (
+              <div style={{ border: "0.6mm solid #000", padding: "2.5mm 3mm", marginBottom: "4mm" }}>
+                <div style={felt}>Notat fra lageret</div>
+                <div style={{ fontSize: "12pt", fontWeight: 700, whiteSpace: "pre-wrap" }}>{notat.trim()}</div>
+              </div>
+            )}
+
+            <div style={{ ...felt, marginBottom: "1mm" }}>Varer der skal plukkes ({s.linjer.length})</div>
+            <table style={{ width: "100%", borderCollapse: "collapse", border: "0.4mm solid #000" }}>
+              <tbody>
+                {s.linjer.length === 0 && <tr><td style={{ padding: "3mm", fontStyle: "italic" }}>Ingen varer, der skal plukkes, på denne sag.</td></tr>}
+                {s.linjer.map((l) => (
+                  <tr key={l.id} style={{ borderTop: "0.2mm solid #999" }}>
+                    <td style={{ padding: "2.5mm 3mm", fontSize: "12pt" }}><Boks tom={!l.plukket} /><strong>{varenavn(l)}</strong>{(l.opgavebeskrivelse || "").trim() ? <div style={{ fontSize: "9pt", marginLeft: "6.2mm" }}>{l.opgavebeskrivelse}</div> : null}</td>
+                    <td style={{ padding: "2.5mm 3mm", fontSize: "9pt", textAlign: "right" }}>{ydelseTekst(l)}</td>
+                  </tr>
+                ))}
+                {medRma && s.rma.map((l) => (
+                  <tr key={l.id} style={{ borderTop: "0.2mm solid #999", background: "#eee" }}>
+                    <td style={{ padding: "2.5mm 3mm" }}><Boks tom /><strong>HENT RETUR (RMA)</strong> · {varenavn(l)}</td>
+                    <td style={{ padding: "2.5mm 3mm", fontSize: "9pt", textAlign: "right", whiteSpace: "nowrap" }}>{l.rma.nr}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <footer style={{ marginTop: "8mm", display: "flex", gap: "8mm", fontSize: "9pt" }}>
+              {["Plukket af", "Placering (hylde/palle)", "Dato / tid"].map((x) => (
+                <div key={x} style={{ flex: 1 }}><div style={{ borderBottom: "0.3mm solid #000", height: "9mm" }} /><div style={{ marginTop: "0.8mm" }}>{x}</div></div>
+              ))}
+            </footer>
+            <div style={{ marginTop: "5mm", fontSize: "8pt", color: "#333" }}>{butik}</div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}

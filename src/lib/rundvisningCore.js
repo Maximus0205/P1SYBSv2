@@ -94,6 +94,7 @@ export const GUIDES = [
       { id: "stop", titel: "Et stop ad gangen", tekst: "Hvert stop viser, hvornår det læsses, og hvornår det kører. Afkryds varerne, efterhånden som de er plukket og stillet i bilen.", maal: "lager-stop" },
       { id: "pile", titel: "Arranger turen", tekst: "Pilene flytter stoppet i bilen. Husk, at det også ændrer montørens rækkefølge for dagen.", maal: "lager-pile" },
       { id: "udskriv", titel: "Udskriv pakkeliste og labels", tekst: "Udskriv pakkelisten for alle biler eller kun én bil, med stoppene i læsserækkefølge. Her kan du også udskrive RMA-labels på forhånd, så montøren har dem med og kan klistre dem på ved afhentning.", maal: "lager-udskriv" },
+      { id: "findsag", titel: "Find en sag og sæt varerne til side", tekst: "Søg på sagsnummer, kunde, adresse eller telefon - også sager om flere uger. Udskriv en plukkeseddel eller labels for kun den sag, og klistr dem på varerne, så de ikke bliver udleveret ved en fejl.", maal: "lager-find-sag" },
       { id: "mangler", titel: "Kan en vare ikke findes?", tekst: "Tryk på advarselstrekanten ved varen og vælg en grund. Sælgeren får besked med det samme, og varen står under Kan ikke findes, til den er fundet eller skiftet.", maal: null },
     ],
   },
