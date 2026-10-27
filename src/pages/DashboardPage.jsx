@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Settings2, Plus, ChevronUp, ChevronDown, Upload, AlertTriangle, Truck, Trash2, ClipboardList, CalendarCheck2, Bell } from "lucide-react";
-import { todayISO, dailyOrderCompare, canDo, DASHBOARD_WIDGET_CATALOG, missingLineItems, lineItemLabel, needsPlanning, isMissingActive, formatShortDate, STATUS_META, isTechnicianAbsent } from "../data/domain";
+import { todayISO, dailyOrderCompare, canDo, DASHBOARD_WIDGET_CATALOG, missingLineItems, lineItemLabel, needsPlanning, isMissingActive, formatShortDate, STATUS_META, isTechnicianAbsent, timeSlotById } from "../data/domain";
 import { haster, bilFremdrift, plukFremdrift, mineSager, dagensTal, holdForBil, bilNavnUdenHold } from "../lib/forsideTal";
 import { erMedhjaelperRolle } from "../data/roller";
 import { OrderCardCompact } from "../components/OrderCardCompact";
@@ -350,13 +350,13 @@ function BilStatusWidget({ orders, technicians, vehicles, personnel, crew, timeO
               </div>
               <p className="text-xs text-muted mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
                 <span><span className="font-semibold text-ink">Montør</span> {b.hold.montoerer.length > 0 ? b.hold.montoerer.join(", ") : <span className="text-danger">ingen i dag</span>}</span>
-                <span><span className="font-semibold text-ink">2. mand</span> {b.hold.andenMand.length > 0 ? b.hold.andenMand.join(", ") : "ingen"}</span>
+                {b.hold.andenMand.length > 0 && <span><span className="font-semibold text-ink">2. mand</span> {b.hold.andenMand.join(", ")}</span>}
                 {b.hold.fravaer > 0 && <span className="text-danger">{b.hold.fravaer} fraværende</span>}
               </p>
               <Fremdrift vaerdi={b.faerdige} max={b.total} label={`${bilNavnUdenHold(b.bil.navn)}: ${b.faerdige} af ${b.total} sager færdige`} />
               {b.naeste ? (
                 <button type="button" onClick={() => onOpen(b.naeste.id)} className="mt-1 w-full text-left text-xs text-muted truncate hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded">
-                  Næste: <span className="text-ink font-medium">{b.naeste.start ? `${b.naeste.start} · ` : ""}{b.naeste.kunde?.navn || "Ukendt kunde"}</span>
+                  Næste: <span className="text-ink font-medium">{`${timeSlotById(b.naeste.tidsrumId).label} · `}{b.naeste.kunde?.navn || "Ukendt kunde"}</span>
                 </button>
               ) : <p className="mt-1 text-xs text-success">Alle sager er afsluttet.</p>}
               {(b.problemer > 0 || b.manglende > 0) && (
