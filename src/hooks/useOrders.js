@@ -565,7 +565,7 @@ export function useOrders(storeId) {
       dato: dato || null, tidsrumId: dato ? tidsrumId : null, start: dato ? start : null, slut: dato ? slut : null,
       bilId: bilId || null,
       senestDato: senestDato || null,
-      ...(kapacitetOverrulet ? { kapacitetOverrulet } : {}),
+      ...(kapacitetOverrulet ? { kapacitetOverrulet: { ...kapacitetOverrulet, af: createdBy || null } } : {}),
       ...(toMand ? { toMand: true } : {}),
       status: "planlagt", plukket: false, varelinjer, noter: [], billeder: [], rapporter: [], materialer: [], stemplerInd: null, logs: [],
       oprettetAf: createdBy || null,
