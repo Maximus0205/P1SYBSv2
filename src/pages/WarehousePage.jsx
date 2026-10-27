@@ -1,10 +1,11 @@
 import React, { useState } from "react";
-import { Check, KeyRound, AlertTriangle, Lock, RotateCw, X } from "lucide-react";
-import { lineItemLabel, formatLongDate, canDo, isMissingActive, isToday } from "../data/domain";
+import { Check, KeyRound, AlertTriangle, Lock, RotateCw, X, ChevronUp, ChevronDown } from "lucide-react";
+import { lineItemLabel, formatLongDate, canDo, isMissingActive, isToday, dailyOrderCompare } from "../data/domain";
 import { DateSelector } from "../components/common";
 import { linjeSkalPlukkes } from "../lib/ydelser";
 import { useNytPluk } from "../hooks/useNytPluk";
 import { nytPlukNoegle } from "../lib/nytPlukLogik";
+import { bilTure } from "../lib/plukPrBil";
 
 // Lagersiden viser ét pluk-PUNKT pr. varelinje - IKKE ét punkt pr. ordre.
 // En ordre med 3 varelinjer giver altså 3 selvstændige rækker her, som hver
@@ -103,9 +104,12 @@ function ReportMissingDialog({ order, lineItem, onConfirm, onCancel }) {
   );
 }
 
-function WarehousePage({ orders, vehicles, primaryServices, selectedDate, onDateChange, onToggleLineItemPicked, onReportMissingItem, onClearMissingItem, onOpen, permissions }) {
+function WarehousePage({ orders, vehicles, primaryServices, selectedDate, onDateChange, onToggleLineItemPicked, onReportMissingItem, onClearMissingItem, onOpen, onReorder, permissions }) {
   const canPick = canDo(permissions, "sag_pluk") || canDo(permissions, "sag_feltarbejde");
   const [reporting, setReporting] = useState(null); // { order, lineItem }
+  // PLUKLISTE PR. BIL (oktober 2026): standard er biler med stoppene i LÆSSERÆKKEFØLGE (sidste stop først - det skal stå længst inde). "Alle varer" er den gamle flade liste.
+  const [visning, setVisning] = useState(() => { try { return localStorage.getItem("p1_pluk_visning") === "alle" ? "alle" : "bil"; } catch { return "bil"; } });
+  const skiftVisning = (v) => { setVisning(v); try { localStorage.setItem("p1_pluk_visning", v); } catch { /* kun en bekvemmelighed */ } };
 
   const todaysOrders = orders.filter((s) => s.dato === selectedDate);
   const pickableOrders = todaysOrders.filter((o) => isOrderPickable(o, vehicles));
@@ -134,6 +138,9 @@ function WarehousePage({ orders, vehicles, primaryServices, selectedDate, onDate
   const missingItems = points.filter((p) => isMissingActive(p.order, p.lineItem)).sort(sortFn);
   const toPick = points.filter((p) => !p.lineItem.plukket && !isMissingActive(p.order, p.lineItem)).sort(sortFn);
   const ready = points.filter((p) => p.lineItem.plukket && !isMissingActive(p.order, p.lineItem)).sort(sortFn);
+
+  const ture = visning === "bil" ? bilTure({ orders: todaysOrders, points, vehicles, dato: selectedDate, sammenlign: dailyOrderCompare, erManglende: isMissingActive }) : [];
+  const canReorder = canPick && !!onReorder;
 
   const Row = ({ order, lineItem, variant }) => {
     const vehicle = (vehicles || []).find((v) => v.id === order.bilId);
@@ -239,26 +246,78 @@ function WarehousePage({ orders, vehicles, primaryServices, selectedDate, onDate
         </div>
       )}
 
-      {missingItems.length > 0 && (
+      <div role="group" aria-label="Visning" className="inline-flex rounded-lg border border-line overflow-hidden mb-4">
+        {[["bil", "Pr. bil (læsserækkefølge)"], ["alle", "Alle varer"]].map(([k, l]) => (
+          <button key={k} type="button" onClick={() => skiftVisning(k)} aria-pressed={visning === k}
+            className={`min-h-[44px] px-4 text-xs font-semibold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-brand ${visning === k ? "bg-brand text-white" : "bg-white text-muted hover:text-brand"}`}>{l}</button>
+        ))}
+      </div>
+
+      {visning === "bil" ? (
         <>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-danger mb-3 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-danger" /> Kan ikke findes ({missingItems.length})
-          </h2>
-          <div className="space-y-2 mb-8">
-            {missingItems.map((p) => <Row key={p.lineItem.id} order={p.order} lineItem={p.lineItem} variant="mangler" />)}
-          </div>
+          {ture.length === 0 && <p className="text-sm text-muted italic">Ingen biler med sager denne dag.</p>}
+          {ture.map((t) => (
+            <section key={t.bil.id} aria-label={t.bil.navn} className="mb-8">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-ink mb-1 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-brand" /> {t.bil.navn}
+                <span className="text-xs font-normal normal-case tracking-normal text-muted">{t.antalPlukket} af {t.antalLinjer} varer plukket · {t.antalStop} stop</span>
+              </h2>
+              <p className="text-[11px] text-muted mb-2">Plukkes i den rækkefølge, bilen læsses: stop 1 herunder læsses først og står længst inde. Montøren kører stoppene i omvendt rækkefølge.</p>
+              <ol className="space-y-3">
+                {t.stops.map((st) => (
+                  <li key={st.order.id} className="rounded-xl border border-line bg-panel p-2">
+                    <div className="flex items-center gap-2 mb-2 px-1">
+                      <span className="shrink-0 w-8 h-8 rounded-full bg-ink text-white text-sm font-semibold flex items-center justify-center" aria-label={`Læsses som nummer ${st.laesNr}`}>{st.laesNr}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-ink truncate">{st.order.kunde?.navn} <span className="font-mono text-[10px] text-faint">#{st.order.nr}</span></p>
+                        <p className="text-[11px] text-muted truncate">Kører som stop {st.koerselNr} af {t.antalStop}{st.order.start ? ` · ${st.order.start}` : ""}{st.antalManglende > 0 ? ` · ${st.antalManglende} mangler` : ""}</p>
+                      </div>
+                      {canReorder && t.antalStop > 1 && (
+                        <div className="shrink-0 flex gap-1">
+                          <button type="button" onClick={() => onReorder(t.bil.id, selectedDate, st.order.id, 1)} disabled={st.laesNr === 1}
+                            aria-label={`Læs ${st.order.kunde?.navn || "stoppet"} tidligere (kører senere)`} title="Læs tidligere"
+                            className="w-11 h-11 flex items-center justify-center rounded-lg border border-line bg-white text-muted hover:text-brand hover:border-brand disabled:opacity-30 focus:outline-none focus:ring-2 focus:ring-brand"><ChevronUp size={18} aria-hidden="true" /></button>
+                          <button type="button" onClick={() => onReorder(t.bil.id, selectedDate, st.order.id, -1)} disabled={st.laesNr === t.antalStop}
+                            aria-label={`Læs ${st.order.kunde?.navn || "stoppet"} senere (kører tidligere)`} title="Læs senere"
+                            className="w-11 h-11 flex items-center justify-center rounded-lg border border-line bg-white text-muted hover:text-brand hover:border-brand disabled:opacity-30 focus:outline-none focus:ring-2 focus:ring-brand"><ChevronDown size={18} aria-hidden="true" /></button>
+                        </div>
+                      )}
+                    </div>
+                    {st.linjer.length === 0
+                      ? <p className="text-xs text-muted italic px-1 pb-1">Intet at plukke til dette stop.</p>
+                      : <div className="space-y-2">{st.linjer.map((l) => <Row key={l.id} order={st.order} lineItem={l} variant={isMissingActive(st.order, l) ? "mangler" : undefined} />)}</div>}
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ))}
+          {canReorder && ture.some((t) => t.antalStop > 1) && <p className="text-[11px] text-muted -mt-4">Pilene ændrer også montørens køreplan for dagen.</p>}
+        </>
+      ) : (
+        <>
+      {missingItems.length > 0 && (
+          <>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-danger mb-3 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-danger" /> Kan ikke findes ({missingItems.length})
+            </h2>
+            <div className="space-y-2 mb-8">
+              {missingItems.map((p) => <Row key={p.lineItem.id} order={p.order} lineItem={p.lineItem} variant="mangler" />)}
+            </div>
+          </>
+        )}
+  
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-brand mb-3 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-brand" /> Mangler pluk ({toPick.length})
+        </h2>
+        {toPick.length === 0 ? <p className="text-sm text-muted italic mb-8">Alt er plukket til denne dags ture.</p> : <div className="space-y-2 mb-8">{toPick.map((p) => <Row key={p.lineItem.id} order={p.order} lineItem={p.lineItem} />)}</div>}
+  
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-success mb-3 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-success" /> Klar til afhentning ({ready.length})
+        </h2>
+        {ready.length === 0 ? <p className="text-sm text-muted italic">Ingen endnu.</p> : <div className="space-y-2">{ready.map((p) => <Row key={p.lineItem.id} order={p.order} lineItem={p.lineItem} />)}</div>}
+  
         </>
       )}
-
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-brand mb-3 flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full bg-brand" /> Mangler pluk ({toPick.length})
-      </h2>
-      {toPick.length === 0 ? <p className="text-sm text-muted italic mb-8">Alt er plukket til denne dags ture.</p> : <div className="space-y-2 mb-8">{toPick.map((p) => <Row key={p.lineItem.id} order={p.order} lineItem={p.lineItem} />)}</div>}
-
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-success mb-3 flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full bg-success" /> Klar til afhentning ({ready.length})
-      </h2>
-      {ready.length === 0 ? <p className="text-sm text-muted italic">Ingen endnu.</p> : <div className="space-y-2">{ready.map((p) => <Row key={p.lineItem.id} order={p.order} lineItem={p.lineItem} />)}</div>}
 
       {reporting && (
         <ReportMissingDialog

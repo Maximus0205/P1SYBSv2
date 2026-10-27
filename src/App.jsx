@@ -695,6 +695,7 @@ export default function App() {
                 onToggleLineItemPicked={ordersStore.toggleLineItemPicked}
                 onReportMissingItem={reportMissingItem}
                 onClearMissingItem={ordersStore.clearMissingItem}
+                onReorder={ordersStore.reorderOrder}
                 onOpen={onOpen} permissions={effectivePermissions}
               />
             </Gate>
