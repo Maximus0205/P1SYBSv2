@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Settings2, Plus, ChevronUp, ChevronDown, Upload, AlertTriangle, Truck, Trash2, ClipboardList, CalendarCheck2, Bell } from "lucide-react";
-import { todayISO, dailyOrderCompare, canDo, DASHBOARD_WIDGET_CATALOG, missingLineItems, lineItemLabel, needsPlanning, isMissingActive, formatShortDate, STATUS_META } from "../data/domain";
-import { haster, bilFremdrift, plukFremdrift, mineSager, dagensTal } from "../lib/forsideTal";
+import { todayISO, dailyOrderCompare, canDo, DASHBOARD_WIDGET_CATALOG, missingLineItems, lineItemLabel, needsPlanning, isMissingActive, formatShortDate, STATUS_META, isTechnicianAbsent } from "../data/domain";
+import { haster, bilFremdrift, plukFremdrift, mineSager, dagensTal, holdForBil, bilNavnUdenHold } from "../lib/forsideTal";
 import { erMedhjaelperRolle } from "../data/roller";
 import { OrderCardCompact } from "../components/OrderCardCompact";
 import { classify } from "./PlanningPage";
@@ -332,9 +332,12 @@ function DagenITalWidget({ orders, vehicles, primaryServices, permissions, onNav
 }
 
 // "Bilerne i dag": ét kort pr. bil med fremdrift, næste stop og advarsler.
-function BilStatusWidget({ orders, technicians, vehicles, onOpen, onNavigate }) {
+function BilStatusWidget({ orders, technicians, vehicles, personnel, crew, timeOff, onOpen, onNavigate }) {
   const catalogEntry = DASHBOARD_WIDGET_CATALOG.find((w) => w.key === "bil_status");
-  const biler = useMemo(() => bilFremdrift({ orders, biler: technicians.map((t) => ({ ...t, lukket: (vehicles || []).find((v) => v.id === t.id)?.lukket })), dato: todayISO(), sammenlign: dailyOrderCompare, erManglende: isMissingActive }), [orders, technicians, vehicles]);
+  const idag = todayISO();
+  const biler = useMemo(() => bilFremdrift({ orders, biler: technicians.map((t) => ({ ...t, lukket: (vehicles || []).find((v) => v.id === t.id)?.lukket })), dato: idag, sammenlign: dailyOrderCompare, erManglende: isMissingActive })
+    .map((b) => ({ ...b, hold: holdForBil({ bilId: b.bil.id, dato: idag, personnel, helpers: crew?.helpers, erMedhjaelper: erMedhjaelperRolle, fraværende: (id, d) => isTechnicianAbsent(id, d, timeOff) }) })),
+  [orders, technicians, vehicles, personnel, crew, timeOff, idag]);
   return (
     <WidgetCard title={catalogEntry.label} icon={catalogEntry.icon} onTitleClick={() => onNavigate("planlaegning")}>
       {biler.length === 0 ? <p className="text-sm text-muted italic">Ingen bil har sager i dag.</p> : (
@@ -342,10 +345,15 @@ function BilStatusWidget({ orders, technicians, vehicles, onOpen, onNavigate }) 
           {biler.map((b) => (
             <li key={b.bil.id}>
               <div className="flex items-baseline justify-between gap-2 mb-1">
-                <span className="text-sm font-semibold text-ink truncate">{b.bil.navn}</span>
+                <span className="text-sm font-semibold text-ink truncate">{bilNavnUdenHold(b.bil.navn)}</span>
                 <span className="text-xs text-muted shrink-0">{b.faerdige} af {b.total} færdige{b.igang > 0 ? " · 1 i gang" : ""}</span>
               </div>
-              <Fremdrift vaerdi={b.faerdige} max={b.total} label={`${b.bil.navn}: ${b.faerdige} af ${b.total} sager færdige`} />
+              <p className="text-xs text-muted mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                <span><span className="font-semibold text-ink">Montør</span> {b.hold.montoerer.length > 0 ? b.hold.montoerer.join(", ") : <span className="text-danger">ingen i dag</span>}</span>
+                <span><span className="font-semibold text-ink">2. mand</span> {b.hold.andenMand.length > 0 ? b.hold.andenMand.join(", ") : "ingen"}</span>
+                {b.hold.fravaer > 0 && <span className="text-danger">{b.hold.fravaer} fraværende</span>}
+              </p>
+              <Fremdrift vaerdi={b.faerdige} max={b.total} label={`${bilNavnUdenHold(b.bil.navn)}: ${b.faerdige} af ${b.total} sager færdige`} />
               {b.naeste ? (
                 <button type="button" onClick={() => onOpen(b.naeste.id)} className="mt-1 w-full text-left text-xs text-muted truncate hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded">
                   Næste: <span className="text-ink font-medium">{b.naeste.start ? `${b.naeste.start} · ` : ""}{b.naeste.kunde?.navn || "Ukendt kunde"}</span>

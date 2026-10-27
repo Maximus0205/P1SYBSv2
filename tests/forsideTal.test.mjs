@@ -1,5 +1,5 @@
 // Kør med: node tests/forsideTal.test.mjs
-import { haster, bilFremdrift, plukFremdrift, mineSager, dagensTal } from "../src/lib/forsideTal.js";
+import { haster, bilFremdrift, plukFremdrift, mineSager, dagensTal, holdForBil, bilNavnUdenHold } from "../src/lib/forsideTal.js";
 let pass = 0, fail = 0;
 const eq = (n, g, w) => { if (JSON.stringify(g) === JSON.stringify(w)) pass++; else { fail++; console.log("FAIL:", n, "\n  got: ", JSON.stringify(g), "\n  want:", JSON.stringify(w)); } };
 const I = "2026-10-27";
@@ -34,5 +34,18 @@ eq("uden rettigheder: kun sager og afsluttet", t1.map((x) => x.id), ["sager", "f
 const t2 = dagensTal({ orders: os, idag: I, skalPlanlaegges: skal, kanPlan: true, kanLager: true, pluk: { mangler: 4, kanIkkeFindes: 1 } });
 eq("alle tal", t2.map((x) => [x.id, x.vaerdi]), [["sager", 4], ["faerdige", 1], ["planlaegges", 0], ["haster", 0], ["pluk", 4], ["findes-ikke", 1]]);
 eq("kan ikke findes vises kun hvis >0", dagensTal({ orders: [], idag: I, skalPlanlaegges: skal, kanPlan: false, kanLager: true, pluk: { mangler: 0, kanIkkeFindes: 0 } }).map((x) => x.id), ["sager", "faerdige", "pluk"]);
+// holdForBil
+{ const pers = [{ id: "m1", navn: "Magnus", bilId: "b1", rolle: "montor" }, { id: "m2", navn: "Mette", bilId: "b1", rolle: "montor" }, { id: "h1", navn: "Hans", bilId: null, rolle: "medhjaelper" }, { id: "k", navn: "Kim", bilId: "b2", rolle: "montor" }];
+  const er = (r) => r === "medhjaelper";
+  const base = { bilId: "b1", dato: I, personnel: pers, erMedhjaelper: er };
+  eq("faste montører, ingen 2. mand", holdForBil({ ...base, helpers: [] }), { montoerer: ["Magnus", "Mette"], andenMand: [], fravaer: 0 });
+  eq("2. mand fra dagens hold", holdForBil({ ...base, helpers: [{ dato: I, vehicleId: "b1", personId: "h1" }] }).andenMand, ["Hans"]);
+  eq("en montør fra en anden bil kan være 2. mand", holdForBil({ ...base, helpers: [{ dato: I, vehicleId: "b1", personId: "k" }] }).andenMand, ["Kim"]);
+  eq("fast montør, der er 2. mand på en anden bil, er ikke montør her", holdForBil({ ...base, helpers: [{ dato: I, vehicleId: "b2", personId: "m2" }] }).montoerer, ["Magnus"]);
+  eq("hold fra en anden dag tæller ikke", holdForBil({ ...base, helpers: [{ dato: "2026-10-28", vehicleId: "b1", personId: "h1" }] }).andenMand, []);
+  eq("fraværende udelades og tælles", holdForBil({ ...base, helpers: [{ dato: I, vehicleId: "b1", personId: "h1" }], fraværende: (id) => id === "m1" || id === "h1" }), { montoerer: ["Mette"], andenMand: [], fravaer: 2 });
+  eq("bil uden folk", holdForBil({ ...base, bilId: "bx", helpers: [] }), { montoerer: [], andenMand: [], fravaer: 0 });
+  eq("bilnavn uden parentes", [bilNavnUdenHold("Bil 2 (Mette, Jens)"), bilNavnUdenHold("Bil3"), bilNavnUdenHold("(x)")], ["Bil 2", "Bil3", "(x)"]);
+}
 console.log(`forsideTal: ${pass} ok, ${fail} fejl`);
 if (fail) process.exit(1);

@@ -67,3 +67,24 @@ export function dagensTal({ orders, idag, skalPlanlaegges, kanPlan, kanLager, pl
   }
   return tal;
 }
+
+// Hvem sidder i bilen på en bestemt dag? (oktober 2026)
+//  - montoerer: bilens faste folk (personnel.bilId === bilen), dog ikke en person, der den dag er sat som 2. mand på en ANDEN bil.
+//  - andenMand: dagens 2. mand på bilen (crew.helpers) - en medhjælper eller en montør, der kører med herfra.
+// Fraværende personer (ferie, sygdom, fridag) udelades og tælles i `fravaer`, så kortet ikke påstår, at nogen sidder i bilen, som ikke er der.
+// erMedhjaelper(rolle) sendes ind (rollen ligger som data); fraværende(personId, dato) sendes ind (domain.isTechnicianAbsent).
+export function holdForBil({ bilId, dato, personnel, helpers, erMedhjaelper, fraværende }) {
+  const p = personnel || [], h = helpers || [];
+  const borte = new Set(h.filter((x) => x.dato === dato && x.vehicleId !== bilId).map((x) => String(x.personId)));
+  const fastBil = p.filter((x) => x.bilId === bilId && !erMedhjaelper?.(x.rolle) && !borte.has(String(x.id)));
+  const fastIds = new Set(fastBil.map((x) => String(x.id)));
+  const hjaelpere = h.filter((x) => x.dato === dato && x.vehicleId === bilId)
+    .map((x) => p.find((y) => String(y.id) === String(x.personId)))
+    .filter((x) => x && !fastIds.has(String(x.id)));
+  const til = (liste) => liste.filter((x) => !fraværende?.(x.id, dato)).map((x) => x.navn || "Person");
+  const montoerer = til(fastBil), andenMand = til(hjaelpere);
+  return { montoerer, andenMand, fravaer: fastBil.length + hjaelpere.length - montoerer.length - andenMand.length };
+}
+
+// Bilens navn uden parentesen med montørerne ("Bil 2 (Mette, Jens)" -> "Bil 2"), når holdet vises for sig.
+export const bilNavnUdenHold = (navn) => String(navn || "").replace(/\s*\([^)]*\)\s*$/, "") || String(navn || "");
