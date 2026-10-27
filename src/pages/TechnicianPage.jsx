@@ -18,7 +18,6 @@ import { kanMeldesDelvist } from "../lib/delvisAfsluttet";
 import { useFeature } from "../hooks/useStoreFeatures";
 import { useBilledAntal } from "../lib/billedAntal";
 import { RmaPanel } from "../components/RmaPanel";
-import { OverrulingsNote } from "../components/OverrulingsNote";
 
 // Universelt Google Maps-link: åbner Google Maps-appen hvis den er
 // installeret (iOS og Android), ellers i browseren. Vi bruger søge-linket
@@ -795,7 +794,6 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
         </div>
       )}
 
-      <OverrulingsNote order={order} />
       <TechnicianLineItems order={order} onSetRma={onSetRma} rmaAf={rmaAf} />
 
       <div className="flex border-b border-line mb-5 overflow-x-auto">

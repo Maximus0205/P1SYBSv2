@@ -19,7 +19,6 @@ import { DelvisBanner } from "../components/DelvisAfsluttet";
 import { needsPlanning } from "../data/domain";
 import { useFeature } from "../hooks/useStoreFeatures";
 import { useBilledAntal } from "../lib/billedAntal";
-import { OverrulingsNote } from "../components/OverrulingsNote";
 
 const cloneLineItems = (list) => (list || []).map((v) => ({ ...v, tillaeg: (v.tillaeg || []).map((y) => ({ ...y })) }));
 
@@ -835,7 +834,6 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
         </div>
       )}
 
-      <OverrulingsNote order={order} />
       <LineItemDetails onSetRma={canFieldwork ? onSetRma : undefined} rmaAf={rmaAf} butikNavn={butikNavn} order={order} onToggleAddOn={canFieldwork ? onToggleAddOn : undefined} onAddAddOn={canFieldwork ? onAddAddOn : undefined} onRemoveAddOn={canFieldwork ? onRemoveAddOn : undefined} />
       <div className="flex border-b border-line mb-5 overflow-x-auto">
         {tabs.map((t) => (
