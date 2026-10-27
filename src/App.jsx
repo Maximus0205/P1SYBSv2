@@ -61,7 +61,7 @@ function Gate({ allowed, page, children }) {
   return children;
 }
 
-function OrderRoute({ profile, storeId, orders, technicians, personnel, crew, ordersStore, duplicateOrder, permissions, catalog, addressNotes, keyCabinets }) {
+function OrderRoute({ butikNavn, profile, storeId, orders, technicians, personnel, crew, ordersStore, duplicateOrder, permissions, catalog, addressNotes, keyCabinets }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const order = orders.find((o) => o.id === id);
@@ -161,6 +161,10 @@ function OrderRoute({ profile, storeId, orders, technicians, personnel, crew, or
     // rette en sag til noget, butikken ikke udfører.
     catalog,
     onUpdateLineItem: (lineItemId, fields) => ordersStore.updateLineItem(order.id, lineItemId, fields),
+    // RMA-markering på varelinjen (oktober 2026): rma = objekt eller null (fjern markering). Se lib/rma.js.
+    onSetRma: (lineItemId, rma) => ordersStore.updateLineItem(order.id, lineItemId, { rma }),
+    rmaAf: { id: profile.id, navn: profile.navn },
+    butikNavn,
     onAddLineItem: (lineItem) => ordersStore.addLineItem(order.id, lineItem),
     onRemoveLineItem: (lineItemId) => ordersStore.removeLineItem(order.id, lineItemId),
     onSetLineItems: (varelinjer) => ordersStore.setLineItems(order.id, varelinjer),
@@ -656,7 +660,7 @@ export default function App() {
             />
           } />
 
-          <Route path="/sag/:id" element={<OrderRoute profile={profile} storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} crew={crewStore.crew} ordersStore={ordersStore} duplicateOrder={duplicateOrder} permissions={effectivePermissions} catalog={catalog} addressNotes={addressNotesStore.addressNotes} keyCabinets={keyCabinetsStore.keyCabinets} />} />
+          <Route path="/sag/:id" element={<OrderRoute butikNavn={effectiveStore?.navn || ""} profile={profile} storeId={activeStoreId} orders={orders} technicians={technicians} personnel={personnel} crew={crewStore.crew} ordersStore={ordersStore} duplicateOrder={duplicateOrder} permissions={effectivePermissions} catalog={catalog} addressNotes={addressNotesStore.addressNotes} keyCabinets={keyCabinetsStore.keyCabinets} />} />
 
           <Route path="/salg" element={
             <Gate allowed={allowedPages} page="salg">
@@ -696,6 +700,7 @@ export default function App() {
                 onReportMissingItem={reportMissingItem}
                 onClearMissingItem={ordersStore.clearMissingItem}
                 onReorder={ordersStore.reorderOrder}
+                technicians={technicians} personnel={personnel} crew={crewStore.crew} timeOff={timeOff} store={effectiveStore}
                 onOpen={onOpen} permissions={effectivePermissions}
               />
             </Gate>

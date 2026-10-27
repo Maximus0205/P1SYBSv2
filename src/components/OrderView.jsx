@@ -684,7 +684,7 @@ function PosStatusBanner({ order, onRetry, canRetry }) {
 //
 // VARELINJER (september 2026): redigeres nu inde i "Redigér booking" - se
 // BookingEditor. Den separate "Redigér varelinjer"-knap er fjernet.
-function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addReport, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onClearMissingItem, onDeleteOrder, onReopenOrder, onRetryPosSync, addressNotes, kanSeTider }) {
+function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addReport, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onClearMissingItem, onDeleteOrder, onReopenOrder, onRetryPosSync, addressNotes, kanSeTider, onSetRma, rmaAf, butikNavn }) {
   const [tab, setTab] = useState("noter");
   // Kun ÉT panel ad gangen - to åbne redigeringer på samme sag ville både
   // fylde skærmen og gøre det uklart, hvad "Gem" gemmer.
@@ -834,7 +834,7 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
         </div>
       )}
 
-      <LineItemDetails order={order} onToggleAddOn={canFieldwork ? onToggleAddOn : undefined} onAddAddOn={canFieldwork ? onAddAddOn : undefined} onRemoveAddOn={canFieldwork ? onRemoveAddOn : undefined} />
+      <LineItemDetails onSetRma={canFieldwork ? onSetRma : undefined} rmaAf={rmaAf} butikNavn={butikNavn} order={order} onToggleAddOn={canFieldwork ? onToggleAddOn : undefined} onAddAddOn={canFieldwork ? onAddAddOn : undefined} onRemoveAddOn={canFieldwork ? onRemoveAddOn : undefined} />
       <div className="flex border-b border-line mb-5 overflow-x-auto">
         {tabs.map((t) => (
           <button key={t.key} onClick={() => setTab(t.key)} className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors shrink-0 focus:outline-none focus:ring-2 focus:ring-brand ${tab === t.key ? "text-ink border-b-2 border-brand" : "text-muted hover:text-ink"}`}>

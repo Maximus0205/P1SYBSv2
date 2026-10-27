@@ -17,6 +17,7 @@ import { DelvisPanel, DelvisBanner } from "../components/DelvisAfsluttet";
 import { kanMeldesDelvist } from "../lib/delvisAfsluttet";
 import { useFeature } from "../hooks/useStoreFeatures";
 import { useBilledAntal } from "../lib/billedAntal";
+import { RmaPanel } from "../components/RmaPanel";
 
 // Universelt Google Maps-link: åbner Google Maps-appen hvis den er
 // installeret (iOS og Android), ellers i browseren. Vi bruger søge-linket
@@ -359,7 +360,7 @@ function TechnicianRouteView({ orders, technician, keyCabinets, selectedDate, on
 // her - en tillægsydelse beskriver blot OMFANGET af opgaven på den vare.
 // Vises som almindelig tekst, ikke som farvede pille-mærker: det var
 // forvirrende at have "bobler" for noget, der ikke kan trykkes på.
-function TechnicianLineItems({ order }) {
+function TechnicianLineItems({ order, onSetRma, rmaAf }) {
   return (
     <div className="rounded-xl bg-white border border-line p-4 mb-4 shadow-sm">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-ink mb-3">Varer &amp; opgaver</h3>
@@ -374,6 +375,7 @@ function TechnicianLineItems({ order }) {
             {(v.tillaeg || []).length > 0 && (
               <p className="text-xs text-ink mt-0.5">{v.tillaeg.map((y) => y.navn).join(" · ")}</p>
             )}
+            {v.rma && <RmaPanel order={order} linje={v} canEdit={!!onSetRma} af={rmaAf} onSet={onSetRma || (() => {})} visUdskriv={false} />}
           </div>
         ))}
       </div>
@@ -607,7 +609,7 @@ function FinishPanel({ order, onConfirm, onCancel, onGoToTab, kanSeTider }) {
 // REDIGÉR BOOKING (september 2026): kan nu også ændre, tilføje og fjerne
 // varelinjer og ydelser (catalog sendes med fra App.jsx) - se BookingEditor
 // i OrderView.jsx. Varesektionen kræver sag_feltarbejde, resten som før.
-function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBack, addNote, addPhoto, addReport, onStartOrder, onFinishOrder, onReopenOrder, onUpdateBooking, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem, onPartialFinish, onRetryPosSync, permissions, addressNotes, kanSeTider }) {
+function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBack, addNote, addPhoto, addReport, onStartOrder, onFinishOrder, onReopenOrder, onUpdateBooking, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem, onPartialFinish, onRetryPosSync, permissions, addressNotes, kanSeTider, onSetRma, rmaAf }) {
   const [tab, setTab] = React.useState("noter");
   const [panel, setPanel] = React.useState(null); // "booking" | "dupliker" | "problem" | "delvis" | "faerdig"
   const canFieldwork = canDo(permissions, "sag_feltarbejde");
@@ -792,7 +794,7 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
         </div>
       )}
 
-      <TechnicianLineItems order={order} />
+      <TechnicianLineItems order={order} onSetRma={onSetRma} rmaAf={rmaAf} />
 
       <div className="flex border-b border-line mb-5 overflow-x-auto">
         {tabs.map((t) => (

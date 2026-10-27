@@ -19,3 +19,12 @@
   .faktura-print { position: absolute; left: 0; top: 0; width: 100%; max-width: none; border: 0; box-shadow: none; padding: 0; }
   .no-print { display: none !important; }
 }
+
+/* Udskrift af labels og pakkelister (components/Udskriv.jsx): beholderen findes kun, mens der udskrives, og er usynlig på skærmen. */
+.print-root { display: none; }
+@media print {
+  body.udskriver > *:not(.print-root) { display: none !important; }
+  body.udskriver .print-root { display: block; visibility: visible; }
+  body.udskriver .print-root * { visibility: visible; }
+  body.udskriver { background: #fff !important; }
+}

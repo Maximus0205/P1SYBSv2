@@ -46,6 +46,7 @@ eq("slettet ydelse: linjens egen kopi afgør (servicetur)", linjeSkalPlukkes({ p
 eq("slettet ydelse: linjens egen kopi afgør (montering)", linjeSkalPlukkes({ primaerYdelse: { id: "vaek", navn: "Montering" } }, liste), true);
 eq("linje uden ydelse plukkes", linjeSkalPlukkes({}, liste), true);
 eq("ingen liste", [linjeSkalPlukkes({ primaerYdelse: { id: "x", navn: "Servicetur" } }, null), linjeSkalPlukkes({ primaerYdelse: { id: "x", navn: "Montering" } }, undefined)], [false, true]);
+eq("RMA-linje plukkes aldrig (den hentes hos kunden)", linjeSkalPlukkes({ rma: { nr: "RMA-1-1" }, primaerYdelse: { id: "p3", navn: "Montering" } }, liste), false);
 eq("tom linje og tom liste", linjeSkalPlukkes(null, []), true);
 
 console.log(`\n${pass} bestået, ${fail} fejlet`);

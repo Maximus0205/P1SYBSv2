@@ -39,6 +39,7 @@ export function skalPlukkes(ydelse) {
 // gælder også for sager, der allerede er oprettet); findes den ikke (fx slettet), bruges den
 // kopi af ydelsen, linjen selv bærer.
 export function linjeSkalPlukkes(linje, ydelser) {
+  if (linje?.rma) return false; // en RMA-vare HENTES hos kunden (lib/rma.js) - den ligger ikke på lageret og skal ikke plukkes
   const fundet = (Array.isArray(ydelser) ? ydelser : []).find((p) => p && p.id === linje?.primaerYdelse?.id);
   return skalPlukkes(fundet || linje?.primaerYdelse);
 }

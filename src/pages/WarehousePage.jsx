@@ -1,11 +1,12 @@
 import React, { useState } from "react";
-import { Check, KeyRound, AlertTriangle, Lock, RotateCw, X, ChevronUp, ChevronDown } from "lucide-react";
+import { Check, KeyRound, AlertTriangle, Lock, RotateCw, X, ChevronUp, ChevronDown, Printer } from "lucide-react";
 import { lineItemLabel, formatLongDate, canDo, isMissingActive, isToday, dailyOrderCompare } from "../data/domain";
 import { DateSelector } from "../components/common";
 import { linjeSkalPlukkes } from "../lib/ydelser";
 import { useNytPluk } from "../hooks/useNytPluk";
 import { nytPlukNoegle } from "../lib/nytPlukLogik";
 import { bilTure } from "../lib/plukPrBil";
+import { UdskrivDialog } from "../components/UdskrivDialoger";
 
 // Lagersiden viser ét pluk-PUNKT pr. varelinje - IKKE ét punkt pr. ordre.
 // En ordre med 3 varelinjer giver altså 3 selvstændige rækker her, som hver
@@ -104,9 +105,10 @@ function ReportMissingDialog({ order, lineItem, onConfirm, onCancel }) {
   );
 }
 
-function WarehousePage({ orders, vehicles, primaryServices, selectedDate, onDateChange, onToggleLineItemPicked, onReportMissingItem, onClearMissingItem, onOpen, onReorder, permissions }) {
+function WarehousePage({ orders, vehicles, primaryServices, selectedDate, onDateChange, onToggleLineItemPicked, onReportMissingItem, onClearMissingItem, onOpen, onReorder, permissions, technicians, personnel, crew, timeOff, store }) {
   const canPick = canDo(permissions, "sag_pluk") || canDo(permissions, "sag_feltarbejde");
   const [reporting, setReporting] = useState(null); // { order, lineItem }
+  const [visUdskriv, setVisUdskriv] = useState(false);
   // PLUKLISTE PR. BIL (oktober 2026): standard er biler med stoppene i LÆSSERÆKKEFØLGE (sidste stop først - det skal stå længst inde). "Alle varer" er den gamle flade liste.
   const [visning, setVisning] = useState(() => { try { return localStorage.getItem("p1_pluk_visning") === "alle" ? "alle" : "bil"; } catch { return "bil"; } });
   const skiftVisning = (v) => { setVisning(v); try { localStorage.setItem("p1_pluk_visning", v); } catch { /* kun en bekvemmelighed */ } };
@@ -216,6 +218,7 @@ function WarehousePage({ orders, vehicles, primaryServices, selectedDate, onDate
       <div className="flex items-center gap-3 mb-2 flex-wrap">
         <p className="text-sm text-muted">{toPick.length} varer mangler at blive plukket · {ready.length} klar til afhentning</p>
         <DateSelector date={selectedDate} onChange={onDateChange} />
+        <button type="button" onClick={() => setVisUdskriv(true)} data-rundvisning="lager-udskriv" aria-haspopup="dialog" className="min-h-[44px] px-4 rounded-lg text-xs font-semibold uppercase tracking-wide text-muted border border-line hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand inline-flex items-center gap-1.5 no-print"><Printer size={14} aria-hidden="true" /> Udskriv</button>
       </div>
       </div>
       {!canPick && (
@@ -319,6 +322,13 @@ function WarehousePage({ orders, vehicles, primaryServices, selectedDate, onDate
         {ready.length === 0 ? <p className="text-sm text-muted italic">Ingen endnu.</p> : <div className="space-y-2">{ready.map((p) => <Row key={p.lineItem.id} order={p.order} lineItem={p.lineItem} />)}</div>}
   
         </>
+      )}
+
+      {visUdskriv && (
+        <UdskrivDialog
+          erPlukbar={isOrderPickable} orders={orders} vehicles={vehicles} technicians={technicians || []} personnel={personnel || []} crew={crew} timeOff={timeOff || []}
+          primaryServices={primaryServices} dato={selectedDate} store={store} onClose={() => setVisUdskriv(false)}
+        />
       )}
 
       {reporting && (

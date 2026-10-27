@@ -5,6 +5,7 @@ import { getAttachmentsResult, getAttachmentUrls, uploadAttachment } from "../li
 import { meldBilledAntal } from "../lib/billedAntal";
 import ImageLightbox from "./ImageLightbox";
 import { billedKoe, hentEjerId, bedOmPermanentLager } from "../lib/billedKoe";
+import { RmaPanel } from "./RmaPanel";
 
 // RETTET (august 2026): alle "tilføj/rediger"-handlinger herunder
 // (onAdd/onToggleAddOn/onSave osv.) kan nu være undefined - se
@@ -35,7 +36,7 @@ function LockedNotice({ text }) {
 // ikke, så skærmbredde svarer ikke til inputmetode.
 const HOVER_ONLY_VISIBLE = "opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus:opacity-100";
 
-function LineItemDetails({ order, onToggleAddOn, onAddAddOn, onRemoveAddOn }) {
+function LineItemDetails({ order, onToggleAddOn, onAddAddOn, onRemoveAddOn, onSetRma, rmaAf, butikNavn }) {
   const [newItem, setNewItem] = useState({});
   const locked = !onToggleAddOn || !onAddAddOn || !onRemoveAddOn;
   return (
@@ -85,6 +86,7 @@ function LineItemDetails({ order, onToggleAddOn, onAddAddOn, onRemoveAddOn }) {
                   })}
                 </div>
               )}
+              {(onSetRma || v.rma) && <RmaPanel order={order} linje={v} canEdit={!!onSetRma} butik={butikNavn} af={rmaAf} onSet={onSetRma || (() => {})} />}
               {!locked && (
                 <div className="flex gap-2 pl-2">
                   <input

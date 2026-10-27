@@ -1,0 +1,21 @@
+// Kør med: node tests/code128.test.mjs   (facitlisten er lavet med en uafhængig Code 128-implementation, reportlab)
+import { code128Vaerdier, code128Moduler, code128Soejler, kanKodes } from "../src/lib/code128.js";
+let pass = 0, fail = 0;
+const eq = (n, g, w) => { if (JSON.stringify(g) === JSON.stringify(w)) pass++; else { fail++; console.log("FAIL:", n, "\n  got: ", JSON.stringify(g), "\n  want:", JSON.stringify(w)); } };
+eq("værdier RMA-26-223-1", code128Vaerdier("RMA-26-223-1"), [104, 50, 45, 33, 13, 18, 22, 13, 18, 18, 19, 13, 17, 6, 106]);
+eq("moduler RMA-26-223-1", code128Moduler("RMA-26-223-1", 0), "11010010000110001011101011101100010100011000100110111001100111001011001110100100110111001100111001011001110010110010111001001101110010011100110100110010001100011101011");
+eq("værdier RMA-26-1004-12", code128Vaerdier("RMA-26-1004-12"), [104, 50, 45, 33, 13, 18, 22, 13, 17, 16, 16, 20, 13, 17, 18, 40, 106]);
+eq("moduler RMA-26-1004-12", code128Moduler("RMA-26-1004-12", 0), "110100100001100010111010111011000101000110001001101110011001110010110011101001001101110010011100110100111011001001110110011001001110100110111001001110011011001110010110001010001100011101011");
+eq("værdier A", code128Vaerdier("A"), [104, 33, 34, 106]);
+eq("moduler A", code128Moduler("A", 0), "1101001000010100011000100010110001100011101011");
+eq("værdier Hello World", code128Vaerdier("Hello World"), [104, 40, 69, 76, 76, 79, 0, 55, 79, 82, 76, 68, 43, 106]);
+eq("moduler Hello World", code128Moduler("Hello World", 0), "110100100001100010100010110010000110010100001100101000010001111010110110011001110100011010001111010100100111101100101000010000100110101100011101100011101011");
+eq("værdier RMA-26-223-1 (x)~", code128Vaerdier("RMA-26-223-1 (x)~"), [104, 50, 45, 33, 13, 18, 22, 13, 18, 18, 19, 13, 17, 0, 8, 88, 9, 94, 90, 106]);
+eq("moduler RMA-26-223-1 (x)~", code128Moduler("RMA-26-223-1 (x)~", 0), "110100100001100010111010111011000101000110001001101110011001110010110011101001001101110011001110010110011100101100101110010011011100100111001101101100110010001100100111100100101100100100010001011110110111101101100011101011");
+eq("kan kodes", [kanKodes("RMA-26-223-1"), kanKodes(""), kanKodes("æ"), kanKodes("x".repeat(41))], [true, false, false, false]);
+const s = code128Soejler("RMA-1");
+eq("søjler dækker kun streger", s.soejler.every((x) => x.b >= 1) && s.bredde === code128Moduler("RMA-1").length, true);
+eq("stille zone i begge ender", [code128Moduler("A").startsWith("0000000000"), code128Moduler("A").endsWith("0000000000")], [true, true]);
+eq("ugyldig tekst giver fejl", (() => { try { code128Vaerdier("æ"); return false; } catch { return true; } })(), true);
+console.log(`code128: ${pass} ok, ${fail} fejl`);
+if (fail) process.exit(1);
