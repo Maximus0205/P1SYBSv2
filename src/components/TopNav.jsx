@@ -202,7 +202,7 @@ function TopNav({ branding, page, onChange, user, onLogOut, notifications, onOpe
   const allowed = PAGES.filter((s) => allowedPages.includes(s.key) || (s.key === "systemadmin" && user.erSystemadmin));
   return (
     <div className="sticky top-0 z-20 bg-ink mb-6">
-      <nav aria-label="Hovedmenu" className="max-w-6xl mx-auto flex flex-wrap items-center gap-2 px-3 py-2.5">
+      <nav aria-label="Hovedmenu" className="max-w-6xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto flex flex-wrap items-center gap-2 px-3 py-2.5">
         <div className="shrink-0 flex items-center pr-1 order-1">
           <BrandLogo branding={branding} variant="dark" className="h-8 w-auto max-w-[160px] object-contain object-left" textClassName="font-display text-xl uppercase tracking-tight text-white whitespace-nowrap" />
         </div>
@@ -240,7 +240,7 @@ function TopNav({ branding, page, onChange, user, onLogOut, notifications, onOpe
             flex-barn overhovedet MÅ blive smallere end sit indhold - uden
             den ville overflow-x-auto aldrig træde i kraft, og indholdet
             ville skubbe naboerne ud i stedet for at rulle. */}
-        <div data-rundvisning="menu" className="w-full sm:w-auto sm:flex-1 min-w-0 overflow-x-auto flex gap-1.5 py-0.5 order-3 sm:order-2">
+        <div data-rundvisning="menu" style={{ scrollbarWidth: "none" }} className="w-full sm:w-auto sm:flex-1 min-w-0 overflow-x-auto [&::-webkit-scrollbar]:hidden flex gap-1.5 py-0.5 order-3 sm:order-2">
           {allowed.map((s) => {
             const Icon = s.icon;
             const active = page === s.key;

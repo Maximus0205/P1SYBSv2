@@ -1,4 +1,5 @@
 // Kør med:  node tests/rundvisning.test.mjs
+import { tilbudNoegle } from "../src/lib/rundvisningCore.js";
 import { GUIDES, guidesForBruger, laesSet, markerSet, skalStarteAutomatisk, naesteIndex, forrigeIndex, erSidsteTrin, placerKort, grupperGuides, guideForSide, tilbudForSide } from "../src/lib/rundvisningCore.js";
 
 let pass = 0, fail = 0;
@@ -57,6 +58,7 @@ eq("fane-maal svarer til rigtige sider", GUIDES.flatMap((g) => g.trin).filter((t
   eq("grupper i fast rækkefølge", grupperGuides(g).map((x) => [x.navn, x.guides.map((y) => y.id)]), [["Start her", ["kom-i-gang"]], ["Sider", ["forside", "planlaegning", "lager", "viden", "admin"]], ["Funktioner", ["opret-sag"]]]);
   eq("guide for den aktuelle side", [guideForSide(g, "planlaegning")?.id, guideForSide(g, "salg")?.id, guideForSide(g, "arkiv"), guideForSide(g, null)], ["planlaegning", "opret-sag", null, null]);
   eq("tilbud første gang på en side", tilbudForSide(g, {}, "lager")?.id, "lager");
+  eq("intet tilbud, når det allerede er vist én gang", tilbudForSide(g, { [tilbudNoegle("lager")]: 1 }, "lager"), null);
   eq("intet tilbud, når guiden er set", tilbudForSide(g, { lager: 1 }, "lager"), null);
   eq("intet tilbud på sider uden tilbyd (salg)", tilbudForSide(g, {}, "salg"), null);
   eq("intet tilbud på sider uden guide", tilbudForSide(g, {}, "arkiv"), null);

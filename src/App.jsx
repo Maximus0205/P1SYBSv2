@@ -644,7 +644,7 @@ export default function App() {
         />
       )}
 
-      <div className={`${narrowPage ? "max-w-2xl" : "max-w-6xl"} mx-auto px-4 pb-10 ${hideTopNav ? "pt-4" : ""}`}>
+      <div className={`${narrowPage ? "max-w-2xl" : "max-w-6xl xl:max-w-7xl 2xl:max-w-[1600px]"} mx-auto px-4 pb-10 ${hideTopNav ? "pt-4" : ""}`}>
         <Routes>
           <Route path="/dashboard" element={
             <DashboardPage

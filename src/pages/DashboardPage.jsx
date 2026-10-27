@@ -413,7 +413,7 @@ function DashboardPage({ profile, permissions, crew, orders, technicians, person
       {activeKeys.length === 0 ? (
         <p className="text-sm text-muted italic">Ingen widgets valgt endnu. Tryk "Tilpas" for at sætte din forside op.</p>
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4" data-rundvisning="forside-kasser">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 items-start" data-rundvisning="forside-kasser">
           {activeKeys.map((key) => {
             const Widget = WIDGET_COMPONENTS[key];
             if (!Widget) return null;

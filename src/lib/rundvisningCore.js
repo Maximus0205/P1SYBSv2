@@ -226,7 +226,10 @@ export const guideForSide = (guides, side) => (side ? (guides || []).find((g) =>
 
 // Den rundtur, der tilbydes (ikke tvinges), første gang brugeren besøger en side: kun hvis ingen anden rundtur starter af sig selv,
 // guiden ikke er set, og siden er en af dem, der har sin egen guide.
+// Et tilbud vises højst ÉN gang pr. guide: er det først vist (nøgle "tilbud:<id>" i set), kommer det ikke igen, selv om brugeren ikke trykker på det.
+// Rundturen findes stadig i Hjælp-menuen, som længe den ikke er set.
+export const tilbudNoegle = (guideId) => `tilbud:${guideId}`;
 export function tilbudForSide(guides, set, side) {
   const g = guideForSide(guides, side);
-  return g && g.tilbyd && !set?.[g.id] ? g : null;
+  return g && g.tilbyd && !set?.[g.id] && !set?.[tilbudNoegle(g.id)] ? g : null;
 }

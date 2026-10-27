@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { HelpCircle, Check, X } from "lucide-react";
-import { guidesForBruger, laesSet, markerSet, skalStarteAutomatisk, naesteIndex, forrigeIndex, erSidsteTrin, placerKort, grupperGuides, guideForSide, tilbudForSide } from "../lib/rundvisningCore";
+import { guidesForBruger, laesSet, markerSet, skalStarteAutomatisk, naesteIndex, forrigeIndex, erSidsteTrin, placerKort, grupperGuides, guideForSide, tilbudForSide, tilbudNoegle } from "../lib/rundvisningCore";
 
 // RUNDVISNING (oktober 2026) - guidede rundture for sælger, admin og lager. Reglerne (hvem ser hvad, hvad er set, hvor ligger kortet)
 // står i lib/rundvisningCore.js. Her er selve visningen:
@@ -31,7 +31,7 @@ export function RundvisningProvider({ brugerId, rolle, erSystemadmin, tilladteSi
   // Hvad brugeren har set (pr. bruger i browseren). Holdes i state, så Hjælp-menuen og tilbuddet opdateres med det samme.
   const [set, setSet] = useState(() => { try { return laesSet(window.localStorage, brugerId); } catch (_) { return {}; } });
   useEffect(() => { try { setSet(laesSet(window.localStorage, brugerId)); } catch (_) { setSet({}); } }, [brugerId]);
-  const [afvist, setAfvist] = useState({});    // tilbud afvist i denne session, hvis browseren ikke kan huske det
+  const [visTilbud, setVisTilbud] = useState(null);   // det tilbud, der vises lige nu
 
   const start = useCallback((guideId) => {
     const g = guides.find((x) => x.id === guideId);
@@ -54,12 +54,21 @@ export function RundvisningProvider({ brugerId, rolle, erSystemadmin, tilladteSi
   }, [brugerId, guides, aktuelSide, start]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Første besøg på en side med sin egen rundtur: tilbyd den (aldrig tving). Først når den automatiske velkomst er set.
-  const tilbud = (!aktiv && !skalStarteAutomatisk(guides, set)) ? tilbudForSide(guides, set, aktuelSide) : null;
-  const afvisTilbud = useCallback((g) => {
-    setAfvist((a) => ({ ...a, [g.id]: true }));
-    try { markerSet(window.localStorage, brugerId, g.id); } catch (_) { /* ikke kritisk */ }
-    setSet((s) => ({ ...s, [g.id]: Date.now() }));
-  }, [brugerId]);
+  // Vises højst én gang pr. guide (også uden at brugeren trykker), og forsvinder af sig selv efter 20 sekunder eller ved sideskift.
+  const kandidat = (!aktiv && !skalStarteAutomatisk(guides, set) && aktuelSide !== "sag") ? tilbudForSide(guides, set, aktuelSide) : null;
+  useEffect(() => {
+    if (!kandidat) return;
+    try { markerSet(window.localStorage, brugerId, tilbudNoegle(kandidat.id)); } catch (_) { /* ikke kritisk */ }
+    setSet((s) => ({ ...s, [tilbudNoegle(kandidat.id)]: Date.now() }));
+    setVisTilbud(kandidat);
+  }, [kandidat?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!visTilbud) return undefined;
+    const t = setTimeout(() => setVisTilbud(null), 20000);
+    return () => clearTimeout(t);
+  }, [visTilbud]);
+  useEffect(() => { setVisTilbud(null); }, [aktuelSide, aktiv]);
+  const afvisTilbud = useCallback(() => setVisTilbud(null), []);
 
   const luk = useCallback(() => setAktiv(null), []);
   const guide = aktiv ? guides.find((g) => g.id === aktiv.guideId) : null;
@@ -67,7 +76,7 @@ export function RundvisningProvider({ brugerId, rolle, erSystemadmin, tilladteSi
   return (
     <RundvisningContext.Provider value={{ guides, start, set, aktuelSide }}>
       {children}
-      {tilbud && !afvist[tilbud.id] && aktuelSide !== "sag" && <TilbudKort guide={tilbud} onStart={() => start(tilbud.id)} onAfvis={() => afvisTilbud(tilbud)} />}
+      {visTilbud && <TilbudKort guide={visTilbud} onStart={() => start(visTilbud.id)} onAfvis={afvisTilbud} />}
       {guide && <Overlay guide={guide} index={aktiv.index} setIndex={(i) => setAktiv((a) => (a ? { ...a, index: i } : a))} onLuk={luk} />}
     </RundvisningContext.Provider>
   );
