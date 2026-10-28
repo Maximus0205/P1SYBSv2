@@ -64,21 +64,34 @@ export function rollerForButik(tilvalgteKeys, nuvaerendeKey = null) {
 // Widgets på forsiden for en rolle, indtil brugeren selv tilpasser den. Rollens egen liste (sat i Roller-fanen) bruges,
 // men kun widgets brugeren har rettighed til og som findes i kataloget. Har rollen ingen liste, afledes den af
 // rettighederne i en fast rækkefølge.
-const WIDGET_RAEKKEFOELGE = ["dagen_i_tal", "quick_booking", "needs_action", "today_route", "pick_list", "upcoming_today", "notifications"];
+const WIDGET_RAEKKEFOELGE = ["dagen_i_tal", "quick_booking", "needs_action", "today_route", "pluk_biler", "upcoming_today", "notifications"];
+
+// Kasser, der er slået sammen eller fjernet i en oprydning af forsiden (oktober 2026), så gemte forsider og rolle-lister fortsat virker:
+// "Dagens pluk" blev til "Pluk pr. bil", og "Mine sager" blev dækket af "Haster". Dubletter fjernes, rækkefølgen bevares.
+export const WIDGET_ALIAS = { pick_list: "pluk_biler", mine_sager: "haster" };
+export function normaliserWidgetNoegler(noegler) {
+  const set = new Set();
+  const ud = [];
+  for (const k of Array.isArray(noegler) ? noegler : []) {
+    const n = WIDGET_ALIAS[k] || k;
+    if (typeof n === "string" && !set.has(n)) { set.add(n); ud.push(n); }
+  }
+  return ud;
+}
 // Forside pr. rolle (oktober 2026), når rollen ikke selv har en liste (sættes under System -> Roller): de tre indbyggede roller får hver deres,
 // alle andre roller får den almindelige rækkefølge ovenfor. Kun kasser, brugeren har rettighed til, vises (se standardWidgets).
 const STANDARD_PR_ROLLE = {
-  admin: ["dagen_i_tal", "bil_status", "haster", "needs_action", "pluk_biler", "notifications", "quick_booking"],
-  saelger: ["dagen_i_tal", "haster", "quick_booking", "notifications"],
-  lager: ["dagen_i_tal", "pluk_biler", "pick_list", "upcoming_today", "notifications"],
+  admin: ["dagen_i_tal", "bil_status", "uge_foran", "haster", "needs_action", "pluk_biler", "rma_varer", "tempo", "notifications", "quick_booking"],
+  saelger: ["dagen_i_tal", "haster", "uge_foran", "quick_booking", "notifications"],
+  lager: ["dagen_i_tal", "pluk_biler", "rma_varer", "upcoming_today", "notifications"],
 };
 export function standardWidgets(rolle, rettigheder, katalog) {
   const har = new Set(rettigheder || []);
   // rettigheder === null betyder "ubegrænset" (systemadministrator), jf. canDo() i domain.js.
   const tilladt = new Map((katalog || []).filter((w) => w.requires === null || rettigheder === null || har.has(w.requires)).map((w) => [w.key, w]));
   const egen = findRolle(rolle)?.forside;
-  if (egen) return egen.filter((k) => tilladt.has(k));
-  return (STANDARD_PR_ROLLE[rolle] || WIDGET_RAEKKEFOELGE).filter((k) => tilladt.has(k));
+  if (egen) return normaliserWidgetNoegler(egen).filter((k) => tilladt.has(k));
+  return normaliserWidgetNoegler(STANDARD_PR_ROLLE[rolle] || WIDGET_RAEKKEFOELGE).filter((k) => tilladt.has(k));
 }
 
 // Teknisk nøgle ud fra et rollenavn ("Tømrer-svend" -> "toemrer_svend"). Nøglen kan ikke rettes bagefter (brugere og rettigheder peger på den).

@@ -57,30 +57,30 @@ test("normaliserRoller læser databasens kolonner (forside_widgets, ny_butik_sta
 });
 
 const KATALOG = [
-  { key: "needs_action", requires: "planlaegning" }, { key: "today_route", requires: "montor" }, { key: "pick_list", requires: "lager" },
+  { key: "needs_action", requires: "planlaegning" }, { key: "today_route", requires: "montor" }, { key: "pluk_biler", requires: "lager" },
   { key: "quick_booking", requires: "salg" }, { key: "notifications", requires: null }, { key: "upcoming_today", requires: null },
 ];
 
 test("standardWidgets: rollens egen liste filtreres på rettigheder og kataloget", () => {
-  saetRoller([{ key: "kontor", label: "Kontor", forside_widgets: ["pick_list", "quick_booking", "findes_ikke", "notifications"] }]);
+  saetRoller([{ key: "kontor", label: "Kontor", forside_widgets: ["pick_list", "mine_sager", "quick_booking", "findes_ikke", "notifications"] }]);
   assert.deepEqual(standardWidgets("kontor", ["salg"], KATALOG), ["quick_booking", "notifications"]);
-  assert.deepEqual(standardWidgets("kontor", null, KATALOG), ["pick_list", "quick_booking", "notifications"]); // ubegrænset
+  assert.deepEqual(standardWidgets("kontor", null, KATALOG), ["pluk_biler", "quick_booking", "notifications"]); // ubegrænset
 });
 
 test("standardWidgets: uden egen liste afledes den af rettighederne i fast rækkefølge", () => {
   saetRoller([{ key: "kontor", label: "Kontor" }]);
   assert.deepEqual(standardWidgets("kontor", ["salg", "planlaegning"], KATALOG), ["quick_booking", "needs_action", "upcoming_today", "notifications"]);
   assert.deepEqual(standardWidgets("kontor", [], KATALOG), ["upcoming_today", "notifications"]);
-  assert.deepEqual(standardWidgets("ukendt", ["lager"], KATALOG), ["pick_list", "upcoming_today", "notifications"]);
+  assert.deepEqual(standardWidgets("ukendt", ["lager"], KATALOG), ["pluk_biler", "upcoming_today", "notifications"]);
 });
 
-const KATALOG_NY = [...KATALOG, { key: "dagen_i_tal", requires: null }, { key: "bil_status", requires: "planlaegning" }, { key: "haster", requires: "planlaegning" }, { key: "pluk_biler", requires: "lager" }];
+const KATALOG_NY = [...KATALOG, { key: "dagen_i_tal", requires: null }, { key: "bil_status", requires: "planlaegning" }, { key: "haster", requires: "planlaegning" }, { key: "pluk_biler", requires: "lager" }, { key: "uge_foran", requires: "planlaegning" }, { key: "rma_varer", requires: "lager" }, { key: "tempo", requires: "planlaegning" }];
 test("standardWidgets: indbyggede roller får hver sin forside (oktober 2026)", () => {
   saetRoller([{ key: "admin", label: "A" }, { key: "saelger", label: "S" }, { key: "lager", label: "L" }, { key: "kontor", label: "K" }]);
   const alle = ["salg", "planlaegning", "lager", "montor"];
-  assert.deepEqual(standardWidgets("admin", alle, KATALOG_NY), ["dagen_i_tal", "bil_status", "haster", "needs_action", "pluk_biler", "notifications", "quick_booking"]);
-  assert.deepEqual(standardWidgets("saelger", ["salg", "planlaegning"], KATALOG_NY), ["dagen_i_tal", "haster", "quick_booking", "notifications"]);
-  assert.deepEqual(standardWidgets("lager", ["lager"], KATALOG_NY), ["dagen_i_tal", "pluk_biler", "pick_list", "upcoming_today", "notifications"]);
+  assert.deepEqual(standardWidgets("admin", alle, KATALOG_NY), ["dagen_i_tal", "bil_status", "uge_foran", "haster", "needs_action", "pluk_biler", "rma_varer", "tempo", "notifications", "quick_booking"]);
+  assert.deepEqual(standardWidgets("saelger", ["salg", "planlaegning"], KATALOG_NY), ["dagen_i_tal", "haster", "uge_foran", "quick_booking", "notifications"]);
+  assert.deepEqual(standardWidgets("lager", ["lager"], KATALOG_NY), ["dagen_i_tal", "pluk_biler", "rma_varer", "upcoming_today", "notifications"]);
   assert.deepEqual(standardWidgets("kontor", ["salg"], KATALOG_NY), ["dagen_i_tal", "quick_booking", "upcoming_today", "notifications"]);
 });
 
@@ -91,4 +91,11 @@ test("lavRolleNoegle: danske tegn, specialtegn og grænser", () => {
   assert.equal(lavRolleNoegle("!!!"), "");
   assert.ok(lavRolleNoegle("a".repeat(80)).length <= 30);
   assert.match(lavRolleNoegle("Kontor medarbejder"), /^[a-z][a-z0-9_]{1,29}$/);
+});
+
+test("normaliserWidgetNoegler: sammenlagte kasser omdøbes, dubletter fjernes, rækkefølgen bevares", async () => {
+  const { normaliserWidgetNoegler } = await import("../src/data/roller.js");
+  assert.deepEqual(normaliserWidgetNoegler(["pick_list", "haster", "mine_sager", "pluk_biler", "notifications"]), ["pluk_biler", "haster", "notifications"]);
+  assert.deepEqual(normaliserWidgetNoegler(null), []);
+  assert.deepEqual(normaliserWidgetNoegler([1, "a", "a"]), ["a"]);
 });

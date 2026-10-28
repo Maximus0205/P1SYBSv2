@@ -2,6 +2,7 @@
 // Forsiden skal svare på tre spørgsmål: hvordan ser dagen ud, hvor langt er bilerne, og hvad haster?
 import { dageTil } from "./frist.js";
 import { bilTure } from "./plukPrBil.js";
+import { rmaLinjer } from "./rma.js";
 
 const aaben = (o) => o.status !== "afsluttet";
 
@@ -44,20 +45,71 @@ export function plukFremdrift({ orders, points, vehicles, dato, sammenlign, erMa
     .filter((x) => x.linjer > 0);
 }
 
-// Tal til "Dagen i tal": kun de felter, brugeren har adgang til, afgør hvilke tal der vises (kanPlan, kanLager).
-export function dagensTal({ orders, idag, skalPlanlaegges, kanPlan, kanLager, pluk }) {
+// Dagens nøgletal (oktober 2026, ryddet op efter at "sager i dag" og "afsluttet" var to kasser med det samme tal): ÉN kasse for dagens fremdrift
+// (x af y afsluttet), sagerne i morgen, og - for dem, der planlægger - hvor mange der mangler dato/bil. "Haster" er en DEL af "skal planlægges", så det er
+// en underlinje på samme kasse (udeladt, hvis forsiden i forvejen har Haster-kassen: skjulHaster). Pluk-tal ligger i Pluk pr. bil, ikke her.
+export function dagensTal({ orders, idag, imorgen = null, skalPlanlaegges, kanPlan, skjulHaster = false }) {
   const idagSager = (orders || []).filter((o) => o.dato === idag);
   const faerdige = idagSager.filter((o) => !aaben(o)).length;
-  const tal = [{ id: "sager", label: "Sager i dag", vaerdi: idagSager.length, side: kanPlan ? "planlaegning" : null }, { id: "faerdige", label: "Afsluttet", vaerdi: faerdige, af: idagSager.length, side: null }];
+  const tal = [{ id: "i-dag", label: "Afsluttet i dag", vaerdi: faerdige, af: idagSager.length, side: null }];
+  if (imorgen) tal.push({ id: "i-morgen", label: "Sager i morgen", vaerdi: (orders || []).filter((o) => o.dato === imorgen && aaben(o)).length, side: kanPlan ? "planlaegning" : null });
   if (kanPlan) {
-    tal.push({ id: "planlaegges", label: "Skal planlægges", vaerdi: (orders || []).filter((o) => aaben(o) && skalPlanlaegges(o)).length, side: "planlaegning" });
-    tal.push({ id: "haster", label: "Haster (7 dage)", vaerdi: haster({ orders, idag, skalPlanlaegges }).length, side: "planlaegning", advarsel: true });
-  }
-  if (kanLager && pluk) {
-    tal.push({ id: "pluk", label: "Mangler pluk", vaerdi: pluk.mangler, side: "lager" });
-    if (pluk.kanIkkeFindes > 0) tal.push({ id: "findes-ikke", label: "Kan ikke findes", vaerdi: pluk.kanIkkeFindes, side: "lager", advarsel: true });
+    const antalHaster = haster({ orders, idag, skalPlanlaegges }).length;
+    tal.push({
+      id: "planlaegges", label: "Skal planlægges", vaerdi: (orders || []).filter((o) => aaben(o) && skalPlanlaegges(o)).length, side: "planlaegning",
+      under: !skjulHaster && antalHaster > 0 ? `heraf ${antalHaster} haster` : null, advarsel: !skjulHaster && antalHaster > 0,
+    });
   }
   return tal;
+}
+
+const plusDage = (iso, n) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const lokalDato = (ts) => {
+  const t = ts ? new Date(ts) : null;
+  if (!t || Number.isNaN(t.getTime())) return null;
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+};
+
+// UGEN FORAN: for hver af de næste `dage` dage - antal sager, booket tid og belægning i forhold til bilerne. Kapaciteten er "en hel dag" pr. åben bil
+// (minutterPrBil, 480 = hel dag 08-16 som i tidsrummene) - et groft mål, der viser de tomme og de fyldte dage, ikke en garanti.
+// minutter(order) sendes ind (orderExpectedMinutes i domain.js). Afsluttede sager tæller med på dagen, de lå på.
+export function ugenForan({ orders, vehicles, idag, dage = 7, minutter, minutterPrBil = 480 }) {
+  const aabne = (vehicles || []).filter((v) => !v.lukket).length;
+  const kapacitet = aabne * minutterPrBil;
+  const ud = [];
+  for (let i = 0; i < dage; i++) {
+    const dato = plusDage(idag, i);
+    const sager = (orders || []).filter((o) => o.dato === dato);
+    const min = sager.reduce((sum, o) => sum + (Number(minutter ? minutter(o) : 0) || 0), 0);
+    ud.push({ dato, antal: sager.length, minutter: min, kapacitet, pct: kapacitet > 0 ? Math.round((min / kapacitet) * 100) : null });
+  }
+  return ud;
+}
+
+// TEMPO: sager afsluttet pr. dag de seneste `dage` dage (idag er sidst), og samlet for de `dage` dage før - så man kan se, om det går hurtigere eller langsommere.
+export function afsluttetPrDag({ orders, idag, dage = 7 }) {
+  const taeller = new Map();
+  for (const o of orders || []) {
+    if (o.status !== "afsluttet") continue;
+    const d = lokalDato(o.afsluttetTidspunkt);
+    if (d) taeller.set(d, (taeller.get(d) || 0) + 1);
+  }
+  const dagene = [];
+  for (let i = dage - 1; i >= 0; i--) { const dato = plusDage(idag, -i); dagene.push({ dato, antal: taeller.get(dato) || 0 }); }
+  let foer = 0;
+  for (let i = dage; i < dage * 2; i++) foer += taeller.get(plusDage(idag, -i)) || 0;
+  const samlet = dagene.reduce((x, d) => x + d.antal, 0);
+  return { dage: dagene, samlet, foer };
+}
+
+// RMA-VARER: alle åbne RMA-markeringer (se lib/rma.js), ældste først (dem der har ventet længst), og antal pr. status.
+export function rmaOversigt(orders) {
+  const liste = [];
+  for (const order of orders || []) for (const linje of rmaLinjer(order)) if (linje.rma.status !== "afsluttet") liste.push({ order, linje, rma: linje.rma });
+  liste.sort((a, b) => String(a.rma.oprettet || "").localeCompare(String(b.rma.oprettet || "")));
+  const prStatus = {};
+  for (const x of liste) prStatus[x.rma.status] = (prStatus[x.rma.status] || 0) + 1;
+  return { liste, antal: liste.length, prStatus };
 }
 
 // Hvem sidder i bilen på en bestemt dag? (oktober 2026)
