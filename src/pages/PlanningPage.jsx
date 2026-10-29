@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AlertCircle, ArrowLeftRight, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, RefreshCw, KeyRound, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid, MapPin, Phone, Route, Stethoscope, CalendarX2, AlertTriangle } from "lucide-react";
-import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, dailyOrderCompare, needsPlanning, vehicleAbsences, vehicleHasCoverage, timeSlotById } from "../data/domain";
+import { AlertCircle, ArrowLeftRight, CalendarClock, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, PlayCircle, Search, Sparkles, UserX, X, RefreshCw, KeyRound, Check, CheckCheck, Car, Loader2, Building2, LayoutGrid, MapPin, Phone, Route, Stethoscope, CalendarX2, AlertTriangle, Printer } from "lucide-react";
+import { orderExpectedMinutes, todayISO, addDays, weekDays, buildTitle, isToday, formatLongDate, formatShortDate, formatDuration, technicianColor, dailyOrderCompare, needsPlanning, vehicleAbsences, vehicleHasCoverage, timeSlotById, isTechnicianAbsent } from "../data/domain";
 import { koordinaterForKunde } from "../lib/adresseKoordinater";
 import { ordreTilStop, hentKapGrundlag, hentMotorMatrix, beregnDagMotor, lagerKoordinat, lagerKoordinatAsync } from "../lib/motorStop";
 import { motorForslag } from "../lib/forslagMotor";
@@ -16,6 +16,12 @@ import { forslagsDatoer, fristStatus, urgensNoegle } from "../lib/frist";
 import { foersteArbejdsdagFra } from "../lib/arbejdsuge";
 import { samlFravaer } from "../lib/fravaer";
 import { nyesteFoerst } from "../lib/sagsRaekkefolge";
+import { ugeOversigt } from "../lib/ugeoversigt";
+import { holdForBil, bilNavnUdenHold } from "../lib/forsideTal";
+import { erMedhjaelperRolle } from "../data/roller";
+import { sideCssLiggende } from "../lib/udskrift";
+import { udskriv } from "../components/Udskriv";
+import { UgeoversigtDokument } from "../components/UdskriftDokumenter";
 
 // ---------------------------------------------------------------------------
 // Planlægning + Kørsel er fusioneret til ÉN fane (august 2026). Siden er
@@ -763,6 +769,24 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
     }
   };
 
+  // Udskriv ugen (oktober 2026): den viste uge som tabel på A4 på langs - biler som rækker, dage som kolonner.
+  const udskrivUgen = () => {
+    const dagNavne = ["søn", "man", "tir", "ons", "tor", "fre", "lør"];
+    const uge = ugeOversigt({
+      orders, biler: technicians, dage: weekdays5, sortering: dailyOrderCompare,
+      tidTekst: (o) => { const t = timeSlotById(o.tidsrumId); return o.start && o.start !== t.start ? `kl. ${o.start}` : t.label; },
+      hold: (b, d) => {
+        const h = holdForBil({ bilId: b.id, dato: d, personnel, helpers: crew?.helpers, erMedhjaelper: erMedhjaelperRolle, fraværende: (id, dato) => isTechnicianAbsent(id, dato, timeOff) });
+        return [...h.montoerer, ...h.andenMand.map((n) => `${n} (2. mand)`)].join(", ");
+      },
+    });
+    const ren = { ...uge, raekker: uge.raekker.map((r) => ({ ...r, navn: bilNavnUdenHold(r.navn) })) };
+    udskriv({
+      css: sideCssLiggende(),
+      element: <UgeoversigtDokument uge={ren} butik={store?.navn || ""} titel={`Ugeoversigt ${shortDateLabel(weekdays5[0])} – ${shortDateLabel(weekdays5[4])}`} dagLabel={(d) => `${dagNavne[new Date(`${d}T00:00:00`).getDay()]} ${d.slice(8)}/${d.slice(5, 7)}`} />,
+    });
+  };
+
   return (
     <KortTraekProvider onAssign={onAssign} onSetVisitOrder={onSetVisitOrder} bilNavn={(id) => technicians.find((t) => t.id === id)?.navn}>
     <div className="rounded-xl border border-brand bg-white mb-4 overflow-hidden">
@@ -788,6 +812,9 @@ function WeekOverview({ orders, technicians, personnel, vehicles, timeOff, store
             </div>
             <button onClick={() => setWeekAnchor((w) => addDays(w, 7))} aria-label="Næste uge" className="p-2.5 rounded-lg border border-line text-muted hover:text-brand hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors" title="Næste uge">
               <ChevronRight size={15} aria-hidden="true" />
+            </button>
+            <button type="button" onClick={udskrivUgen} aria-label="Udskriv ugeoversigt" title="Udskriv ugeoversigt" className="p-2.5 rounded-lg border border-line text-muted hover:text-brand hover:border-brand focus:outline-none focus:ring-2 focus:ring-brand transition-colors">
+              <Printer size={15} aria-hidden="true" />
             </button>
           </div>
 

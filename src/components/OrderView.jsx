@@ -6,6 +6,7 @@ import { FOLLOWUP_TYPES, followUpTypeLabel, isSpecialtur, specialMinutter, speci
 import { CaseTypeBadge } from "../components/CaseTypeBadge";
 import { SpecialturFelter } from "../components/SpecialturFelter";
 import { StatusBadge, MinutesInput, ToMandBadge } from "../components/common";
+import { UdskrivSagKnap } from "./SagsUdskrift";
 import { LineItemDetails, Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
 import { CustomerHistoryLookup, ModelNumberLookup, ToMandFelt } from "../components/OrderFormFields";
 import { KapacitetsTjek } from "../components/KapacitetsTjek";
@@ -819,6 +820,7 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
               {(canPlan || canEditCustomer || canFieldwork) && (
                 <button onClick={() => setPanel("booking")} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-1 py-1.5 flex items-center gap-1"><Pencil size={13} aria-hidden="true" /> Redigér booking</button>
               )}
+              <UdskrivSagKnap order={order} bilNavn={technician?.navn} butik={butikNavn} />
               {onDuplicate && canCreate && (
                 <button onClick={() => setPanel("dupliker")} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-1 py-1.5 flex items-center gap-1"><Copy size={13} aria-hidden="true" /> Dupliker / opfølgning</button>
               )}

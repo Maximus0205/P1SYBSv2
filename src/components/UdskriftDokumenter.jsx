@@ -232,3 +232,46 @@ export function PlukseddelDokument({ sager, butik, notat = "", datoTekst, varena
     </div>
   );
 }
+
+// Ugeoversigten (A4 på langs): bilerne som rækker, dagene som kolonner. Kun visning - samlingen sker i lib/ugeoversigt.js.
+export function UgeoversigtDokument({ uge, butik, titel, dagLabel }) {
+  const celle = { border: "0.25mm solid #000", padding: "1.2mm 1.5mm", verticalAlign: "top", fontSize: "8pt", lineHeight: 1.25, wordBreak: "break-word" };
+  return (
+    <div style={{ color: INK, fontFamily: "Arial, Helvetica, sans-serif" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "3mm" }}>
+        <span style={{ fontSize: "16pt", fontWeight: 800 }}>{titel}</span>
+        <span style={{ fontSize: "9pt" }}>{butik}{butik ? " · " : ""}{uge.antal} {uge.antal === 1 ? "sag" : "sager"}</span>
+      </div>
+      <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+        <thead>
+          <tr>
+            <th style={{ ...celle, width: "24mm", textAlign: "left", background: "#e5e5e5" }}>Bil</th>
+            {uge.dage.map((d) => <th key={d} style={{ ...celle, textAlign: "left", fontSize: "9pt", background: "#e5e5e5" }}>{dagLabel(d)}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {uge.raekker.map((r) => (
+            <tr key={r.id ?? "ingen"} style={{ breakInside: "avoid", pageBreakInside: "avoid" }}>
+              <th style={{ ...celle, textAlign: "left", fontSize: "9pt" }}>
+                {r.navn}{r.lukket ? " (lukket)" : ""}
+              </th>
+              {r.celler.map((c, i) => (
+                <td key={c.dato} style={celle}>
+                  {r.hold[i] && <div style={{ fontSize: "7pt", fontStyle: "italic", marginBottom: "0.8mm" }}>{r.hold[i]}</div>}
+                  {c.sager.length === 0 ? <span style={{ color: "#777" }}>—</span> : c.sager.map((s) => (
+                    <div key={s.id} style={{ marginBottom: "1.2mm", textDecoration: s.afsluttet ? "line-through" : "none" }}>
+                      <strong>{s.tid}</strong> {s.kunde} <span style={{ fontSize: "7pt" }}>#{s.nr}{s.toMand ? " · 2 mand" : ""}</span>
+                      {s.adresse && <div style={{ fontSize: "7pt" }}>{s.adresse}</div>}
+                    </div>
+                  ))}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {uge.raekker.length === 0 && <p style={{ marginTop: "6mm", fontSize: "10pt" }}>Ingen sager eller biler i perioden.</p>}
+      <p style={{ marginTop: "3mm", fontSize: "7pt" }}>Overstregede sager er afsluttet. Udskrevet {new Date().toLocaleString("da-DK", { dateStyle: "short", timeStyle: "short" })}.</p>
+    </div>
+  );
+}

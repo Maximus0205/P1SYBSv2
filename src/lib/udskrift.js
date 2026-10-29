@@ -66,6 +66,9 @@ export function sideCss(format) {
   return "@page { size: A4 portrait; margin: 0; }";
 }
 
+// Ugeoversigten er en bred tabel: A4 på langs.
+export const sideCssLiggende = () => "@page { size: A4 landscape; margin: 8mm; }";
+
 // Hvor meget plads er der på labelen? Styrer hvilke linjer og hvor store skrifter, der bruges.
 export function labelNiveau(format) {
   const minste = Math.min(format.b, format.h);

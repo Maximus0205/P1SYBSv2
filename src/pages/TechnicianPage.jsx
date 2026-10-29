@@ -7,6 +7,7 @@ import { manualKeyAccessText, routeUrlViaCabinets } from "../data/keyCabinets";
 import { StatusBadge, DateSelector, ToMandBadge, MinutesInput } from "../components/common";
 import { maaltTidVurdering } from "../data/estimates";
 import { Notes, Photos, Reports, TimeLog } from "../components/OrderParts";
+import { UdskrivSagKnap } from "../components/SagsUdskrift";
 import { BookingEditor, DuplicatePanel, PosStatusBanner } from "../components/OrderView";
 import { AddressNotesPanel } from "../components/AddressNotes";
 import { KeyCabinetAlert, KeyCabinetLines, useCabinetMatches } from "../components/KeyCabinetAlert";
@@ -641,7 +642,10 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
 
   return (
     <div>
-      <button onClick={onBack} className="text-sm text-muted hover:text-brand mb-4 flex items-center gap-1">← Tilbage</button>
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <button onClick={onBack} className="text-sm text-muted hover:text-brand flex items-center gap-1 min-h-[44px]">← Tilbage</button>
+        <UdskrivSagKnap order={order} bilNavn={technicians?.find((t) => t.id === order.bilId)?.navn} butik={butikNavn} className="text-xs font-semibold uppercase tracking-wide text-muted hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand rounded px-2 min-h-[44px] flex items-center gap-1" />
+      </div>
 
       {/* Samme banner som sælgeren/admin ser i OrderView.jsx - montøren
           skal opdage en mislykket fakturering/lagerudlevering lige så
