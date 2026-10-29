@@ -12,6 +12,7 @@ import { hentEjerId } from "../lib/aktuelBruger";
 import { reportSaveFailure } from "../lib/saveStatus";
 import { mergeOrder, applyMine, deepEqual } from "../lib/orderMerge";
 import { addConflict, getConflicts, removeConflict, updateConflict, subscribeResolve } from "../lib/conflictStore";
+import { lavRapportFelt } from "../lib/afleveringsrapport";
 
 // Al state og CRUD for ORDRER - den suverænt største og mest centrale del
 // af appen.
@@ -904,6 +905,9 @@ export function useOrders(storeId) {
   const addPhoto = (id, { src, navn }) => { const s = findOrder(orders, id); if (s) saveOneOrder({ ...s, billeder: [...s.billeder, { id: uid(), src, navn }] }); };
   const addReport = (id, title, text) => { const s = findOrder(orders, id); if (s) saveOneOrder({ ...s, rapporter: [...s.rapporter, { id: uid(), titel: title, tekst: text, tid: new Date().toLocaleString("da-DK") }] }); };
 
+  // Afleveringsrapporten (kundevendt): "udført arbejde" + "noter til rapporten". Tom rapport gemmes som null.
+  const setAfleveringsrapport = (id, felter, af) => { const s = findOrder(orders, id); if (s) saveOneOrder({ ...s, afleveringsrapport: lavRapportFelt(felter, af) }); };
+
   const toggleAddOn = (orderId, lineItemId, addOnId) => {
     const s = findOrder(orders, orderId);
     if (s) saveOneOrder({ ...s, varelinjer: s.varelinjer.map((v) => (v.id === lineItemId ? { ...v, tillaeg: v.tillaeg.map((y) => (y.id === addOnId ? { ...y, udfoert: !y.udfoert } : y)) } : v)) });
@@ -993,7 +997,7 @@ export function useOrders(storeId) {
     startOrder, finishOrder, reopenOrder, retryPosSync,
     setLineItems, updateLineItem, addLineItem, removeLineItem,
     reportMissingItem, clearMissingItem,
-    addNote, addPhoto, addReport,
+    addNote, addPhoto, addReport, setAfleveringsrapport,
     toggleAddOn, addAddOn, removeAddOn,
     addMaterial, removeMaterial,
     markProblem, clearProblem, partialFinish, dismissNotifications,

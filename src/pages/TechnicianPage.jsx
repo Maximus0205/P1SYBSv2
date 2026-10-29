@@ -609,7 +609,7 @@ function FinishPanel({ order, onConfirm, onCancel, onGoToTab, kanSeTider }) {
 // REDIGÉR BOOKING (september 2026): kan nu også ændre, tilføje og fjerne
 // varelinjer og ydelser (catalog sendes med fra App.jsx) - se BookingEditor
 // i OrderView.jsx. Varesektionen kræver sag_feltarbejde, resten som før.
-function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBack, addNote, addPhoto, addReport, onStartOrder, onFinishOrder, onReopenOrder, onUpdateBooking, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem, onPartialFinish, onRetryPosSync, permissions, addressNotes, kanSeTider, onSetRma, rmaAf }) {
+function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBack, addNote, addPhoto, addReport, onSaveRapport, butikNavn, onStartOrder, onFinishOrder, onReopenOrder, onUpdateBooking, onDuplicate, onAddMaterial, onRemoveMaterial, onMarkProblem, onClearProblem, onPartialFinish, onRetryPosSync, permissions, addressNotes, kanSeTider, onSetRma, rmaAf }) {
   const [tab, setTab] = React.useState("noter");
   const [panel, setPanel] = React.useState(null); // "booking" | "dupliker" | "problem" | "delvis" | "faerdig"
   const canFieldwork = canDo(permissions, "sag_feltarbejde");
@@ -628,7 +628,7 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
     { key: "noter", label: "Noter", count: order.noter.length },
     visMaterialer && { key: "materialer", label: "Materialer", count: (order.materialer || []).length },
     visBilleder && { key: "billeder", label: "Billeder", count: billedAntal.antal },
-    visRapporter && { key: "rapporter", label: "Rapporter", count: order.rapporter.length },
+    visRapporter && { key: "rapporter", label: "Rapporter", count: order.rapporter.length + (order.afleveringsrapport ? 1 : 0) },
     // Tid-fanen (registrerede tider) er kun for systemadmin - sælgere og montører ser aldrig tiderne.
     kanSeTider && { key: "tid", label: "Tid", count: order.logs.length },
   ].filter(Boolean);
@@ -806,7 +806,7 @@ function TechnicianOrderDetail({ order, technicians, keyCabinets, catalog, onBac
       {tab === "noter" && <Notes order={order} onAdd={canFieldwork ? addNote : undefined} />}
       {tab === "materialer" && <Materials order={order} onAdd={canFieldwork ? (m) => onAddMaterial?.(m) : undefined} onRemove={canFieldwork ? (id) => onRemoveMaterial?.(id) : undefined} />}
       {tab === "billeder" && <Photos order={order} onAdd={canFieldwork ? addPhoto : undefined} />}
-      {tab === "rapporter" && <Reports order={order} onAdd={canFieldwork ? addReport : undefined} />}
+      {tab === "rapporter" && <Reports order={order} onSave={canFieldwork ? onSaveRapport : undefined} butik={butikNavn} />}
       {kanSeTider && tab === "tid" && <TimeLog order={order} />}
     </div>
   );

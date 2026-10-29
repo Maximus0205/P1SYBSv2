@@ -6,6 +6,7 @@ import { meldBilledAntal } from "../lib/billedAntal";
 import ImageLightbox from "./ImageLightbox";
 import { billedKoe, hentEjerId, bedOmPermanentLager } from "../lib/billedKoe";
 import { RmaPanel } from "./RmaPanel";
+import { RapportFane } from "./Afleveringsrapport";
 
 // RETTET (august 2026): alle "tilføj/rediger"-handlinger herunder
 // (onAdd/onToggleAddOn/onSave osv.) kan nu være undefined - se
@@ -431,35 +432,27 @@ function Photos({ order, onAdd }) {
   );
 }
 
-function Reports({ order, onAdd }) {
-  const [title, setTitle] = useState("");
-  const [text, setText] = useState("");
-  return (
+// Fanen Rapporter (oktober 2026): selve afleveringsrapporten (udført arbejde + noter til kunden) og knappen, der laver PDF'en. Se Afleveringsrapport.jsx.
+// Rapporter skrevet med den gamle formular (titel + tekst) vises uændret nedenunder og kommer med i PDF'en.
+function Reports({ order, onSave, butik }) {
+  const gamle = (order.rapporter || []).filter((r) => r && r.tekst);
+  const tidligere = gamle.length === 0 ? null : (
     <div>
-      {onAdd ? (
-        <div className="rounded-xl border border-line bg-white p-4 mb-4 shadow-sm">
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Rapporttitel, fx 'Afleveringsrapport'" aria-label="Rapporttitel" className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink mb-2 focus:outline-none focus:border-brand" />
-          <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Beskrivelse af udført arbejde..." aria-label="Beskrivelse af udført arbejde" rows={3} className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink mb-2 focus:outline-none focus:border-brand resize-none" />
-          <button onClick={() => { if (!title.trim() || !text.trim()) return; onAdd(title, text); setTitle(""); setText(""); }} className="px-4 py-2 rounded-lg text-sm font-semibold uppercase tracking-wide text-white bg-brand hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand transition-colors">Gem rapport</button>
-        </div>
-      ) : (
-        <LockedNotice text="Du kan se, men ikke oprette, rapporter på denne sag." />
-      )}
-      {order.rapporter.length === 0 ? <p className="text-sm text-muted italic">Ingen rapporter endnu for denne sag.</p> : (
-        <div className="space-y-2">
-          {[...order.rapporter].reverse().map((r) => (
-            <div key={r.id} className="rounded-xl border border-line bg-white p-3 shadow-sm">
-              <div className="flex items-center justify-between mb-1">
-                <p className="font-semibold text-sm text-ink">{r.titel}</p>
-                <p className="font-mono text-[11px] text-muted">{r.tid}</p>
-              </div>
-              <p className="text-sm text-muted">{r.tekst}</p>
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-ink mb-2">Tidligere rapporter</h3>
+      <div className="space-y-2">
+        {[...gamle].reverse().map((r) => (
+          <div key={r.id} className="rounded-xl border border-line bg-white p-3 shadow-sm">
+            <div className="flex items-center justify-between mb-1 gap-2">
+              <p className="font-semibold text-sm text-ink">{r.titel}</p>
+              <p className="font-mono text-[11px] text-muted shrink-0">{r.tid}</p>
             </div>
-          ))}
-        </div>
-      )}
+            <p className="text-sm text-muted whitespace-pre-wrap">{r.tekst}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
+  return <RapportFane order={order} onSave={onSave} butik={butik} tidligere={tidligere} />;
 }
 
 function TimeLog({ order }) {

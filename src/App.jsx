@@ -109,6 +109,7 @@ function OrderRoute({ butikNavn, profile, storeId, orders, technicians, personne
     addNote: (t) => ordersStore.addNote(order.id, t, { id: profile.id, navn: profile.navn }),
     addPhoto: (p) => ordersStore.addPhoto(order.id, p),
     addReport: (t, x) => ordersStore.addReport(order.id, t, x),
+    onSaveRapport: (felter) => ordersStore.setAfleveringsrapport(order.id, felter, { id: profile.id, navn: profile.navn }),
     onToggleAddOn: (lineItemId, addOnId) => ordersStore.toggleAddOn(order.id, lineItemId, addOnId),
     onAddAddOn: (lineItemId, navn) => ordersStore.addAddOn(order.id, lineItemId, navn),
     onRemoveAddOn: (lineItemId, addOnId) => ordersStore.removeAddOn(order.id, lineItemId, addOnId),

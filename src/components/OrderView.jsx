@@ -684,7 +684,7 @@ function PosStatusBanner({ order, onRetry, canRetry }) {
 //
 // VARELINJER (september 2026): redigeres nu inde i "Redigér booking" - se
 // BookingEditor. Den separate "Redigér varelinjer"-knap er fjernet.
-function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addReport, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onClearMissingItem, onDeleteOrder, onReopenOrder, onRetryPosSync, addressNotes, kanSeTider, onSetRma, rmaAf, butikNavn }) {
+function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addReport, onSaveRapport, onToggleAddOn, onAddAddOn, onRemoveAddOn, onUpdateBooking, onDuplicate, onClearProblem, onOpenOrder, followUpOrder, originalOrder, permissions, catalog, onClearMissingItem, onDeleteOrder, onReopenOrder, onRetryPosSync, addressNotes, kanSeTider, onSetRma, rmaAf, butikNavn }) {
   const [tab, setTab] = useState("noter");
   // Kun ÉT panel ad gangen - to åbne redigeringer på samme sag ville både
   // fylde skærmen og gøre det uklart, hvad "Gem" gemmer.
@@ -705,7 +705,7 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
     { key: "noter", label: "Noter", count: order.noter.length },
     visMaterialer && { key: "materialer", label: "Materialer", count: (order.materialer || []).length },
     visBilleder && { key: "billeder", label: "Billeder", count: billedAntal.antal },
-    visRapporter && { key: "rapporter", label: "Rapporter", count: order.rapporter.length },
+    visRapporter && { key: "rapporter", label: "Rapporter", count: order.rapporter.length + (order.afleveringsrapport ? 1 : 0) },
     // Tid-fanen (registrerede tider) er kun for systemadmin - sælgere og montører ser aldrig tiderne.
     kanSeTider && { key: "tid", label: "Tid", count: order.logs.length },
   ].filter(Boolean);
@@ -858,7 +858,7 @@ function OrderView({ order, orders, technicians, onBack, addNote, addPhoto, addR
         )
       )}
       {tab === "billeder" && <Photos order={order} onAdd={canFieldwork ? addPhoto : undefined} />}
-      {tab === "rapporter" && <Reports order={order} onAdd={canFieldwork ? addReport : undefined} />}
+      {tab === "rapporter" && <Reports order={order} onSave={canFieldwork ? onSaveRapport : undefined} butik={butikNavn} />}
       {kanSeTider && tab === "tid" && <TimeLog order={order} />}
     </div>
   );
